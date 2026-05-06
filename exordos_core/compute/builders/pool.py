@@ -76,9 +76,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
     def _is_core_machine(self, machine: pool_models.Machine) -> bool:
         """Determine if the machine belongs to the core set."""
         # NOTE(akremenetsky): We don't have any metadata information in
-        # nodes/machines expect the name and description. So the first
-        # implementation it pretty straightforward and just check the
-        # machine name. In the future version we need to associate metadata
+        # nodes/machines except the name and description. So the first
+        # implementation is pretty straightforward and just checks the
+        # machine name. In the future versions we need to associate metadata
         # to the machine and keep this info there.
         core_machine_name_prefix = "core-set-node"
         return machine.name.startswith(core_machine_name_prefix)
@@ -267,14 +267,17 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 # after the machine is flashed and switched to the main network.
                 port = models.Port.from_boot_network()
         else:
-            _, guest_actual = machine_guest_pair
-            # The image is changed, so the machine should be booted in the
-            # `network` boot mode and flashed with a new image.
-            if guest_actual and guest_actual.image != volume.image:
-                boot = nc.BootAlternative.network.value
-                # Any port for the boot network is fine. The port will be replaced
-                # after the machine is flashed and switched to the main network.
-                port = models.Port.from_boot_network()
+            # Don't swith boot mode for the core set as the update procedure
+            # is performed by guest machine driver.
+            if not self._is_core_machine(machine):
+                _, guest_actual = machine_guest_pair
+                # The image is changed, so the machine should be booted in the
+                # `network` boot mode and flashed with a new image.
+                if guest_actual and guest_actual.image != volume.image:
+                    boot = nc.BootAlternative.network.value
+                    # Any port for the boot network is fine. The port will be replaced
+                    # after the machine is flashed and switched to the main network.
+                    port = models.Port.from_boot_network()
 
         # Set correct boot value for the machine (root model)
         machine.boot = boot
