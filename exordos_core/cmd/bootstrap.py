@@ -284,7 +284,7 @@ def _install_element_manifest(
         return
 
     os.system(
-        f"exordos --config {GCTL_CFG_DIR}/exordosctl.yaml elements install {manifest_path}"
+        f"exordos --config {GCTL_CFG_DIR}/exordosctl.yaml ee install {manifest_path}"
     )
 
 

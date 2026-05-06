@@ -458,6 +458,17 @@ class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
     project_id = properties.property(types.UUID(), required=True, read_only=True)
     port_info = properties.property(types.Dict(), default=dict)
 
+    @property
+    def _is_core_machine(self) -> bool:
+        """Determine if the machine belongs to the core set."""
+        # NOTE(akremenetsky): We don't have any metadata information in
+        # nodes/machines except the name and description. So the first
+        # implementation is pretty straightforward and just checks the
+        # machine name. In the future versions we need to associate metadata
+        # to the machine and keep this info there.
+        core_machine_name_prefix = "core-set-node"
+        return self.name.startswith(core_machine_name_prefix)
+
     def _port(self) -> models.Port:
         ipv4 = (
             netaddr.IPAddress(self.port_info["ipv4"])
@@ -518,6 +529,11 @@ class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
 
             # TODO(akremenetsky): Support multiple interfaces
             break
+
+        # Ignore the image of core machines to perform update procedure via
+        # the guest machine driver and SeedOS in autonomous mode
+        if self._is_core_machine:
+            return
 
         # Don't try to restore image from legacy machine since it is not
         # available in the data plane. So to avoid recreation of such
@@ -730,14 +746,19 @@ class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
         if dp_machine.image and self.image != dp_machine.image:
             unknown_action = False
 
-            # Recreate the machine, Seed OS flashes the new image
-            dp_machine.image = self.image
-            dp_machine.boot = self.boot
+            if not self._is_core_machine:
+                # Recreate the machine, Seed OS flashes the new image
+                dp_machine.image = self.image
+                dp_machine.boot = self.boot
 
-            # The node is going to be updated. The update process requires
-            # to switch the node into the boot network.
-            driver.recreate_machine(dp_machine, ports=(self._port(),))
-            LOG.info("The machine %s image updated.", self.uuid)
+                # The node is going to be updated. The update process requires
+                # to switch the node into the boot network.
+                driver.recreate_machine(dp_machine, ports=(self._port(),))
+                LOG.info("The machine %s image updated.", self.uuid)
+            else:
+                # TODO(akremenetsky): Update machine meta/description but don't recreate
+                # the machine.
+                pass
 
         # Boot (Finished update process)
         # Switching boot mode means the node finished the update process.
