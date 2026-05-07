@@ -26,9 +26,30 @@ _RAW_PAYLOAD_MISSING = object()
 
 
 class GenesisCoreAuthContext(iam_contexts.GenesisCoreAuthContext):
+    """Custom auth context with security rules support."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._raw_payload_cache = _RAW_PAYLOAD_MISSING
+
+    def add_granted_permission(self, permission: str) -> None:
+        """Record a permission granted by a GrantPermissionAction Rule.
+
+        This is called by Rule.verify() when a GrantPermissionAction
+        successfully matches, recording the permission so that enforce()
+        can check it later.
+        """
+        if not hasattr(self.request, "environ"):
+            return
+        granted = self.request.environ.setdefault("_granted_permissions", set())
+        granted.add(permission)
+
+    def has_granted_permission(self, permission: str) -> bool:
+        """Check if a specific permission was granted by a Rule."""
+        if not hasattr(self.request, "environ"):
+            return False
+        granted = self.request.environ.get("_granted_permissions", set())
+        return permission in granted
 
     def get_user_ip(self) -> tp.Optional[netaddr.IPAddress]:
         request = self.request
