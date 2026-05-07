@@ -3,7 +3,7 @@ Description=Exordos Core General Service
 After=network-online.target
 
 [Service]
-Restart=on-failure
+Restart=always
 RestartSec=5s
 TimeoutStopSec=5
 ExecStart=ec-gservice --config-file /etc/exordos_core/exordos_core.conf
