@@ -3,7 +3,7 @@ Description=Exordos Core Agent Service
 After=network-online.target
 
 [Service]
-Restart=on-failure
+Restart=always
 RestartSec=5s
 TimeoutStopSec=5
 ExecStart=exordos-universal-agent-db-back --config-file /etc/exordos_core/core_agent.conf
