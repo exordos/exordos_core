@@ -6,6 +6,14 @@ This guide describes how to deploy a local installation of the Exordos platform 
 
 It's assumed Linux (Ubuntu) is used as the OS on your machine.
 
+### Exordos CLI
+
+Install the Exordos CLI:
+
+```bash
+curl -fsSL https://repository.genesis-core.tech/install.sh | sudo sh
+```
+
 ### Packages
 
 Install necessary packages:
@@ -50,7 +58,7 @@ Once the local machine is configured as a hypervisor, run the bootstrap procedur
 exordos bootstrap -i <version> -f -m core --ssh-public-key /path/to/public/key
 ```
 
-where `<version>` is the version of the platform to deploy (e.g., `0.0.6`).
+where `<version>` is the version of the platform to deploy (e.g., `0.0.6`). Available versions can be found on the [releases page](https://github.com/exordos/exordos_core/releases).
 
 The platform can be started either from a **local build** (a locally built image) or from a **remote repository** (a prebuilt image fetched from the official repository).
 

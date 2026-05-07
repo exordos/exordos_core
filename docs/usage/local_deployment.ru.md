@@ -6,6 +6,14 @@
 
 Предполагается, что на вашей машине используется Linux (Ubuntu).
 
+### Exordos CLI
+
+Установите Exordos CLI:
+
+```bash
+curl -fsSL https://repository.genesis-core.tech/install.sh | sudo sh
+```
+
 ### Пакеты
 
 Установите необходимые пакеты:
@@ -50,7 +58,7 @@ exordos compute hypervisors init
 exordos bootstrap -i <version> -f -m core --ssh-public-key /path/to/public/key
 ```
 
-где `<version>` — версия платформы для развёртывания (например, `0.0.6`).
+где `<version>` — версия платформы для развёртывания (например, `0.0.6`). Доступные версии можно посмотреть на [странице релизов](https://github.com/exordos/exordos_core/releases).
 
 Платформу можно запустить как из **локальной сборки** (локально собранный образ), так и из **удалённого репозитория** (готовый образ, загруженный из официального репозитория).
 
