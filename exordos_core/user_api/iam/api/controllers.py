@@ -50,8 +50,11 @@ LOG = logging.getLogger(__name__)
 
 class EnforceMixin:
     def enforce(self, rule, do_raise=False, exc=None):
-        iam = contexts.get_context().iam_context
-        return iam.enforcer.enforce(rule, do_raise, exc)
+        ctx = contexts.get_context()
+        # Check if the permission was granted by a GrantPermissionAction Rule
+        if ctx.has_granted_permission(str(rule)):
+            return True
+        return ctx.iam_context.enforcer.enforce(rule, do_raise, exc)
 
 
 class ValidationException(ra_e.RestAlchemyException):

@@ -258,6 +258,32 @@ class AdminBypassVerifier(AbstractVerifier):
         return False
 
 
+class GrantPermissionAction(AbstractVerifier):
+    """Verifier that grants a specific IAM permission when the Rule matches.
+
+    This verifier enables "street" registration - allowing user creation
+    without explicit iam.user.create permission when this Rule is active.
+    It always returns True (the verifier itself is a pass-through), but
+    the Rule.verify() will record the granted permission in the context
+    so that enforce() checks succeed for anonymous users.
+    """
+
+    KIND = "grant_permission"
+
+    permission = properties.property(
+        ra_types.String(),
+        required=True,
+    )
+
+    def verify(self, context):
+        """Return True for all requests.
+
+        The Rule.verify() will record the granted permission in the
+        context only when this verifier is part of a Rule that fully passes.
+        """
+        return True
+
+
 class OperatorEnum(str, enum.Enum):
     OR = "OR"
     AND = "AND"
@@ -294,6 +320,7 @@ class Rule(
             ra_types_dynamic.KindModelType(FirebaseAppCheckVerifier),
             ra_types_dynamic.KindModelType(CaptchaVerifier),
             ra_types_dynamic.KindModelType(AdminBypassVerifier),
+            ra_types_dynamic.KindModelType(GrantPermissionAction),
         ),
         required=True,
     )
@@ -311,4 +338,9 @@ class Rule(
         return self.condition.can_handle(context)
 
     def verify(self, context):
-        return self.verifier.verify(context)
+        result = self.verifier.verify(context)
+        # If this Rule passed and uses GrantPermissionAction, record
+        # the granted permission so that enforce() can check it later
+        if result and isinstance(self.verifier, GrantPermissionAction):
+            context.add_granted_permission(self.verifier.permission)
+        return result

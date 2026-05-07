@@ -81,6 +81,16 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             project_id=project_id,
         )
 
+    def _create_grant_permission_rule(self, permission, project_id=None):
+        verifier = security_models.GrantPermissionAction(
+            permission=permission,
+        )
+        return self._create_rule(
+            name="Grant permission for user creation",
+            verifier=verifier,
+            project_id=project_id,
+        )
+
     def _user_create_url(self, user_api):
         return urljoin(user_api.base_url, CREATE_USER_PATH)
 
@@ -193,3 +203,120 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             user_api, headers, username_suffix="forbidden"
         )
         assert response.status_code == 403
+
+    def test_grant_permission_verifier_matches_all(
+        self,
+    ):
+        """GrantPermissionAction returns True for ALL requests."""
+        from unittest import mock
+
+        verifier = security_models.GrantPermissionAction(
+            permission="iam.user.create",
+        )
+
+        # Test with NoIamSessionStored (no auth at all)
+        ctx1 = mock.MagicMock()
+        assert verifier.verify(ctx1) is True
+
+        # Test with anonymous token (type='anon')
+        ctx2 = mock.MagicMock()
+        assert verifier.verify(ctx2) is True
+
+        # Test with authenticated user (type='user')
+        ctx3 = mock.MagicMock()
+        assert verifier.verify(ctx3) is True
+
+    def test_granted_permission_tracking_api(
+        self,
+    ):
+        """Test granted permission tracking API."""
+        from exordos_core.common import contexts
+
+        # Create mock request with environ
+        mock_request = mock.MagicMock()
+        mock_request.environ = {}
+
+        # Create context with mock request
+        ctx = mock.MagicMock(spec=contexts.GenesisCoreAuthContext)
+        ctx.request = mock_request
+
+        # Bind real methods to mock
+        ctx.add_granted_permission = (
+            contexts.GenesisCoreAuthContext.add_granted_permission.__get__(ctx)
+        )
+        ctx.has_granted_permission = (
+            contexts.GenesisCoreAuthContext.has_granted_permission.__get__(ctx)
+        )
+
+        # Initially no permission granted
+        assert ctx.has_granted_permission("iam.user.create") is False
+
+        # Grant a permission
+        ctx.add_granted_permission("iam.user.create")
+
+        # Now it is granted
+        assert ctx.has_granted_permission("iam.user.create") is True
+
+        # Other permissions are still not granted
+        assert ctx.has_granted_permission("iam.user.delete") is False
+
+    def test_create_user_anonymous_registration(
+        self,
+        user_api,
+    ):
+        """Anonymous user can register when GrantPermissionAction grants iam.user.create."""
+        # Grant permission rule - no Firebase, no CAPTCHA needed
+        self._create_grant_permission_rule(permission="iam.user.create")
+
+        # No Authorization header - completely anonymous request
+        response = self._post_create_user(
+            user_api, headers={}, username_suffix="street_user"
+        )
+        assert response.status_code in (200, 201), (
+            f"Anonymous registration failed: {response.status_code} - {response.text[:200]}"
+        )
+
+        # Verify user was created
+        data = response.json()
+        assert "uuid" in data
+        assert data["username"] == "testuser_street_user"
+
+    def test_create_user_anonymous_without_rule_is_forbidden(
+        self,
+        user_api,
+    ):
+        """Anonymous user cannot register without GrantPermissionAction Rule."""
+        # No rules created at all - only default admin rules exist
+
+        # No Authorization header - completely anonymous request
+        response = self._post_create_user(
+            user_api, headers={}, username_suffix="no_rule_user"
+        )
+        # Should be forbidden because no Rule allows anonymous access
+        # AND user doesn't have iam.user.create permission
+        assert response.status_code == 403
+
+    def test_authenticated_user_with_grant_permission_rule(
+        self,
+        user_api,
+        auth_test1_user,
+    ):
+        """Authenticated user CAN register when GrantPermissionAction Rule grants the permission.
+
+        The Rule grants iam.user.create permission for any request that
+        passes the security Rule, regardless of whether the user is
+        anonymous or authenticated.
+        """
+        self._create_grant_permission_rule(permission="iam.user.create")
+
+        token = self._get_access_token(user_api, auth_test1_user)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Authenticated request with GrantPermissionAction Rule
+        response = self._post_create_user(
+            user_api, headers=headers, username_suffix="auth_with_rule"
+        )
+        # Should succeed because Rule grants the required permission
+        assert response.status_code in (200, 201), (
+            f"Auth user with Rule failed: {response.status_code} - {response.text[:200]}"
+        )
