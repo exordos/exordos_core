@@ -144,25 +144,21 @@ class Manifest(
     )
     requirements = properties.property(
         ra_types.Dict(),
-        read_only=True,
         mutable=True,
         default=dict,
     )
     resources = properties.property(
         ra_types.Dict(),
-        read_only=True,
         mutable=True,
         default=dict,
     )
     exports = properties.property(
         ra_types.Dict(),
-        read_only=True,
         mutable=True,
         default=dict,
     )
     imports = properties.property(
         ra_types.Dict(),
-        read_only=True,
         mutable=True,
         default=dict,
     )
