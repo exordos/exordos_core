@@ -20,6 +20,7 @@ __pycache__/
 .Python
 build/
 output/
+_tmp*/
 develop-eggs/
 dist/
 deps/

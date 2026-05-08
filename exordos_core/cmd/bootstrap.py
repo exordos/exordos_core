@@ -42,7 +42,7 @@ from exordos_core.elements.dm import models as em_models
 
 LOG = logging.getLogger(__name__)
 USER = "ubuntu"
-GCTL_CFG_DIR = f"/home/{USER}/.genesis"
+GCTL_CFG_DIR = f"/home/{USER}/.exordos"
 SPEC_PATH = "/mnt/cdrom/spec.json"
 MANIFEST_PATH = "/mnt/cdrom/core.yaml"
 ECOSYSTEM_REALM_MANIFEST_PATH = "/mnt/cdrom/ecosystem_realm.yaml"

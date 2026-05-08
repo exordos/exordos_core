@@ -24,7 +24,7 @@ GC_PATH="/opt/exordos_core"
 GC_CFG_DIR=/etc/exordos_core
 GC_ART_DIR="$GC_PATH/artifacts"
 VENV_PATH="$GC_PATH/.venv"
-BOOTSTRAP_PATH="/var/lib/genesis/bootstrap/scripts"
+BOOTSTRAP_PATH="/var/lib/exordos/bootstrap/scripts"
 
 PG_VERSION="18"
 GC_PG_USER="exordos_core"
@@ -248,6 +248,6 @@ cat <<EOT | sudo tee /etc/motd
 Welcome to Exordos Core virtual machine!
 
 All materials can be found here:
-https://github.com/infraguys
+https://github.com/exordos
 
 EOT
