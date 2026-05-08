@@ -630,6 +630,10 @@
 <p>This guide describes how to deploy a local installation of the Exordos platform on a single host machine.</p>
 <h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">#</a></h2>
 <p>It's assumed Linux (Ubuntu) is used as the OS on your machine.</p>
+<h3 id="exordos-cli">Exordos CLI<a class="headerlink" href="#exordos-cli" title="Permanent link">#</a></h3>
+<p>Install the Exordos CLI:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://repository.genesis-core.tech/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh
+</code></pre></div>
 <h3 id="packages">Packages<a class="headerlink" href="#packages" title="Permanent link">#</a></h3>
 <p>Install necessary packages:</p>
 <div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
@@ -672,7 +676,7 @@ sudo<span class="w"> </span>adduser<span class="w"> </span><span class="nv">$USE
 <p>Once the local machine is configured as a hypervisor, run the bootstrap procedure to deploy the platform:</p>
 <div class="highlight"><pre><span></span><code>exordos<span class="w"> </span>bootstrap<span class="w"> </span>-i<span class="w"> </span>&lt;version&gt;<span class="w"> </span>-f<span class="w"> </span>-m<span class="w"> </span>core<span class="w"> </span>--ssh-public-key<span class="w"> </span>/path/to/public/key
 </code></pre></div>
-<p>where <code>&lt;version&gt;</code> is the version of the platform to deploy (e.g., <code>0.0.6</code>).</p>
+<p>where <code>&lt;version&gt;</code> is the version of the platform to deploy (e.g., <code>0.0.6</code>). Available versions can be found on the <a href="https://github.com/exordos/exordos_core/releases">releases page</a>.</p>
 <p>The platform can be started either from a <strong>local build</strong> (a locally built image) or from a <strong>remote repository</strong> (a prebuilt image fetched from the official repository).</p>
 <p><strong>Local build example:</strong></p>
 <div class="highlight"><pre><span></span><code>exordos<span class="w"> </span>bootstrap<span class="w"> </span>-i<span class="w"> </span>/path/to/exordos-core.raw<span class="w"> </span>-m<span class="w"> </span>core
