@@ -6,7 +6,7 @@ After=network-online.target
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=5
-ExecStart=genesis-universal-agent --config-file /etc/genesis_universal_agent/genesis_universal_agent.conf
+ExecStart=exordos-universal-agent --config-file /etc/exordos_universal_agent/exordos_universal_agent.conf
 
 [Install]
 WantedBy=multi-user.target

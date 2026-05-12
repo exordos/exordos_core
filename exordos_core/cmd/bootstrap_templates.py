@@ -58,14 +58,14 @@ cli_opts = [
     cfg.StrOpt(
         "ua_config_template_src",
         default=(
-            "/opt/exordos_core/etc/genesis_universal_agent/"
-            "genesis_universal_agent.conf.j2"
+            "/opt/exordos_core/etc/exordos_universal_agent/"
+            "exordos_universal_agent.conf.j2"
         ),
         help="Path to the universal agent source template file",
     ),
     cfg.StrOpt(
         "ua_config_template_dst",
-        default="/etc/genesis_universal_agent/genesis_universal_agent.conf",
+        default="/etc/exordos_universal_agent/exordos_universal_agent.conf",
         help="Path to the universal agent destination file",
     ),
     cfg.StrOpt(

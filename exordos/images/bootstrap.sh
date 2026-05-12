@@ -340,8 +340,8 @@ sudo systemctl enable --now \
     ec-boot-api \
     ec-gservice \
     ec-core-agent \
-    genesis-universal-agent \
-    genesis-universal-scheduler
+    exordos-universal-agent \
+    exordos-universal-scheduler
 
 # Perform the bootstrap of GC
 log "Perform the bootstrap of GC"

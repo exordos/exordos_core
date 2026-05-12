@@ -61,7 +61,7 @@ class TestSpec:
         user_api,
     ):
         path = os.path.join(
-            PROJECT_PATH, "genesis", "manifests", "examples", "core.element.yaml"
+            PROJECT_PATH, "exordos", "manifests", "examples", "core.element.yaml"
         )
         with open(path, "r") as f:
             manifest_data = yaml.safe_load(f)

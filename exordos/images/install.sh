@@ -141,7 +141,7 @@ sudo mkdir -p $GC_CFG_DIR
 sudo cp "$GC_PATH/etc/exordos_core/core_agent.conf" $GC_CFG_DIR/
 sudo cp "$GC_PATH/etc/exordos_core/logging.yaml" $GC_CFG_DIR/
 sudo cp "$GC_PATH/etc/exordos_core/event_type_mapping.yaml" $GC_CFG_DIR/
-sudo cp "$GC_PATH/genesis/images/bootstrap.sh" $BOOTSTRAP_PATH/0100-ec-bootstrap.sh
+sudo cp "$GC_PATH/exordos/images/bootstrap.sh" $BOOTSTRAP_PATH/0100-ec-bootstrap.sh
 
 cd "$GC_PATH"
 uv sync
@@ -156,7 +156,7 @@ if [[ "$SDK_DEV_MODE" == "true" ]]; then
 fi
 
 # Configuration for universal agent
-sudo cp "$GC_PATH/etc/genesis_universal_agent/logging.yaml" /etc/genesis_universal_agent/
+sudo cp "$GC_PATH/etc/exordos_universal_agent/logging.yaml" /etc/exordos_universal_agent/
 
 # Apply migrations
 # The migrations are applied in the bootstrap script as well.
@@ -185,9 +185,9 @@ sudo ln -sf "$VENV_PATH/bin/ec-status-api" "/usr/bin/ec-status-api"
 sudo ln -sf "$VENV_PATH/bin/ec-gservice" "/usr/bin/ec-gservice"
 sudo ln -sf "$VENV_PATH/bin/ec-bootstrap" "/usr/bin/ec-bootstrap"
 sudo ln -sf "$VENV_PATH/bin/ec-bootstrap-templates" "/usr/bin/ec-bootstrap-templates"
-sudo ln -sf "$VENV_PATH/bin/genesis-universal-agent" "/usr/bin/genesis-universal-agent"
-sudo ln -sf "$VENV_PATH/bin/genesis-universal-agent-db-back" "/usr/bin/genesis-universal-agent-db-back"
-sudo ln -sf "$VENV_PATH/bin/genesis-universal-scheduler" "/usr/bin/genesis-universal-scheduler"
+sudo ln -sf "$VENV_PATH/bin/genesis-universal-agent" "/usr/bin/exordos-universal-agent"
+sudo ln -sf "$VENV_PATH/bin/genesis-universal-agent-db-back" "/usr/bin/exordos-universal-agent-db-back"
+sudo ln -sf "$VENV_PATH/bin/genesis-universal-scheduler" "/usr/bin/exordos-universal-scheduler"
 sudo ln -sf "$VENV_PATH/bin/genesis-ci" "/usr/bin/gctl"
 
 # Install Systemd service files
@@ -199,8 +199,8 @@ sudo cp "$GC_PATH/etc/systemd/ec-orch-api.service" $SYSTEMD_SERVICE_DIR
 sudo cp "$GC_PATH/etc/systemd/ec-status-api.service" $SYSTEMD_SERVICE_DIR
 sudo cp "$GC_PATH/etc/systemd/ec-gservice.service" $SYSTEMD_SERVICE_DIR
 sudo cp "$GC_PATH/etc/systemd/ec-core-agent.service" $SYSTEMD_SERVICE_DIR
-sudo cp "$GC_PATH/etc/systemd/genesis-universal-agent.service" $SYSTEMD_SERVICE_DIR
-sudo cp "$GC_PATH/etc/systemd/genesis-universal-scheduler.service" $SYSTEMD_SERVICE_DIR
+sudo cp "$GC_PATH/etc/systemd/exordos-universal-agent.service" $SYSTEMD_SERVICE_DIR
+sudo cp "$GC_PATH/etc/systemd/exordos-universal-scheduler.service" $SYSTEMD_SERVICE_DIR
 
 # Prepare DNSaaS
 
@@ -220,7 +220,7 @@ sudo systemctl enable dnsdist@public
 sudo systemctl enable dnsdist@private
 
 # Set local IP where needed
-# LOCAL_IP=$(cat "$GC_PATH/genesis/images/startup_cfg.yaml" | yq '.startup_entities.core_ip' -r)
+# LOCAL_IP=$(cat "$GC_PATH/exordos/images/startup_cfg.yaml" | yq '.startup_entities.core_ip' -r)
 # Use static IP for now
 # LOCAL_IP="10.20.0.2"
 # echo "DNS=${LOCAL_IP}" | sudo tee -a /etc/systemd/resolved.conf > /dev/null

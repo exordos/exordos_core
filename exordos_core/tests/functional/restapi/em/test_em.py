@@ -54,7 +54,7 @@ class TestEmUserApi:
 
         with open(
             os.path.join(
-                PROJECT_PATH, "genesis", "manifests", "examples", "core.element.yaml"
+                PROJECT_PATH, "exordos", "manifests", "examples", "core.element.yaml"
             ),
             "r",
         ) as f:
