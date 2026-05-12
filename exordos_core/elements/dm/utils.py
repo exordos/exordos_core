@@ -214,7 +214,7 @@ def walk_replace(resource_type: str, scheme: dict, node: tp.Union[dict, list, st
 def load_base_manifest_schema() -> dict:
     with open(
         os.path.join(
-            PROJECT_PATH, "genesis", "manifests", "specification", "base_spec.yaml"
+            PROJECT_PATH, "exordos", "manifests", "specification", "base_spec.yaml"
         ),
         "r",
     ) as f:
@@ -224,7 +224,7 @@ def load_base_manifest_schema() -> dict:
 def load_full_manifest_schema() -> dict:
     with open(
         os.path.join(
-            PROJECT_PATH, "genesis", "manifests", "specification", "full_spec.yaml"
+            PROJECT_PATH, "exordos", "manifests", "specification", "full_spec.yaml"
         ),
         "r",
     ) as f:
@@ -234,7 +234,7 @@ def load_full_manifest_schema() -> dict:
 def dump_full_manifest_schema(data):
     with open(
         os.path.join(
-            PROJECT_PATH, "genesis", "manifests", "specification", "full_spec.yaml"
+            PROJECT_PATH, "exordos", "manifests", "specification", "full_spec.yaml"
         ),
         "w",
     ) as f:
