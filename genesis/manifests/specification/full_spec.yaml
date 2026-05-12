@@ -1,6 +1,7 @@
 components:
   schemas:
     BackendPool_Create:
+      path: /v1/network/lb/{LBUuid}/backend_pools/
       properties:
         balance:
           default: roundrobin
@@ -88,6 +89,7 @@ components:
       - endpoints
       type: object
     Certificate_Create:
+      path: /v1/secret/certificates/
       properties:
         cert:
           example: any_string
@@ -196,6 +198,7 @@ components:
       - domains
       type: object
     Config_Create:
+      path: /v1/config/configs/
       properties:
         body:
           example:
@@ -371,6 +374,7 @@ components:
       - body
       type: object
     Domain_Create:
+      path: /v1/dns/domains/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -405,6 +409,7 @@ components:
       - name
       type: object
     Element_Create:
+      path: /v1/em/elements/
       properties:
         api_version:
           example: any_string
@@ -490,6 +495,7 @@ components:
       - version
       type: object
     Export_Create:
+      path: /v1/em/elements/{ElementUuid}/exports/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -530,6 +536,7 @@ components:
       - link
       type: object
     IamClient_Create:
+      path: /v1/iam/clients/
       properties:
         client_id:
           example: any_string
@@ -627,6 +634,7 @@ components:
       - client_id
       type: object
     Idp_Create:
+      path: /v1/iam/idp/
       properties:
         callback:
           example:
@@ -732,6 +740,7 @@ components:
       - callback
       type: object
     Import_Create:
+      path: /v1/em/elements/{ElementUuid}/imports/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -777,6 +786,7 @@ components:
       - from_resource
       type: object
     LB_Create:
+      path: /v1/network/lb/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -884,6 +894,7 @@ components:
       - project_id
       type: object
     MachinePool_Create:
+      path: /v1/compute/hypervisors/
       properties:
         agent:
           example: 00000000-0000-0000-0000-000000000000
@@ -1056,6 +1067,7 @@ components:
           type: string
       type: object
     Manifest_Create:
+      path: /v1/em/manifests/
       properties:
         api_version:
           example: any_string
@@ -1176,6 +1188,7 @@ components:
       - version
       type: object
     NodeSet_Create:
+      path: /v1/compute/sets/
       properties:
         cores:
           example: 2048
@@ -1357,6 +1370,7 @@ components:
       - disk_spec
       type: object
     Node_Create:
+      path: /v1/compute/nodes/
       properties:
         cores:
           example: 2048
@@ -1529,6 +1543,7 @@ components:
       - disk_spec
       type: object
     OrganizationMember_Create:
+      path: /v1/iam/organization_members/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -1562,6 +1577,7 @@ components:
       - user
       type: object
     Organization_Create:
+      path: /v1/iam/organizations/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -1613,6 +1629,7 @@ components:
       - name
       type: object
     Password_Create:
+      path: /v1/secret/passwords/
       properties:
         constructor:
           default:
@@ -1694,6 +1711,7 @@ components:
       - project_id
       type: object
     PermissionBinding_Create:
+      path: /v1/iam/permission_bindings/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -1725,6 +1743,7 @@ components:
       - permission
       type: object
     Permission_Create:
+      path: /v1/iam/permissions/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -1763,6 +1782,7 @@ components:
       - name
       type: object
     Profile_Create:
+      path: /v1/vs/profiles/
       properties:
         active:
           example: true
@@ -1816,6 +1836,7 @@ components:
       - project_id
       type: object
     Project_Create:
+      path: /v1/iam/projects/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -1859,6 +1880,7 @@ components:
       - organization
       type: object
     RSAKey_Create:
+      path: /v1/secret/rsa_keys/
       properties:
         bitness:
           default: 2048
@@ -1940,6 +1962,7 @@ components:
       - public_key
       type: object
     Record_Create:
+      path: /v1/dns/domains/{DomainUuid}/records/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2100,6 +2123,7 @@ components:
       - record
       type: object
     Resource_Create:
+      path: /v1/em/elements/{ElementUuid}/resources/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2171,6 +2195,7 @@ components:
       - value
       type: object
     RoleBinding_Create:
+      path: /v1/iam/role_bindings/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2206,6 +2231,7 @@ components:
       - role
       type: object
     Role_Create:
+      path: /v1/iam/roles/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2249,6 +2275,7 @@ components:
       - name
       type: object
     Route_Create:
+      path: /v1/network/lb/{LBUuid}/vhosts/{VhostUuid}/routes/
       properties:
         condition:
           example:
@@ -2912,6 +2939,7 @@ components:
       - condition
       type: object
     Rule_Create:
+      path: /v1/security/rules/
       properties:
         condition:
           example:
@@ -3098,6 +3126,7 @@ components:
       - verifier
       type: object
     SSHKey_Create:
+      path: /v1/secret/ssh_keys/
       properties:
         authorized_keys:
           default: .ssh/authorized_keys
@@ -3206,6 +3235,7 @@ components:
       - target
       type: object
     Service_Create:
+      path: /v1/em/services/
       properties:
         after:
           default: []
@@ -3428,6 +3458,7 @@ components:
       - service_type
       type: object
     User_Create:
+      path: /v1/iam/users/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -3622,6 +3653,7 @@ components:
       - email
       type: object
     Value_Create:
+      path: /v1/vs/values/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -3682,6 +3714,7 @@ components:
       - project_id
       type: object
     Variable_Create:
+      path: /v1/vs/variables/
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -3800,6 +3833,7 @@ components:
       - setter
       type: object
     Vhost_Create:
+      path: /v1/network/lb/{LBUuid}/vhosts/
       properties:
         cert:
           example:
@@ -3944,6 +3978,7 @@ components:
       - project_id
       type: object
     Volume_Create:
+      path: /v1/compute/volumes/
       properties:
         boot:
           example: true
