@@ -1,29 +1,31 @@
-<!DOCTYPE html><html lang="en" class="no-js"><head>
+<!DOCTYPE html><html lang="ru" class="no-js"><head>
     
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
       
       
-        <link rel="canonical" href="https://github.com/infraguys/secret/certificates/">
+        <link rel="canonical" href="https://github.com/infraguys/ru/em/api_documentation/">
       
       
-        <link rel="prev" href="../../network/load_balancer/">
+        <link rel="prev" href="../manifest/">
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+        <link rel="next" href="../service/">
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.1.0">
     
     
       
-        <title>Certificates - exordos_core</title>
+        <title>API - exordos_core</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.402914a4.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.402914a4.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.a0c5b2b5.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.a0c5b2b5.min.css">
       
       
 
@@ -39,14 +41,14 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
     
     
     
-  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+  <link href="../../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
             html.glightbox-open { overflow: initial; height: 100%; }
             .gslide-title { margin-top: 0px; user-select: text; }
             .gslide-desc { color: #666; user-select: text; }
@@ -78,8 +80,8 @@
     <div data-md-component="skip">
       
         
-        <a href="#certificates" class="md-skip">
-          Skip to content
+        <a href="#api-documentation" class="md-skip">
+          Перейти к содержанию
         </a>
       
     </div>
@@ -93,8 +95,8 @@
   
 
 <header class="md-header md-header--shadow" data-md-component="header">
-  <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="exordos_core" class="md-header__button md-logo" aria-label="exordos_core" data-md-component="logo">
+  <nav class="md-header__inner md-grid" aria-label="Верхний колонтитул">
+    <a href="../../" title="exordos_core" class="md-header__button md-logo" aria-label="exordos_core" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"></path></svg>
@@ -113,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Certificates
+              API
             
           </span>
         </div>
@@ -144,20 +146,20 @@
       <div class="md-header__option">
         <div class="md-select">
           
-          <button class="md-header__button md-icon" aria-label="Select language">
+          <button class="md-header__button md-icon" aria-label="Выберите язык">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04M18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12m-2.62 7 1.62-4.33L19.12 17h-3.24Z"></path></svg>
           </button>
           <div class="md-select__inner">
             <ul class="md-select__list">
               
                 <li class="md-select__item">
-                  <a href="./" hreflang="en" class="md-select__link">
+                  <a href="../../../em/api_documentation/" hreflang="en" class="md-select__link">
                     English
                   </a>
                 </li>
               
                 <li class="md-select__item">
-                  <a href="../../ru/secret/certificates/" hreflang="ru" class="md-select__link">
+                  <a href="./" hreflang="ru" class="md-select__link">
                     Russian
                   </a>
                 </li>
@@ -175,14 +177,14 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <input type="text" class="md-search__input" name="query" aria-label="Поиск" placeholder="Поиск" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"></path></svg>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"></path></svg>
       </label>
-      <nav class="md-search__options" aria-label="Search">
+      <nav class="md-search__options" aria-label="Поиск">
         
-        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+        <button type="reset" class="md-search__icon md-icon" title="Очистить" aria-label="Очистить" tabindex="-1">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"></path></svg>
         </button>
       </nav>
@@ -194,7 +196,7 @@
       <div class="md-search__scrollwrap" data-md-scrollfix>
         <div class="md-search-result" data-md-component="search-result">
           <div class="md-search-result__meta">
-            Initializing search
+            Инициализация поиска
           </div>
           <ol class="md-search-result__list" role="presentation"></ol>
         </div>
@@ -205,7 +207,7 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/infraguys/exordos_core" title="Go to repository" class="md-source" data-md-component="source">
+        <a href="https://github.com/infraguys/exordos_core" title="Перейти к репозиторию" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.3.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
@@ -240,9 +242,9 @@
 
   
 
-<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Навигация" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="exordos_core" class="md-nav__button md-logo" aria-label="exordos_core" data-md-component="logo">
+    <a href="../../" title="exordos_core" class="md-nav__button md-logo" aria-label="exordos_core" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"></path></svg>
@@ -252,7 +254,7 @@
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/infraguys/exordos_core" title="Go to repository" class="md-source" data-md-component="source">
+      <a href="https://github.com/infraguys/exordos_core" title="Перейти к репозиторию" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.3.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"></path></svg>
@@ -273,7 +275,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href="../../" class="md-nav__link">
         Software
       </a>
     </li>
@@ -288,7 +290,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../usage/basic_usage.md" class="md-nav__link">
+      <a href="../../../usage/basic_usage.md" class="md-nav__link">
         Usage
       </a>
     </li>
@@ -392,14 +394,16 @@
 
   
   
+    
+  
   
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4">
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
       
       
       
@@ -408,7 +412,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
         <label class="md-nav__title" for="__nav_4">
           <span class="md-nav__icon md-icon"></span>
           Element
@@ -421,7 +425,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../em/manifest/" class="md-nav__link">
+      <a href="../manifest/" class="md-nav__link">
         Manifest
       </a>
     </li>
@@ -433,11 +437,52 @@
               
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="../../em/api_documentation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          API
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         API
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Содержание раздела">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Содержание раздела
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    Resources
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -449,7 +494,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../em/service/" class="md-nav__link">
+      <a href="../service/" class="md-nav__link">
         Service as a Service API
       </a>
     </li>
@@ -463,7 +508,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../em/cli/" class="md-nav__link">
+      <a href="../cli/" class="md-nav__link">
         Example commands
       </a>
     </li>
@@ -581,16 +626,14 @@
 
   
   
-    
-  
   
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7">
       
       
       
@@ -599,7 +642,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_7">
           <span class="md-nav__icon md-icon"></span>
           Secrets
@@ -610,65 +653,11 @@
               
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          Certificates
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../secret/certificates/" class="md-nav__link">
         Certificates
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#methods--providers" class="md-nav__link">
-    Methods / Providers
-  </a>
-  
-    <nav class="md-nav" aria-label="Methods / Providers">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#dns_core" class="md-nav__link">
-    dns_core
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -698,64 +687,194 @@
   
 
 
-<h1 id="certificates">Certificates<a class="headerlink" href="#certificates" title="Permanent link">#</a></h1>
-<p>Certificates are a part for the Secret Manager service. The service allows to issue and manage certificates, store them in specified storage and use them for different purposes.</p>
-<p>The current implementation only support <code>dns_core</code> method (provider) to issue and manage certificates. This method supposed DNS challenges via Core DNS that is
-available from the internet.</p>
-<p>Examples:</p>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>--location<span class="w"> </span><span class="s1">'http://10.20.0.2:11010/v1/secret/certificates/'</span><span class="w"> </span><span class="se">\</span>
---header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
---header<span class="w"> </span><span class="s1">'Authorization: Bearer MY_TOKEN'</span><span class="w"> </span><span class="se">\</span>
---data-raw<span class="w"> </span><span class="s1">'{</span>
-<span class="s1">    "name": "my-cert",</span>
-<span class="s1">    "project_id": "00000000-0000-0000-0000-000000000000",</span>
-<span class="s1">    "method": {</span>
-<span class="s1">        "kind": "dns_core"</span>
-<span class="s1">    },</span>
-<span class="s1">    "constructor": {</span>
-<span class="s1">        "kind": "plain"</span>
-<span class="s1">    },</span>
-<span class="s1">    "email": "user@exordos.com",</span>
-<span class="s1">    "domains": ["test0.cdns.exordos.com"]</span>
-<span class="s1">}'</span>
-</code></pre></div>
-<p>The main fields are:</p>
-<ul>
-<li><strong>name</strong> - name of the certificate.</li>
-<li><strong>project_id</strong> - it's a project the certificate belongs.</li>
-<li><strong>method</strong> - the method (provider) to issue and manage the certificate.</li>
-<li><strong>constructor</strong> - In the context of the certificates, the constructor object creates and stores the certificate. The <code>plain</code> means create and store in the plain format.</li>
-<li><strong>email</strong> - the email address to use for the certificate.</li>
-<li><strong>domains</strong> - the list of domains to use for the certificate.</li>
-</ul>
-<p>Also it's possible to specify domains with wildcards.</p>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>--location<span class="w"> </span><span class="s1">'http://10.20.0.2:11010/v1/secret/certificates/'</span><span class="w"> </span><span class="se">\</span>
---header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
---header<span class="w"> </span><span class="s1">'Authorization: Bearer MY_TOKEN'</span><span class="w"> </span><span class="se">\</span>
---data-raw<span class="w"> </span><span class="s1">'{</span>
-<span class="s1">    "name": "my-cert",</span>
-<span class="s1">    "project_id": "00000000-0000-0000-0000-000000000000",</span>
-<span class="s1">    "method": {</span>
-<span class="s1">        "kind": "dns_core"</span>
-<span class="s1">    },</span>
-<span class="s1">    "constructor": {</span>
-<span class="s1">        "kind": "plain"</span>
-<span class="s1">    },</span>
-<span class="s1">    "email": "user@exordos.com",</span>
-<span class="s1">    "domains": ["*.test1.cdns.exordos.com", "test1.cdns.exordos.com"]</span>
-<span class="s1">}'</span>
-</code></pre></div>
-<h2 id="methods--providers">Methods / Providers<a class="headerlink" href="#methods--providers" title="Permanent link">#</a></h2>
-<p>The Exordos Core supports the following methods / providers to issue and manage certificates:</p>
-<h3 id="dns_core">dns_core<a class="headerlink" href="#dns_core" title="Permanent link">#</a></h3>
-<p>The <code>dns_core</code> provider allows to issue and manage certificates via Core DNS. It means Core DNS service should be available from the internet to accept ACME challenges. The main logic to communicate with Let's Encrypt is implemented in the <a href="https://github.com/infraguys/gcl_certbot_plugin">GCL CertBot plugin</a> look at it for more information but the main steps are:</p>
-<ul>
-<li>Create or get private client key.</li>
-<li>Initiate a client with the key.</li>
-<li>Request a certificate for domains.</li>
-<li>Pass the DNS challenge.</li>
-<li>Some final preparation.</li>
-</ul>
+<h1 id="api-documentation">API Documentation<a class="headerlink" href="#api-documentation" title="Permanent link">#</a></h1>
+<h2 id="resources">Resources<a class="headerlink" href="#resources" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Entity</th>
+<th>Api</th>
+<th>Manifest</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MachinePool</td>
+<td>/v1/compute/hypervisors/</td>
+<td>$core.compute.hypervisors</td>
+</tr>
+<tr>
+<td>Node</td>
+<td>/v1/compute/nodes/</td>
+<td>$core.compute.nodes</td>
+</tr>
+<tr>
+<td>NodeSet</td>
+<td>/v1/compute/sets/</td>
+<td>$core.compute.sets</td>
+</tr>
+<tr>
+<td>Volume</td>
+<td>/v1/compute/volumes/</td>
+<td>$core.compute.volumes</td>
+</tr>
+<tr>
+<td>Config</td>
+<td>/v1/config/configs/</td>
+<td>$core.config.configs</td>
+</tr>
+<tr>
+<td>Domain</td>
+<td>/v1/dns/domains/</td>
+<td>$core.dns.domains</td>
+</tr>
+<tr>
+<td>Record</td>
+<td>/v1/dns/domains/{DomainUuid}/records/</td>
+<td>$core.dns.domains.records</td>
+</tr>
+<tr>
+<td>Element</td>
+<td>/v1/em/elements/</td>
+<td>$core.em.elements</td>
+</tr>
+<tr>
+<td>Export</td>
+<td>/v1/em/elements/{ElementUuid}/exports/</td>
+<td>$core.em.elements.exports</td>
+</tr>
+<tr>
+<td>Import</td>
+<td>/v1/em/elements/{ElementUuid}/imports/</td>
+<td>$core.em.elements.imports</td>
+</tr>
+<tr>
+<td>Resource</td>
+<td>/v1/em/elements/{ElementUuid}/resources/</td>
+<td>$core.em.elements.resources</td>
+</tr>
+<tr>
+<td>Manifest</td>
+<td>/v1/em/manifests/</td>
+<td>$core.em.manifests</td>
+</tr>
+<tr>
+<td>Service</td>
+<td>/v1/em/services/</td>
+<td>$core.em.services</td>
+</tr>
+<tr>
+<td>IamClient</td>
+<td>/v1/iam/clients/</td>
+<td>$core.iam.clients</td>
+</tr>
+<tr>
+<td>Idp</td>
+<td>/v1/iam/idp/</td>
+<td>$core.iam.idp</td>
+</tr>
+<tr>
+<td>OrganizationMember</td>
+<td>/v1/iam/organization_members/</td>
+<td>$core.iam.organization_members</td>
+</tr>
+<tr>
+<td>Organization</td>
+<td>/v1/iam/organizations/</td>
+<td>$core.iam.organizations</td>
+</tr>
+<tr>
+<td>PermissionBinding</td>
+<td>/v1/iam/permission_bindings/</td>
+<td>$core.iam.permission_bindings</td>
+</tr>
+<tr>
+<td>Permission</td>
+<td>/v1/iam/permissions/</td>
+<td>$core.iam.permissions</td>
+</tr>
+<tr>
+<td>Project</td>
+<td>/v1/iam/projects/</td>
+<td>$core.iam.projects</td>
+</tr>
+<tr>
+<td>RoleBinding</td>
+<td>/v1/iam/role_bindings/</td>
+<td>$core.iam.role_bindings</td>
+</tr>
+<tr>
+<td>Role</td>
+<td>/v1/iam/roles/</td>
+<td>$core.iam.roles</td>
+</tr>
+<tr>
+<td>User</td>
+<td>/v1/iam/users/</td>
+<td>$core.iam.users</td>
+</tr>
+<tr>
+<td>LB</td>
+<td>/v1/network/lb/</td>
+<td>$core.network.lb</td>
+</tr>
+<tr>
+<td>BackendPool</td>
+<td>/v1/network/lb/{LBUuid}/backend_pools/</td>
+<td>$core.network.lb.backend_pools</td>
+</tr>
+<tr>
+<td>Vhost</td>
+<td>/v1/network/lb/{LBUuid}/vhosts/</td>
+<td>$core.network.lb.vhosts</td>
+</tr>
+<tr>
+<td>Route</td>
+<td>/v1/network/lb/{LBUuid}/vhosts/{VhostUuid}/routes/</td>
+<td>$core.network.lb.vhosts.routes</td>
+</tr>
+<tr>
+<td>Certificate</td>
+<td>/v1/secret/certificates/</td>
+<td>$core.secret.certificates</td>
+</tr>
+<tr>
+<td>Password</td>
+<td>/v1/secret/passwords/</td>
+<td>$core.secret.passwords</td>
+</tr>
+<tr>
+<td>RSAKey</td>
+<td>/v1/secret/rsa_keys/</td>
+<td>$core.secret.rsa_keys</td>
+</tr>
+<tr>
+<td>SSHKey</td>
+<td>/v1/secret/ssh_keys/</td>
+<td>$core.secret.ssh_keys</td>
+</tr>
+<tr>
+<td>Rule</td>
+<td>/v1/security/rules/</td>
+<td>$core.security.rules</td>
+</tr>
+<tr>
+<td>Profile</td>
+<td>/v1/vs/profiles/</td>
+<td>$core.vs.profiles</td>
+</tr>
+<tr>
+<td>Value</td>
+<td>/v1/vs/values/</td>
+<td>$core.vs.values</td>
+</tr>
+<tr>
+<td>Variable</td>
+<td>/v1/vs/variables/</td>
+<td>$core.vs.variables</td>
+</tr>
+</tbody>
+</table>
 
 
 
@@ -793,10 +912,10 @@ available from the internet.</p>
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-    <script id="__config" type="application/json">{"base": "../..", "features": ["search.suggest", "search.highlight", "toc.integrate", "content.code.copy"], "search": "../../assets/javascripts/workers/search.208ed371.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    <script id="__config" type="application/json">{"base": "../../..", "features": ["search.suggest", "search.highlight", "toc.integrate", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.208ed371.min.js", "translations": {"clipboard.copied": "\u0421\u043a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u043e \u0432 \u0431\u0443\u0444\u0435\u0440", "clipboard.copy": "\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0432 \u0431\u0443\u0444\u0435\u0440", "search.result.more.one": "\u0415\u0449\u0451 1 \u043d\u0430 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435", "search.result.more.other": "\u0415\u0449\u0451 # \u043d\u0430 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435", "search.result.none": "\u0421\u043e\u0432\u043f\u0430\u0434\u0435\u043d\u0438\u0439 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u043e", "search.result.one": "\u041d\u0430\u0439\u0434\u0435\u043d\u043e 1 \u0441\u043e\u0432\u043f\u0430\u0434\u0435\u043d\u0438\u0435", "search.result.other": "\u041d\u0430\u0439\u0434\u0435\u043d\u043e \u0441\u043e\u0432\u043f\u0430\u0434\u0435\u043d\u0438\u0439: #", "search.result.placeholder": "\u041d\u0430\u0447\u043d\u0438\u0442\u0435 \u043f\u0435\u0447\u0430\u0442\u0430\u0442\u044c \u0434\u043b\u044f \u043f\u043e\u0438\u0441\u043a\u0430", "search.result.term.missing": "\u041e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442", "select.version": "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0435\u0440\u0441\u0438\u044e"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.ce72ebac.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.ce72ebac.min.js"></script>
       
     
   
