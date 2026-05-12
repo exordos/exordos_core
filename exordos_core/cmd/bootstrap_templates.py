@@ -56,6 +56,26 @@ cli_opts = [
         help="Path to the core config destination file",
     ),
     cfg.StrOpt(
+        "core_agent_config_template_src",
+        default="/opt/exordos_core/etc/exordos_core/core_agent.conf.j2",
+        help="Path to the core agent config template",
+    ),
+    cfg.StrOpt(
+        "core_agent_config_template_dst",
+        default="/etc/exordos_core/core_agent.conf",
+        help="Path to the core agent config destination file",
+    ),
+    cfg.StrOpt(
+        "pdns_config_template_src",
+        default="/opt/exordos_core/etc/powerdns/exordos.conf.j2",
+        help="Path to the pdns config template",
+    ),
+    cfg.StrOpt(
+        "pdns_config_template_dst",
+        default="/etc/powerdns/pdns.d/exordos.conf",
+        help="Path to the pdns config destination file",
+    ),
+    cfg.StrOpt(
         "ua_config_template_src",
         default=(
             "/opt/exordos_core/etc/exordos_universal_agent/"
@@ -113,6 +133,16 @@ def _template_mappings() -> list[tuple[str, str]]:
             _persisted_path(CONF.core_config_template_dst),
         ),
         (
+            CONF.core_agent_config_template_src,
+            CONF.core_agent_config_template_dst,
+            _persisted_path(CONF.core_agent_config_template_dst),
+        ),
+        (
+            CONF.pdns_config_template_src,
+            CONF.pdns_config_template_dst,
+            _persisted_path(CONF.pdns_config_template_dst),
+        ),
+        (
             CONF.ua_config_template_src,
             CONF.ua_config_template_dst,
             _persisted_path(CONF.ua_config_template_dst),
@@ -155,6 +185,9 @@ def _build_template_context(spec: dict[str, tp.Any]) -> dict[str, str]:
         "global_salt": secret_utils.generate_salt(),
         "hs256_jwks_encryption_key": secret_utils.generate_a256gcm_key(),
         "admin_password": spec["admin_password"],
+        "GC_PG_USER": os.environ.get("GC_PG_USER", "exordos_core"),
+        "GC_PG_PASS": os.environ.get("GC_PG_PASS", "exordos_core"),
+        "GC_PG_DB": os.environ.get("GC_PG_DB", "exordos_core"),
     }
 
 

@@ -145,7 +145,6 @@ sudo systemctl enable nginx
 
 # Install exordos core
 sudo mkdir -p $GC_CFG_DIR
-sudo cp "$GC_PATH/etc/exordos_core/core_agent.conf" $GC_CFG_DIR/
 sudo cp "$GC_PATH/etc/exordos_core/logging.yaml" $GC_CFG_DIR/
 sudo cp "$GC_PATH/etc/exordos_core/event_type_mapping.yaml" $GC_CFG_DIR/
 sudo cp "$GC_PATH/exordos/images/bootstrap.sh" $BOOTSTRAP_PATH/0100-ec-bootstrap.sh
@@ -172,7 +171,7 @@ sudo cp "$GC_PATH/etc/exordos_universal_agent/logging.yaml" /etc/exordos_univers
 # 1) The bootstrap script will transfer the data to the data disk
 # 2) It's speed up the first run since the migrations are already applied.
 # 3) It's allows to debug the migrations at build time.
-ra-apply-migration --config-dir "$GC_PATH/etc/exordos_core/" --path "$GC_PATH/migrations"
+OS_DB__CONNECTION_URL="postgresql://$GC_PG_USER:$GC_PG_PASS@127.0.0.1:5432/$GC_PG_DB" ra-apply-migration --path "$GC_PATH/migrations"
 
 deactivate
 
@@ -210,18 +209,15 @@ sudo cp "$GC_PATH/etc/systemd/exordos-universal-agent.service" $SYSTEMD_SERVICE_
 sudo cp "$GC_PATH/etc/systemd/exordos-universal-scheduler.service" $SYSTEMD_SERVICE_DIR
 
 # Prepare DNSaaS
+sudo systemctl disable --now pdns dnsdist@public dnsdist@private
 
 #pdns
 sudo rm /etc/powerdns/pdns.d/bind.conf
-sudo cp "$GC_PATH/etc/powerdns/exordos.conf" /etc/powerdns/pdns.d/exordos.conf
-sudo systemctl enable pdns
 
 #dnsdist
 
 # Optional, only for public resolving, for ex. ACME dns01 certs challenge
 sudo cp "$GC_PATH/etc/dnsdist/dnsdist-public.conf" /etc/dnsdist/dnsdist-public.conf
-sudo systemctl enable dnsdist@public
-sudo systemctl enable dnsdist@private
 
 # Set local IP where needed
 # LOCAL_IP=$(cat "$GC_PATH/exordos/images/startup_cfg.yaml" | yq '.startup_entities.core_ip' -r)

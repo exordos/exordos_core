@@ -1,9 +1,9 @@
 local-port=5300
 
 launch+=gpgsql
-gpgsql-dbname=exordos_core
-gpgsql-user=exordos_core
-gpgsql-password=exordos_core
+gpgsql-dbname={{ GC_PG_DB }}
+gpgsql-user={{ GC_PG_USER }}
+gpgsql-password={{ GC_PG_PASS }}
 gpgsql-host=localhost
 # or set several ips explicitly, it'll try to use them in order
 # gpgsql-extra-connection-parameters=hostaddr=172.17.0.1,172.17.0.2

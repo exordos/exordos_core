@@ -23,6 +23,10 @@ set -o pipefail
 GC_PATH="/opt/exordos_core"
 GC_CFG_DIR=/etc/exordos_core
 VENV_PATH="$GC_PATH/.venv"
+SERVICE_CONFIG="/etc/exordos_core/exordos_core.conf"
+PG_VERSION="18"
+
+source /usr/local/lib/exordos/lib_bootstrap.sh
 
 # Disk auto-provisioning for Exordos data directory.
 #
@@ -39,261 +43,68 @@ log() {
   echo "[exordos-bootstrap] $*"
 }
 
-host_mountpoint() {
-  if command -v nsenter >/dev/null 2>&1; then
-    nsenter -t 1 -m -- mountpoint -q "$1"
-    return $?
-  fi
-
-  mountpoint -q "$1"
-}
-
-# Identify the block device that backs the root filesystem.
-# Example output:
-#   [exordos-bootstrap] root source: /dev/vda1
-#   [exordos-bootstrap] root disk: vda
-ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
-ROOT_DISK=""
-if [[ -n "${ROOT_SRC}" ]]; then
-  ROOT_DISK="$(lsblk -no PKNAME "${ROOT_SRC}" 2>/dev/null || true)"
-fi
-log "root source: ${ROOT_SRC:-<unknown>}"
-log "root disk: ${ROOT_DISK:-<unknown>}"
-
-# Pick the first disk device that is not the root disk.
-# Example output:
-#   [exordos-bootstrap] secondary disk candidate: vdb
-SECOND_DISK="$(lsblk -dn -o NAME,TYPE | awk -v root_disk="${ROOT_DISK}" '$2=="disk" && $1!=root_disk {print $1; exit}')"
-log "secondary disk candidate: ${SECOND_DISK:-<none>}"
-
-if [[ -n "${SECOND_DISK}" ]]; then
-  DISK_DEV="/dev/${SECOND_DISK}"
-
-  # Count partitions on the selected disk.
-  # Example output:
-  #   [exordos-bootstrap] /dev/vdb partitions: 0
-  PART_COUNT="$(lsblk -nr -o TYPE "${DISK_DEV}" | awk '$1=="part" {c++} END {print c+0}')"
-  log "${DISK_DEV} partitions: ${PART_COUNT}"
-
-  # Create a single partition when there are no partitions yet.
-  # Example output:
-  #   [exordos-bootstrap] creating GPT partition table and one partition on /dev/vdb
-  if [[ "${PART_COUNT}" -eq 0 ]]; then
-    log "creating GPT partition table and one partition on ${DISK_DEV}"
-    sfdisk --label gpt "${DISK_DEV}" <<'EOF'
-,,
-EOF
-    partprobe "${DISK_DEV}" || true
-    udevadm settle || true
-  else
-    log "${DISK_DEV} already has partitions; skipping partition creation"
-  fi
-
-  # Pick the first partition on the disk.
-  # Example output:
-  #   [exordos-bootstrap] selected partition: /dev/vdb1
-  PART_NAME="$(lsblk -nr -o NAME,TYPE "${DISK_DEV}" | awk '$2=="part" {print $1; exit}')"
-  if [[ -n "${PART_NAME}" ]]; then
-    PART_DEV="/dev/${PART_NAME}"
-    log "selected partition: ${PART_DEV}"
-
-    # Detect filesystem type; create ext4 if unformatted.
-    # Example output:
-    #   [exordos-bootstrap] filesystem on /dev/vdb1: <none>
-    #   [exordos-bootstrap] formatting /dev/vdb1 as ext4
-    FS_TYPE="$(blkid -o value -s TYPE "${PART_DEV}" 2>/dev/null || true)"
-    log "filesystem on ${PART_DEV}: ${FS_TYPE:-<none>}"
-    if [[ -z "${FS_TYPE}" ]]; then
-      log "formatting ${PART_DEV} as ext4"
-      mkfs.ext4 -F "${PART_DEV}"
-      FS_TYPE="ext4"
-    else
-      log "${PART_DEV} already has filesystem '${FS_TYPE}'; skipping mkfs"
-    fi
-
-    # Mount and persist only if it is ext4.
-    if [[ "${FS_TYPE}" == "ext4" ]]; then
-      MOUNTPOINT="/var/lib/exordos/data"
-
-      # Ensure mountpoint exists.
-      # Example output:
-      #   [exordos-bootstrap] ensuring mountpoint exists: /var/lib/exordos/data
-      mkdir -p "${MOUNTPOINT}"
-      log "ensuring mountpoint exists: ${MOUNTPOINT}"
-
-      # Ensure /etc/fstab has the correct UUID-based entry.
-      # Example output:
-      #   [exordos-bootstrap] partition UUID: 1234-...
-      #   [exordos-bootstrap] updating /etc/fstab entry for /var/lib/exordos/data
-      UUID="$(blkid -o value -s UUID "${PART_DEV}" 2>/dev/null || true)"
-      if [[ -n "${UUID}" ]]; then
-        log "partition UUID: ${UUID}"
-        if grep -qs "[[:space:]]${MOUNTPOINT}[[:space:]]" /etc/fstab; then
-          if ! grep -qs "^[[:space:]]*UUID=${UUID}[[:space:]].*[[:space:]]${MOUNTPOINT}[[:space:]]" /etc/fstab; then
-            log "updating /etc/fstab entry for ${MOUNTPOINT}"
-            TMP_FSTAB="$(mktemp)"
-            awk -v mp="${MOUNTPOINT}" '!(($2==mp)) {print}' /etc/fstab > "${TMP_FSTAB}"
-            printf '%s\n' "UUID=${UUID} ${MOUNTPOINT} ext4 defaults,nofail 0 2" >> "${TMP_FSTAB}"
-            mv "${TMP_FSTAB}" /etc/fstab
-
-            # Reload systemd units generated from fstab so the mount can work on first run.
-            # Example output:
-            #   [exordos-bootstrap] running: systemctl daemon-reload
-            log "running: systemctl daemon-reload"
-            systemctl daemon-reload || true
-          else
-            log "/etc/fstab already has the correct UUID entry for ${MOUNTPOINT}"
-          fi
-        else
-          log "adding /etc/fstab entry for ${MOUNTPOINT}"
-          printf '%s\n' "UUID=${UUID} ${MOUNTPOINT} ext4 defaults,nofail 0 2" >> /etc/fstab
-
-          # Reload systemd units generated from fstab so the mount can work on first run.
-          # Example output:
-          #   [exordos-bootstrap] running: systemctl daemon-reload
-          log "running: systemctl daemon-reload"
-          systemctl daemon-reload || true
-        fi
-      else
-        log "could not determine UUID for ${PART_DEV}; skipping fstab update"
-      fi
-
-      # Mount if not mounted yet.
-      # Example output:
-      #   [exordos-bootstrap] mounting /var/lib/exordos/data
-      if ! host_mountpoint "${MOUNTPOINT}"; then
-        log "mounting ${MOUNTPOINT}"
-        mount "${MOUNTPOINT}" || mount "${PART_DEV}" "${MOUNTPOINT}"
-
-        # Some systemd units may run with an isolated mount namespace (e.g. PrivateMounts=yes).
-        # In that case, a mount performed here may not be visible from the host namespace.
-        # If it is still not mounted, retry in PID 1 mount namespace.
-        # Example output:
-        #   [exordos-bootstrap] mount not visible after mount; retrying in PID 1 mount namespace
-        if ! host_mountpoint "${MOUNTPOINT}"; then
-          if command -v nsenter >/dev/null 2>&1; then
-            log "mount not visible from host namespace; retrying in PID 1 mount namespace"
-            nsenter -t 1 -m -- mount "${MOUNTPOINT}" || nsenter -t 1 -m -- mount "${PART_DEV}" "${MOUNTPOINT}" || true
-          fi
-        fi
-
-        if host_mountpoint "${MOUNTPOINT}"; then
-          log "mounted successfully: ${MOUNTPOINT}"
-        else
-          log "mount failed or not visible: ${MOUNTPOINT}"
-        fi
-      else
-        log "${MOUNTPOINT} is already mounted; skipping"
-      fi
-    else
-      log "filesystem on ${PART_DEV} is '${FS_TYPE}', not ext4; skipping mount setup"
-    fi
-  else
-    log "no partition found on ${DISK_DEV}; skipping"
-  fi
-else
-  log "no secondary disk detected; skipping data disk provisioning"
-fi
-
+# persistent data routines
+PERSISTENT_DISK=$(find_persistent_disk)
+prepare_persistent_disk "$PERSISTENT_DISK" "$PERSISTENT_MOUNT"
 
 # Execution can continue only if the secondary disk was detected and is mounted at /var/lib/exordos/data.
-if [[ -z "${SECOND_DISK}" ]]; then
+# It's a safety check to prevent start with empty DB == no data == all existing dataplane entites will be deleted.
+if [[ -z "${PERSISTENT_DISK}" ]]; then
   echo "[exordos-bootstrap] ERROR: secondary disk was not detected; refusing to continue" >&2
   exit 1
 fi
 
-if ! host_mountpoint "/var/lib/exordos/data"; then
-  echo "[exordos-bootstrap] ERROR: /var/lib/exordos/data is not mounted; refusing to continue" >&2
-  exit 1
-fi
-
-# PostgreSQL data relocation and exordos_core DB bootstrap.
-#
-# Goal:
-# - Keep PostgreSQL packages installation logic in install.sh
-# - Ensure PostgreSQL data files live under /var/lib/exordos/data so the disk can be moved
-
-if host_mountpoint "/var/lib/exordos/data"; then
-  if command -v psql >/dev/null 2>&1; then
-    GC_PG_USER="${GC_PG_USER:-exordos_core}"
-    GC_PG_PASS="${GC_PG_PASS:-exordos_core}"
-    GC_PG_DB="${GC_PG_DB:-exordos_core}"
-
-    PG_VERSION_DIR=""
-    if [[ -d /etc/postgresql ]]; then
-      PG_VERSION_DIR="$(ls -1 /etc/postgresql 2>/dev/null | sort -V | tail -n 1 || true)"
-    fi
-
-    if [[ -n "${PG_VERSION_DIR}" ]]; then
-      PG_CONF_DIR="/etc/postgresql/${PG_VERSION_DIR}/main"
-      PG_CONF_FILE="${PG_CONF_DIR}/postgresql.conf"
-      OLD_PGDATA="/var/lib/postgresql/${PG_VERSION_DIR}/main"
-      NEW_PGDATA="/var/lib/exordos/data/postgresql/${PG_VERSION_DIR}/main"
-
-      log "postgresql version detected: ${PG_VERSION_DIR}"
-      log "postgresql old data dir: ${OLD_PGDATA}"
-      log "postgresql new data dir: ${NEW_PGDATA}"
-
-      if [[ -f "${PG_CONF_FILE}" ]]; then
-        if ! grep -qs "^[[:space:]]*data_directory[[:space:]]*=[[:space:]]*'${NEW_PGDATA}'" "${PG_CONF_FILE}"; then
-          log "configuring PostgreSQL data_directory to ${NEW_PGDATA}"
-
-          systemctl stop postgresql || true
-          mkdir -p "${NEW_PGDATA}"
-          chown -R postgres:postgres "/var/lib/exordos/data/postgresql" || true
-
-          if [[ -d "${OLD_PGDATA}" && ! -f "${NEW_PGDATA}/PG_VERSION" ]]; then
-            log "copying PostgreSQL data directory to ${NEW_PGDATA}"
-            MAX_RETRIES=5
-            RETRY_COUNT=0
-            while [[ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]]; do
-              if rsync -aHAX --numeric-ids "${OLD_PGDATA}/" "${NEW_PGDATA}/"; then
-                log "rsync completed successfully"
-                break
-              else
-                RETRY_COUNT=$((RETRY_COUNT + 1))
-                if [[ ${RETRY_COUNT} -lt ${MAX_RETRIES} ]]; then
-                  log "rsync failed, retrying in 0.5s (attempt ${RETRY_COUNT}/${MAX_RETRIES})"
-                  sleep 0.5
-                else
-                  log "ERROR: rsync failed after ${MAX_RETRIES} attempts"
-                  exit 1
-                fi
-              fi
-            done
-            chown -R postgres:postgres "${NEW_PGDATA}" || true
-          else
-            log "PostgreSQL data directory already present under ${NEW_PGDATA}; skipping copy"
-          fi
-
-          if grep -qs "^[[:space:]]*data_directory[[:space:]]*=" "${PG_CONF_FILE}"; then
-            sed -i "s|^[[:space:]]*data_directory[[:space:]]*=.*|data_directory = '${NEW_PGDATA}'|" "${PG_CONF_FILE}"
-          else
-            printf '%s\n' "data_directory = '${NEW_PGDATA}'" >> "${PG_CONF_FILE}"
-          fi
-
-          systemctl daemon-reload || true
-          systemctl start postgresql || true
-        else
-          log "PostgreSQL is already configured to use ${NEW_PGDATA}"
+if [[ -n "$PERSISTENT_DISK" ]]; then
+    # Migrate logs first, some processes may be left writing to root disk until next reboot
+    migrate_to_persistent_restart "/var/log" "${PERSISTENT_MOUNT}/var/log" "systemd-journald rsyslog"
+    # Move deprecated persistent data to new location
+    if [[ -d "${PERSISTENT_MOUNT}/postgresql" ]]; then
+        mkdir -p "${PERSISTENT_MOUNT}/var/lib/"
+        mv "${PERSISTENT_MOUNT}/postgresql" "${PERSISTENT_MOUNT}/var/lib/postgresql"
+        mkdir -p "${PERSISTENT_MOUNT}/var/lib/exordos/data"
+        # /etc/ copies should be moved to data dir too
+        mv "${PERSISTENT_MOUNT}/etc" "${PERSISTENT_MOUNT}/var/lib/exordos/data/etc"
+        # We may have config file copy, use it if present
+        if [[ -f "${PERSISTENT_MOUNT}/var/lib/exordos/data/etc/exordos_core/exordos_core.conf" ]]; then
+            cp "${PERSISTENT_MOUNT}/var/lib/exordos/data/etc/exordos_core/exordos_core.conf" /etc/exordos_core/exordos_core.conf
         fi
-
-        systemctl start postgresql || true
-      else
-        log "PostgreSQL config not found at ${PG_CONF_FILE}; skipping PostgreSQL relocation"
-      fi
-    else
-      log "PostgreSQL version directory not found under /etc/postgresql; skipping PostgreSQL relocation"
     fi
-  else
-    log "psql is not available; skipping PostgreSQL relocation"
-  fi
-else
-  log "/var/lib/exordos/data is not mounted; skipping PostgreSQL relocation"
+    mkdir -p /var/lib/exordos/universal_agent
+    migrate_to_persistent "/var/lib/exordos/universal_agent" "${PERSISTENT_MOUNT}/var/lib/exordos/universal_agent"
+    mkdir -p /var/lib/exordos/exordos_core
+    migrate_to_persistent "/var/lib/exordos/exordos_core" "${PERSISTENT_MOUNT}/var/lib/exordos/exordos_core"
+    mkdir -p /var/lib/exordos/data
+    migrate_to_persistent "/var/lib/exordos/data" "${PERSISTENT_MOUNT}/var/lib/exordos/data"
+    migrate_to_persistent_stop_start "/var/lib/postgresql" "${PERSISTENT_MOUNT}/var/lib/postgresql" "postgresql@${PG_VERSION}-main"
+    migrate_to_persistent "/etc/exordos_core" "${PERSISTENT_MOUNT}/etc/exordos_core"
+    migrate_to_persistent "/home/ubuntu" "${PERSISTENT_MOUNT}/home/ubuntu"
+    migrate_to_persistent "/root" "${PERSISTENT_MOUNT}/root"
+
+    persist_migrate_complete
 fi
 
-# Additional PostgreSQL configuration
-sudo -u postgres psql -c "ALTER SYSTEM SET io_method = 'io_uring';"
+# Create deprecated path
+mkdir -p /var/lib/exordos/data
+
+if [[ -f $SERVICE_CONFIG ]]; then
+    # Extract connection_url from [db] section of existing config
+    CONNECTION_URL=$(awk -F'=' '/^\[db\]/ {found=1; next} found && /^connection_url/ {print $2; exit}' "$SERVICE_CONFIG" | xargs)
+    # Parse postgresql://user:pass@host:port/db format
+    export GC_PG_USER=$(echo "$CONNECTION_URL" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+    export GC_PG_PASS=$(echo "$CONNECTION_URL" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+    export GC_PG_DB=$(echo "$CONNECTION_URL" | sed -n 's/.*\/\([^?]*\).*/\1/p')
+    log "Extracted PostgreSQL credentials from existing config"
+else
+    export GC_PG_USER="${GC_PG_USER:-exordos_core}"
+    export GC_PG_PASS="${GC_PG_PASS:-$(generate_secure_password)}"
+    export GC_PG_DB="${GC_PG_DB:-exordos_core}"
+
+    # Update user password with secure one
+    setup_postgresql_user_and_db "$GC_PG_USER" "$GC_PG_PASS" "$GC_PG_DB"
+    # Additional PostgreSQL configuration
+    sudo -u postgres psql -c "ALTER SYSTEM SET io_method = 'io_uring';"
+    # $SERVICE_CONFIG will be generated by ec-bootstrap-templates
+fi
 
 # Mount CD-ROM if device is present.
 CDROM_DEV="$(lsblk -dn -o NAME,TYPE | awk '$2=="rom" {print "/dev/"$1; exit}')"
@@ -316,7 +127,7 @@ fi
 
 # Prepare templated configuration files and apply them
 log "ec-bootstrap-templates"
-sudo ec-bootstrap-templates
+sudo -E ec-bootstrap-templates
 log "netplan apply"
 sudo netplan apply
 log "systemctl restart systemd-resolved.service dnsdist@private.service"
@@ -341,7 +152,10 @@ sudo systemctl enable --now \
     ec-gservice \
     ec-core-agent \
     exordos-universal-agent \
-    exordos-universal-scheduler
+    exordos-universal-scheduler \
+    pdns \
+    dnsdist@public \
+    dnsdist@private
 
 # Perform the bootstrap of GC
 log "Perform the bootstrap of GC"

@@ -3,7 +3,7 @@ verbose = True
 debug = True
 
 [db]
-connection_url = postgresql://exordos_core:exordos_core@127.0.0.1:5432/exordos_core
+connection_url = postgresql://{{ GC_PG_USER }}:{{ GC_PG_PASS }}@127.0.0.1:5432/{{ GC_PG_DB }}
 connection_pool_max_size = 4
 
 [agent]
