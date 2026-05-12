@@ -32,7 +32,6 @@ exordos build [OPTIONS] PROJECT_DIR
 | `--deps-dir TEXT` | Директория, куда загружаются зависимости |
 | `-i, --developer-key-path TEXT` | Путь к публичному ключу разработчика. Ключ встраивается в собранные образы для подписи и аутентификации |
 | `-f, --force` | Пересобрать, даже если результат уже существует |
-| `--inventory` | Собрать в формате inventory |
 
 ---
 
@@ -88,12 +87,12 @@ exordos build --force .
 exordos build --manifest-var commit_hash=$(git rev-parse --short HEAD) .
 ```
 
-### Сборка inventory
+### Сборка только образов
 
-Для продвинутых развёртываний, соберите в формате inventory:
+Соберите только образы, пропустив манифесты и другие артефакты:
 
 ```bash
-exordos build --inventory .
+exordos build --only-images .
 ```
 
 ---
@@ -229,7 +228,7 @@ exordos build --manifest-var environment=production --manifest-var region=europe
 
 ### Выходные артефакты
 
-После успешной сборки с `--inventory` в `--output-dir` (по умолчанию: `output/` проекта) создаются следующие артефакты:
+После успешной сборки в `--output-dir` (по умолчанию: `output/` проекта) создаются следующие артефакты:
 
 ```text
 output/

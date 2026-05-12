@@ -32,7 +32,6 @@ Key options:
 | `--deps-dir TEXT` | Directory where dependencies are fetched |
 | `-i, --developer-key-path TEXT` | Path to developer's public key. The key is embedded into the built images for signing and authentication |
 | `-f, --force` | Rebuild even if output already exists |
-| `--inventory` | Build using the inventory format |
 
 ---
 
@@ -88,12 +87,12 @@ Pass additional variables to manifest templates:
 exordos build --manifest-var commit_hash=$(git rev-parse --short HEAD) .
 ```
 
-### Inventory Build
+### Build only images
 
-For advanced deployments, build using the inventory format:
+Build only images, skip manifests and other artifacts:
 
 ```bash
-exordos build --inventory .
+exordos build --only-images
 ```
 
 ---
@@ -229,7 +228,7 @@ exordos build --manifest-var environment=production --manifest-var region=europe
 
 ### Output Artifacts
 
-After a successful build with `--inventory`, the following artifacts are created in the `--output-dir` (default: project `output/`):
+After a successful build the following artifacts are created in the `--output-dir` (default: project `output/`):
 
 ```text
 output/
