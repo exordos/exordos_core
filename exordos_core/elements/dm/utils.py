@@ -241,6 +241,14 @@ def dump_full_manifest_schema(data):
         yaml.safe_dump(data, f)
 
 
+def dump_api_spec(data):
+    with open(
+        os.path.join(PROJECT_PATH, "docs", "em", "api_documentation.md"),
+        "w",
+    ) as f:
+        f.write(data)
+
+
 def load_user_api_spec() -> dict:
     with open(
         os.path.join(PROJECT_PATH, "docs", "openapi", "openapi_user.yaml"),
@@ -287,6 +295,7 @@ def build_full_schema(
                 if not model:
                     continue
                 resource = f"$core.{api_parts}"
+                model["path"] = path
                 base_manifest_schema["components"]["schemas"][model_name] = model
                 base_manifest_schema["properties"]["resources"]["properties"][
                     resource
@@ -369,3 +378,42 @@ def mutate_manifest(manifest: dict, scheme: dict) -> dict:
         for resource_name, resource_value in resource.items():
             walk_replace(resource_type, scheme, resource_value)
     return manifest
+
+
+def extract_resources_for_markdown(full_schema):
+
+    resources_links = (
+        full_schema.get("properties", {}).get("resources", {}).get("properties", {})
+    )
+
+    resources = []
+
+    for resource_link_name, resource_ref in resources_links.items():
+        ref = resource_ref.get("additionalProperties", {}).get("$ref")
+        if not ref:
+            continue
+        resource_ref = ref.split("/")[-1]
+        resource_schema = (
+            full_schema.get("components", {}).get("schemas", {}).get(resource_ref)
+        )
+        if not resource_schema:
+            continue
+        resources.append(
+            {
+                "Entity": resource_ref.replace("_Create", ""),
+                "Api": resource_schema.get("path"),
+                "Manifest": resource_link_name,
+            }
+        )
+
+    return resources
+
+
+def generate_resources_markdown_table(resources):
+    table = "| Entity | Api | Manifest |\n"
+    table += "| ----- | --- | ------- |\n"
+    for resource in resources:
+        table += (
+            f"| {resource['Entity']} | {resource['Api']} | {resource['Manifest']} |\n"
+        )
+    return table

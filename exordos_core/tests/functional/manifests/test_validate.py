@@ -109,3 +109,10 @@ class TestSpec:
     def test_build_full_schema(self, base_manifest_schema, user_api_spec):
         full_schema = utils.build_full_schema(base_manifest_schema, user_api_spec)
         utils.dump_full_manifest_schema(full_schema)
+
+        resources = utils.extract_resources_for_markdown(full_schema)
+        content = "# API Documentation\n\n"
+        content += "## Resources\n\n"
+        content += utils.generate_resources_markdown_table(resources)
+        content += "\n"
+        utils.dump_api_spec(content)

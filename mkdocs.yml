@@ -92,6 +92,7 @@ nav:
     - User: openapi/openapi_user.md
   - Element:
     - Manifest: em/manifest.md
+    - API: em/api_documentation.md
     - Service as a Service API: em/service.md
     - Example commands: em/cli.md
   - IAM:
