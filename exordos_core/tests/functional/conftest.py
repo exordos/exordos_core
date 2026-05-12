@@ -19,6 +19,7 @@ import typing as tp
 from urllib.parse import urlparse
 import uuid as sys_uuid
 
+import bazooka
 from gcl_iam import tokens
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.agents.universal.dm import models as sdk_ua_models
@@ -931,3 +932,8 @@ def full_manifest_schema():
 @pytest.fixture(scope="session")
 def user_api_spec():
     return element_utils.load_user_api_spec()
+
+
+@pytest.fixture(scope="session")
+def inventory():
+    return bazooka.get(c.INVENTORY_URL).json()

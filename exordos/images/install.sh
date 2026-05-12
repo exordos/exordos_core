@@ -38,13 +38,17 @@ SDK_DEV_MODE=$([ -d "$DEV_SDK_PATH" ] && echo "true" || echo "false")
 
 # Install packages
 sudo apt update
-sudo apt install yq postgresql-common libev-dev libvirt-dev \
-    tftpd-hpa nginx-full isc-dhcp-server curl iptables-persistent -y
-
+sudo apt install \
+  yq curl \
+  libev-dev libvirt-dev \
+  postgresql-common postgresql-"$PG_VERSION" \
+  tftpd-hpa nginx-full isc-dhcp-server iptables-persistent \
+  pdns-backend-pgsql pdns-server dnsdist \
+  -y
 # Install PostgreSQL $PG_VERSION
-sudo YES=1 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
-sudo apt update
-sudo apt install postgresql-"$PG_VERSION" -y
+#sudo YES=1 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+#sudo apt update
+#sudo apt install postgresql-"$PG_VERSION" -y
 
 # Configure PostgreSQL
 sudo -u postgres psql -c "ALTER SYSTEM SET io_method = 'io_uring';"
@@ -127,6 +131,9 @@ cat <<EOF | sudo tee -a /etc/nginx/nginx.conf
 include /etc/nginx/genesis/*.conf;
 EOF
 
+# comment in /etc/nginx/nginx.conf line with server_tokens
+sudo sed -i 's/server_tokens/# server_tokens/' /etc/nginx/nginx.conf
+
 # Add web interface
 sudo rm -fr /var/www/html
 sudo tar -xf "$GC_ART_DIR/html.tgz" -C /var/www/
@@ -203,9 +210,6 @@ sudo cp "$GC_PATH/etc/systemd/exordos-universal-agent.service" $SYSTEMD_SERVICE_
 sudo cp "$GC_PATH/etc/systemd/exordos-universal-scheduler.service" $SYSTEMD_SERVICE_DIR
 
 # Prepare DNSaaS
-
-# Install packages
-sudo apt install pdns-backend-pgsql pdns-server dnsdist -y
 
 #pdns
 sudo rm /etc/powerdns/pdns.d/bind.conf

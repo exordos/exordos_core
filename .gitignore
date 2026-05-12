@@ -137,3 +137,5 @@ docs/source/*.png
 
 # postgres
 pgdata/
+
+.tasks

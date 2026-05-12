@@ -7,6 +7,10 @@ env:
   ARTIFACTS_PATH: artifacts
   PROJECT_NAME: exordos_core
   REPO_ENDPOINT_PUT: http://10.20.0.1:8082
+  PACKER_VERSION: "1.9.2"
+  CORE_ENDPOINT_URL: http://10.20.0.2:11010
+  CORE_USERNAME: "admin"
+  CORE_PASSWORD: "admin"
 
 jobs:
   Build:
@@ -47,4 +51,50 @@ jobs:
         with:
           name: build_artifacts
           path: artifacts/
-
+  FuncTests:
+    needs: Build
+    if : ${{ github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+        with:
+          version: ${{ env.PACKER_VERSION }}
+      - name: Install exordos
+        run: curl -fsSL https://repository.genesis-core.tech/install.sh | sudo sh
+      - name: set exordos config
+        run: |
+          exordos settings set-realm default --endpoint $CORE_ENDPOINT_URL
+          exordos settings set-context default --name default --user $CORE_USERNAME --password $CORE_PASSWORD
+      - name: Install hypervisor
+        run: sudo exordos compute hypervisors init
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build_artifacts
+          path: artifacts/
+      - name: bootstrap exordos core
+        run: |
+          VERSION=$(cat artifacts/version.txt)
+          exordos bootstrap -i $VERSION -f -m core --admin-password $CORE_PASSWORD --cidr 10.20.0.0/22
+      - name: sleep
+        run: |
+          sleep 30
+      - name: check exordos core
+        timeout-minutes: 10
+        run: |
+          # set -eux
+          
+          while [ $(exordos ee l -o json -f name=core | jq -r .[0]."Status") != "ACTIVE" ]; do
+            sleep 2
+          done
+          exordos e e show core
+          exordos compute nodes list
+          exordos compute hypervisors list
+      - name: Setup upterm session
+        uses: owenthereal/action-upterm@v1
+        if: ${{ failure() }}
+        with:
+          limit-access-to-actor: true
+          wait-timeout-minutes: 30

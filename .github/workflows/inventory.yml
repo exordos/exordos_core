@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  Build:
+  build_elements_inventory:
     runs-on: hard
     strategy:
       fail-fast: true

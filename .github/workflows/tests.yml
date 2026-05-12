@@ -7,6 +7,7 @@ on:
       - 'mkdocs.yml'
       - '.markdownlint.yaml'
   pull_request:
+    types: [opened]
     paths-ignore:
       - 'docs/**'
       - 'mkdocs.yml'
@@ -39,7 +40,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.12", "3.14"]
     services:
       postgresql:
         image: postgres:latest
