@@ -691,10 +691,6 @@
 <td><code>-f, --force</code></td>
 <td>Rebuild even if output already exists</td>
 </tr>
-<tr>
-<td><code>--inventory</code></td>
-<td>Build using the inventory format</td>
-</tr>
 </tbody>
 </table>
 <hr>
@@ -727,9 +723,9 @@ sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> <
 <p>Pass additional variables to manifest templates:</p>
 <div class="highlight"><pre><span></span><code>exordos<span class="w"> </span>build<span class="w"> </span>--manifest-var<span class="w"> </span><span class="nv">commit_hash</span><span class="o">=</span><span class="k">$(</span>git<span class="w"> </span>rev-parse<span class="w"> </span>--short<span class="w"> </span>HEAD<span class="k">)</span><span class="w"> </span>.
 </code></pre></div>
-<h3 id="inventory-build">Inventory Build<a class="headerlink" href="#inventory-build" title="Permanent link">#</a></h3>
-<p>For advanced deployments, build using the inventory format:</p>
-<div class="highlight"><pre><span></span><code>exordos<span class="w"> </span>build<span class="w"> </span>--inventory<span class="w"> </span>.
+<h3 id="build-only-images">Build only images<a class="headerlink" href="#build-only-images" title="Permanent link">#</a></h3>
+<p>Build only images, skip manifests and other artifacts:</p>
+<div class="highlight"><pre><span></span><code>exordos<span class="w"> </span>build<span class="w"> </span>--only-images
 </code></pre></div>
 <hr>
 <h2 id="build-process">Build Process<a class="headerlink" href="#build-process" title="Permanent link">#</a></h2>
@@ -869,7 +865,7 @@ sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> <
 <p><a href="../misc/manifests.md">Full manifest reference →</a></p>
 <hr>
 <h3 id="output-artifacts">Output Artifacts<a class="headerlink" href="#output-artifacts" title="Permanent link">#</a></h3>
-<p>After a successful build with <code>--inventory</code>, the following artifacts are created in the <code>--output-dir</code> (default: project <code>output/</code>):</p>
+<p>After a successful build the following artifacts are created in the <code>--output-dir</code> (default: project <code>output/</code>):</p>
 <div class="highlight"><pre><span></span><code>output/
 ├── inventory.json          # Build manifest listing all produced artifacts
 ├── images/                 # Built VM disk images
