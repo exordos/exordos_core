@@ -11,7 +11,7 @@ help:
 	@echo "bootstrap        - bootstrap exordos core"
 
 build_core:
-	exordos build -i $(SSH_KEY) -f . --inventory --manifest-var repository=https://repository.genesis-core.tech
+	exordos build -i $(SSH_KEY) -f --manifest-var repository=https://repository.genesis-core.tech
 
 bootstrap:
 	exordos bootstrap -i output/inventory.json -f -m core --admin-password admin --cidr 10.20.0.0/22
