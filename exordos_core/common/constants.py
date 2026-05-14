@@ -84,3 +84,7 @@ VAR_REALM_REFRESH_TOKEN_UUID = sys_uuid.UUID("eacf0c1f-3495-4986-89a5-80139526b8
 VAR_HS256_JWKS_ENCRYPTION_KEY_UUID = sys_uuid.UUID(
     "c371a647-e1a6-4bec-bef2-a50041bc5af2"
 )
+
+REPOSITORY_URL = "https://repository.genesis-core.tech"
+ELEMENTS_PATH = "exordos-elements"
+INVENTORY_URL = f"{REPOSITORY_URL}/{ELEMENTS_PATH}/inventory.json"

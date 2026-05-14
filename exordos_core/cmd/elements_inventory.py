@@ -43,6 +43,7 @@ def merge_inventories(inventory_files):
     """Merge all found inventory files into one list."""
     result_inventory = {"elements": {}}
 
+    latest_version = None
     for file_path in inventory_files:
         try:
             with open(file_path, "r") as f:
@@ -51,6 +52,11 @@ def merge_inventories(inventory_files):
                 result_inventory["elements"][data["name"]] = {}
 
             result_inventory["elements"][data["name"]][data["version"]] = data
+
+            if latest_version is None or data["version"] > latest_version:
+                latest_version = data["version"]
+                result_inventory["elements"][data["name"]]["latest"] = data
+
         except Exception as e:
             print(f"Error reading {file_path}: {e}")
 
@@ -74,7 +80,7 @@ def main():
         root_dir = os.path.join(REPOSITORY_DIR, elements_dir)
         output_file = os.path.join(root_dir, "inventory.json")
 
-        print("Searching for inventory.json files...")
+        print(f"Searching for inventory.json files in {root_dir}...")
         inventory_files = find_inventory_files(root_dir)
 
         if not inventory_files:
