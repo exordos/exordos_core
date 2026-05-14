@@ -127,7 +127,7 @@ fi
 
 # Prepare templated configuration files and apply them
 log "ec-bootstrap-templates"
-sudo -E ec-bootstrap-templates
+ec-bootstrap-templates
 log "netplan apply"
 sudo netplan apply
 log "systemctl restart systemd-resolved.service dnsdist@private.service"
