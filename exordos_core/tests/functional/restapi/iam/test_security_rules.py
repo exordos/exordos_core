@@ -32,7 +32,7 @@ class TestSecurityRules:
                 uri=f"/v1/iam/users/{user_uuid}",
                 method="PUT",
             ),
-            verifier=security_models.FieldNotInRequestVerifier(
+            action=security_models.FieldNotInRequestVerifier(
                 fields=["email"],
             ),
             operator=security_models.OperatorEnum.AND.value,
@@ -49,7 +49,7 @@ class TestSecurityRules:
                 uri=f"/v1/iam/users/{user_uuid}",
                 method="PUT",
             ),
-            verifier=security_models.FieldNotInRequestVerifier(
+            action=security_models.FieldNotInRequestVerifier(
                 fields=fields,
             ),
             operator=security_models.OperatorEnum.OR.value,
@@ -65,7 +65,7 @@ class TestSecurityRules:
                 uri=f"/v1/iam/users/{user_uuid}",
                 method="PUT",
             ),
-            verifier=security_models.FieldNotInRequestVerifier(
+            action=security_models.FieldNotInRequestVerifier(
                 fields=["email"],
             ),
             operator=security_models.OperatorEnum.OR.value,
@@ -81,7 +81,7 @@ class TestSecurityRules:
                 "uri": f"/v1/iam/users/{user_uuid}",
                 "method": "PUT",
             },
-            "verifier": {
+            "action": {
                 "kind": "no_fields",
                 "fields": ["email"],
             },

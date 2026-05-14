@@ -76,11 +76,11 @@ class SecurityRulesMiddleware(ra_middlewares.Middleware):
         if not rules_context.available:
             return True
         if rules_context.and_rules and all(
-            rule.verify(context) for rule in rules_context.and_rules
+            rule.execute(context) for rule in rules_context.and_rules
         ):
             return True
         if rules_context.or_rules:
-            return any(rule.verify(context) for rule in rules_context.or_rules)
+            return any(rule.execute(context) for rule in rules_context.or_rules)
 
         return False
 

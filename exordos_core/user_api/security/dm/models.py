@@ -105,7 +105,7 @@ class UriRegexConditions(AbstractConditions):
 
 class AbstractVerifier(ra_types_dynamic.AbstractKindModel):
     @abc.abstractmethod
-    def verify(self, context):
+    def execute(self, context):
         raise NotImplementedError()
 
 
@@ -117,7 +117,7 @@ class FieldNotInRequestVerifier(AbstractVerifier):
         required=True,
     )
 
-    def verify(self, context):
+    def execute(self, context):
         payload = context.get_raw_payload()
         if not isinstance(payload, dict):
             return True
@@ -153,14 +153,14 @@ class FirebaseAppCheckVerifier(AbstractVerifier):
         return None
 
     def _get_firebase_app(self):
-        """Return initialised default Firebase app, same semantics as original verifier."""
+        """Return initialised default Firebase app, same semantics as original action."""
         try:
             return firebase_admin.get_app()
         except ValueError:
             cred = credentials.Certificate(self.credentials_path)
             return firebase_admin.initialize_app(cred)
 
-    def verify(self, context):
+    def execute(self, context):
         request = context.request
 
         token = self._get_token_from_headers(request)
@@ -202,7 +202,7 @@ class CaptchaVerifier(AbstractVerifier):
 
     CAPTCHA_HEADER = "X-Captcha"
 
-    def verify(self, context):
+    def execute(self, context):
         request = context.request
         captcha_header = request.headers.get(self.CAPTCHA_HEADER)
         if not captcha_header:
@@ -233,7 +233,7 @@ class AdminBypassVerifier(AbstractVerifier):
         default=list,
     )
 
-    def verify(self, context):
+    def execute(self, context):
         """Return True if current user is explicitly allowed to bypass."""
         # Introspection info may be missing for unauthenticated requests
         try:
@@ -261,10 +261,10 @@ class AdminBypassVerifier(AbstractVerifier):
 class GrantPermissionAction(AbstractVerifier):
     """Verifier that grants a specific IAM permission when the Rule matches.
 
-    This verifier enables "street" registration - allowing user creation
+    This action enables "street" registration - allowing user creation
     without explicit iam.user.create permission when this Rule is active.
-    It always returns True (the verifier itself is a pass-through), but
-    the Rule.verify() will record the granted permission in the context
+    It always returns True (the action itself is a pass-through), but
+    the Rule.execute() will record the granted permission in the context
     so that enforce() checks succeed for anonymous users.
     """
 
@@ -275,11 +275,11 @@ class GrantPermissionAction(AbstractVerifier):
         required=True,
     )
 
-    def verify(self, context):
+    def execute(self, context):
         """Return True for all requests.
 
-        The Rule.verify() will record the granted permission in the
-        context only when this verifier is part of a Rule that fully passes.
+        The Rule.execute() will record the granted permission in the
+        context only when this action is part of a Rule that fully passes.
         """
         return True
 
@@ -314,7 +314,7 @@ class Rule(
         ),
         required=True,
     )
-    verifier = properties.property(
+    action = properties.property(
         ra_types_dynamic.KindModelSelectorType(
             ra_types_dynamic.KindModelType(FieldNotInRequestVerifier),
             ra_types_dynamic.KindModelType(FirebaseAppCheckVerifier),
@@ -337,10 +337,10 @@ class Rule(
     def can_handle(self, context):
         return self.condition.can_handle(context)
 
-    def verify(self, context):
-        result = self.verifier.verify(context)
-        # If this Rule passed and uses GrantPermissionAction, record
+    def execute(self, context):
+        result = self.action.execute(context)
+        # This is called by Rule.execute() when a GrantPermissionAction, record
         # the granted permission so that enforce() can check it later
-        if result and isinstance(self.verifier, GrantPermissionAction):
-            context.add_granted_permission(self.verifier.permission)
+        if result and isinstance(self.action, GrantPermissionAction):
+            context.add_granted_permission(self.action.permission)
         return result

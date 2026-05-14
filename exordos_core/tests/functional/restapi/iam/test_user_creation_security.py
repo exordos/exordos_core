@@ -12,7 +12,7 @@ from exordos_core.user_api.security.dm import models as security_models
 
 pytestmark = pytest.mark.skipif(
     sys.version_info < (3, 9),
-    reason="altcha 0.2.x in security verifiers require Python 3.9+",
+    reason="altcha 0.2.x in security actions require Python 3.9+",
 )
 
 CREATE_USER_PATH = "iam/users/"
@@ -24,7 +24,7 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
     def _create_rule(
         self,
         name: str,
-        verifier: security_models.AbstractVerifier,
+        action: security_models.AbstractVerifier,
         project_id=None,
     ) -> security_models.Rule:
         condition = security_models.UriRegexConditions(
@@ -34,7 +34,7 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         rule = security_models.Rule(
             name=name,
             condition=condition,
-            verifier=verifier,
+            action=action,
             operator=security_models.OperatorEnum.OR.value,
             project_id=project_id,
         )
@@ -46,23 +46,23 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         project_id=None,
         allowed_app_ids=None,
     ):
-        verifier = security_models.FirebaseAppCheckVerifier(
+        action = security_models.FirebaseAppCheckVerifier(
             credentials_path="/tmp/fake-firebase-credentials.json",
             allowed_app_ids=allowed_app_ids or [],
         )
         return self._create_rule(
             name="Firebase App Check for user creation",
-            verifier=verifier,
+            action=action,
             project_id=project_id,
         )
 
     def _create_captcha_rule(self, project_id=None):
-        verifier = security_models.CaptchaVerifier(
+        action = security_models.CaptchaVerifier(
             hmac_key="test-hmac-key-12345",
         )
         return self._create_rule(
             name="CAPTCHA for user creation",
-            verifier=verifier,
+            action=action,
             project_id=project_id,
         )
 
@@ -72,22 +72,22 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         project_id=None,
     ):
         normalized = [str(v) for v in allowed_identifiers if v is not None]
-        verifier = security_models.AdminBypassVerifier(
+        action = security_models.AdminBypassVerifier(
             bypass_users=normalized,
         )
         return self._create_rule(
             name="Admin bypass for user creation",
-            verifier=verifier,
+            action=action,
             project_id=project_id,
         )
 
     def _create_grant_permission_rule(self, permission, project_id=None):
-        verifier = security_models.GrantPermissionAction(
+        action = security_models.GrantPermissionAction(
             permission=permission,
         )
         return self._create_rule(
             name="Grant permission for user creation",
-            verifier=verifier,
+            action=action,
             project_id=project_id,
         )
 
@@ -152,7 +152,7 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             }
         )
 
-        # altcha is imported inside verifier, so patch its global function
+        # altcha is imported inside action, so patch its global function
         with mock.patch("altcha.verify_solution") as mock_verify_solution:
             mock_verify_solution.return_value = (True, None)
             headers = {
@@ -168,7 +168,7 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             "Authorization": f"Bearer {admin_token}",
         }
         with mock.patch(
-            "exordos_core.user_api.security.dm.models.AdminBypassVerifier.verify",
+            "exordos_core.user_api.security.dm.models.AdminBypassVerifier.execute",
             return_value=True,
         ):
             response = self._post_create_user(
@@ -204,27 +204,27 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         )
         assert response.status_code == 403
 
-    def test_grant_permission_verifier_matches_all(
+    def test_grant_permission_action_matches_all(
         self,
     ):
         """GrantPermissionAction returns True for ALL requests."""
         from unittest import mock
 
-        verifier = security_models.GrantPermissionAction(
+        action = security_models.GrantPermissionAction(
             permission="iam.user.create",
         )
 
         # Test with NoIamSessionStored (no auth at all)
         ctx1 = mock.MagicMock()
-        assert verifier.verify(ctx1) is True
+        assert action.execute(ctx1) is True
 
         # Test with anonymous token (type='anon')
         ctx2 = mock.MagicMock()
-        assert verifier.verify(ctx2) is True
+        assert action.execute(ctx2) is True
 
         # Test with authenticated user (type='user')
         ctx3 = mock.MagicMock()
-        assert verifier.verify(ctx3) is True
+        assert action.execute(ctx3) is True
 
     def test_granted_permission_tracking_api(
         self,

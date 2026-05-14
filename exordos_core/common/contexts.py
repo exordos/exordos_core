@@ -35,7 +35,7 @@ class GenesisCoreAuthContext(iam_contexts.GenesisCoreAuthContext):
     def add_granted_permission(self, permission: str) -> None:
         """Record a permission granted by a GrantPermissionAction Rule.
 
-        This is called by Rule.verify() when a GrantPermissionAction
+        This is called by Rule.execute() when a GrantPermissionAction
         successfully matches, recording the permission so that enforce()
         can check it later.
         """
