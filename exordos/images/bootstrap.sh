@@ -69,8 +69,6 @@ if [[ -n "$PERSISTENT_DISK" ]]; then
             cp "${PERSISTENT_MOUNT}/var/lib/exordos/data/etc/exordos_core/exordos_core.conf" /etc/exordos_core/exordos_core.conf
         fi
     fi
-    mkdir -p /var/lib/exordos/universal_agent
-    migrate_to_persistent "/var/lib/exordos/universal_agent" "${PERSISTENT_MOUNT}/var/lib/exordos/universal_agent"
     mkdir -p /var/lib/exordos/exordos_core
     migrate_to_persistent "/var/lib/exordos/exordos_core" "${PERSISTENT_MOUNT}/var/lib/exordos/exordos_core"
     mkdir -p /var/lib/exordos/data
