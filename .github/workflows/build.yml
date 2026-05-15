@@ -33,15 +33,12 @@ jobs:
           VERSION="$(exordos get-version .)"
 
           # Build Exordos Core
+          export GEN_IMG_FORMAT_CORE=qcow2,gz
           exordos build $(pwd)
 
           # Decode and write the push configuration
           echo "$PUSH_CFG" | base64 -d > exordos/exordos.push.yaml
           exordos push -c exordos/exordos.push.yaml -t local -f --latest
-
-          # Upload the VM image
-          # gzip -k output/exordos-core.raw -c | \
-          # curl -X PUT -T - "$REPO_ENDPOINT_PUT/${PROJECT_NAME}/${VERSION}/exordos-core.raw.gz"
 
           # Temporary upload step is done in the build script
           echo "${VERSION}" > "${ARTIFACTS_PATH}/version.txt"
