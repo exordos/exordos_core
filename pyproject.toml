@@ -44,7 +44,7 @@ homepage = "https://github.com/infraguys/exordos_core/"
 
 [build-system]
 requires = [
-    "setuptools>=75.3.3",  # last version for python3.8
+    "setuptools>=82.0.1",  # MIT License
     "setuptools_scm>=8"
 ]
 build-backend = "setuptools.build_meta"
