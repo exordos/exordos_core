@@ -2,6 +2,7 @@
 setSecurityPollSuffix("")
 
 setLocal("{{ main_ip }}:53")
+addACL("{{ main_ip_with_mask }}")
 
 --Private DNS
 newServer({address="127.0.0.1:5300", pool="privatedns", healthCheckMode="up"})
