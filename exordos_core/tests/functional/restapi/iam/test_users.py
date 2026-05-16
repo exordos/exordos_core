@@ -247,10 +247,23 @@ class TestUsers(base.BaseIamResourceTest):
         assert isinstance(result, list)
         assert len(result) == 2
 
+    def test_get_other_user_test1_auth_forbidden(
+        self, user_api_client, auth_test1_user, auth_test2_user
+    ):
+        client = user_api_client(auth_test1_user)
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.get_user(auth_test2_user.uuid)
+
     def test_get_other_user_test1_auth_success(
         self, user_api_client, auth_test1_user, auth_user_admin
     ):
-        client = user_api_client(auth_test1_user)
+        client = user_api_client(
+            auth=auth_test1_user,
+            permissions=[
+                iam_c.PERMISSION_USER_READ_ALL,
+            ],
+        )
 
         result = client.get_user(auth_user_admin.uuid)
 
