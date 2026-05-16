@@ -31,6 +31,7 @@ import jinja2
 import pyotp
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
+from restalchemy.api import contexts as ra_a_contexts
 from restalchemy.api import controllers
 from restalchemy.api import resources
 from restalchemy.common import contexts
@@ -160,6 +161,24 @@ class UserController(
         name_map={"secret": "password", "name": "username"},
     )
 
+    def get(self, uuid, **kwargs):
+        # When active_method is GET, this is a direct resource GET request
+        # and we should enforce permissions. When active_method is None,
+        # get() is called from get_resource_by_uuid() for an action, so
+        # we skip the permission check — the action itself is responsible
+        # for its own permission checks.
+        try:
+            active_method = self._req.api_context.get_active_method()
+        except ra_a_contexts.CanNotGetActiveMethod:
+            active_method = None
+
+        if active_method == ra_c.GET:
+            is_me = models.User.me().uuid == uuid
+            if not is_me and not self.enforce(c.PERMISSION_USER_READ_ALL):
+                raise iam_e.CanNotReadUser(uuid=uuid, rule=c.PERMISSION_USER_READ_ALL)
+
+        return super().get(uuid, **kwargs)
+
     def create(self, **kwargs):
         self.enforce(
             c.PERMISSION_USER_CREATE,
@@ -190,7 +209,7 @@ class UserController(
         self.validate_secret(kwargs)
         kwargs.pop("email_verified", None)
         is_me = models.User.me().uuid == uuid
-        if self.enforce(c.PERMISSION_USER_WRITE_ALL) or is_me:
+        if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
             return super().update(uuid, **kwargs)
         raise iam_e.CanNotUpdateUser(uuid=uuid, rule=c.PERMISSION_USER_WRITE_ALL)
 
@@ -210,7 +229,7 @@ class UserController(
     def change_password(self, resource, old_password, new_password):
         self.validate(new_password)
         is_me = models.User.me() == resource
-        if self.enforce(c.PERMISSION_USER_WRITE_ALL) or is_me:
+        if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
             resource.change_secret_safe(
                 old_secret=old_password,
                 new_secret=new_password,
@@ -223,7 +242,7 @@ class UserController(
     @actions.post
     def enable_otp(self, resource, password):
         is_me = models.User.me() == resource
-        if self.enforce(c.PERMISSION_USER_WRITE_ALL) or is_me:
+        if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
             resource.enable_otp(
                 password=password,
             )
@@ -241,7 +260,7 @@ class UserController(
     @actions.post
     def activate_otp(self, resource, code):
         is_me = models.User.me() == resource
-        if self.enforce(c.PERMISSION_USER_WRITE_ALL) or is_me:
+        if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
             resource.activate_otp(
                 code=code,
             )
@@ -255,7 +274,7 @@ class UserController(
     def disable_otp(self, resource, password):
         # TODO: check token for OTP auth
         is_me = models.User.me() == resource
-        if self.enforce(c.PERMISSION_USER_WRITE_ALL) or is_me:
+        if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
             resource.disable_otp(
                 password=password,
             )
@@ -269,7 +288,8 @@ class UserController(
     def resend_email_confirmation(self, resource):
         app_endpoint = _get_app_endpoint(req=self._req)
         resource.resend_confirmation_event(app_endpoint=app_endpoint)
-        return resource
+        # Don't leak user data
+        return None
 
     @actions.post
     def force_confirm_email(self, resource):
@@ -278,7 +298,7 @@ class UserController(
             raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule=rule)
 
         resource.confirm_email()
-        return resource
+        return None
 
     @actions.post
     def confirm_email(self, resource, code=None):
@@ -307,7 +327,7 @@ class UserController(
     @actions.get
     def get_my_roles(self, resource):
         is_me = models.User.me() == resource
-        if self.enforce(c.PERMISSION_USER_READ_ALL) or is_me:
+        if is_me or self.enforce(c.PERMISSION_USER_READ_ALL):
             return resource.get_my_roles().get_response_body()
         raise iam_e.CanNotReadUser(uuid=resource.uuid, rule=c.PERMISSION_USER_READ_ALL)
 
