@@ -288,7 +288,8 @@ class UserController(
     def resend_email_confirmation(self, resource):
         app_endpoint = _get_app_endpoint(req=self._req)
         resource.resend_confirmation_event(app_endpoint=app_endpoint)
-        return resource
+        # Don't leak user data
+        return None
 
     @actions.post
     def force_confirm_email(self, resource):
@@ -297,7 +298,7 @@ class UserController(
             raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule=rule)
 
         resource.confirm_email()
-        return resource
+        return None
 
     @actions.post
     def confirm_email(self, resource, code=None):
