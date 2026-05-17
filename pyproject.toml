@@ -65,7 +65,7 @@ test = [
     "pytest-xdist[psutil]>=3.6.1,<4.0.0",  # MIT License (MIT)
     "pytest-timer>=1.0.0,<2.0.0",  # MIT License (MIT)
     "dnspython>=2.6.0,<3.0.0",  # ISC License
-    "ruamel-yaml==0.17.26",
+    "ruamel-yaml==0.19.1",
 ]
 mypy = [
     "mypy",
