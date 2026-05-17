@@ -77,7 +77,7 @@ shellcheck = [
     "shellcheck-py",
 ]
 docs = [
-    "mkdocs-material==9.1.0",
+    "mkdocs-material==9.7.6",
     "mkdocs-glightbox",
     "mkdocs-render-swagger-plugin",
     "mkdocs-static-i18n[material]"
