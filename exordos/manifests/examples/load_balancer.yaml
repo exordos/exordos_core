@@ -17,7 +17,7 @@ resources:
       root_disk_size: 15
       cores: 2
       ram: 3000
-      image: https://repository.genesis-core.tech/genesis-base/latest/genesis-base.raw.gz
+      image: https://repo.exordos.com/genesis-base/latest/genesis-base.raw.gz
 
 # Example of LB with:
 # - http->https 80->443 redirect
