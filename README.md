@@ -36,7 +36,7 @@ Key capabilities:
 Install the CLI tools with a single command:
 
 ```bash
-curl -fsSL https://repository.genesis-core.tech/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 ```
 
 Then follow the instructions in the terminal, or refer to the [documentation](https://exordos.github.io/exordos_core/) for a full setup guide.

@@ -21,19 +21,19 @@ build:
     - dst: /opt/exordos_core/artifacts/undionly.kpxe
       # Local path
       http:
-        src: https://repository.genesis-core.tech/seed_os/1.1.0/undionly.kpxe
+        src: https://repo.exordos.com/seed_os/1.1.0/undionly.kpxe
     - dst: /opt/exordos_core/artifacts/initrd.img
       # Local path
       http:
-        src: https://repository.genesis-core.tech/seed_os/1.1.0/initrd.img
+        src: https://repo.exordos.com/seed_os/1.1.0/initrd.img
     - dst: /opt/exordos_core/artifacts/vmlinuz
       # Local path
       http:
-        src: https://repository.genesis-core.tech/seed_os/1.1.0/vmlinuz
+        src: https://repo.exordos.com/seed_os/1.1.0/vmlinuz
     - dst: /opt/exordos_core/artifacts/html.tgz
       # Local path
       http:
-        src: https://repository.genesis-core.tech/genesis_ui/0.1.1/html.tgz
+        src: https://repo.exordos.com/genesis_ui/0.1.1/html.tgz
 
     # Take SDK from a local path for development purposes.
     - dst: /opt/gcl_sdk

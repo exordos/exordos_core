@@ -68,7 +68,7 @@ fi
 FREQUENT_LOG_VACUUM=${FREQUENT_LOG_VACUUM-}
 if [ -n "$FREQUENT_LOG_VACUUM" ]; then
     # Optimize log rotation
-    echo "0 * * * * root journalctl --vacuum-size=500M" | sudo tee /etc/cron.d/genesis_vacuum_logs > /dev/null
+    echo "0 * * * * root journalctl --vacuum-size=500M" | sudo tee /etc/cron.d/exordos_vacuum_logs > /dev/null
     cat <<EOF | sudo tee /etc/logrotate.d/rsyslog > /dev/null
 /var/log/syslog
 /var/log/mail.log
@@ -90,7 +90,7 @@ if [ -n "$FREQUENT_LOG_VACUUM" ]; then
         endscript
 }
 EOF
-    echo "1 * * * * root systemctl start logrotate" | sudo tee -a /etc/cron.d/genesis_vacuum_logs > /dev/null
+    echo "1 * * * * root systemctl start logrotate" | sudo tee -a /etc/cron.d/exordos_vacuum_logs > /dev/null
 fi
 
 # Useful for all-in-one-vm tests
@@ -117,7 +117,7 @@ sudo cp "$GC_ART_DIR/vmlinuz" /srv/tftp/bios/vmlinuz
 # Prepare nginx for LB
 sudo mkdir -p /etc/nginx/ssl
 sudo chown www-data:www-data /etc/nginx/ssl
-sudo mkdir -p /etc/nginx/genesis/
+sudo mkdir -p /etc/nginx/exordos/
 
 # Cert to restrict default_server
 sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -subj "/C=PE/ST=Exordos/L=Exordos/O=Exordos core dummy cert. /OU=IT Department/CN=exordos.core" -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt
@@ -128,7 +128,7 @@ sudo cp "$GC_PATH/etc/nginx/sites-available/default" /etc/nginx/sites-available/
 sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
 cat <<EOF | sudo tee -a /etc/nginx/nginx.conf
-include /etc/nginx/genesis/*.conf;
+include /etc/nginx/exordos/*.conf;
 EOF
 
 # comment in /etc/nginx/nginx.conf line with server_tokens
@@ -176,7 +176,7 @@ OS_DB__CONNECTION_URL="postgresql://$GC_PG_USER:$GC_PG_PASS@127.0.0.1:5432/$GC_P
 deactivate
 
 # Install CLI
-curl -fsSL https://repository.genesis-core.tech/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 
 # Misc config
 # Disable DHCP for the main interface, it will be configured in the bootstrap script
@@ -191,10 +191,9 @@ sudo ln -sf "$VENV_PATH/bin/ec-status-api" "/usr/bin/ec-status-api"
 sudo ln -sf "$VENV_PATH/bin/ec-gservice" "/usr/bin/ec-gservice"
 sudo ln -sf "$VENV_PATH/bin/ec-bootstrap" "/usr/bin/ec-bootstrap"
 sudo ln -sf "$VENV_PATH/bin/ec-bootstrap-templates" "/usr/bin/ec-bootstrap-templates"
-sudo ln -sf "$VENV_PATH/bin/genesis-universal-agent" "/usr/bin/exordos-universal-agent"
-sudo ln -sf "$VENV_PATH/bin/genesis-universal-agent-db-back" "/usr/bin/exordos-universal-agent-db-back"
-sudo ln -sf "$VENV_PATH/bin/genesis-universal-scheduler" "/usr/bin/exordos-universal-scheduler"
-sudo ln -sf "$VENV_PATH/bin/genesis-ci" "/usr/bin/gctl"
+sudo ln -sf "$VENV_PATH/bin/exordos-universal-agent" "/usr/bin/exordos-universal-agent"
+sudo ln -sf "$VENV_PATH/bin/exordos-universal-agent-db-back" "/usr/bin/exordos-universal-agent-db-back"
+sudo ln -sf "$VENV_PATH/bin/exordos-universal-scheduler" "/usr/bin/exordos-universal-scheduler"
 
 # Install Systemd service files
 # The exordos services are enabled in the bootstrap

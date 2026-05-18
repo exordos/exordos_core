@@ -25,7 +25,7 @@ from exordos_core.common.utils import PROJECT_PATH
 from exordos_core.elements.dm import models
 from exordos_core.elements.dm import utils
 
-REPO_URL = "https://repository.genesis-core.tech/genesis-elements"
+REPO_URL = "https://repo.exordos.com/exordos-elements"
 
 
 class TestSpec:

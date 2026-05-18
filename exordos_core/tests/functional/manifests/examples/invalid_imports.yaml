@@ -19,7 +19,7 @@ resources:
       disk_spec:
         kind: "root_disk"
         size: 10
-        image: "{{ base_image_url | default('https://repository.genesis-core.tech/genesis-base/0.4.1/genesis-base.raw.gz') }}"
+        image: "{{ base_image_url | default('https://repo.exordos.com/genesis-base/0.4.1/genesis-base.raw.gz') }}"
 
 imports:
   pg18_valid:
