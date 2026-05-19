@@ -134,11 +134,6 @@ EOF
 # comment in /etc/nginx/nginx.conf line with server_tokens
 sudo sed -i 's/server_tokens/# server_tokens/' /etc/nginx/nginx.conf
 
-# Add web interface
-sudo rm -fr /var/www/html
-sudo tar -xf "$GC_ART_DIR/html.tgz" -C /var/www/
-sudo chown -R www-data:www-data /var/www/html
-
 sudo cp "$GC_PATH/etc/nginx/sites-available/exordos.conf" /etc/nginx/sites-available/exordos.conf
 sudo ln -s /etc/nginx/sites-available/exordos.conf /etc/nginx/sites-enabled/exordos.conf
 sudo systemctl enable nginx

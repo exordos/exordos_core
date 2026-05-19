@@ -33,7 +33,7 @@ jobs:
           VERSION="$(exordos get-version .)"
 
           # Build Exordos Core
-          export GEN_IMG_FORMAT_CORE=qcow2,gz
+          export GEN_IMG_FORMAT_CORE=qcow2,zst
           exordos build $(pwd)
 
           # Decode and write the push configuration
