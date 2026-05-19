@@ -356,6 +356,45 @@ class Manifest(
         self.apply_exports(element)
         return self
 
+    @staticmethod
+    def _check_no_dependents(element: "Element") -> None:
+        """Check if any other installed element requires the given element.
+
+        Uses element_engine to get all installed elements and checks if any
+        of them have the given element in their requirements.
+
+        Args:
+            element: The element to check for dependents.
+
+        Raises:
+            ValueError: If another installed element requires this element.
+        """
+
+        for other_element in element_engine.get_elements():
+            # Skip the element itself
+            if other_element.uuid == element.uuid:
+                continue
+
+            if other_element.requirements:
+                for req_element_name, req_spec in other_element.requirements.items():
+                    if req_element_name == element.name:
+                        # Check if element version is within the required range
+                        from_ver = req_spec.get("from_version")
+                        to_ver = req_spec.get("to_version")
+
+                        version_matches = True
+                        if from_ver and element.version < from_ver:
+                            version_matches = False
+                        if to_ver and element.version > to_ver:
+                            version_matches = False
+
+                        if version_matches:
+                            raise ValueError(
+                                f"Cannot uninstall element '{element.name}' version '{element.version}' "
+                                f"because it is required by element '{other_element.name}' version "
+                                f"'{other_element.version}'."
+                            )
+
     def uninstall(self) -> "Manifest":
         element_engine.load_from_database()
 
@@ -365,6 +404,8 @@ class Manifest(
                 "version": ra_filters.EQ(self.version),
             }
         )
+        for element in elements:
+            self._check_no_dependents(element)
         for element in elements:
             element.delete()
             element_engine.remove_element(element)
@@ -1047,6 +1088,9 @@ class ElementEngine:
             return self._namespaces[name]
         except KeyError:
             raise exceptions.NamespaceNotFound(name=name)
+
+    def get_elements(self) -> tp.List["Element"]:
+        return [namespace.element for namespace in self._namespaces.values()]
 
     def load_from_database(self) -> None:
         self._namespaces = {}
