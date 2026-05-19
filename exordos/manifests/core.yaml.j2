@@ -120,7 +120,7 @@ resources:
         kind: "disks"
         disks:
           - size: 10
-            image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/core/{{ version }}/images/exordos-core.raw.gz"
+            image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/core/{{ version }}/images/exordos-core.raw.zst"
           - size: 10
             label: data
 

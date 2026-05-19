@@ -162,8 +162,8 @@ ec-bootstrap --config-file /etc/exordos_core/exordos_core.conf
 
 # Configure NAT
 log "Configure NAT"
-echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
+echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/90-forwarding.conf
+sudo sysctl --system
 
 # Configure iptables
 log "Configure iptables"
