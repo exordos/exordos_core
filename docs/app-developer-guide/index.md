@@ -82,7 +82,7 @@ Install the necessary tools below.
 Install Exordos CLI:
 
 ```bash
-curl -fsSL https://repository.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 ```
 
 The Packer [version 1.9.2](https://hashicorp-releases.yandexcloud.net/packer/1.9.2/) or earlier due to licensing limitation. Download and place into `/usr/local/bin/` or any other directory in your `$PATH`.
@@ -118,7 +118,7 @@ exordos init \
   --author-name "Developer" \
   --author-email "dev@example.com" \
   --manifest-description "A simple ToDo list element" \
-  --repository "https://repository.exordos.com/exordos-elements" \
+  --repository "https://repo.exordos.com/exordos-elements" \
   --pgsql-usage-mode "own_cluster" \
   --pgsql-database-name "todo_api" \
   --pgsql-username "todo_api" \

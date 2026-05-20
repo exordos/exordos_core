@@ -14,7 +14,7 @@ Key options:
 
 | Option | Description |
 |---|---|
-| `-r, --repository TEXT` | Repository endpoint where the element is stored [default: `https://repository.exordos.com/exordos-elements/`] |
+| `-r, --repository TEXT` | Repository endpoint where the element is stored [default: `https://repo.exordos.com/exordos-elements/`] |
 | `PATH_OR_NAME` | Path to a local manifest file or the name of an element in the repository |
 
 You can install elements on a [public Exordos Core installation](public-installation.md). Or you can deploy a [private Exordos Core installation](private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](local-laptop-installation.md).

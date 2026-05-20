@@ -77,7 +77,7 @@ push:
     path: /var/lib/exordos-pools/http
   remote:
     driver: nginx
-    url: https://repository.exordos.com
+    url: https://repo.exordos.com
 ```
 
 | Тип репозитория | Описание |

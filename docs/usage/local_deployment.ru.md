@@ -71,7 +71,7 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 **Пример с удалённым репозиторием (по умолчанию):**
 
 ```bash
-exordos bootstrap -i https://repository.exordos.com/exordos-elements/core/0.0.6/ -m core
+exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.0.6/ -m core
 ```
 
 ### Основные параметры

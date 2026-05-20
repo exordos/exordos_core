@@ -133,7 +133,7 @@ deps:
 deps:
   - dst: /opt/exordos_core/artifacts/vmlinuz
     http:
-      src: https://repository.exordos.com/seed_os/1.1.0/vmlinuz
+      src: https://repo.exordos.com/seed_os/1.1.0/vmlinuz
 ```
 
 Образ ядра `vmlinuz` загружается и помещается по указанному пути назначения перед продолжением сборки.

@@ -133,7 +133,7 @@ Fetch remote resources via HTTP/HTTPS. This is useful for kernel images, boot lo
 deps:
   - dst: /opt/exordos_core/artifacts/vmlinuz
     http:
-      src: https://repository.exordos.com/seed_os/1.1.0/vmlinuz
+      src: https://repo.exordos.com/seed_os/1.1.0/vmlinuz
 ```
 
 The `vmlinuz` kernel image is downloaded and placed at the specified destination path before the build continues.
