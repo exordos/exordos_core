@@ -77,10 +77,10 @@ shellcheck = [
     "shellcheck-py",
 ]
 docs = [
-    "mkdocs-material==9.1.0",
+    "zensical>=0.0.32",
     "mkdocs-glightbox",
     "mkdocs-render-swagger-plugin",
-    "mkdocs-static-i18n[material]"
+    "mkdocs-static-i18n"
 ]
 
 [tool.ruff]

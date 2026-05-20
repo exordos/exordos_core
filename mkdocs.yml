@@ -1,33 +1,39 @@
-site_name: exordos_core
-site_url: https://github.com/infraguys/
+site_name: Exordos Core
+site_url: https://github.com/exordos/
 repo_name: exordos_core
-repo_url: https://github.com/infraguys/exordos_core
+repo_url: https://github.com/exordos/exordos_core
 edit_uri: browse/docs/
+copyright: Copyright &copy; 2025-2026 Genesis Corporation
 
 theme:
-  name: material
+  name: zensical
+  variant: modern
   language: en
   features:
     - search.suggest
     - search.highlight
-    # to move menu to top uncomment the following lines
-    # - navigation.tabs
-    # - navigation.tabs.sticky
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
     - toc.integrate
     - content.code.copy
   palette:
     - scheme: default
+      primary: indigo
       toggle:
-        icon: material/lightbulb-outline
+        icon: lucide/sun
         name: Switch to dark mode
     - scheme: slate
+      primary: indigo
       toggle:
-        icon: material/lightbulb
+        icon: lucide/moon
         name: Switch to light mode
 
 plugins:
   - i18n:
       docs_structure: suffix
+      fallback_to: en
       languages:
         - locale: en
           default: true
@@ -43,16 +49,26 @@ plugins:
   - glightbox
   - render_swagger
 
+
 extra:
   repo_icon: github
+  alternate:
+    - name: English
+      link: ./
+      lang: en
+    - name: Russian
+      link: ./index.ru/
+      lang: ru
 
 markdown_extensions:
   - meta
   - admonition
   - footnotes
   - attr_list
-  - codehilite:
-      guess_lang: false
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - toc:
       slugify: !!python/name:pymdownx.slugs.uslugify
       permalink: '#'
@@ -61,8 +77,8 @@ markdown_extensions:
       smart_enable: all
   - pymdownx.keys
   - pymdownx.emoji:
-      emoji_index: !!python/name:pymdownx.emoji.gemoji
-      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+      emoji_index: !!python/name:zensical.extensions.emoji.twemoji
+      emoji_generator: !!python/name:zensical.extensions.emoji.to_svg
   - pymdownx.caret
   - pymdownx.critic
   - pymdownx.details
