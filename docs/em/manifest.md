@@ -25,7 +25,7 @@ resources:
       disk_spec:
         kind: "root_disk"
         size: 10
-        image: "{{ base_image_url | default('https://repository.exordos.com/exordos-base/0.4.1/exordos-base.raw.gz') }}"
+        image: "{{ base_image_url | default('https://repo.exordos.com/exordos-base/0.4.1/exordos-base.raw.gz') }}"
   
   $core.em.services:
     example_service:

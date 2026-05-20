@@ -11,7 +11,7 @@ title: Exordos Core
 ### Linux
 
 ```bash
-curl -fsSL https://repository.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 ```
 
 ## 🚀 Руководство для разработчиков приложений

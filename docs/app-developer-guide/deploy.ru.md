@@ -14,7 +14,7 @@ exordos elements install [OPTIONS] PATH_OR_NAME
 
 | Опция | Описание |
 |---|---|
-| `-r, --repository TEXT` | Конечная точка репозитория, где хранится элемент [по умолчанию: `https://repository.exordos.com/exordos-elements/`] |
+| `-r, --repository TEXT` | Конечная точка репозитория, где хранится элемент [по умолчанию: `https://repo.exordos.com/exordos-elements/`] |
 | `PATH_OR_NAME` | Путь к локальному файлу манифеста или имя элемента в репозитории |
 
 Вы можете устанавливать элементы на [публичную установку Exordos Core](public-installation.ru.md). Или вы можете развернуть [приватную установку Exordos Core](private-installation.ru.md) на своём оборудовании. Для разработки и тестирования вы можете использовать [установку на локальном ноутбуке](local-laptop-installation.ru.md).

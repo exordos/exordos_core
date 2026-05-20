@@ -82,7 +82,7 @@ exordos elements install <element-name>
 Установка Exordos CLI:
 
 ```bash
-curl -fsSL https://repository.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 ```
 
 Packer [версии 1.9.2](https://hashicorp-releases.yandexcloud.net/packer/1.9.2/) или ранее из-за ограничений лицензирования. Скачайте и поместите в `/usr/local/bin/` или любую другую директорию из вашего `$PATH`.
@@ -118,7 +118,7 @@ exordos init \
   --author-name "Developer" \
   --author-email "dev@example.com" \
   --manifest-description "Простой ToDo list элемент" \
-  --repository "https://repository.exordos.com/exordos-elements" \
+  --repository "https://repo.exordos.com/exordos-elements" \
   --pgsql-usage-mode "own_cluster" \
   --pgsql-database-name "todo_api" \
   --pgsql-username "todo_api" \
