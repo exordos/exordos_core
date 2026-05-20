@@ -3435,7 +3435,8 @@ components:
                   example: '*.restalchemy.com'
                 content:
                   type: string
-                  pattern: (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
+                  pattern: 
+                    (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
                   example: example.com
               example:
                 key: value
@@ -3596,7 +3597,8 @@ components:
                   example: '*.restalchemy.com'
                 content:
                   type: string
-                  pattern: (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
+                  pattern: 
+                    (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
                   example: example.com
               example:
                 key: value
@@ -3757,7 +3759,8 @@ components:
                   example: '*.restalchemy.com'
                 content:
                   type: string
-                  pattern: (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
+                  pattern: 
+                    (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
                   example: example.com
               example:
                 key: value
@@ -3918,7 +3921,8 @@ components:
                   example: '*.restalchemy.com'
                 content:
                   type: string
-                  pattern: (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
+                  pattern: 
+                    (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
                   example: example.com
               example:
                 key: value
@@ -14372,7 +14376,7 @@ components:
                 key: value
           example:
             key: value
-        verifier:
+        action:
           type: object
           oneOf:
             - type: object
@@ -14446,6 +14450,19 @@ components:
                   default: []
               example:
                 key: value
+            - type: object
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - grant_permission
+                permission:
+                  type: string
+                  minLength: 0
+                  maxLength: 9223372036854775807
+                  example: any_string
+              example:
+                key: value
           example:
             key: value
         operator:
@@ -14462,7 +14479,7 @@ components:
           nullable: true
       required:
         - condition
-        - verifier
+        - action
     Rule_Create:
       type: object
       properties:
@@ -14559,7 +14576,7 @@ components:
                 key: value
           example:
             key: value
-        verifier:
+        action:
           type: object
           oneOf:
             - type: object
@@ -14633,6 +14650,19 @@ components:
                   default: []
               example:
                 key: value
+            - type: object
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - grant_permission
+                permission:
+                  type: string
+                  minLength: 0
+                  maxLength: 9223372036854775807
+                  example: any_string
+              example:
+                key: value
           example:
             key: value
         operator:
@@ -14649,7 +14679,7 @@ components:
           nullable: true
       required:
         - condition
-        - verifier
+        - action
     Rule_Update:
       type: object
       properties:
@@ -14746,7 +14776,7 @@ components:
                 key: value
           example:
             key: value
-        verifier:
+        action:
           type: object
           oneOf:
             - type: object
@@ -14820,6 +14850,19 @@ components:
                   default: []
               example:
                 key: value
+            - type: object
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - grant_permission
+                permission:
+                  type: string
+                  minLength: 0
+                  maxLength: 9223372036854775807
+                  example: any_string
+              example:
+                key: value
           example:
             key: value
         operator:
@@ -14836,7 +14879,7 @@ components:
           nullable: true
       required:
         - condition
-        - verifier
+        - action
     Rule_Filter:
       type: object
       properties:
@@ -14933,7 +14976,7 @@ components:
                 key: value
           example:
             key: value
-        verifier:
+        action:
           type: object
           oneOf:
             - type: object
@@ -15007,6 +15050,19 @@ components:
                   default: []
               example:
                 key: value
+            - type: object
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - grant_permission
+                permission:
+                  type: string
+                  minLength: 0
+                  maxLength: 9223372036854775807
+                  example: any_string
+              example:
+                key: value
           example:
             key: value
         operator:
@@ -15023,7 +15079,7 @@ components:
           nullable: true
       required:
         - condition
-        - verifier
+        - action
     Profile_Get:
       type: object
       properties:
@@ -16820,7 +16876,8 @@ components:
                 example: '*.restalchemy.com'
               content:
                 type: string
-                pattern: (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
+                pattern: 
+                  (?=^.{2,254}$)(^((?!-)[a-zA-Z0-9-_]{1,63}(?<!-)\.){1,}$)
                 example: example.com
             example:
               key: value
@@ -18182,8 +18239,8 @@ components:
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
       required: true
-    verifier:
-      name: verifier
+    action:
+      name: action
       in: query
       schema:
         type: object
@@ -18257,6 +18314,19 @@ components:
                 example:
                   - any_string
                 default: []
+            example:
+              key: value
+          - type: object
+            properties:
+              kind:
+                type: string
+                enum:
+                  - grant_permission
+              permission:
+                type: string
+                minLength: 0
+                maxLength: 9223372036854775807
+                example: any_string
             example:
               key: value
         example:
@@ -18444,7 +18514,8 @@ paths:
       operationId: Get_OpenApi_specification
   /v1/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -18472,7 +18543,8 @@ paths:
       operationId: Filter_v1
   /v1/compute/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -18939,7 +19011,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Get_private_key_v1_compute_nodes_NodeUuid_actions_get_private_key
+      operationId: 
+        Get_private_key_v1_compute_nodes_NodeUuid_actions_get_private_key
   /v1/compute/sets/:
     get:
       summary: Get NodeSets
@@ -19159,7 +19232,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Get_private_keys_v1_compute_sets_NodeSetUuid_actions_get_private_keys
+      operationId: 
+        Get_private_keys_v1_compute_sets_NodeSetUuid_actions_get_private_keys
   /v1/compute/volumes/:
     get:
       summary: Get Volumes
@@ -19420,7 +19494,8 @@ paths:
       operationId: Detach_v1_compute_volumes_VolumeUuid_actions_detach_invoke
   /v1/config/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -19637,7 +19712,8 @@ paths:
       operationId: Delete_v1_config_configs_ConfigUuid
   /v1/dns/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -19962,7 +20038,8 @@ paths:
       operationId: Delete_v1_dns_domains_DomainUuid_records_RecordUuid
   /v1/em/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -20642,7 +20719,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Clear_profile_v1_em_elements_ElementUuid_actions_clear_profile_invoke
+      operationId: 
+        Clear_profile_v1_em_elements_ElementUuid_actions_clear_profile_invoke
   /v1/em/elements/{ElementUuid}/actions/set_profile/invoke:
     post:
       summary: Set_profile Element
@@ -20664,7 +20742,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Set_profile_v1_em_elements_ElementUuid_actions_set_profile_invoke
+      operationId: 
+        Set_profile_v1_em_elements_ElementUuid_actions_set_profile_invoke
   /v1/em/exports/:
     get:
       summary: Get Exports
@@ -20959,6 +21038,43 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Manifest_Create'
+  /v1/em/manifests/schema/:
+    get:
+      summary: Get manifest schema
+      tags: []
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Filter_v1_em_manifests_schema
+    post:
+      summary: Create SchemaRoute SchemaController
+      tags: []
+      parameters: []
+      responses:
+        '201':
+          description: Unknown_Create
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unknown_Create'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Create_v1_em_manifests_schema
+      requestBody:
+        description: Unknown_Create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Unknown_Create'
   /v1/em/manifests/{ManifestUuid}:
     get:
       summary: Get Manifest
@@ -21072,7 +21188,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Uninstall_v1_em_manifests_ManifestUuid_actions_uninstall_invoke
+      operationId: 
+        Uninstall_v1_em_manifests_ManifestUuid_actions_uninstall_invoke
   /v1/em/manifests/{ManifestUuid}/actions/upgrade/invoke:
     post:
       summary: Upgrade Manifest
@@ -21456,7 +21573,8 @@ paths:
       operationId: Filter_v1_health
   /v1/iam/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -21821,7 +21939,8 @@ paths:
                 example:
                   error: invalid_client
                   error_description: The provided otp code is invalid
-      operationId: Get_token_v1_iam_clients_IamClientUuid_actions_get_token_invoke
+      operationId: 
+        Get_token_v1_iam_clients_IamClientUuid_actions_get_token_invoke
       requestBody:
         description: ''
         required: true
@@ -21940,7 +22059,8 @@ paths:
                       description: UUID of the service account to get token for
                     scope:
                       type: string
-                      description: Project scope in format 'project:<uuid>' (required)
+                      description: Project scope in format 'project:<uuid>' 
+                        (required)
                     ttl:
                       type: number
                       format: float
@@ -22084,7 +22204,8 @@ paths:
           required: true
       responses:
         '200':
-          description: Password reset email sent successfully. No content returned.
+          description: Password reset email sent successfully. No content 
+            returned.
           content:
             application/json:
               schema:
@@ -22107,7 +22228,8 @@ paths:
                 email:
                   type: string
                   format: email
-                  description: Email address of the user to send the reset link to
+                  description: Email address of the user to send the reset link 
+                    to
                   example: user@example.com
   /v1/iam/clients/{IamClientUuid}/actions/userinfo:
     get:
@@ -23744,7 +23866,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Activate_otp_v1_iam_users_UserUuid_actions_activate_otp_invoke
+      operationId: 
+        Activate_otp_v1_iam_users_UserUuid_actions_activate_otp_invoke
   /v1/iam/users/{UserUuid}/actions/change_password/invoke:
     post:
       summary: Change_password User
@@ -23766,7 +23889,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Change_password_v1_iam_users_UserUuid_actions_change_password_invoke
+      operationId: 
+        Change_password_v1_iam_users_UserUuid_actions_change_password_invoke
   /v1/iam/users/{UserUuid}/actions/confirm_email/invoke:
     post:
       summary: Confirm_email User
@@ -23788,7 +23912,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Confirm_email_v1_iam_users_UserUuid_actions_confirm_email_invoke
+      operationId: 
+        Confirm_email_v1_iam_users_UserUuid_actions_confirm_email_invoke
   /v1/iam/users/{UserUuid}/actions/disable_otp/invoke:
     post:
       summary: Disable_otp User
@@ -23854,7 +23979,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Force_confirm_email_v1_iam_users_UserUuid_actions_force_confirm_email_invoke
+      operationId: 
+        Force_confirm_email_v1_iam_users_UserUuid_actions_force_confirm_email_invoke
   /v1/iam/users/{UserUuid}/actions/get_my_roles:
     get:
       summary: Get_my_roles User
@@ -23921,10 +24047,12 @@ paths:
                 $ref: '#/components/schemas/User'
         default:
           $ref: '#/components/responses/Error'
-      operationId: Reset_password_v1_iam_users_UserUuid_actions_reset_password_invoke
+      operationId: 
+        Reset_password_v1_iam_users_UserUuid_actions_reset_password_invoke
       requestBody:
-        description: New password and optional confirmation code. Either a valid reset
-          code (from email) or the `iam.user.reset_password` permission is required.
+        description: New password and optional confirmation code. Either a valid
+          reset code (from email) or the `iam.user.reset_password` permission is
+          required.
         required: true
         content:
           application/json:
@@ -23940,12 +24068,14 @@ paths:
                 code:
                   type: string
                   format: uuid
-                  description: Confirmation code received via email. Required when
-                    caller does not have `iam.user.reset_password` permission.
+                  description: Confirmation code received via email. Required 
+                    when caller does not have `iam.user.reset_password` 
+                    permission.
                   example: 550e8400-e29b-41d4-a716-446655440000
   /v1/network/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -24602,7 +24732,8 @@ paths:
       operationId: Delete_v1_network_lb_LBUuid_vhosts_VhostUuid_routes_RouteUuid
   /v1/secret/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -25396,7 +25527,8 @@ paths:
       operationId: Delete_v1_secret_ssh_keys_SSHKeyUuid
   /v1/security/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -25592,7 +25724,8 @@ paths:
       operationId: Delete_v1_security_rules_RuleUuid
   /v1/vs/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
@@ -26188,7 +26321,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Release_value_v1_vs_variables_VariableUuid_actions_release_value_invoke
+      operationId: 
+        Release_value_v1_vs_variables_VariableUuid_actions_release_value_invoke
   /v1/vs/variables/{VariableUuid}/actions/select_value/invoke:
     post:
       summary: Select_value Variable
@@ -26210,7 +26344,8 @@ paths:
               schema: {}
         default:
           $ref: '#/components/responses/Error'
-      operationId: Select_value_v1_vs_variables_VariableUuid_actions_select_value_invoke
+      operationId: 
+        Select_value_v1_vs_variables_VariableUuid_actions_select_value_invoke
 servers:
   - url: http://127.0.0.1:11010
     description: ''

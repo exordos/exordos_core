@@ -38,6 +38,18 @@ class TestEmUserApi:
         response = client.get(url)
         assert response.status_code == 200
 
+    def test_schema(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["em", "manifests", "schema"])
+
+        response = client.get(url)
+        assert response.status_code == 200
+        assert isinstance(response.json(), dict)
+
     def test_manifests(
         self,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,

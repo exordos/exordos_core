@@ -43,6 +43,15 @@ class ManifestValidateActionRoute(routes.Action):
     __controller__ = controllers.ManifestController
 
 
+class SchemaRoute(routes.Route):
+    """Handler for /v1/em/manifests/schema/ endpoint"""
+
+    __controller__ = controllers.SchemaController
+    __allow_methods__ = [
+        routes.FILTER,
+    ]
+
+
 class ManifestRoute(routes.Route):
     """Handler for /v1/em/manifests/ endpoint"""
 
@@ -52,6 +61,7 @@ class ManifestRoute(routes.Route):
     upgrade = routes.action(ManifestUpgradeActionRoute, invoke=True)
     uninstall = routes.action(ManifestUninstallActionRoute, invoke=True)
     validate = routes.action(ManifestValidateActionRoute, invoke=False)
+    schema = routes.route(SchemaRoute)
 
 
 class ElementResourceRoute(routes.Route):

@@ -273,7 +273,8 @@ paths:
       operationId: Get_OpenApi_specification
   /v1/:
     get:
-      summary: Returns a list of all routes in the main route that are collection
+      summary: Returns a list of all routes in the main route that are 
+        collection
       tags: []
       parameters:
         - name: filters
