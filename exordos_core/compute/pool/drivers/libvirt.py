@@ -15,6 +15,7 @@
 #    under the License.
 
 import enum
+import functools
 import logging
 import operator
 import time
@@ -82,6 +83,58 @@ META_IMG_TAG = "genesis:image"
 GENESIS_NS = "https://github.com/infraguys"
 
 LOG = logging.getLogger(__name__)
+
+
+def dry_run_decorator(return_index: int | str = 0):
+    """
+    Decorator that checks self._dry_run and logs method calls when in dry run mode.
+
+    Args:
+        return_index: Index (int) or name (str) of argument to return in dry run mode.
+                     Default is 0 (first positional argument).
+    """
+
+    def decorator(func: tp.Callable) -> tp.Callable:
+        @functools.wraps(func)
+        def wrapper(self, *args: tp.Any, **kwargs: tp.Any) -> tp.Any:
+            if getattr(self, "_dry_run", False):
+                # Log method name and all parameters
+                arg_strs = [repr(arg) for arg in args]
+                kwarg_strs = [f"{k}={repr(v)}" for k, v in kwargs.items()]
+                all_params = ", ".join(arg_strs + kwarg_strs)
+                LOG.info("DRY RUN: %s(%s)", func.__name__, all_params)
+
+                # For methods that return non-None values, return the specified argument
+                import inspect
+
+                sig = inspect.signature(func)
+                # Check if method has a meaningful return annotation (not empty, not None)
+                if (
+                    sig.return_annotation != inspect.Signature.empty
+                    and sig.return_annotation is not None
+                ):
+                    # Use sig.bind to properly map args/kwargs to parameters
+                    bound = sig.bind(self, *args, **kwargs)
+                    bound.apply_defaults()
+
+                    # Determine which argument to return
+                    if isinstance(return_index, str):
+                        # Return argument by name from bound arguments
+                        return bound.arguments.get(return_index)
+                    elif isinstance(return_index, int):
+                        # Get parameter name by index and return from bound arguments
+                        param_names = list(sig.parameters.keys())
+                        # Skip 'self' parameter (index 0)
+                        if 0 <= return_index < len(param_names) - 1:
+                            param_name = param_names[return_index + 1]
+                            return bound.arguments.get(param_name)
+                return None
+            else:
+                return func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 volume_template = """
@@ -474,11 +527,12 @@ class LibvirtPoolDriverSpec(tp.NamedTuple):
 
 
 class LibvirtPoolDriver(base.AbstractPoolDriver):
-    def __init__(self, pool: models.MachinePool):
+    def __init__(self, pool: models.MachinePool, dry_run: bool = False):
         self._spec = LibvirtPoolDriverSpec(**pool.driver_spec)
         self._pool = pool
         # Check if connection string is valid and we can connect
         _ = self._client
+        super().__init__(dry_run=dry_run)
 
     @property
     def _client(self):
@@ -868,6 +922,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
 
         raise pool_exc.VolumeNotFoundError(volume=volume)
 
+    @dry_run_decorator()
     def create_volume(self, volume: models.MachineVolume) -> models.MachineVolume:
         storage_pool = self._client.storagePoolLookupByName(self._spec.storage_pool)
 
@@ -900,6 +955,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         LOG.debug("The volume %s has been created", volume.uuid)
         return volume
 
+    @dry_run_decorator()
     def delete_volume(self, volume: models.MachineVolume) -> None:
         storage_pool = self._client.storagePoolLookupByName(self._spec.storage_pool)
         name = self._vir_volume_name(storage_pool, volume)
@@ -930,6 +986,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         LOG.debug("The volume %s has been deleted", v.name())
         return
 
+    @dry_run_decorator()
     def attach_volume(self, volume: models.MachineVolume) -> None:
         """Attach the volume."""
         if volume.machine is None:
@@ -991,6 +1048,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 )
             raise
 
+    @dry_run_decorator()
     def detach_volume(self, volume: models.MachineVolume) -> None:
         """Detach the volume."""
         if volume.machine is None:
@@ -1029,6 +1087,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 )
             raise
 
+    @dry_run_decorator()
     def resize_volume(self, volume: models.MachineVolume) -> None:
         """Resize the volume."""
         storage_pool = self._client.storagePoolLookupByName(self._spec.storage_pool)
@@ -1075,6 +1134,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         # Ordinary resize via qemu-img
         vir_volume.resize(new_size_bytes)
 
+    @dry_run_decorator()
     def attach_port(self, machine: models.Machine, port: models.Port) -> None:
         """Attach the port to the machine."""
         # Lookup domain by machine UUID
@@ -1106,6 +1166,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 )
             raise
 
+    @dry_run_decorator()
     def detach_port(self, machine: models.Machine, port: models.Port) -> None:
         """Detach the port from the machine."""
         # Lookup domain by machine UUID
@@ -1164,6 +1225,11 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         legacy_machine: bool = False,
     ) -> tp.Tuple[models.Machine, tp.Tuple[models.Port, ...]]:
         """Create a new LibVirt domain."""
+        # NOTE(akremenetsky): Unable to apply the dry_run decorator because of
+        # the complex return type
+        if self._dry_run:
+            return machine, tuple(ports)
+
         domain = XMLLibvirtInstance(domain_template)
 
         # Set base characteristics for the domain
@@ -1222,6 +1288,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         )
         return machine, tuple(ports)
 
+    @dry_run_decorator()
     def delete_machine(
         self, machine: models.Machine, delete_volumes: bool = True
     ) -> None:
@@ -1254,6 +1321,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         domain = self._client.lookupByUUIDString(str(machine))
         return self._domain2machine(domain)
 
+    @dry_run_decorator()
     def set_machine_cores(self, machine: models.Machine, cores: int) -> None:
         """Set machine cores."""
         ports = self._list_interfaces(machine)
@@ -1276,6 +1344,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         )
         LOG.debug("The domain %s was updated with cores %s", machine.uuid, cores)
 
+    @dry_run_decorator()
     def set_machine_ram(self, machine: models.Machine, ram: int) -> None:
         """Set machine ram."""
         ports = self._list_interfaces(machine)
@@ -1298,6 +1367,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         )
         LOG.debug("The domain %s was updated with ram %s", machine.uuid, ram)
 
+    @dry_run_decorator()
     def reset_machine(self, machine: models.Machine) -> None:
         """Reset the machine."""
         domain = self._client.lookupByUUIDString(str(machine.uuid))
@@ -1310,6 +1380,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         domain.create()
         LOG.debug("The domain %s was reset", str(machine.uuid))
 
+    @dry_run_decorator()
     def shutdown_machine(self, machine: models.Machine, force: bool = False) -> None:
         """Shutdown the machine."""
         domain = self._client.lookupByUUIDString(str(machine.uuid))
@@ -1319,12 +1390,14 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             domain.shutdown()
         LOG.debug("The domain %s was shutdown(forced=%s)", machine.uuid, force)
 
+    @dry_run_decorator()
     def start_machine(self, machine: models.Machine) -> None:
         """Start the machine."""
         domain = self._client.lookupByUUIDString(str(machine.uuid))
         domain.create()
         LOG.debug("The domain %s was started", machine.uuid)
 
+    @dry_run_decorator()
     def rename_machine(self, machine: models.Machine, name: str) -> None:
         """Rename the machine."""
         origin_name = machine.name
@@ -1351,6 +1424,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             raise
         LOG.debug("The domain %s was renamed to %s", origin_name, name)
 
+    @dry_run_decorator()
     def recreate_machine(
         self,
         machine: models.Machine,

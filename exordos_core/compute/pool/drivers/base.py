@@ -22,6 +22,10 @@ from exordos_core.compute.dm import models
 
 
 class AbstractPoolDriver(abc.ABC):
+    def __init__(self, dry_run: bool = False) -> None:
+        super().__init__()
+        self._dry_run = dry_run
+
     @abc.abstractmethod
     def get_pool_info(self) -> models.MachinePool:
         """Get pool info."""
@@ -141,9 +145,10 @@ class AbstractPoolDriver(abc.ABC):
 class DummyPoolDriver(AbstractPoolDriver):
     SPEC = {"driver": "dummy"}
 
-    def __init__(self, pool: models.MachinePool):
+    def __init__(self, pool: models.MachinePool, dry_run: bool = False):
         if pool.driver_spec != self.SPEC:
             raise ValueError(f"Invalid driver spec: {pool.driver_spec}")
+        super().__init__(dry_run=dry_run)
 
     def get_pool_info(self) -> models.MachinePool:
         """Get pool info."""
