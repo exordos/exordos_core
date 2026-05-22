@@ -26,6 +26,7 @@ import time
 import typing as tp
 import uuid as sys_uuid
 
+from gcl_sdk.clients.http import base as http_base
 from oslo_config import cfg
 from restalchemy.common import config_opts as ra_config_opts
 from restalchemy.dm import filters as dm_filters
@@ -45,6 +46,7 @@ USER = "ubuntu"
 GCTL_CFG_DIR = f"/home/{USER}/.exordos"
 SPEC_PATH = "/mnt/cdrom/spec.json"
 MANIFEST_PATH = "/mnt/cdrom/core.yaml"
+MANIFEST_COLLECTION = "/v1/em/manifests/"
 ECOSYSTEM_REALM_MANIFEST_PATH = "/mnt/cdrom/ecosystem_realm.yaml"
 MAIN_SUBNET_UUID = sys_uuid.UUID("c910a7e1-61ae-4d56-bdd6-a59faa3cbda3")
 
@@ -67,7 +69,7 @@ cli_opts = [
     ),
     cfg.StrOpt(
         "core_endpoint",
-        default="http://localhost:11010",
+        default="http://localhost/api/core",
         help="Core endpoint",
     ),
     cfg.StrOpt(
@@ -82,11 +84,6 @@ iam_opts = [
         "global_salt",
         default=None,
         help="Global salt for IAM",
-    ),
-    cfg.StrOpt(
-        "client_secret",
-        default="GenesisCoreSecret",
-        help="Client secret for IAM",
     ),
     cfg.StrOpt(
         "hs256_jwks_encryption_key",
@@ -227,7 +224,7 @@ def _apply_startup_db(spec: dict[str, tp.Any]) -> None:
         LOG.info("Machine pool %s already exists, skipping", pool.uuid)
 
 
-def _ensure_gctl_config(spec: dict[str, tp.Any]):
+def _ensure_exordos_config(spec: dict[str, tp.Any]):
     """Ensure gctl configuration file exists."""
     if "admin_password" not in spec:
         raise RuntimeError("No admin password found in spec")
@@ -269,6 +266,7 @@ def _ensure_gctl_config(spec: dict[str, tp.Any]):
 def _install_element_manifest(
     element_name: str,
     manifest_path: str,
+    spec: dict[str, tp.Any],
 ):
     """Idempotent element manifest installation."""
     element = em_models.Element.objects.get_one_or_none(
@@ -283,9 +281,33 @@ def _install_element_manifest(
         LOG.info("No manifest file found at %s", manifest_path)
         return
 
-    os.system(
-        f"exordos --config {GCTL_CFG_DIR}/exordosctl.yaml ee install {manifest_path}"
+    with open(manifest_path) as f:
+        manifest_data = yaml.safe_load(f)
+
+    auth = http_base.CoreIamAuthenticator(
+        base_url="http://localhost:11010",
+        username=CONF.core_user,
+        password=spec["admin_password"],
+        client_id=spec["iam"]["default_client_id"],
+        client_secret=spec["iam"]["default_client_secret"],
+        client_uuid=sys_uuid.UUID(spec["iam"]["default_client_uuid"]),
     )
+
+    client = http_base.CollectionBaseClient(
+        base_url="http://localhost:11010", auth=auth
+    )
+
+    manifest_data = client.create(MANIFEST_COLLECTION, manifest_data)
+    try:
+        client.do_action(
+            MANIFEST_COLLECTION, "install", manifest_data["uuid"], invoke=True
+        )
+    except Exception:
+        LOG.exception(
+            "Failed to install manifest %s, deleting...", manifest_data["uuid"]
+        )
+        client.delete(MANIFEST_COLLECTION, manifest_data["uuid"])
+        raise
 
 
 def _set_defaults_vs(spec: dict[str, tp.Any]):
@@ -297,6 +319,8 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
             "func": bootstrap_defaults.set_core_ip_var,
             "args": [spec["stand"]["bootstraps"][0]["ports"][0]["ip"]],
         },
+        {"func": bootstrap_defaults.set_core_root_disk_size_var, "args": [spec]},
+        {"func": bootstrap_defaults.set_core_data_disk_size_var, "args": [spec]},
         {"func": bootstrap_defaults.set_ecosystem_endpoint_var, "args": [spec]},
         {"func": bootstrap_defaults.set_disable_telemetry_var, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_uuid_var, "args": [spec]},
@@ -307,6 +331,9 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
             "func": bootstrap_defaults.set_hs256_jwks_encryption_key_var,
             "args": [CONF["iam"].hs256_jwks_encryption_key],
         },
+        {"func": bootstrap_defaults.set_iam_default_client_uuid_var, "args": [spec]},
+        {"func": bootstrap_defaults.set_iam_default_client_id_var, "args": [spec]},
+        {"func": bootstrap_defaults.set_iam_default_client_secret_var, "args": [spec]},
     ]
 
     # Perform all tasks to set default values until timeout
@@ -354,13 +381,16 @@ def main() -> None:
             LOG.info("GC Bootstrap script")
             bootstrap_defaults.apply_startup_db(spec)
             bootstrap_defaults.init_secrets(
-                spec, CONF["iam"].global_salt, CONF["iam"].client_secret
+                spec,
+                CONF["iam"].global_salt,
+                spec["iam"]["default_client_id"],
+                spec["iam"]["default_client_secret"],
             )
             bootstrap_defaults.add_core_set(spec)
-            _ensure_gctl_config(spec)
-            _install_element_manifest("core", CONF.manifest_path)
+            _ensure_exordos_config(spec)
+            _install_element_manifest("core", CONF.manifest_path, spec)
             _install_element_manifest(
-                "ecosystem_realm", CONF.ecosystem_realm_manifest_path
+                "ecosystem_realm", CONF.ecosystem_realm_manifest_path, spec
             )
             _set_defaults_vs(spec)
             return

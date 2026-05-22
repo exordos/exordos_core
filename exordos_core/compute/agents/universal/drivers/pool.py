@@ -15,6 +15,7 @@
 #    under the License.
 
 import logging
+import os
 import typing as tp
 import uuid as sys_uuid
 
@@ -32,6 +33,7 @@ from exordos_core.compute.pool.drivers import base as driver_base
 from exordos_core.compute.pool.drivers import exceptions as driver_exc
 
 LOG = logging.getLogger(__name__)
+DRY_RUN_ENV = "EXO_AGENTS_DRY_RUN"
 
 
 class RootVolumeNotFound(ua_driver_exc.AgentDriverException):
@@ -90,7 +92,14 @@ class MetaPool(meta.MetaCoordinatorDataPlaneModel):
         driver_kind = self.driver_spec["driver"]
 
         class_ = utils.load_from_entry_point(nc.EP_MACHINE_POOL_DRIVERS, driver_kind)
-        driver = class_(self)
+
+        # NOTE(akremenetsky): We should use command approach for dry_run in agents,
+        # but it hasn't implemented yet so use environment variable.
+        # https://github.com/exordos/gcl_sdk/issues/124
+        # Check for dry run mode based on environment variable
+        dry_run = str(os.getenv(DRY_RUN_ENV)).lower() in {"1", "true", "yes"}
+
+        driver = class_(self, dry_run=dry_run)
         self.__driver_map__[driver_key] = driver
         return driver
 

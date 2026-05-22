@@ -38,6 +38,42 @@ LOG = logging.getLogger(__name__)
 USER = "ubuntu"
 
 
+def set_var(
+    name: str,
+    value: tp.Any,
+    var_uuid: sys_uuid.UUID,
+    val_uuid: sys_uuid.UUID | None = None,
+) -> bool:
+    if val_uuid is None:
+        namespace = sys_uuid.UUID("5c8140af-4eca-4871-951e-4c939f94b39e")
+        val_uuid = sys_uuid.uuid5(namespace, name)
+
+    existing_value = vs_models.Value.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(val_uuid)}
+    )
+    if existing_value:
+        LOG.info("The value for the '%s' variable already exists", name)
+        return True
+
+    LOG.info("Set %s variable", name)
+    var = vs_models.Variable.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(var_uuid)}
+    )
+
+    # The variable hasn't been created, skip
+    if not var:
+        return False
+
+    val = vs_models.Value(
+        uuid=val_uuid,
+        variable=var,
+        value=value,
+        project_id=c.EM_HIDDEN_PROJECT_ID,
+    )
+    val.insert()
+    return True
+
+
 def add_core_set(
     spec: dict[str, tp.Any], set_active: bool = False
 ) -> "node_set_models.NodeSet":
@@ -208,7 +244,9 @@ def set_core_ip_var(value: tp.Any) -> bool:
     return True
 
 
-def init_secrets(spec: dict[str, tp.Any], global_salt, client_secret) -> None:
+def init_secrets(
+    spec: dict[str, tp.Any], global_salt: str, client_id: str, client_secret: str
+) -> None:
     """Idempotent secrets initialization."""
     # Check if the secrets are already initialized
     default_client = iam_models.IamClient.objects.get_one_or_none(
@@ -237,6 +275,7 @@ def init_secrets(spec: dict[str, tp.Any], global_salt, client_secret) -> None:
     )
     default_client.salt = admin_salt
     default_client.secret_hash = client_secret_hash
+    default_client.client_id = client_id
     default_client.save()
 
     # Regenerate secrets for the default IAM user
@@ -594,3 +633,43 @@ def set_hs256_jwks_encryption_key_var(hs256_jwks_encryption_key: str) -> bool:
     )
     hs256_val.insert()
     return True
+
+
+def set_core_root_disk_size_var(spec: dict) -> bool:
+    return set_var(
+        "core_root_disk_size",
+        spec["stand"]["bootstraps"][0]["disks"][0]["size"],
+        c.VAR_ROOT_DISK_UUID,
+    )
+
+
+def set_core_data_disk_size_var(spec: dict) -> bool:
+    return set_var(
+        "core_data_disk_size",
+        spec["stand"]["bootstraps"][0]["disks"][1]["size"],
+        c.VAR_DATA_DISK_UUID,
+    )
+
+
+def set_iam_default_client_uuid_var(spec: dict) -> bool:
+    return set_var(
+        "iam_default_client_uuid",
+        spec["iam"]["default_client_uuid"],
+        c.VAR_IAM_DEFAULT_CLIENT_UUID,
+    )
+
+
+def set_iam_default_client_id_var(spec: dict) -> bool:
+    return set_var(
+        "iam_default_client_id",
+        spec["iam"]["default_client_id"],
+        c.VAR_IAM_DEFAULT_CLIENT_ID_UUID,
+    )
+
+
+def set_iam_default_client_secret_var(spec: dict) -> bool:
+    return set_var(
+        "iam_default_client_secret",
+        spec["iam"]["default_client_secret"],
+        c.VAR_IAM_DEFAULT_CLIENT_SECRET_UUID,
+    )

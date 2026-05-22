@@ -98,11 +98,45 @@ resources:
       setter:
         kind: selector
         selector_strategy: latest
-
+    core_root_disk_size:
+      uuid: "695f4e94-e46b-43ae-aa66-194044740912"
+      name: "core_root_disk_size"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    core_data_disk_size:
+      uuid: "cf92f6f5-b62f-4cc4-898c-5250a6608d51"
+      name: "core_data_disk_size"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
     # HS256 JWKS encryption key (A256GCM, 32 bytes)
     hs256_jwks_encryption_key:
       uuid: "c371a647-e1a6-4bec-bef2-a50041bc5af2"
       name: "hs256_jwks_encryption_key"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    iam_default_client_uuid:
+      uuid: "d23fa962-18b8-444f-81a0-027ece98fbdb"
+      name: "default_client_uuid"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    iam_default_client_id:
+      uuid: "239e2a55-c3ad-4adc-85a8-3fa90b669556"
+      name: "default_client_id"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    iam_default_client_secret:
+      uuid: "784c1f6d-f9e2-47e0-a3ba-16725854ac09"
+      name: "default_client_secret"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       setter:
         kind: selector
@@ -119,9 +153,9 @@ resources:
       disk_spec:
         kind: "disks"
         disks:
-          - size: 10
+          - size: $core.vs.variables.$core_root_disk_size:value
             image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/core/{{ version }}/images/exordos-core.raw.zst"
-          - size: 10
+          - size: $core.vs.variables.$core_data_disk_size:value
             label: data
 
   $core.dns.domains:
@@ -203,6 +237,36 @@ resources:
           - kind: rewrite_url
             regex: "^/api/core/(.*)"
             replacement: "/$1"
+    core_lb_iam_default_client:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
+      condition:
+        kind: prefix
+        value: /api/core/v1/iam/clients/default
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$core_lb.backend_pools.$core_lb_core_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: set_header
+            name: X-Client-Id
+            value: $core.vs.variables.$iam_default_client_id:value
+          - kind: set_header
+            name: X-Client-Secret
+            value: $core.vs.variables.$iam_default_client_secret:value
+          - kind: rewrite_url
+            regex: "^/api/core/v1/iam/clients/default(.*)"
+            replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
     core_lb_static_route:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
