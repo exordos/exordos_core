@@ -132,12 +132,12 @@ def add_core_set(
         node_uuids=[sys_uuid.UUID(spec["stand"]["bootstraps"][0]["uuid"])],
     )
 
-    prefix = spec["stand"]["hypervisors"][0]["machine_prefix"]
+    # prefix = spec["stand"]["hypervisors"][0]["machine_prefix"]
     for i, node in enumerate(nodes):
         bootstrap_spec = spec["stand"]["bootstraps"][i]
 
         # Special naming for core nodes
-        node.name = f"{prefix}{str(node.uuid)[:8]}-{node.name}"
+        node.name = f"{node.name}"
         node.insert()
 
         if set_active:
