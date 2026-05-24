@@ -26,11 +26,11 @@ wheels = [
 
 [[package]]
 name = "altcha"
-version = "0.2.0"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3a/a2/cadc3acec37236a613f5a7eda38a0857d47836fdee3a60d79db6e2120a72/altcha-0.2.0.tar.gz", hash = "sha256:be3f7ad6055bd49e0c2eae39485d569b5aa3089419fd2964d6391034bc5867e9", size = 11047, upload-time = "2025-06-07T11:44:58.812Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/17/94/ba7bf097d4fa50de1dc0028cf1f837fb69b1e15b8a722ae77a9389d8d32a/altcha-2.0.0.tar.gz", hash = "sha256:51aeb28cc40ba9e467e962dff0a9f8ca78ceea07e7279b13e81808cc90e330ca", size = 23026, upload-time = "2026-04-07T11:56:53.682Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/2b/a7bdd99601b491da88edf6e54b52731c42432c4693337ecfada56aafdea7/altcha-0.2.0-py3-none-any.whl", hash = "sha256:5c538084d3cfd8acf8db3de952aa033b57d8b64e35452493ef040adb842615cc", size = 9010, upload-time = "2025-06-07T11:44:57.166Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/2b/c8b31649a333bb61f489f371cc626eac447f6db16508268f2ce9b4a6b627/altcha-2.0.0-py3-none-any.whl", hash = "sha256:51763c2eaec26874a368be5fa9c34c9a9385d84e3c899635412f51944fad3ee4", size = 18408, upload-time = "2026-04-07T11:56:52.175Z" },
 ]
 
 [[package]]
@@ -661,7 +661,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "altcha", specifier = ">=0.2.0,<0.3.0" },
+    { name = "altcha", specifier = ">=0.2.0,<2.1.0" },
     { name = "authlib", specifier = ">=1.3.2,<2.0.0" },
     { name = "bazooka", specifier = ">=1.3.0,<2.0.0" },
     { name = "bjoern", specifier = ">=3.2.2" },
