@@ -8,12 +8,12 @@ on:
       - mkdocs.yml
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 jobs:
-  build_mkdocs:
+  build_docs:
     runs-on: ubuntu-latest
 
     steps:
@@ -30,26 +30,22 @@ jobs:
         uses: astral-sh/setup-uv@v7
       - name: Install tox-uv
         run: uv tool install tox --with tox-uv
-      - name: Deploy docs to GitHub Pages
-        run: tox -e docs-deploy
-
-  deploy_mkdocs:
-    needs: build_mkdocs
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: gh-pages
+      - name: Build docs
+        run: tox -e docs-build
       - name: Setup Pages
         uses: actions/configure-pages@v6
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: '.'
+          path: site
+
+  deploy_docs:
+    needs: build_docs
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
