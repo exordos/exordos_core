@@ -30,6 +30,7 @@ from exordos_core.user_api.api import routes as app_routes
 from exordos_core.user_api.api import versions
 
 skip_auth_endpoints = []
+readonly_whitelist = {"GET": "^\/.?"}
 
 
 class UserApiApp(routes.RootRoute):
@@ -77,6 +78,7 @@ def build_wsgi_application(context_storage, iam_engine_driver):
                 },
                 context_class=common_contexts.GenesisCoreAuthContext,
                 iam_engine_driver=iam_engine_driver,
+                readonly_whitelist=readonly_whitelist,
                 skip_auth_endpoints=skip_auth_endpoints,
             ),
             errors_mw.ErrorsHandlerMiddleware,

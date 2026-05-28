@@ -73,6 +73,7 @@ CONF = cfg.CONF
 CONF.register_cli_opts(api_cli_opts, DOMAIN)
 CONF.register_cli_opts(iam_cli_opts, DOMAIN_IAM)
 ra_config_opts.register_posgresql_db_opts(CONF)
+ra_config_opts.register_postgresql_readonly_db_opts(CONF)
 sdk_opts.register_event_opts(CONF)
 
 
@@ -85,8 +86,6 @@ def main():
     log = logging.getLogger(__name__)
 
     sdk_migrations.apply_migrations(CONF)
-
-    engines.engine_factory.configure_postgresql_factory(CONF)
 
     context_storage = utils.get_context_storage(
         global_salt=CONF[DOMAIN_IAM].global_salt,
@@ -115,7 +114,7 @@ def main():
         )
 
         service.add_setup(
-            lambda: engines.engine_factory.configure_postgresql_factory(conf=CONF)
+            lambda: ra_config_opts.configure_postgresql_with_readonly(conf=CONF)
         )
 
         serv_hub.add_service(service)
