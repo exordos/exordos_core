@@ -61,6 +61,7 @@ components:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 0
@@ -77,12 +78,14 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         capabilities:
           type: object
@@ -135,6 +138,7 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+        readOnly: true
       required: true
     name:
       name: name
@@ -161,6 +165,7 @@ components:
         x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         example: '2006-01-02T15:04:05.000576Z'
         format: date-time
+        readOnly: true
         default: '2006-01-02T15:04:05.000576Z'
     updated_at:
       name: updated_at
@@ -170,6 +175,7 @@ components:
         x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         example: '2006-01-02T15:04:05.000576Z'
         format: date-time
+        readOnly: true
         default: '2006-01-02T15:04:05.000576Z'
     capabilities:
       name: capabilities
@@ -312,6 +318,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':
@@ -335,6 +342,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':

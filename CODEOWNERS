@@ -2,4 +2,4 @@
 # Each line is a pattern followed by one or more owners
 
 # Default owners for the entire repository
-* @gmelikov @phantomii @akremenetsky @slashburygin
+* @exordos/code_owners

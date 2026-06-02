@@ -214,12 +214,11 @@ class CaptchaVerifier(AbstractVerifier):
             LOG.exception("Failed to parse CAPTCHA payload.")
             return False
 
-        verified, _error = altcha.verify_solution(
+        result = altcha.verify_solution(
             payload,
-            hmac_key=self.hmac_key,
-            check_expires=True,
+            hmac_secret=self.hmac_key,
         )
-        return bool(verified)
+        return result.verified
 
 
 class AdminBypassVerifier(AbstractVerifier):

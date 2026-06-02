@@ -13,6 +13,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -64,6 +65,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: ACTIVE
@@ -73,16 +75,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -96,6 +101,7 @@ components:
           maxLength: 10240
           minLength: 1
           nullable: true
+          readOnly: true
           type: string
         constructor:
           default:
@@ -116,6 +122,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -148,6 +155,7 @@ components:
           maxLength: 10240
           minLength: 1
           nullable: true
+          readOnly: true
           type: string
         method:
           default:
@@ -173,6 +181,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: NEW
@@ -182,16 +191,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -250,6 +262,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -318,6 +331,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: NEW
@@ -361,11 +375,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -380,6 +396,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         name:
@@ -390,19 +407,23 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         sync_to_ecosystem:
+          default: false
           example: true
           type: boolean
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -421,6 +442,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -453,6 +475,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         requirements:
           additionalProperties:
@@ -479,11 +502,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         version:
           example: any_string
@@ -501,6 +526,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         element:
@@ -520,16 +546,19 @@ components:
           example: any_string
           maxLength: 255
           minLength: 1
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - element
@@ -547,6 +576,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -564,6 +594,7 @@ components:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
           nullable: true
+          readOnly: true
           type: string
         secret:
           example: any_string
@@ -623,11 +654,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - name
@@ -689,6 +722,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -705,12 +739,14 @@ components:
           minLength: 0
           type: string
         nonce_required:
+          default: true
           example: true
           type: boolean
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
           nullable: true
+          readOnly: true
           type: string
         scope:
           default: openid
@@ -728,11 +764,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - name
@@ -746,6 +784,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         element:
@@ -769,16 +808,19 @@ components:
           example: any_string
           maxLength: 255
           minLength: 1
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - element
@@ -792,6 +834,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -809,6 +852,7 @@ components:
             maxLength: 15
             minLength: 0
             type: string
+          readOnly: true
           type: array
         name:
           default: ''
@@ -819,6 +863,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: NEW
@@ -828,6 +873,7 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         type:
           default:
@@ -884,11 +930,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -941,6 +989,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -990,6 +1039,7 @@ components:
           - IN_PROGRESS
           - MAINTENANCE
           example: ACTIVE
+          readOnly: true
           type: string
         storage_pools:
           default: []
@@ -1051,6 +1101,7 @@ components:
                 uuid:
                   example: 00000000-0000-0000-0000-000000000000
                   format: uuid
+                  readOnly: true
                   type: string
               type: object
             type: object
@@ -1059,11 +1110,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       type: object
     Manifest_Create:
@@ -1079,6 +1132,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -1127,6 +1181,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         requirements:
           additionalProperties:
@@ -1159,6 +1214,7 @@ components:
           example: 1
           maximum: 1
           minimum: 1
+          readOnly: true
           type: integer
         status:
           default: ACTIVE
@@ -1172,16 +1228,19 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         version:
           example: any_string
           maxLength: 64
           minLength: 5
+          readOnly: true
           type: string
       required:
       - name
@@ -1199,6 +1258,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         default_network:
@@ -1320,10 +1380,12 @@ components:
           default: {}
           example:
             key: value
+          readOnly: true
           type: object
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         ram:
           example: 0
@@ -1352,16 +1414,19 @@ components:
           - SCHEDULED
           - STARTED
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -1381,6 +1446,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         default_network:
@@ -1489,6 +1555,7 @@ components:
           minLength: 0
           type: string
         node_set:
+          readOnly: true
           type: string
         node_type:
           default: VM
@@ -1509,6 +1576,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         ram:
           example: 1
@@ -1525,16 +1593,19 @@ components:
           - SCHEDULED
           - STARTED
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -1549,6 +1620,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         organization:
@@ -1564,6 +1636,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         user:
@@ -1571,6 +1644,7 @@ components:
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - organization
@@ -1583,6 +1657,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -1619,11 +1694,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - name
@@ -1650,6 +1727,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         default_length:
@@ -1681,6 +1759,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: NEW
@@ -1690,22 +1769,26 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         value:
           example: any_string
           maxLength: 512
           minLength: 1
           nullable: true
+          readOnly: true
           type: string
       required:
       - project_id
@@ -1717,6 +1800,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         permission:
@@ -1725,6 +1809,7 @@ components:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
           nullable: true
+          readOnly: true
           type: string
         role:
           type: string
@@ -1732,11 +1817,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - role
@@ -1749,6 +1836,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -1772,11 +1860,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - name
@@ -1785,12 +1875,14 @@ components:
       path: /v1/vs/profiles/
       properties:
         active:
+          default: false
           example: true
           type: boolean
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -1815,22 +1907,26 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: ACTIVE
           enum:
           - ACTIVE
           example: ACTIVE
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -1842,6 +1938,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -1869,11 +1966,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - name
@@ -1909,6 +2008,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -1931,6 +2031,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         public_key:
           example: any_string
@@ -1945,16 +2046,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -1968,9 +2072,11 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         disabled:
+          default: false
           example: true
           type: boolean
         domain:
@@ -1979,6 +2085,7 @@ components:
           example: any_string
           maxLength: 9223372036854775807
           minLength: 0
+          readOnly: true
           type: string
         prio:
           default: null
@@ -1989,6 +2096,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         record:
           example:
@@ -2105,16 +2213,19 @@ components:
           - SOA
           - TXT
           example: A
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -2129,6 +2240,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         element:
@@ -2153,6 +2265,7 @@ components:
           example: any_string
           maxLength: 255
           minLength: 1
+          readOnly: true
           type: string
         resource_link_prefix:
           example: any_string
@@ -2171,11 +2284,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         value:
           additionalProperties:
@@ -2201,6 +2316,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         project:
@@ -2218,6 +2334,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         user:
@@ -2225,6 +2342,7 @@ components:
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - user
@@ -2237,6 +2355,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -2254,6 +2373,7 @@ components:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
           nullable: true
+          readOnly: true
           type: string
         status:
           default: ACTIVE
@@ -2265,11 +2385,13 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - name
@@ -2322,6 +2444,7 @@ components:
                               - https
                               type: string
                             verify:
+                              default: true
                               example: true
                               type: boolean
                           type: object
@@ -2349,6 +2472,7 @@ components:
                       key: value
                     properties:
                       is_spa:
+                        default: true
                         example: true
                         type: boolean
                       kind:
@@ -2364,6 +2488,7 @@ components:
                       key: value
                     properties:
                       is_spa:
+                        default: true
                         example: true
                         type: boolean
                       kind:
@@ -2512,6 +2637,7 @@ components:
                               - https
                               type: string
                             verify:
+                              default: true
                               example: true
                               type: boolean
                           type: object
@@ -2539,6 +2665,7 @@ components:
                       key: value
                     properties:
                       is_spa:
+                        default: true
                         example: true
                         type: boolean
                       kind:
@@ -2554,6 +2681,7 @@ components:
                       key: value
                     properties:
                       is_spa:
+                        default: true
                         example: true
                         type: boolean
                       kind:
@@ -2702,6 +2830,7 @@ components:
                               - https
                               type: string
                             verify:
+                              default: true
                               example: true
                               type: boolean
                           type: object
@@ -2729,6 +2858,7 @@ components:
                       key: value
                     properties:
                       is_spa:
+                        default: true
                         example: true
                         type: boolean
                       kind:
@@ -2744,6 +2874,7 @@ components:
                       key: value
                     properties:
                       is_spa:
+                        default: true
                         example: true
                         type: boolean
                       kind:
@@ -2894,6 +3025,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -2903,6 +3035,7 @@ components:
           minLength: 0
           type: string
         enabled:
+          default: true
           example: true
           type: boolean
         name:
@@ -2914,6 +3047,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: ACTIVE
@@ -2923,16 +3057,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -2941,111 +3078,7 @@ components:
     Rule_Create:
       path: /v1/security/rules/
       properties:
-        condition:
-          example:
-            key: value
-          oneOf:
-          - example:
-              key: value
-            properties:
-              kind:
-                enum:
-                - uri
-                type: string
-              method:
-                enum:
-                - CONNECT
-                - DELETE
-                - GET
-                - HEAD
-                - OPTIONS
-                - PATCH
-                - POST
-                - PUT
-                - TRACE
-                example: GET
-                nullable: true
-                type: string
-              uri:
-                example: http://example.com
-                pattern: ^(/[A-Za-z0-9\-_]*)*/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
-                type: string
-            type: object
-          - example:
-              key: value
-            properties:
-              kind:
-                enum:
-                - uri_regex
-                type: string
-              method:
-                enum:
-                - CONNECT
-                - DELETE
-                - GET
-                - HEAD
-                - OPTIONS
-                - PATCH
-                - POST
-                - PUT
-                - TRACE
-                example: GET
-                nullable: true
-                type: string
-              uri_regex:
-                example: any_string
-                maxLength: 9223372036854775807
-                minLength: 0
-                type: string
-            type: object
-          type: object
-        created_at:
-          default: '2006-01-02T15:04:05.000576Z'
-          example: '2006-01-02T15:04:05.000576Z'
-          format: date-time
-          type: string
-          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
-        description:
-          default: ''
-          example: any_string
-          maxLength: 255
-          minLength: 0
-          type: string
-        name:
-          default: ''
-          example: any_string
-          maxLength: 255
-          minLength: 0
-          type: string
-        operator:
-          default: OR
-          enum:
-          - AND
-          - OR
-          example: OR
-          type: string
-        project_id:
-          example: 00000000-0000-0000-0000-000000000000
-          format: uuid
-          nullable: true
-          type: string
-        status:
-          default: ACTIVE
-          enum:
-          - ACTIVE
-          example: ACTIVE
-          type: string
-        updated_at:
-          default: '2006-01-02T15:04:05.000576Z'
-          example: '2006-01-02T15:04:05.000576Z'
-          format: date-time
-          type: string
-          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
-        uuid:
-          example: 00000000-0000-0000-0000-000000000000
-          format: uuid
-          type: string
-        verifier:
+        action:
           example:
             key: value
           oneOf:
@@ -3120,10 +3153,131 @@ components:
                 - admin_bypass
                 type: string
             type: object
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - grant_permission
+                type: string
+              permission:
+                example: any_string
+                maxLength: 9223372036854775807
+                minLength: 0
+                type: string
+            type: object
           type: object
+        condition:
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - uri
+                type: string
+              method:
+                enum:
+                - CONNECT
+                - DELETE
+                - GET
+                - HEAD
+                - OPTIONS
+                - PATCH
+                - POST
+                - PUT
+                - TRACE
+                example: GET
+                nullable: true
+                type: string
+              uri:
+                example: http://example.com
+                pattern: ^(/[A-Za-z0-9\-_]*)*/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                type: string
+            type: object
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - uri_regex
+                type: string
+              method:
+                enum:
+                - CONNECT
+                - DELETE
+                - GET
+                - HEAD
+                - OPTIONS
+                - PATCH
+                - POST
+                - PUT
+                - TRACE
+                example: GET
+                nullable: true
+                type: string
+              uri_regex:
+                example: any_string
+                maxLength: 9223372036854775807
+                minLength: 0
+                type: string
+            type: object
+          type: object
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          minLength: 0
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          minLength: 0
+          type: string
+        operator:
+          default: OR
+          enum:
+          - AND
+          - OR
+          example: OR
+          type: string
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          readOnly: true
+          type: string
+        status:
+          default: ACTIVE
+          enum:
+          - ACTIVE
+          example: ACTIVE
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
       required:
       - condition
-      - verifier
+      - action
       type: object
     SSHKey_Create:
       path: /v1/secret/ssh_keys/
@@ -3153,6 +3307,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -3170,6 +3325,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         status:
           default: NEW
@@ -3179,6 +3335,7 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         target:
           example:
@@ -3219,6 +3376,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         user:
@@ -3229,6 +3387,7 @@ components:
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -3313,6 +3472,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -3340,6 +3500,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         service_type:
           example:
@@ -3439,6 +3600,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         user:
@@ -3450,6 +3612,7 @@ components:
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -3464,6 +3627,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         custom_props:
@@ -3541,6 +3705,7 @@ components:
           minLength: 5
           type: string
         email_verified:
+          default: false
           example: true
           type: boolean
         first_name:
@@ -3554,6 +3719,7 @@ components:
           pattern: ^.*$
           type: string
         otp_enabled:
+          default: false
           example: true
           type: boolean
         password:
@@ -3585,11 +3751,13 @@ components:
           - service
           - user
           example: user
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         user_source:
@@ -3647,6 +3815,7 @@ components:
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - username
@@ -3659,6 +3828,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -3668,6 +3838,7 @@ components:
           minLength: 0
           type: string
         manual_selected:
+          default: false
           example: true
           type: boolean
         name:
@@ -3679,8 +3850,10 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         read_only:
+          default: false
           example: true
           type: boolean
         status:
@@ -3688,16 +3861,19 @@ components:
           enum:
           - ACTIVE
           example: ACTIVE
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         value:
           example: string
@@ -3720,6 +3896,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -3737,6 +3914,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         setter:
           example:
@@ -3808,16 +3986,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         value:
           example: string
@@ -3828,6 +4009,7 @@ components:
           - type: array
           - type: boolean
           - type: object
+          readOnly: true
       required:
       - project_id
       - setter
@@ -3863,6 +4045,7 @@ components:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -3882,6 +4065,7 @@ components:
           nullable: true
           type: array
         enabled:
+          default: true
           example: true
           type: boolean
         external_sources:
@@ -3938,6 +4122,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         protocol:
           default: http
@@ -3947,6 +4132,7 @@ components:
           - tcp
           - udp
           example: http
+          readOnly: true
           type: string
         proxy_protocol_from:
           anyOf:
@@ -3963,16 +4149,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id
@@ -3981,12 +4170,14 @@ components:
       path: /v1/compute/volumes/
       properties:
         boot:
+          default: true
           example: true
           type: boolean
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         description:
@@ -4024,6 +4215,7 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
         size:
           example: 500000
@@ -4038,16 +4230,19 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
           type: string
       required:
       - project_id

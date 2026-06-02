@@ -38,6 +38,7 @@ class TestSpec:
             "core-node-set-example",
             "core-service-example",
             "genesis_notification",
+            # TODO(slashburygin): need mutate imports to validate them
         ],
     )
     def test_validate_manifests(
