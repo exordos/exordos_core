@@ -159,6 +159,6 @@ The ToDo API is now available at the configured endpoint.
 
 Once you're comfortable with the basics, explore the more in-depth topics below.
 
-- [Writing a manifest from scratch](../misc/manifests.md) — understand the full manifest specification and author one by hand without relying on the `exordos init` wizard.
+- [Writing a manifest from scratch](../em/manifest.md) — understand the full manifest specification and author one by hand without relying on the `exordos init` wizard.
 - [Setting up a private platform installation](../usage/local_deployment.md) — spin up your own Exordos Core instance to develop and test your elements end-to-end without connecting to a remote environment.
 - [Public Exordos installation](https://exordos.com) — use the hosted Exordos platform without managing your own infrastructure.

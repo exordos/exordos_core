@@ -222,7 +222,7 @@ Additional variables can be passed using `--manifest-var key=value`:
 exordos build --manifest-var environment=production --manifest-var region=europe-east .
 ```
 
-[Full manifest reference →](../misc/manifests.md)
+[Full manifest reference →](../em/manifest.md)
 
 ---
 
