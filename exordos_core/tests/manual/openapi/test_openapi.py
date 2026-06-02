@@ -17,7 +17,7 @@
 import os
 
 from gcl_iam.tests.functional import clients as iam_clients
-from gcl_sdk.agents.universal.api.packers import GENESIS_NODE_UUID_HEADER
+from gcl_sdk.agents.universal.api.packers import EXORDOS_NODE_UUID_HEADER
 import ruamel.yaml
 
 from exordos_core.common.utils import PROJECT_PATH
@@ -72,7 +72,7 @@ class TestGetOpenApiSpecs:
         response = orch_api_noauth_client.get(
             url,
             headers={
-                GENESIS_NODE_UUID_HEADER: default_node["uuid"],
+                EXORDOS_NODE_UUID_HEADER: default_node["uuid"],
                 "Content-Type": "application/x-genesis-agent-chacha20-poly1305-encrypted",
             },
         )
@@ -90,7 +90,7 @@ class TestGetOpenApiSpecs:
         response = status_api_noauth_client.get(
             url,
             headers={
-                GENESIS_NODE_UUID_HEADER: default_node["uuid"],
+                EXORDOS_NODE_UUID_HEADER: default_node["uuid"],
                 "Content-Type": "application/x-genesis-agent-chacha20-poly1305-encrypted",
             },
         )

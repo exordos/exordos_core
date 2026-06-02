@@ -14,12 +14,19 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
+import typing as tp
+
 from gcl_iam.api import controllers as iam_controllers
 from restalchemy.api import actions
+from restalchemy.api import constants
 from restalchemy.api import controllers
 from restalchemy.api import resources
 from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
+from restalchemy.openapi import constants as oa_c
+from restalchemy.openapi import utils
+import webob
 
 from exordos_core.elements.dm import models
 from exordos_core.vs.dm import models as vs_models
@@ -31,6 +38,35 @@ class ElementHasNoProfileError(ra_e.ValidationErrorException):
 
 class ElementManagerController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/em/"
+
+
+class SchemaController(controllers.Controller):
+    @utils.extend_schema(
+        summary="Get manifest schema",
+        parameters=[],
+        responses=oa_c.build_openapi_object_response({}),
+    )
+    def filter(self, *args, **kwargs) -> dict:
+        models.element_engine.load_schemas()
+        return models.element_engine.full_schema
+
+    def process_result(
+        self,
+        result: dict,
+        status_code: int = 200,
+        headers: tp.Optional[dict] = None,
+        add_location: bool = False,
+    ) -> webob.Response:
+        if headers is not None:
+            headers["Content-Type"] = constants.CONTENT_TYPE_APPLICATION_JSON
+        else:
+            headers = {"Content-Type": constants.CONTENT_TYPE_APPLICATION_JSON}
+        return webob.Response(
+            body=json.dumps(result).encode(),
+            status=status_code,
+            content_type=constants.CONTENT_TYPE_APPLICATION_JSON,
+            headerlist=[(k, v) for k, v in headers.items()] if headers else [],
+        )
 
 
 class ManifestController(
