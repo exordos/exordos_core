@@ -72,7 +72,7 @@ By default, elements are fetched from the public Exordos repository. For private
 After a successful installation:
 
 - Verify the element status in the Exordos Core CLI
-- [Customize the manifest](../misc/manifests.md) to tailor the element configuration to your needs
+- [Customize the manifest](../em/manifest.md) to tailor the element configuration to your needs
 - [Update the element](../admin-guide/index.md) when a new version is available
 
 ---

@@ -50,6 +50,6 @@ curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 Дополнительные справочные материалы по платформе.
 
 - [Локальное развёртывание](usage/local_deployment.ru.md) — развёртывание локальной инсталляции платформы на одной хост-машине.
-- [Манифесты](misc/manifests.ru.md) — спецификация формата манифеста и примеры.
-- [Справочник по API](misc/api-reference.ru.md) — полный справочник по HTTP API сервисов платформы.
-- [Справочник по CLI](misc/cli-reference.ru.md) — полный справочник по инструменту Exordos CLI.
+- [Манифесты](em/manifest.ru.md) — спецификация формата манифеста и примеры.
+- [Справочник по API](openapi/openapi_user.md) — полный справочник по HTTP API сервисов платформы.
+- [Справочник по CLI](https://exordos.github.io/exordos/) — полный справочник по инструменту Exordos CLI.

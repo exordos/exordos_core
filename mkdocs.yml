@@ -100,12 +100,12 @@ markdown_extensions:
 
 nav:
   - Software: index.md
-  - Usage: usage/basic_usage.md
+  - Usage: usage/local_deployment.md
   - OpenAPI:
-    - Boot: openapi/openapi_boot.md
-    - Orch: openapi/openapi_orch.md
-    - Status: openapi/openapi_status.md
-    - User: openapi/openapi_user.md
+    - Boot API: openapi/openapi_boot.md
+    - Orch API: openapi/openapi_orch.md
+    - Status API: openapi/openapi_status.md
+    - User API: openapi/openapi_user.md
   - Element:
     - Manifest: em/manifest.md
     - API: em/api_documentation.md

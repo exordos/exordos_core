@@ -50,6 +50,6 @@ Documentation for security engineers. Special focus on IAM and user management, 
 Additional reference materials for the platform:
 
 - [Local Deployment](usage/local_deployment.md) — deploying a local installation of the platform on a single host.
-- [Manifests](misc/manifests.md) — manifest format specification and examples.
-- [API Reference](misc/api-reference.md) — full HTTP API reference for platform services.
-- [CLI Reference](misc/cli-reference.md) — complete reference for the Exordos CLI tool.
+- [Manifests](em/manifest.md) — manifest format specification and examples.
+- [API Reference](openapi/openapi_user.md) — full HTTP API reference for platform services.
+- [CLI Reference](https://exordos.github.io/exordos/) — complete reference for the Exordos CLI tool.

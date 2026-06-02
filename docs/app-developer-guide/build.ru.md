@@ -222,7 +222,7 @@ fi
 exordos build --manifest-var environment=production --manifest-var region=europe-east .
 ```
 
-[Полный справочник по манифестам →](../misc/manifests.ru.md)
+[Полный справочник по манифестам →](../em/manifest.ru.md)
 
 ---
 

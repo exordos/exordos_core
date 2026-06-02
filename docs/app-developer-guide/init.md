@@ -64,7 +64,7 @@ You will be asked to provide:
 
 The generated manifest is a starting point. You can edit it by hand at any time.
 
-[Full manifest reference →](../misc/manifests.md)
+[Full manifest reference →](../em/manifest.md)
 
 ---
 
