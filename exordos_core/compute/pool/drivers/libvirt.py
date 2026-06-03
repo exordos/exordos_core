@@ -38,6 +38,7 @@ ImageFormatType = tp.Literal["raw", "qcow2"]
 NetworkType = tp.Literal["bridge", "network"]
 
 MAX_VOLUME_INDEX = 4096
+CONSOLE_LOG_DIR = "/var/log/libvirt/qemu"
 
 
 class StoragePoolType(enum.Enum):
@@ -370,6 +371,16 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
         cls.document_set_tag(domain, "boot", parent=os_element, dev=boot)
 
     @classmethod
+    def domain_set_console_log(cls, domain: minidom.Document, path: str) -> None:
+        console_element = domain.getElementsByTagName("console")[0]
+        console_element.setAttribute("type", "pty")
+
+        for node in console_element.getElementsByTagName("log"):
+            console_element.removeChild(node)
+
+        cls.add_element(domain, "log", parent=console_element, file=path, append="on")
+
+    @classmethod
     def disk_device_xml(
         cls,
         image_path: str,
@@ -487,6 +498,9 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
     def set_boot(self, boot: nc.BootType) -> None:
         return self.domain_set_boot(self._domain, boot)
 
+    def set_console_log(self, path: str) -> None:
+        return self.domain_set_console_log(self._domain, path)
+
     def add_disk(
         self,
         image_path: str,
@@ -567,6 +581,9 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         machine_prefix = self._spec.machine_prefix or ""
         uuid_prefix = str(machine.uuid)[:8] + "-"
         return f"{machine_prefix}{uuid_prefix}{str(machine.name)}"
+
+    def _console_log_path(self, machine: models.Machine) -> str:
+        return f"{CONSOLE_LOG_DIR}/{self._machine2domain_name(machine)}.console.log"
 
     def _domain2machine(
         self, domain: libvirt.virDomain, element: tp.Optional[ET.Element] = None
@@ -1239,6 +1256,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         domain.set_memory(machine.ram)
         domain.set_image(machine.image)
         domain.set_boot(nc.BootAlternative[machine.boot].boot_type)
+        domain.set_console_log(self._console_log_path(machine))
 
         for port in ports:
             domain.add_interface(
