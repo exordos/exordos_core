@@ -21,7 +21,7 @@ from exordos_core.compute import constants as nc
 
 _from_net_template = """#!ipxe
 :kernel
-kernel {kernel} showopts ip=dhcp net.ifnames=0 biosdevname=0 gc_boot_api={gc_boot_api} || goto kernel
+kernel {kernel} showopts ip=dhcp net.ifnames=0 biosdevname=0 gc_boot_api={gc_boot_api} console=ttyS0,115200 console=tty0 || goto kernel
 
 :initrd
 initrd {initrd} || goto initrd
