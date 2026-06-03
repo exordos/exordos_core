@@ -341,7 +341,15 @@ def search_parameter_example(
     model_name = ref.split("/")[-1]
     model = scheme["components"]["schemas"].get(model_name)
     if model:
-        return model["properties"].get(parameter, {}).get("example")
+        example = model["properties"].get(parameter, {}).get("example")
+        if example is not None:
+            return example
+        for prop in model["properties"].values():
+            if "oneOf" in prop:
+                for oneOf in prop["oneOf"]:
+                    example = oneOf["properties"].get(parameter, {}).get("example")
+                    if example is not None:
+                        return example
     return None
 
 

@@ -61,6 +61,7 @@ components:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 0
@@ -77,12 +78,14 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         capabilities:
           type: object
@@ -134,6 +137,7 @@ components:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 0
@@ -150,12 +154,14 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         capabilities:
           type: object
@@ -207,6 +213,7 @@ components:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 0
@@ -223,12 +230,14 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         capabilities:
           type: object
@@ -280,22 +289,26 @@ components:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         created_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         project_id:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 0
@@ -400,6 +413,7 @@ components:
           minLength: 0
           maxLength: 64
           example: any_string
+          readOnly: true
       required:
         - kind
     KindModel_Get:
@@ -410,6 +424,7 @@ components:
           minLength: 0
           maxLength: 64
           example: any_string
+          readOnly: true
       required:
         - kind
     Resource_Get:
@@ -420,17 +435,20 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         uuid:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         kind:
           type: string
         value:
@@ -482,17 +500,20 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         uuid:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         kind:
           type: string
         value:
@@ -544,17 +565,20 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         uuid:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         kind:
           type: string
         value:
@@ -605,17 +629,20 @@ components:
           type: string
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          readOnly: true
         created_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         updated_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
+          readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
         private_key:
           type: string
@@ -638,6 +665,7 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+        readOnly: true
       required: true
     name:
       name: name
@@ -665,6 +693,7 @@ components:
         x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         example: '2006-01-02T15:04:05.000576Z'
         format: date-time
+        readOnly: true
         default: '2006-01-02T15:04:05.000576Z'
     updated_at:
       name: updated_at
@@ -674,6 +703,7 @@ components:
         x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         example: '2006-01-02T15:04:05.000576Z'
         format: date-time
+        readOnly: true
         default: '2006-01-02T15:04:05.000576Z'
     capabilities:
       name: capabilities
@@ -731,6 +761,7 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+        readOnly: true
       required: true
     project_id:
       name: project_id
@@ -739,6 +770,7 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+        readOnly: true
     cores:
       name: cores
       in: query
@@ -832,6 +864,7 @@ components:
         minLength: 0
         maxLength: 64
         example: any_string
+        readOnly: true
       required: true
     uuid:
       name: uuid
@@ -840,6 +873,7 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+        readOnly: true
     kind:
       name: kind
       in: query
@@ -893,6 +927,7 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+        readOnly: true
       required: true
     private_key:
       name: private_key
@@ -1024,6 +1059,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':
@@ -1046,6 +1082,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':
@@ -1075,6 +1112,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '204':
@@ -1094,6 +1132,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':
@@ -1116,6 +1155,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':
@@ -1162,6 +1202,7 @@ paths:
             minLength: 0
             maxLength: 64
             example: any_string
+            readOnly: true
           required: true
       responses:
         '200':
@@ -1186,6 +1227,7 @@ paths:
             minLength: 0
             maxLength: 64
             example: any_string
+            readOnly: true
           required: true
       responses:
         '201':
@@ -1217,6 +1259,7 @@ paths:
             minLength: 0
             maxLength: 64
             example: any_string
+            readOnly: true
           required: true
         - name: ResourceRes_uuid
           in: path
@@ -1247,6 +1290,7 @@ paths:
             minLength: 0
             maxLength: 64
             example: any_string
+            readOnly: true
           required: true
         - name: ResourceRes_uuid
           in: path
@@ -1284,6 +1328,7 @@ paths:
             minLength: 0
             maxLength: 64
             example: any_string
+            readOnly: true
           required: true
         - name: ResourceRes_uuid
           in: path
@@ -1310,6 +1355,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':
@@ -1333,6 +1379,7 @@ paths:
             type: string
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
+            readOnly: true
           required: true
       responses:
         '200':

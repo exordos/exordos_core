@@ -13,9 +13,9 @@ resources:
     example_node:
       name: "example-node"
       description: "Example node"
-      cores: 1
+      # cores: 1
       ram: 1024
-#      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
       disk_spec:
         kind: "root_disk"
         size: 10

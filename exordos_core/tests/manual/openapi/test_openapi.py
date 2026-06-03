@@ -44,7 +44,7 @@ class TestGetOpenApiSpecs:
         # User API
         client = user_api_client(auth_user_admin)
         url = f"{user_api.get_endpoint()}{SPECIFICATIONS_PATH}"
-        response = client.get(url)
+        response = client.get(url, timeout=30)
         assert response.status_code == 200
 
         path = os.path.join(PROJECT_PATH, "docs", "openapi", "openapi_user.yaml")
