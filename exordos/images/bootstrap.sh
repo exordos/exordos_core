@@ -73,7 +73,7 @@ if [[ -n "$PERSISTENT_DISK" ]]; then
     migrate_to_persistent "/var/lib/exordos/exordos_core" "${PERSISTENT_MOUNT}/var/lib/exordos/exordos_core"
     mkdir -p /var/lib/exordos/data
     migrate_to_persistent "/var/lib/exordos/data" "${PERSISTENT_MOUNT}/var/lib/exordos/data"
-    migrate_to_persistent_stop_start "/var/lib/postgresql" "${PERSISTENT_MOUNT}/var/lib/postgresql" "postgresql@${PG_VERSION}-main"
+    migrate_to_persistent_stop_start "/var/lib/postgresql" "${PERSISTENT_MOUNT}/var/lib/postgresql" "postgresql@${PG_VERSION}-main" "postgres" "postgres"
     migrate_to_persistent "/etc/exordos_core" "${PERSISTENT_MOUNT}/etc/exordos_core"
     migrate_to_persistent "/home/ubuntu" "${PERSISTENT_MOUNT}/home/ubuntu"
     migrate_to_persistent "/root" "${PERSISTENT_MOUNT}/root"
