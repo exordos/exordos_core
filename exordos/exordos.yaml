@@ -21,15 +21,15 @@ build:
     - dst: /opt/exordos_core/artifacts/undionly.kpxe
       # Local path
       http:
-        src: https://repo.exordos.com/seed_os/2.0.0/undionly.kpxe
+        src: https://repo.exordos.com/seed_os/2.0.1/undionly.kpxe
     - dst: /opt/exordos_core/artifacts/initrd.img
       # Local path
       http:
-        src: https://repo.exordos.com/seed_os/2.0.0/initrd.img
+        src: https://repo.exordos.com/seed_os/2.0.1/initrd.img
     - dst: /opt/exordos_core/artifacts/vmlinuz
       # Local path
       http:
-        src: https://repo.exordos.com/seed_os/2.0.0/vmlinuz
+        src: https://repo.exordos.com/seed_os/2.0.1/vmlinuz
 
     # Take SDK from a local path for development purposes.
     - dst: /opt/gcl_sdk
