@@ -7,7 +7,7 @@ TimeoutStopSec=5
 Restart=always
 RestartSec=5s
 KillSignal=SIGINT
-ExecStart=ec-user-api --config-file /etc/exordos_core/exordos_core.conf
+ExecStart=ec-user-api --config-file /etc/exordos_core/exordos_core.conf --config-dir /etc/exordos_core/exordos_core.d
 
 [Install]
 WantedBy=multi-user.target

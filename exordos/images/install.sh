@@ -141,7 +141,10 @@ sudo systemctl enable nginx
 # Install exordos core
 sudo mkdir -p $GC_CFG_DIR
 sudo cp "$GC_PATH/etc/exordos_core/logging.yaml" $GC_CFG_DIR/
-sudo cp "$GC_PATH/etc/exordos_core/event_type_mapping.yaml" $GC_CFG_DIR/
+# Drop-in config dir loaded by ec-user-api via --config-dir. The notification
+# element lands its [events] override and event_type_mapping.yaml here; must
+# exist (oslo --config-dir errors on a missing directory).
+sudo mkdir -p $GC_CFG_DIR/exordos_core.d
 sudo cp "$GC_PATH/exordos/images/bootstrap.sh" $BOOTSTRAP_PATH/0100-ec-bootstrap.sh
 
 cd "$GC_PATH"
