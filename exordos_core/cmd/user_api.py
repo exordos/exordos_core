@@ -21,6 +21,7 @@ from gcl_looper.services import bjoern_service
 from gcl_looper.services import hub
 from gcl_sdk import migrations as sdk_migrations
 from gcl_sdk.events import clients as sdk_clients
+from gcl_sdk.events import constants as event_c
 from gcl_sdk.events import opts as sdk_opts
 from oslo_config import cfg
 from restalchemy.common import config_opts as ra_config_opts
@@ -88,10 +89,20 @@ def main():
 
     engines.engine_factory.configure_postgresql_factory(CONF)
 
+    # Build the configured event client only when event delivery is enabled
+    # (the exordos_notification element drops an [events] override into
+    # /etc/exordos_core/exordos_core.d/). Otherwise use a no-op client so the
+    # service neither requires an event_type_mapping file nor stores
+    # unprocessable events.
+    if CONF[event_c.DOMAIN].enabled:
+        events_client = sdk_clients.build_client(CONF)
+    else:
+        events_client = sdk_clients.DummyEventClient()
+
     context_storage = utils.get_context_storage(
         global_salt=CONF[DOMAIN_IAM].global_salt,
         hs256_jwks_encryption_key=CONF[DOMAIN_IAM].hs256_jwks_encryption_key,
-        events_client=sdk_clients.build_client(CONF),
+        events_client=events_client,
     )
 
     log.info(

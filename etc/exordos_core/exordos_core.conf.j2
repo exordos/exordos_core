@@ -40,7 +40,11 @@ kernel = http://{{ boot_ip }}:8080/bios/vmlinuz
 enabled = False
 # client_type = async
 # event_type_mapping_filepath = event_type_mapping.yaml
-# genesis_notification_endpoint = http://127.0.0.1:8080/
-# genesis_api_version = v1
-# genesis_api_token = "<inser token here>"
+# exordos_notification_endpoint = http://127.0.0.1:8080/
+# exordos_api_version = v1
+# exordos_api_token = "<insert token here>"
+#
+# Enabling delivery to the notification service is done at runtime by the
+# exordos_notification element, which drops an [events] override into
+# /etc/exordos_core/exordos_core.d/ (loaded via --config-dir by ec-user-api).
 

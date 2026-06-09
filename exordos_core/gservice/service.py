@@ -25,7 +25,9 @@ from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
 from gcl_sdk.agents.universal.services import agent as ua_agent_service
 from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
+from gcl_sdk.events import constants as event_c
 from gcl_sdk.events.services import senders
+from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
@@ -54,6 +56,7 @@ from exordos_core.telemetry import service as telemetry_service
 from exordos_core.vs.builders import service as vs_builder_svc
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
 NODE_SET_TF_STORAGE = "/var/lib/exordos/exordos_core/node_set/target_fields.json"
 NODE_SET_TARGET_TF_STORAGE = (
     "/var/lib/exordos/exordos_core/target_node_set/target_fields.json"
@@ -183,7 +186,14 @@ class GeneralService(basic.BasicService):
         secret_svc = secret_service.SecretServiceBuilder(
             iter_min_period=iter_min_period,
         )
-        event_sender = senders.EventSenderService.build_from_config()
+        # Build the event sender only when event delivery is enabled (the
+        # exordos_notification element drops an [events] override into the
+        # config dir). When disabled, build_from_config would receive a None
+        # event_type_mapping_filepath and crash, so skip it entirely.
+        if CONF[event_c.DOMAIN].enabled:
+            event_sender = senders.EventSenderService.build_from_config()
+        else:
+            event_sender = None
         em_builder = em_builders.ElementManagerBuilder(iter_min_period=iter_min_period)
         janitor = janitor_service.ExpiredEmailConfirmationCodeJanitorService(
             iter_min_period=60 * 60,
@@ -215,13 +225,14 @@ class GeneralService(basic.BasicService):
             net_lb_iaas_builder,
             net_lb_paas_builder,
             secret_svc,
-            event_sender,
             em_builder,
             dns_sync,
             # non-essential services should be last
             janitor,
             telemetry,
         ]
+        if event_sender is not None:
+            self._services.append(event_sender)
         self._next_run_times = {id(s): 0 for s in self._services}
 
     def _setup(self):
