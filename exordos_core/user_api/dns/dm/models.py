@@ -20,7 +20,6 @@ import uuid as sys_uuid
 from gcl_sdk.agents.universal.dm import models as ua_models
 from oslo_config import cfg
 from restalchemy.common import exceptions
-from restalchemy.dm import filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
 from restalchemy.dm import relationships
@@ -95,11 +94,7 @@ class Domain(CommonModel, models.ModelWithProject, ua_models.TargetResourceMixin
         soa.save(session=session)
 
     def delete(self, session=None, **kwargs):
-        Record.objects.get_one(
-            session=session,
-            filters={"domain": filters.EQ(self), "type": "SOA"},
-        ).delete(session=session, force=True)
-        u.remove_nested_dm(Record, "domain", self, session=session)
+        u.remove_nested_dm(Record, "domain", self, session=session, force=True)
         return super().delete(session=session, **kwargs)
 
 
