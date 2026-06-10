@@ -1372,9 +1372,9 @@ wheels = [
 
 [[package]]
 name = "libvirt-python"
-version = "12.3.0"
+version = "12.4.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1b/32/aa296ebea6ea95700af46033607ab168e75369ac3fa947996f9605fa24d2/libvirt_python-12.3.0.tar.gz", hash = "sha256:cc472e54c05a86db26e21358e1e8554bc85fea3cac6fe2b90e60e6a06e496a8d", size = 244723, upload-time = "2026-05-01T22:08:23.908Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/d8/eae5574b40e437efa6d6f4f8e5042f4b8ddaf26db5d85305a0d85524e07c/libvirt_python-12.4.0.tar.gz", hash = "sha256:e24ade7e9b774b56ce3ea6c69ea06b99103391b09c8d9f77a308584b79c9a00d", size = 245162, upload-time = "2026-06-01T10:26:16.136Z" }
 
 [[package]]
 name = "markdown"
