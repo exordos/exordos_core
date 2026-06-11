@@ -722,7 +722,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.9,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.2.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", specifier = ">=3.0.4,<4.0.0" },
+    { name = "gcl-sdk", specifier = ">=3.0.5,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "libvirt-python", specifier = ">=11.0.0,<13.0.0" },
@@ -825,7 +825,7 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.0.4"
+version = "3.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -839,9 +839,9 @@ dependencies = [
     { name = "restalchemy" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/b8/cdb742e99f88bc8b7de0dcfacc6de73958024712d8ebe4ec28f91b2eae21/gcl_sdk-3.0.4.tar.gz", hash = "sha256:8d8eba5e47a4d7e7d51afbad8ef3f43b027cde7284ee9f64cefcb96060e39f2f", size = 282784, upload-time = "2026-06-08T17:33:25.87Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/69/636c5fbf7af9bb847e9fe38035203e3506e7e64263b50e929af777896ccc/gcl_sdk-3.0.5.tar.gz", hash = "sha256:77f10b519fff5c091ade03ddca93f31106d58c9ab83abd1484a323925a0983eb", size = 284527, upload-time = "2026-06-11T17:01:49.486Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/91/65961b8c6679c8437f12bc398f38cbb39b072183f9f6163a613630c2a5da/gcl_sdk-3.0.4-py3-none-any.whl", hash = "sha256:13b23323467f65979725c417151abe89a3fb3d34472a2930ee32c475890008d8", size = 211887, upload-time = "2026-06-08T17:33:24.198Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/a2/341fab9f7f922d4b47b0cc7420c89a18d0361646de755b7d5bc50a44261b/gcl_sdk-3.0.5-py3-none-any.whl", hash = "sha256:091600d8ed29fdcc36e6cc53d772c91dca7eecb25a59b66190414996d43ee4e5", size = 215879, upload-time = "2026-06-11T17:01:47.945Z" },
 ]
 
 [[package]]
