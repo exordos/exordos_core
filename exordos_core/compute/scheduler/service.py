@@ -193,7 +193,7 @@ class SchedulerService(basic.BasicService):
         pool_volume = models.MachineVolume(
             uuid=volume.uuid,
             name=str(volume.uuid),
-            index=0,
+            index=volume.index,
             size=volume.size,
             image=volume.image,
             boot=volume.boot,
