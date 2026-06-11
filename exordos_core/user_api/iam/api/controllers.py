@@ -156,6 +156,9 @@ class UserController(
                     ra_c.UPDATE: rules.Rule("iam", "user_custom_props", "update"),
                     ra_c.DELETE: rules.Rule("iam", "user_custom_props", "delete"),
                 },
+                "email": {
+                    ra_c.UPDATE: iam_fp.Permissions.HIDDEN,
+                },
             },
         ),
         name_map={"secret": "password", "name": "username"},
@@ -678,7 +681,11 @@ class IdpController(
         response_type,
         scope,
         nonce=models.Idp.NONCE_DEFAULT,
+        approval_prompt="auto",
+        access_type="online",
+        include_granted_scopes=None,
     ):
+        # TODO(agent): Implement approval_prompt
         redirect_uri = resource.authorize(
             client_id=client_id,
             redirect_uri=redirect_uri,

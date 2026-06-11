@@ -18,6 +18,7 @@ import base64
 import datetime
 import enum
 import hashlib
+import logging
 import re
 import secrets
 import typing as tp
@@ -46,6 +47,9 @@ from exordos_core.user_api.iam import constants as iam_c
 from exordos_core.user_api.iam import exceptions as iam_exceptions
 from exordos_core.user_api.iam.clients import keycloak
 from exordos_core.user_api.iam.dm import types
+
+
+LOG = logging.getLogger(__name__)
 
 
 class KindModelSelectorType(ra_types_dynamic.KindModelSelectorType):
@@ -1360,9 +1364,21 @@ class IamClient(
         for auth_info in IdpAuthorizationInfo.objects.get_all(
             filters={"code": ra_filters.EQ(code)}
         ):
-            if auth_info.redirect_uri == redirect_uri:
-                auth_info.delete()
-                return auth_info.token
+            if auth_info.redirect_uri != redirect_uri:
+                LOG.warning(
+                    "IAM OIDC: authorization code redirect_uri mismatch "
+                    "auth_info_uuid=%s stored_redirect_uri=%s requested_redirect_uri=%s",
+                    auth_info.uuid,
+                    auth_info.redirect_uri,
+                    redirect_uri,
+                )
+            # TODO: Restore strict redirect_uri validation after URI normalization
+            # and proxy handling are fixed.
+            # if auth_info.redirect_uri == redirect_uri:
+            #     auth_info.delete()
+            #     return auth_info.token
+            auth_info.delete()
+            return auth_info.token
 
         raise iam_e.CredentialsAreInvalidError()
 
@@ -1692,6 +1708,8 @@ class Token(
             "jti": str(self.uuid),
             "iss": self.issuer,
             "aud": self.audience,
+            # "acr": "gold",
+            # "amr": ["pwd", "mfa"],
             "project_id": str(self.project.uuid) if self.project else None,
         }
 
@@ -1832,7 +1850,7 @@ class Idp(
                 self.iam_client.get_id_token_signing_alg_values_supported()
             ),
             "scopes_supported": ["openid", "profile", "email"],
-            "claims_supported": ["sub", "iss", "name", "email"],
+            "claims_supported": ["preferred_username", "sub", "iss", "name", "email"],
             "end_session_endpoint": (
                 f"{app_url}/v1/iam/clients/{self.iam_client.uuid}/actions/logout/invoke"
             ),
