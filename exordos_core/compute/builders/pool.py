@@ -400,22 +400,34 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
     def _pre_delete_machine_resource(self, resource: ua_models.TargetResource) -> None:
         """The hook is performed before deleting machine resource."""
-        # There is a chance the `guest_machine` actual resource won't
-        # be deleted since the node will be dropped first and agent
-        # won't have time to delete it. So to fix this we need to delete
-        # the guest machine explicitly.
+        # Clear all resources placed on the node
         resources = ua_models.Resource.objects.get_all(
             filters={
-                "uuid": dm_filters.EQ(resource.uuid),
-                "kind": dm_filters.EQ("guest_machine"),
+                "node": dm_filters.EQ(resource.uuid),
             }
         )
+
+        # Clear all agents run on the node
         agents = ua_models.UniversalAgent.objects.get_all(
             filters={
-                "uuid": dm_filters.EQ(resource.uuid),
+                "node": dm_filters.EQ(resource.uuid),
             }
         )
-        for obj in agents + resources:
+
+        # Rescheduler target resource
+        if agents:
+            target_resources = ua_models.TargetResource.objects.get_all(
+                filters={
+                    "agent": dm_filters.In((a.uuid for a in agents)),
+                }
+            )
+
+            for target_resource in target_resources:
+                target_resource.agent = None
+                target_resource.save()
+
+        # Clear all resources and agents
+        for obj in resources + agents:
             obj.delete()
 
     # Volume

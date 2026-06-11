@@ -47,5 +47,6 @@ class ApiEndpointRoute(routes.Route):
 
     nodes = routes.route(status_routes.NodesRoute)
     boots = routes.route(NetbootRoute)
+    node_verifiers = routes.route(status_routes.NodeVerifiersRoute)
     agents = routes.route(UniversalAgentsRoute)
     kind = routes.route(status_routes.KindRoute)
