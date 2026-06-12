@@ -205,6 +205,7 @@ class Manifest(
         element.version = self.version
         element.api_version = self.api_version
         element.description = self.description
+        element.manifest = self
         element.save()
         return self.apply_element(element)
 
@@ -397,13 +398,16 @@ class Manifest(
 
     def uninstall(self) -> "Manifest":
         element_engine.load_from_database()
-
-        elements = Element.objects.get_all(
-            filters={
-                "name": ra_filters.EQ(self.name),
-                "version": ra_filters.EQ(self.version),
-            }
+        filters = ra_filters.AND(
+            ra_filters.OR(
+                {
+                    "name": ra_filters.EQ(self.name),
+                    "version": ra_filters.EQ(self.version),
+                },
+                {"manifest": ra_filters.EQ(self.uuid)},
+            )
         )
+        elements = Element.objects.get_all(filters=filters)
         for element in elements:
             self._check_no_dependents(element)
         for element in elements:

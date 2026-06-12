@@ -15,5 +15,8 @@ build_core:
 bootstrap:
 	exordos bootstrap -i output -f -m core --admin-password admin --cidr 10.20.0.0/22
 
+delete_core:
+	exordos realms d local
+
 mdlint:
 	markdownlint-cli2 --config .markdownlint.yaml "**/*.md" "#node_modules" "#!.venv" "#!.tox" --fix
