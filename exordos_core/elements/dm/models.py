@@ -845,6 +845,23 @@ class Resource(
                 full_hash=self.full_hash,
                 tracked_at=self.updated_at,
             )
+            orphaned = list(
+                sdk_models.TargetResource.objects.get_all(
+                    filters={"res_uuid": ra_filters.EQ(res_uuid)}
+                )
+            )
+            if orphaned:
+                # Target resource exists in ua_target_resources but
+                # em_resources.target_resource is NULL (update was lost on a
+                # previous run). Recover the link so the next iteration can
+                # compare hashes normally.
+                LOG.warning(
+                    "Target resource %s already exists (orphaned). Recovering link.",
+                    res_uuid,
+                )
+                self.target_resource = orphaned[0]
+                self.update()
+                return
             target_resource.insert()
             self.target_resource = target_resource
             self.update()
