@@ -78,6 +78,8 @@ if [[ -n "$PERSISTENT_DISK" ]]; then
     migrate_to_persistent "/home/ubuntu" "${PERSISTENT_MOUNT}/home/ubuntu"
     migrate_to_persistent "/root" "${PERSISTENT_MOUNT}/root"
 
+    sudo mkdir -p "/etc/exordos_core/exordos_core.d"
+
     persist_migrate_complete
 fi
 
