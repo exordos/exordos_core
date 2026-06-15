@@ -56,7 +56,7 @@ build-backend = "setuptools.build_meta"
 dev = [
     "tox>=4.0.0",
     "tox-uv",
-    "pytest>=7.0.0",
+    "pytest<10.0.0,>=8.0.0",
 ]
 test = [
     "coverage>=4.0",
