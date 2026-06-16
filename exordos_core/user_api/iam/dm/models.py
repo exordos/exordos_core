@@ -48,7 +48,6 @@ from exordos_core.user_api.iam import exceptions as iam_exceptions
 from exordos_core.user_api.iam.clients import keycloak
 from exordos_core.user_api.iam.dm import types
 
-
 LOG = logging.getLogger(__name__)
 
 
