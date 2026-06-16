@@ -496,6 +496,38 @@ def machine_factory(default_pool: tp.Dict[str, tp.Any]):
 
 
 @pytest.fixture
+def volume_factory():
+    def factory(
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "volume-default",
+        size: int = 10,
+        project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or sys_uuid.uuid4()
+        volume = node_models.Volume(
+            uuid=uuid,
+            name=name,
+            size=size,
+            project_id=project_id,
+            **kwargs,
+        )
+        view = volume.dump_to_simple_view(
+            skip=[
+                "label",
+                "image",
+                "node",
+                "index",
+                "status",
+                "pool",
+            ]
+        )
+        return view
+
+    return factory
+
+
+@pytest.fixture
 def config_factory():
     def factory(
         target_node: sys_uuid.UUID,
