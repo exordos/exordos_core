@@ -100,7 +100,12 @@ markdown_extensions:
 
 nav:
   - Software: index.md
-  - Usage: usage/local_deployment.md
+  - Usage:
+    - Local Deployment: usage/local_deployment.md
+    - Admin Guide: usage/admin-guide.md
+    - Security Guide: usage/security.md
+    - Troubleshooting: usage/troubleshooting.md
+    - Wizard: usage/wizard.md
   - OpenAPI:
     - Boot API: openapi/openapi_boot.md
     - Orch API: openapi/openapi_orch.md

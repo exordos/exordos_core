@@ -11,7 +11,7 @@
 Установите Exordos CLI:
 
 ```bash
-curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
 ### Пакеты

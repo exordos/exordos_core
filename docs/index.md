@@ -11,7 +11,7 @@ Welcome to Exordos Core!
 ### Linux
 
 ```bash
-curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
 ## 🚀 Application Developer Guide
@@ -35,13 +35,13 @@ A guide for developers of the platform core and ecosystem elements — for examp
 
 Platform administrator documentation: managing the installation, configuring components, monitoring and maintaining the deployment.
 
-[Go to the guide →](admin-guide/index.md)
+[Go to the guide →](./usage/admin-guide.md)
 
 ## 🔒 Security Guide
 
 Documentation for security engineers. Special focus on IAM and user management, system auditing, access policies, and other information security aspects of the platform.
 
-[Go to the guide →](security-guide/index.md)
+[Go to the guide →](./usage/security.md)
 
 ## 🌐 Ecosystem
 

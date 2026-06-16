@@ -82,7 +82,7 @@ exordos elements install <element-name>
 Установка Exordos CLI:
 
 ```bash
-curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
 Packer [версии 1.9.2](https://hashicorp-releases.yandexcloud.net/packer/1.9.2/) или ранее из-за ограничений лицензирования. Скачайте и поместите в `/usr/local/bin/` или любую другую директорию из вашего `$PATH`.

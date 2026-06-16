@@ -266,4 +266,4 @@ After a successful build, your elements are ready for:
 
 ## Troubleshooting
 
-If you encounter issues during the build process — such as dependency resolution failures, VM image build errors, or manifest processing problems — refer to the [Troubleshooting Guide](troubleshooting.md) for detailed solutions and common fixes.
+If you encounter issues during the build process — such as dependency resolution failures, VM image build errors, or manifest processing problems — refer to the [Troubleshooting Guide](../usage/troubleshooting.md) for detailed solutions and common fixes.

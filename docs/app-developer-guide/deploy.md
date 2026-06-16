@@ -12,12 +12,12 @@ exordos elements install [OPTIONS] PATH_OR_NAME
 
 Key options:
 
-| Option | Description |
-|---|---|
-| `-r, --repository TEXT` | Repository endpoint where the element is stored [default: `https://repo.exordos.com/exordos-elements/`] |
-| `PATH_OR_NAME` | Path to a local manifest file or the name of an element in the repository |
+| Option | Description                                                                                           |
+|---|-------------------------------------------------------------------------------------------------------|
+| `-r, --repository TEXT` | Repository endpoint where the element is stored [default](https://repo.exordos.com/exordos-elements/) |
+| `PATH_OR_NAME` | Path to a local manifest file or the name of an element in the repository                             |
 
-You can install elements on a [public Exordos Core installation](public-installation.md). Or you can deploy a [private Exordos Core installation](private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](local-laptop-installation.md).
+You can install elements on a [public Exordos Core installation](../usage/public-installation.md). Or you can deploy a [private Exordos Core installation](../usage/private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](../usage/local-laptop-installation.md).
 
 ---
 
@@ -73,10 +73,10 @@ After a successful installation:
 
 - Verify the element status in the Exordos Core CLI
 - [Customize the manifest](../em/manifest.md) to tailor the element configuration to your needs
-- [Update the element](../admin-guide/index.md) when a new version is available
+- [Update the element](../usage/admin-guide.md) when a new version is available
 
 ---
 
 ## Troubleshooting
 
-If you encounter issues during deployment — such as element installation failures, dependency resolution errors, or realm connectivity problems — refer to the [Troubleshooting Guide](troubleshooting.md) for detailed solutions and common fixes.
+If you encounter issues during deployment — such as element installation failures, dependency resolution errors, or realm connectivity problems — refer to the [Troubleshooting Guide](../usage/troubleshooting.md) for detailed solutions and common fixes.
