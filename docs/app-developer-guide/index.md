@@ -82,7 +82,7 @@ Install the necessary tools below.
 Install Exordos CLI:
 
 ```bash
-curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
 The Packer [version 1.9.2](https://hashicorp-releases.yandexcloud.net/packer/1.9.2/) or earlier due to licensing limitation. Download and place into `/usr/local/bin/` or any other directory in your `$PATH`.

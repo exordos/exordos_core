@@ -11,7 +11,7 @@ It's assumed Linux (Ubuntu) is used as the OS on your machine.
 Install the Exordos CLI:
 
 ```bash
-curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
 ### Packages

@@ -17,4 +17,4 @@ bootstrap:
 	exordos bootstrap -i output -f -m core --admin-password admin --cidr 10.20.0.0/22
 
 mdlint:
-	markdownlint-cli2 --config .markdownlint.yaml "**/*.md" "#node_modules" --fix
+	markdownlint-cli2 --config .markdownlint.yaml "**/*.md" "#node_modules" "#!.venv" "#!.tox" --fix

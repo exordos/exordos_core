@@ -32,7 +32,7 @@ All other parameters are collected interactively via the wizard.
 
 `exordos init` runs as an **interactive wizard** — it guides you through a series of questions and makes decisions based on your answers. You don't need to know the options upfront; the wizard adapts its questions depending on the project type you select.
 
-[Learn more about the wizard →](wizard.md)
+[Learn more about the wizard →](../usage/wizard.md)
 
 ---
 
@@ -85,4 +85,4 @@ After the wizard finishes, `exordos init` prints a **summary** of everything it 
 
 ## Troubleshooting
 
-If you encounter issues during initialization — such as project type detection failures, manifest generation errors, or CI/CD configuration problems — refer to the [Troubleshooting Guide](troubleshooting.md) for detailed solutions and common fixes.
+If you encounter issues during initialization — such as project type detection failures, manifest generation errors, or CI/CD configuration problems — refer to the [Troubleshooting Guide](../usage/troubleshooting.md) for detailed solutions and common fixes.
