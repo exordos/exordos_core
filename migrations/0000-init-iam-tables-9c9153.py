@@ -162,7 +162,7 @@ class MigrationStep(migrations.AbstarctMigrationStep):
             """
                 CREATE TABLE IF NOT EXISTS "iam_projects" (
                     "uuid" UUID PRIMARY KEY,
-                    status VARCHAR(20) NOT NULL DEFAULT 'NEW'
+                    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
                         CHECK (
                             status IN (
                                 'NEW',
