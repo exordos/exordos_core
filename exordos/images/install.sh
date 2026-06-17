@@ -174,7 +174,7 @@ OS_DB__CONNECTION_URL="postgresql://$GC_PG_USER:$GC_PG_PASS@127.0.0.1:5432/$GC_P
 deactivate
 
 # Install CLI
-curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+curl -fsSL https://repo.exordos.com/install.sh | sh
 
 # Misc config
 # Disable DHCP for the main interface, it will be configured in the bootstrap script
