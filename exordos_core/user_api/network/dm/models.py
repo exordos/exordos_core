@@ -30,6 +30,7 @@ from restalchemy.dm import types_dynamic
 from restalchemy.dm import types_network
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import utils as u
 from exordos_core.secret import utils as su
 
@@ -159,13 +160,19 @@ class BackendPool(ChildModel):
         default=BalanceTypes.RR.value,
     )
 
+    def validate(self):
+        if len(self.endpoints) == 0:
+            raise ex_exceptions.ValidateException(err="No endpoints defined")
+
     def delete(self, session=None, **kwargs):
         # TODO: optimize this "foreign key" check
         for v in Vhost.objects.get_all(filters={"parent": dm_filters.EQ(self.parent)}):
             for r in Route.objects.get_all(filters={"parent": dm_filters.EQ(v.uuid)}):
-                for a in r.condition.actions:
-                    if a.kind == "backend" and a.pool == self.uuid:
-                        raise ValueError("Backend pool in use, remove route first")
+                for action in r.condition.actions:
+                    if action.kind == "backend" and action.pool.uuid == self.uuid:
+                        raise ex_exceptions.ValidateException(
+                            err="Backend pool in use, remove route first"
+                        )
         return super().delete(session=session, **kwargs)
 
 
@@ -248,23 +255,25 @@ class Vhost(ChildModel):
 
     def _validate(self, check_all=False):
         if self.proxy_protocol_from and self.protocol == Protocol.UDP.value:
-            raise ValueError(
-                "'proxy_protocol_from' is only supported for 'tcp'-based protocols."
+            raise ex_exceptions.ValidateException(
+                err="'proxy_protocol_from' is only supported for 'tcp'-based protocols."
             )
         if self.protocol.startswith("http"):
             if not self.domains:
-                raise ValueError(
-                    "L7 protocols have to get at least one value in `domains` field."
+                raise ex_exceptions.ValidateException(
+                    err="L7 protocols have to get at least one value in `domains` field."
                 )
             if self.protocol == Protocol.HTTPS.value:
                 if self.cert is None:
-                    raise ValueError("Certificate is required for HTTPS protocol.")
+                    raise ex_exceptions.ValidateException(
+                        err="Certificate is required for HTTPS protocol."
+                    )
                 try:
                     x509.load_pem_x509_certificate(
                         self.cert.crt.encode("utf-8"), default_backend()
                     )
                 except ValueError:
-                    raise ValueError("cert=crt is invalid.")
+                    raise ex_exceptions.ValidateException(err="cert=crt is invalid.")
                 try:
                     serialization.load_pem_private_key(
                         self.cert.key.encode("utf-8"),
@@ -272,12 +281,16 @@ class Vhost(ChildModel):
                         backend=default_backend(),
                     )
                 except ValueError:
-                    raise ValueError("cert=key is invalid.")
+                    raise ex_exceptions.ValidateException(err="cert=key is invalid.")
         else:
             if self.domains:
-                raise ValueError("L4 protocols don't support `domains` field yet.")
+                raise ex_exceptions.ValidateException(
+                    err="L4 protocols don't support `domains` field yet."
+                )
             if self.cert:
-                raise ValueError("L4 protocols don't support `cert` field yet.")
+                raise ex_exceptions.ValidateException(
+                    err="L4 protocols don't support `cert` field yet."
+                )
         fltr = {
             "uuid": dm_filters.NE(self.uuid),
             "parent": dm_filters.EQ(self.parent),
@@ -285,15 +298,16 @@ class Vhost(ChildModel):
             "protocol": dm_filters.In(PROTOCOL_CONFLICT_MAPPING[self.protocol]),
         }
         for vhost in Vhost.objects.get_all(filters=fltr, limit=1):
-            raise ValueError(
-                "Protocol+port pair conflicts with another vhost %s." % str(vhost.uuid)
+            raise ex_exceptions.ValidateException(
+                err="Protocol+port pair conflicts with another vhost %s."
+                % str(vhost.uuid)
             )
         for source in self.external_sources:
             if source.kind == "ssh_forward" and not su.validate_openssh_key(
                 source.private_key
             ):
-                raise ValueError(
-                    "Private key for external_source with type ssh_forward is invalid."
+                raise ex_exceptions.ValidateException(
+                    err="Private key for external_source with type ssh_forward is invalid."
                 )
 
     def insert(self, session=None):
@@ -578,10 +592,14 @@ class Route(ChildModel):
     def _validate(self, check_all=False):
         if self.parent.protocol.startswith("http"):
             if self.condition.kind == RouteRawConditionKind.KIND:
-                raise ValueError("L7 protocols can't have `raw` routes.")
+                raise ex_exceptions.ValidateException(
+                    err="L7 protocols can't have `raw` routes."
+                )
         else:
             if self.condition.kind != RouteRawConditionKind.KIND:
-                raise ValueError("L4 protocols can have only `raw` routes.")
+                raise ex_exceptions.ValidateException(
+                    err="L4 protocols can have only `raw` routes."
+                )
 
     def insert(self, session=None):
         self._validate()
