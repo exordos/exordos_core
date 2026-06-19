@@ -40,6 +40,12 @@ class OpenApiValidateException(CommonValueErrorException):
     err: str
 
 
+class ValidateException(CommonValueErrorException):
+    __template__ = "validate error: {err}"
+
+    err: str
+
+
 class NamespaceNotFound(GCException):
     __template__ = "Namespace with name '{name}' was not found."
 
