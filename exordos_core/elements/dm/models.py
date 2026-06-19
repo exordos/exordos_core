@@ -496,11 +496,33 @@ class Element(
         self._requirements = []
 
     def delete(self, session=None):
-        for resource in Resource.objects.get_all(
-            filters={"element": ra_filters.EQ(self)}
-        ):
+        resources = list(
+            Resource.objects.get_all(filters={"element": ra_filters.EQ(self)})
+        )
+        # Collect agent UUIDs before resources are deleted so we can GC them after.
+        agent_uuids = {
+            resource.target_resource.agent
+            for resource in resources
+            if resource.target_resource is not None
+            and resource.target_resource.agent is not None
+        }
+        for resource in resources:
             resource.delete(session=session)
         super().delete(session=session)
+        # Delete ua_agents that have no remaining target resources after this element
+        # was removed.  The agent UUID equals the machine system UUID of the DP pod;
+        # only remove it when no other element still uses it.
+        for agent_uuid in agent_uuids:
+            remaining = sdk_models.TargetResource.objects.get_all(
+                filters={"agent": ra_filters.EQ(str(agent_uuid))}
+            )
+            if remaining:
+                continue
+            for agent in sdk_models.UniversalAgent.objects.get_all(
+                filters={"uuid": ra_filters.EQ(agent_uuid)}
+            ):
+                agent.delete(session=session)
+                LOG.info("Deleted orphan agent %s after element delete", agent_uuid)
 
     @property
     def original(self):
