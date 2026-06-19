@@ -13,7 +13,7 @@ env:
   PROJECT_NAME: exordos_core
   REPO_ENDPOINT_PUT: http://10.20.0.1:8082
   PACKER_VERSION: "1.9.2"
-  CORE_ENDPOINT_URL: http://10.20.0.2:11010
+  CORE_ENDPOINT_URL: http://10.20.0.2:80/api/core
   CORE_USERNAME: "admin"
   CORE_PASSWORD: "admin"
 
@@ -34,7 +34,6 @@ jobs:
           set -eux
           mkdir -p ${ARTIFACTS_PATH}
 
-          source ~/.profile
           VERSION="$(exordos get-version .)"
 
           # Build Exordos Core
@@ -64,13 +63,15 @@ jobs:
         with:
           version: ${{ env.PACKER_VERSION }}
       - name: Install exordos
-        run: curl -fsSL https://repo.exordos.com/install.sh | sudo sh
+        run: curl -fsSL https://repo.exordos.com/install.sh | sh
       - name: set exordos config
         run: |
           exordos settings set-realm default --endpoint $CORE_ENDPOINT_URL
           exordos settings set-context default --name default --user $CORE_USERNAME --password $CORE_PASSWORD
       - name: Install hypervisor
-        run: sudo exordos compute hypervisors init
+        run: |
+          EXORDOS_BIN=$(which exordos)
+          sudo $EXORDOS_BIN compute hypervisors init
       - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
@@ -83,14 +84,14 @@ jobs:
       - name: check exordos core
         timeout-minutes: 10
         run: |
-          # set -eux
+          set -eux
           
-          for i in {1..10}; do
+          for i in {1..20}; do
             if exordos ready_api; then
               echo "Exordos Core API is ready"
               break
             fi
-            echo "Waiting for Exordos Core API... ($i/10)"
+            echo "Waiting for Exordos Core API... ($i/20)"
             sleep 5
           done
           
