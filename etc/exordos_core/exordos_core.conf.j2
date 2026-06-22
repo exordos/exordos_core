@@ -36,6 +36,14 @@ initrd = http://{{ boot_ip }}:8080/bios/initrd.img
 kernel = http://{{ boot_ip }}:8080/bios/vmlinuz
 
 
+[launchpad]
+common_registrator_opts = exordos_core.cmd.repo_proxy_gservice:register_common_opts
+common_initializer = exordos_core.cmd.repo_proxy_gservice:init_common_conf
+services =
+    exordos_core.repo.builders.repository:RepoProxyBuilderService,
+    exordos_core.repo.builders.element:RepoElementBuilderService,
+    exordos_core.repo.agents.universal.service:RepoElementAgentService
+
 [events]
 enabled = False
 # client_type = async

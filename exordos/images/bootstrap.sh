@@ -69,6 +69,7 @@ if [[ -n "$PERSISTENT_DISK" ]]; then
             cp "${PERSISTENT_MOUNT}/var/lib/exordos/data/etc/exordos_core/exordos_core.conf" /etc/exordos_core/exordos_core.conf
         fi
     fi
+    sudo chown -R postgres:postgres /var/log/postgresql
     mkdir -p /var/lib/exordos/exordos_core
     migrate_to_persistent "/var/lib/exordos/exordos_core" "${PERSISTENT_MOUNT}/var/lib/exordos/exordos_core"
     mkdir -p /var/lib/exordos/data
@@ -151,6 +152,7 @@ sudo systemctl enable --now \
     ec-boot-api \
     ec-gservice \
     ec-core-agent \
+    exordos-repo-proxy-gservice \
     exordos-universal-agent \
     exordos-universal-scheduler \
     pdns \

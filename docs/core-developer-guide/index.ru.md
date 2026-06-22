@@ -79,4 +79,5 @@ Reconciliation выполняет `ElementManagerBuilder` (`elements/services/bu
 
 - [Справочник по манифесту](../em/manifest.ru.md)
 - [Service as a Service API](../em/service.md)
+- [Repo Proxy](./repo-proxy.ru.md)
 - [Диагностика проблем](../usage/troubleshooting.ru.md)
