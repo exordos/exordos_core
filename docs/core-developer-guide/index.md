@@ -79,4 +79,5 @@ and so on). See [Troubleshooting](../usage/troubleshooting.md) for the symptoms 
 - [Manifest reference](../em/manifest.md)
 - [Service as a Service API](../em/service.md)
 - [Exports reference](./exports.md)
+- [Repo Proxy](./repo-proxy.md)
 - [Troubleshooting](../usage/troubleshooting.md)

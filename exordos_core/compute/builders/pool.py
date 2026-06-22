@@ -28,6 +28,7 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.pool.dm import models as pool_models
+from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
 
@@ -218,6 +219,31 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
         return True
 
+    def _resolve_image(self, image: str | None) -> str | None:
+        """Resolve image URN to URI if needed.
+
+        If the image is a URN (e.g. ``urn:images:<uuid>``), look up the
+        corresponding :class:`RepoArtifact` and return its ``uri``.
+        Otherwise return the image as-is.
+        """
+        if image is None or not image.startswith("urn:"):
+            return image
+
+        # The same element may exist in multiple repositories, so the URN
+        # can match several artifacts. Pick the one from the highest-priority
+        # repository (Repository.priority: higher value = more priority).
+        artifacts = repo_models.RepoArtifact.objects.get_all(
+            filters={"urn": dm_filters.EQ(image)}
+        )
+        if not artifacts:
+            raise ValueError(f"Artifact for URN '{image}' not found")
+
+        if len(artifacts) == 1:
+            return artifacts[0].uri
+
+        artifact = max(artifacts, key=lambda a: a.element.repository.priority)
+        return artifact.uri
+
     def _actualize_machine_derivatives_on_create_update(
         self,
         machine: pool_models.Machine,
@@ -239,6 +265,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
         if port is None or volume is None:
             raise ValueError(f"Machine {machine.uuid} has no port or volume")
+
+        # Resolve image URN to URI if the image is specified as a URN
+        resolved_image = self._resolve_image(volume.image)
 
         # Save guest agent to speed up scheduling process
         guest_agent = ua_models.UniversalAgent.objects.get_one_or_none(
@@ -273,7 +302,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 _, guest_actual = machine_guest_pair
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
-                if guest_actual and guest_actual.image != volume.image:
+                if guest_actual and guest_actual.image != resolved_image:
                     boot = nc.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
@@ -294,7 +323,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # Guest machine
         guest = pool_models.GuestMachine(
             uuid=machine.uuid,
-            image=volume.image,
+            image=resolved_image,
             agent_uuid=guest_agent.uuid,
             hostname=machine.node.hostname or machine.node.name,
             boot=boot,

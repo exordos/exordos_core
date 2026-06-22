@@ -106,4 +106,13 @@ def get_project_path() -> str:
     return os.sep.join(__file__.split(os.sep)[:-3])
 
 
+def urn(namespace: str, uuid: sys_uuid.UUID | str) -> str:
+    return f"urn:{namespace}:{uuid}"
+
+
+def urn_parse(urn: str) -> tuple[str, sys_uuid.UUID]:
+    namespace, uuid = urn.split(":")[1:]
+    return namespace, sys_uuid.UUID(uuid)
+
+
 PROJECT_PATH = get_project_path()
