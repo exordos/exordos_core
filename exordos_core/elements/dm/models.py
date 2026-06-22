@@ -167,12 +167,14 @@ class Manifest(
         default=None,
     )
 
-    def install(self) -> "Manifest":
+    def install(self, session: tp.Any | None = None) -> tuple["Manifest", "Element"]:
         """
         Create an element from the manifest if it does not exist.
 
         """
-        if Element.objects.get_one_or_none(filters={"name": ra_filters.EQ(self.name)}):
+        if Element.objects.get_one_or_none(
+            filters={"name": ra_filters.EQ(self.name)}, session=session
+        ):
             raise ValueError(f"Element '{self.name}' already exists.")
 
         element_engine.load_from_database()
@@ -186,14 +188,15 @@ class Manifest(
             project_id=utils.get_project_id(),
             manifest=self,
         )
-        element.save()
+        element.save(session=session)
         element_engine.add_element(element)
 
         return self.apply_element(element)
 
-    def upgrade(self) -> "Manifest":
+    def upgrade(self, session: tp.Any | None = None) -> tuple["Manifest", "Element"]:
         element = Element.objects.get_one_or_none(
-            filters={"name": ra_filters.EQ(self.name)}
+            filters={"name": ra_filters.EQ(self.name)},
+            session=session,
         )
         if not element:
             raise ValueError(
@@ -206,7 +209,7 @@ class Manifest(
         element.api_version = self.api_version
         element.description = self.description
         element.manifest = self
-        element.save()
+        element.save(session=session)
         return self.apply_element(element)
 
     def apply_requirements(self, element: "Element"):
@@ -346,7 +349,7 @@ class Manifest(
             element_engine.delete_resource(res)
             res.delete()
 
-    def apply_element(self, element: "Element") -> "Manifest":
+    def apply_element(self, element: "Element") -> tuple["Manifest", "Element"]:
         """
         Create or update imports, exports, resources from element.
         """
@@ -355,7 +358,7 @@ class Manifest(
         self.apply_imports(element)
         self.apply_resources(element)
         self.apply_exports(element)
-        return self
+        return self, element
 
     @staticmethod
     def _check_no_dependents(element: "Element") -> None:
@@ -396,7 +399,7 @@ class Manifest(
                                 f"'{other_element.version}'."
                             )
 
-    def uninstall(self) -> "Manifest":
+    def uninstall(self, session: tp.Any | None = None) -> "Manifest":
         element_engine.load_from_database()
         filters = ra_filters.AND(
             ra_filters.OR(
@@ -405,13 +408,13 @@ class Manifest(
                     "version": ra_filters.EQ(self.version),
                 },
                 {"manifest": ra_filters.EQ(self.uuid)},
-            )
+            ),
         )
-        elements = Element.objects.get_all(filters=filters)
+        elements = Element.objects.get_all(filters=filters, session=session)
         for element in elements:
             self._check_no_dependents(element)
         for element in elements:
-            element.delete()
+            element.delete(session=session)
             element_engine.remove_element(element)
         return self
 

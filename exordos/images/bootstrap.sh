@@ -151,6 +151,7 @@ sudo systemctl enable --now \
     ec-boot-api \
     ec-gservice \
     ec-core-agent \
+    exordos-repo-proxy-gservice \
     exordos-universal-agent \
     exordos-universal-scheduler \
     pdns \

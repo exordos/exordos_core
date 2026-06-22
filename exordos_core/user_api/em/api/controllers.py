@@ -85,11 +85,13 @@ class ManifestController(
 
     @actions.post
     def install(self, resource):
-        return resource.install()
+        manifest, _ = resource.install()
+        return manifest
 
     @actions.post
     def upgrade(self, resource):
-        return resource.upgrade()
+        manifest, _ = resource.upgrade()
+        return manifest
 
     @actions.post
     def uninstall(self, resource):

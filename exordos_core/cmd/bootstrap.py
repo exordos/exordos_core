@@ -26,7 +26,6 @@ import time
 import typing as tp
 import uuid as sys_uuid
 
-from gcl_sdk.clients.http import base as http_base
 from oslo_config import cfg
 from restalchemy.common import config_opts as ra_config_opts
 from restalchemy.dm import filters as dm_filters
@@ -39,15 +38,16 @@ from exordos_core.common import config
 from exordos_core.common import constants as c
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
-from exordos_core.elements.dm import models as em_models
+from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
 USER = "ubuntu"
 GCTL_CFG_DIR = f"/home/{USER}/.exordos"
 SPEC_PATH = "/mnt/cdrom/spec.json"
-MANIFEST_PATH = "/mnt/cdrom/core.yaml"
-MANIFEST_COLLECTION = "/v1/em/manifests/"
-ECOSYSTEM_REALM_MANIFEST_PATH = "/mnt/cdrom/ecosystem_realm.yaml"
+MANIFEST_DIR = "/mnt/cdrom/"
+REPO_COLLECTION = "/v1/repo/repositories/"
+REPO_ELEMENT_COLLECTION = "/v1/repo/elements/"
+BOOTSTRAP_REPO_NAME = "bootstrap_repo_975aab1b"
 MAIN_SUBNET_UUID = sys_uuid.UUID("c910a7e1-61ae-4d56-bdd6-a59faa3cbda3")
 
 
@@ -58,14 +58,9 @@ cli_opts = [
         help="Should the script retry on errors",
     ),
     cfg.StrOpt(
-        "manifest_path",
-        default=MANIFEST_PATH,
-        help="Path to the core manifest",
-    ),
-    cfg.StrOpt(
-        "ecosystem_realm_manifest_path",
-        default=ECOSYSTEM_REALM_MANIFEST_PATH,
-        help="Path to the ecosystem realm manifest",
+        "manifests_dir",
+        default=MANIFEST_DIR,
+        help="Directory containing manifest files",
     ),
     cfg.StrOpt(
         "core_endpoint",
@@ -263,51 +258,172 @@ def _ensure_exordos_config(spec: dict[str, tp.Any]):
     os.system("exordos autocomplete")
 
 
-def _install_element_manifest(
-    element_name: str,
-    manifest_path: str,
-    spec: dict[str, tp.Any],
-):
-    """Idempotent element manifest installation."""
-    element = em_models.Element.objects.get_one_or_none(
-        filters={"name": dm_filters.EQ(element_name)}
+def _ensure_repository(
+    name: str,
+    driver_spec: repo_models.NginxDriverSpec | repo_models.BootstrapDriverSpec,
+    priority: int = 2048,
+    refresh_rate: int = 3600,
+    sync_mode: str = repo_models.SyncMode.LAZY.value,
+    project_id: str = c.SERVICE_PROJECT_ID,
+) -> repo_models.Repository:
+    """Ensure repository exists and is active.
+
+    Creates the repository if it doesn't exist and waits for it to become active.
+
+    Args:
+        name: Repository name
+        driver_spec: Driver specification (NginxDriverSpec or BootstrapDriverSpec)
+        priority: Repository priority (0-4096, higher = more priority)
+        refresh_rate: Refresh interval in seconds (0 = disabled)
+        sync_mode: Sync mode (copy or lazy)
+        project_id: Project ID
+
+    Returns:
+        The active repository
+
+    Raises:
+        RuntimeError: If repository fails to become active
+    """
+    repository = repo_models.Repository.objects.get_one_or_none(
+        filters={
+            "name": dm_filters.EQ(name),
+        }
+    )
+    if not repository:
+        repository = repo_models.Repository(
+            name=name,
+            priority=priority,
+            refresh_rate=refresh_rate,
+            sync_mode=sync_mode,
+            driver_spec=driver_spec,
+            project_id=project_id,
+        )
+        repository.save()
+
+    # Wait for repository to be active
+    attempts = 120
+    while attempts > 0:
+        repository = repo_models.Repository.objects.get_one(
+            filters={"uuid": dm_filters.EQ(repository.uuid)}
+        )
+        if repository.status == repo_models.RepositoryStatus.ACTIVE:
+            break
+        time.sleep(0.5)
+        attempts -= 1
+    else:
+        raise RuntimeError(f"Repository {name} is not active")
+
+    return repository
+
+
+def _ensure_bootstrap_repo(manifests_dir: str) -> repo_models.Repository:
+    """Ensure bootstrap repository exists and is active.
+
+    Creates the bootstrap repository if it doesn't exist and waits for it
+    to become active.
+
+    Args:
+        manifests_dir: Directory containing manifest files for bootstrap repo
+
+    Returns:
+        The active bootstrap repository
+
+    Raises:
+        RuntimeError: If repository fails to become active
+    """
+    return _ensure_repository(
+        name=BOOTSTRAP_REPO_NAME,
+        driver_spec=repo_models.BootstrapDriverSpec(manifests_dir=manifests_dir),
+        priority=1024,
+        refresh_rate=0,
+        sync_mode=repo_models.SyncMode.COPY.value,
     )
 
-    if element is not None:
+
+def _ensure_repositories_from_spec(spec: dict[str, tp.Any]) -> None:
+    """Ensure repositories from spec exist and are active.
+
+    Iterates through the repository URLs in the spec and creates them
+    if they don't exist.
+
+    Args:
+        spec: Specification dictionary containing repository URLs
+    """
+    repositories = spec.get("repository", [])
+    if not repositories:
+        LOG.info("No repositories found in spec")
+        return
+
+    for repo_url in repositories:
+        # Generate a unique name from the URL
+        repo_name = (
+            repo_url.replace("https://", "")
+            .replace("http://", "")
+            .replace("/", "_")
+            .replace(c.ELEMENTS_PATH, "")
+        )
+
+        try:
+            _ensure_repository(
+                name=repo_name,
+                driver_spec=repo_models.NginxDriverSpec(url=repo_url),
+                priority=2048,
+                refresh_rate=3600,
+                sync_mode=repo_models.SyncMode.LAZY.value,
+            )
+            LOG.info("Repository %s (%s) is active", repo_name, repo_url)
+        except Exception:
+            LOG.exception("Failed to ensure repository %s (%s)", repo_name, repo_url)
+
+
+def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
+    """Idempotent element manifest installation."""
+    elements = repo_models.RepoElement.objects.get_all(
+        filters={
+            "name": dm_filters.EQ(element_name),
+            "status": dm_filters.In(
+                [
+                    repo_models.RepoElementStatus.ACTIVE,
+                    repo_models.RepoElementStatus.IN_PROGRESS,
+                    repo_models.RepoElementStatus.ERROR,
+                ]
+            ),
+        }
+    )
+
+    if elements:
         LOG.info("Element %s already installed, skipping", element_name)
         return
 
-    if not os.path.exists(manifest_path):
-        LOG.info("No manifest file found at %s", manifest_path)
-        return
+    _ensure_bootstrap_repo(manifests_dir)
 
-    with open(manifest_path) as f:
-        manifest_data = yaml.safe_load(f)
-
-    auth = http_base.CoreIamAuthenticator(
-        base_url="http://localhost:11010",
-        username=CONF.core_user,
-        password=spec["admin_password"],
-        client_id=spec["iam"]["default_client_id"],
-        client_secret=spec["iam"]["default_client_secret"],
-        client_uuid=sys_uuid.UUID(spec["iam"]["default_client_uuid"]),
+    # NOTE(akremenetsky): At bootstrap stage, only bootstrap repository exists,
+    # so we can use simple first-match logic by element name. Other repositories
+    # are not connected yet.
+    elements = repo_models.RepoElement.objects.get_all(
+        filters={"name": dm_filters.EQ(element_name)}
     )
-
-    client = http_base.CollectionBaseClient(
-        base_url="http://localhost:11010", auth=auth
-    )
-
-    manifest_data = client.create(MANIFEST_COLLECTION, manifest_data)
-    try:
-        client.do_action(
-            MANIFEST_COLLECTION, "install", manifest_data["uuid"], invoke=True
+    if not elements:
+        raise RuntimeError(
+            f"Unable to find element {element_name} in the bootstrap repository"
         )
-    except Exception:
-        LOG.exception(
-            "Failed to install manifest %s, deleting...", manifest_data["uuid"]
+
+    element = elements[0]
+
+    # Wait for element to be available
+    attempts = 60
+    while attempts > 0:
+        element = repo_models.RepoElement.objects.get_one(
+            filters={"uuid": dm_filters.EQ(element.uuid)}
         )
-        client.delete(MANIFEST_COLLECTION, manifest_data["uuid"])
-        raise
+        if element.status == repo_models.RepoElementStatus.AVAILABLE:
+            break
+        time.sleep(0.5)
+        attempts -= 1
+    else:
+        raise RuntimeError(f"Element {element_name} is not available")
+
+    element.install()
 
 
 def _set_defaults_vs(spec: dict[str, tp.Any]):
@@ -388,10 +504,9 @@ def main() -> None:
             )
             bootstrap_defaults.add_core_set(spec)
             _ensure_exordos_config(spec)
-            _install_element_manifest("core", CONF.manifest_path, spec)
-            _install_element_manifest(
-                "ecosystem_realm", CONF.ecosystem_realm_manifest_path, spec
-            )
+            _install_element_from_bootstrap_repo("core", CONF.manifests_dir)
+            _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
+            _ensure_repositories_from_spec(spec)
             _set_defaults_vs(spec)
             return
         except Exception:
