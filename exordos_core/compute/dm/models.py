@@ -140,11 +140,10 @@ class MachinePool(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableWithJSONFieldsMixin,
+    orm.SQLStorableMixin,
     models.SimpleViewMixin,
 ):
     __tablename__ = "machine_pools"
-    __jsonfields__ = ["driver_spec"]
     __driver_map__ = {}
 
     driver_spec = properties.property(types.Dict(), default=dict)
@@ -542,11 +541,10 @@ class MachinePoolReservations(
 
 class Network(
     cm.ModelWithFullAsset,
-    orm.SQLStorableWithJSONFieldsMixin,
+    orm.SQLStorableMixin,
     models.SimpleViewMixin,
 ):
     __tablename__ = "compute_networks"
-    __jsonfields__ = ["driver_spec"]
     __driver_map__ = {}
 
     driver_spec = properties.property(types.Dict(), default=lambda: {})
