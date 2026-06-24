@@ -158,6 +158,7 @@ ec-gservice = "exordos_core.cmd.gservice:main"
 ec-core-agent = "exordos_core.cmd.core_agent:main"
 ec-bootstrap = "exordos_core.cmd.bootstrap:main"
 ec-bootstrap-templates = "exordos_core.cmd.bootstrap_templates:main"
+exordos-repo-proxy-gservice = "exordos_core.cmd.repo_proxy_gservice:main"
 
 [project.entry-points."gcn_machine_pool_driver"]
 DummyPoolDriver = "exordos_core.compute.pool.drivers.base:DummyPoolDriver"
@@ -166,6 +167,9 @@ libvirt = "exordos_core.compute.pool.drivers.libvirt:LibvirtPoolDriver"
 [project.entry-points."gcn_network_driver"]
 DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
+
+[project.entry-points."exordos.repo_proxy.drivers"]
+NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 
 [project.entry-points."gcl_sdk_event_payloads"]
 IamUserRegistration = "exordos_core.events.payloads:RegistrationEventPayload"

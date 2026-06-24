@@ -23,6 +23,7 @@ from exordos_core.user_api.dns.api import routes as dns_routes
 from exordos_core.user_api.em.api import routes as em_routes
 from exordos_core.user_api.iam.api import routes as iam_routes
 from exordos_core.user_api.network.api import routes as network_routes
+from exordos_core.user_api.repo.api import routes as repo_routes
 from exordos_core.user_api.secret.api import routes as secret_routes
 from exordos_core.user_api.security.api import routes as security_routes
 from exordos_core.user_api.vs.api import routes as vs_routers
@@ -52,3 +53,4 @@ class ApiEndpointRoute(routes.Route):
     security = routes.route(security_routes.SecurityRoute)
     compute = routes.route(compute_routes.ComputeRoute)
     network = routes.route(network_routes.NetworkRoute)
+    repo = routes.route(repo_routes.RepoRoute)
