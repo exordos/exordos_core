@@ -1143,6 +1143,15 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                     volume=volume.uuid, machine=volume.machine
                 )
             dev = disk.find("target").get("dev")
+
+            pool_xml = ET.fromstring(storage_pool.XMLDesc())
+            pool_type = StoragePoolType(pool_xml.get("type"))
+
+            # ZFS zvols are block devices; QEMU cannot grow them directly.
+            # Resize the zvol first, then notify the running guest.
+            if pool_type == StoragePoolType.ZFS:
+                vir_volume.resize(new_size_bytes)
+
             domain.blockResize(
                 dev, new_size_bytes, libvirt.VIR_DOMAIN_BLOCK_RESIZE_BYTES
             )
