@@ -191,8 +191,33 @@ class ElementResourceController(
 class ResourceAllController(iam_controllers.PolicyBasedController):
     """Controller for /v1/resources/ endpoint"""
 
-    # NOTE(slashburygin): we need it here because in restalchemy we can add model to resources only once
-    __resource__ = resources.ResourceMap.model_type_to_resource[models.Resource]
+    __resource__ = resources.ResourceByModelWithCustomProps(
+        model_class=models.Resource,
+        convert_underscore=False,
+        hidden_fields=resources.HiddenFieldMap(
+            filter=[
+                "target_resource",
+                "actual_resource",
+            ],
+            get=[
+                "target_resource",
+                "actual_resource",
+            ],
+            create=[
+                "target_resource",
+                "actual_resource",
+            ],
+            update=[
+                "target_resource",
+                "actual_resource",
+                "status",
+                "created_at",
+                "updated_at",
+                "name",
+                "version",
+            ],
+        ),
+    )
 
     def __init__(self, *args, **kwargs):
         models.element_engine.load_from_database()
