@@ -221,3 +221,61 @@ class TestHypervisorUserApi:
 
         assert response.status_code == 200
         assert len(response.json()) == 1
+
+    def test_hypervisors_add_different_connection_uris(
+        self,
+        pool_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["compute", "hypervisors"])
+
+        hypervisor1 = pool_factory(
+            driver_spec={
+                "driver": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.10/system",
+            },
+        )
+        hypervisor1.pop("status", None)
+        response = client.post(url, json=hypervisor1)
+        assert response.status_code == 201
+
+        hypervisor2 = pool_factory(
+            driver_spec={
+                "driver": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.20/system",
+            },
+        )
+        hypervisor2.pop("status", None)
+        response = client.post(url, json=hypervisor2)
+        assert response.status_code == 201
+
+    def test_hypervisors_add_same_connection_uri(
+        self,
+        pool_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["compute", "hypervisors"])
+
+        hypervisor1 = pool_factory(
+            driver_spec={
+                "driver": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.10/system",
+            },
+        )
+        hypervisor1.pop("status", None)
+        response = client.post(url, json=hypervisor1)
+        assert response.status_code == 201
+
+        hypervisor2 = pool_factory(
+            driver_spec={
+                "driver": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.10/system",
+            },
+        )
+        hypervisor2.pop("status", None)
+        with pytest.raises(bazooka_exc.ConflictError):
+            client.post(url, json=hypervisor2)
