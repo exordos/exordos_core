@@ -125,3 +125,4 @@ nav:
     - Load Balancer as a Service API: network/load_balancer.md
   - Secrets:
       - Certificates: secret/certificates.md
+      - Passwords: secret/passwords.md

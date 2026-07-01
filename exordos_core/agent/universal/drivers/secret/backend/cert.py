@@ -117,7 +117,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
             # return cert.to_resource_value()
 
         # Should the cert be renewed?
-        if not cert.is_under_threshold(cert):
+        if not cert.is_under_threshold():
             return cert.to_resource_value()
 
         pkey_pem, csr_pem, fullchain_pem = acme.renew_cert(

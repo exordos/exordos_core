@@ -13809,7 +13809,6 @@ components:
           minLength: 1
           maxLength: 512
           example: any_string
-          readOnly: true
           nullable: true
       required:
         - project_id
@@ -13896,7 +13895,6 @@ components:
           minLength: 1
           maxLength: 512
           example: any_string
-          readOnly: true
           nullable: true
       required:
         - project_id
@@ -13983,7 +13981,6 @@ components:
           minLength: 1
           maxLength: 512
           example: any_string
-          readOnly: true
           nullable: true
       required:
         - project_id
@@ -14070,7 +14067,6 @@ components:
           minLength: 1
           maxLength: 512
           example: any_string
-          readOnly: true
           nullable: true
       required:
         - project_id
