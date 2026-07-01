@@ -27,11 +27,11 @@ wheels = [
 
 [[package]]
 name = "altcha"
-version = "2.0.0"
+version = "2.0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/17/94/ba7bf097d4fa50de1dc0028cf1f837fb69b1e15b8a722ae77a9389d8d32a/altcha-2.0.0.tar.gz", hash = "sha256:51aeb28cc40ba9e467e962dff0a9f8ca78ceea07e7279b13e81808cc90e330ca", size = 23026, upload-time = "2026-04-07T11:56:53.682Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/c2/295917abf45cab0a33c2cd167beb645c68044e7b45967880375b4d4339ce/altcha-2.0.2.tar.gz", hash = "sha256:5897bb3812569e9b7b5234d7d93e216d9f158c9ccf0f5b822380bcdba59c1626", size = 23492, upload-time = "2026-06-20T10:16:26.389Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/2b/c8b31649a333bb61f489f371cc626eac447f6db16508268f2ce9b4a6b627/altcha-2.0.0-py3-none-any.whl", hash = "sha256:51763c2eaec26874a368be5fa9c34c9a9385d84e3c899635412f51944fad3ee4", size = 18408, upload-time = "2026-04-07T11:56:52.175Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/9e/c9a1bcdfb33bc91c0f22f675c69fe7a7743f65b16eed9b80fd070ecc583b/altcha-2.0.2-py3-none-any.whl", hash = "sha256:1631905ac468538fccff04cabf6d2f026c03fe170aa96cab0af799363cb405e8", size = 18744, upload-time = "2026-06-20T10:16:25.228Z" },
 ]
 
 [[package]]
