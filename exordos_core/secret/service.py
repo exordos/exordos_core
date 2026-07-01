@@ -32,24 +32,6 @@ LOG = logging.getLogger(__name__)
 
 
 class SecretServiceBuilder(basic.BasicService):
-    def _get_new_passwords(
-        self,
-        limit: int = c.DEFAULT_SQL_LIMIT,
-    ) -> tp.List[models.Password]:
-        return models.Password.get_new_passwords(limit=limit)
-
-    def _get_changed_passwords(
-        self,
-        limit: int = c.DEFAULT_SQL_LIMIT,
-    ) -> tp.List[models.Password]:
-        return models.Password.get_updated_passwords(limit=limit)
-
-    def _get_deleted_passwords(
-        self,
-        limit: int = c.DEFAULT_SQL_LIMIT,
-    ) -> tp.List[ua_models.TargetResource]:
-        return models.Password.get_deleted_passwords(limit=limit)
-
     def _get_new_certificates(
         self,
         limit: int = c.DEFAULT_SQL_LIMIT,
@@ -259,74 +241,6 @@ class SecretServiceBuilder(basic.BasicService):
                 LOG.exception(
                     "Error deleting resource(%s) %s", secret.kind, secret.uuid
                 )
-
-    # Passwords
-
-    def _actualize_new_passwords(self) -> None:
-        """Actualize new passwords."""
-        passwords = self._get_new_passwords()
-        self._actualize_new_secrets(sc.PASSWORD_KIND, passwords)
-
-    def _actualize_changed_passwords(self) -> None:
-        """Actualize passwords changed by user."""
-        changed_passwords = {p.uuid: p for p in self._get_changed_passwords()}
-        self._actualize_changed_secrets(sc.PASSWORD_KIND, changed_passwords)
-
-    def _actualize_outdated_password(
-        self,
-        password: models.Password,
-        target_resource: ua_models.TargetResource,
-        actual_resource: ua_models.Resource,
-    ) -> None:
-        """Actualize outdated password."""
-        password_updated = False
-        status_updated = False
-        actual_pass = models.Password.from_ua_resource(actual_resource)
-
-        # `ACTIVE` only if the hash is the same
-        if (
-            actual_resource.status == sc.SecretStatus.ACTIVE
-            and target_resource.hash == actual_resource.hash
-        ):
-            status_updated = True
-        elif (
-            actual_resource.status != sc.SecretStatus.ACTIVE
-            and target_resource.status != actual_resource.status
-        ):
-            status_updated = True
-
-        # Actualize password
-        if status_updated or actual_pass.value != password.value:
-            if status_updated:
-                password.status = actual_pass.status
-            password.value = actual_pass.value
-            password.save()
-            password_updated = True
-
-        # Actualize resource
-        if password_updated or actual_resource.full_hash != target_resource.full_hash:
-            if status_updated:
-                target_resource.status = actual_resource.status
-            target_resource.full_hash = actual_resource.full_hash
-            target_resource.tracked_at = password.updated_at
-            target_resource.update()
-
-    def _actualize_outdated_passwords(self) -> None:
-        """Actualize outdated passwords.
-
-        It means some changes occurred in the system and the passwords
-        are outdated now. For instance, their status is incorrect.
-        """
-        self._actualize_outdated_secrets(
-            sc.PASSWORD_KIND,
-            models.Password,
-            self._actualize_outdated_password,
-        )
-
-    def _actualize_deleted_passwords(self) -> None:
-        """Actualize passwords deleted by user."""
-        deleted_passwords = self._get_deleted_passwords()
-        self._actualize_deleted_secrets(deleted_passwords)
 
     # Certificates
 
@@ -589,27 +503,6 @@ class SecretServiceBuilder(basic.BasicService):
             except Exception:
                 LOG.exception("Error deleting resource %s", resource.uuid)
 
-    def _actualize_passwords(self) -> None:
-        try:
-            self._actualize_new_passwords()
-        except Exception:
-            LOG.exception("Error actualizing new passwords")
-
-        try:
-            self._actualize_changed_passwords()
-        except Exception:
-            LOG.exception("Error actualizing changed passwords")
-
-        try:
-            self._actualize_outdated_passwords()
-        except Exception:
-            LOG.exception("Error actualizing outdated passwords")
-
-        try:
-            self._actualize_deleted_passwords()
-        except Exception:
-            LOG.exception("Error actualizing deleted passwords")
-
     def _actualize_certificates(self) -> None:
         try:
             self._actualize_new_certificates()
@@ -654,6 +547,5 @@ class SecretServiceBuilder(basic.BasicService):
 
     def _iteration(self) -> None:
         with contexts.Context().session_manager():
-            self._actualize_passwords()
             self._actualize_certificates()
             self._actualize_ssh_keys()
