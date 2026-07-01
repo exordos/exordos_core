@@ -179,6 +179,11 @@ All source files must include Apache 2.0 license header:
 
 ### Documentation
 
+- Before working on element/manifest/reconciliation internals, read
+  `docs/core-developer-guide/index.md` (element/resource model, `ElementEngine`,
+  reconciliation loop, manifest value rendering).
+- Before debugging a stuck element, node, or config delivery, read
+  `docs/usage/troubleshooting.md`.
 - Update `docs/` for CLI changes
 - Run `tox -e cli_docs` to regenerate CLI docs
 - Run `make mdlint` for Markdown linting
@@ -188,5 +193,6 @@ All source files must include Apache 2.0 license header:
 
 - **Source**: `exordos_core/`
 - **Tests**: `exordos_core/tests/`
-- **Documentation**: `docs/`
+- **Documentation**: `docs/` — see `docs/core-developer-guide/index.md` (architecture)
+  and `docs/usage/troubleshooting.md` (debugging) first
 - **Build output**: `output/`
