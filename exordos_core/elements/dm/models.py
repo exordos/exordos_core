@@ -173,7 +173,9 @@ class Manifest(
 
         """
         if Element.objects.get_one_or_none(filters={"name": ra_filters.EQ(self.name)}):
-            raise ValueError(f"Element '{self.name}' already exists.")
+            raise exceptions.ValidateException(
+                err=f"Element '{self.name}' already exists."
+            )
 
         element_engine.load_from_database()
 
@@ -196,8 +198,8 @@ class Manifest(
             filters={"name": ra_filters.EQ(self.name)}
         )
         if not element:
-            raise ValueError(
-                f"Element '{self.name}' does not exist, please install it first."
+            raise exceptions.ValidateException(
+                err=f"Element '{self.name}' does not exist, please install it first."
             )
 
         element_engine.load_from_database()
@@ -228,7 +230,7 @@ class Manifest(
             from_resource = element_engine.get_resource_by_export_link(
                 manifest=self,
                 from_element=import_from_element,
-                link=import_data["link"],
+                link=f"{import_data['element']}.{import_data['link']}",
             )
             import_kwargs = dict(
                 name=import_name,
@@ -390,8 +392,8 @@ class Manifest(
                             version_matches = False
 
                         if version_matches:
-                            raise ValueError(
-                                f"Cannot uninstall element '{element.name}' version '{element.version}' "
+                            raise exceptions.ValidateException(
+                                err=f"Cannot uninstall element '{element.name}' version '{element.version}' "
                                 f"because it is required by element '{other_element.name}' version "
                                 f"'{other_element.version}'."
                             )
@@ -400,10 +402,10 @@ class Manifest(
         element_engine.load_from_database()
         filters = ra_filters.AND(
             ra_filters.OR(
-                {
-                    "name": ra_filters.EQ(self.name),
-                    "version": ra_filters.EQ(self.version),
-                },
+                ra_filters.AND(
+                    {"name": ra_filters.EQ(self.name)},
+                    {"version": ra_filters.EQ(self.version)},
+                ),
                 {"manifest": ra_filters.EQ(self.uuid)},
             )
         )
@@ -668,8 +670,8 @@ class Resource(
         parts = parameter.split(":")
         resource_name = parts[0][1:]
         if resource_name != self.name:
-            raise ValueError(
-                f"Resource name `{resource_name}` does not match the"
+            raise exceptions.ValidateException(
+                err=f"Resource name `{resource_name}` does not match the"
                 f" current resource name `{self.name}`"
             )
         resource_parameter_path = parts[1:]
@@ -715,8 +717,8 @@ class Resource(
             )
             return str(value)
         except ValueError as e:
-            raise ValueError(
-                f"Can't render value `{var}` for resource `{repr(self)}` by reason: {e}"
+            raise exceptions.ValidateException(
+                err=f"Can't render value `{var}` for resource `{repr(self)}` by reason: {e}"
             )
 
     def _render_value(self, value, engine):
@@ -731,8 +733,8 @@ class Resource(
                     parameter=link.parameter,
                 )
             except ValueError as e:
-                raise ValueError(
-                    f"Can't render value `{value}` for resource"
+                raise exceptions.ValidateException(
+                    err=f"Can't render value `{value}` for resource"
                     f" `{repr(self)}` by reason: {e}"
                 )
         elif value.startswith('f"'):
@@ -944,6 +946,10 @@ class Export(
         required=True,
     )
 
+    @property
+    def full_link(self) -> str:
+        return f"${self.element.name}.{self.link}"
+
 
 class ImportEnum(str, enum.Enum):
     RESOURCE = "resource"
@@ -1066,8 +1072,8 @@ class Namespace:
 
     def add_resource(self, resource: Resource | ImportedResource) -> None:
         if resource.link in self._namespace_resources:
-            raise ValueError(
-                f"Resource with link string '{resource.link}' in element '{resource.element.name}' already exists."
+            raise exceptions.ValidateException(
+                err=f"Resource with link string '{resource.link}' in element '{resource.element.name}' already exists."
             )
         self._namespace_resources[resource.link] = resource
 
@@ -1076,16 +1082,16 @@ class Namespace:
 
     def delete_resource(self, resource: Resource | ImportedResource) -> None:
         if resource.link not in self._namespace_resources:
-            raise ValueError(
-                f"Resource with link string '{resource.link}' in element '{resource.element.name}' does not exist."
+            raise exceptions.ValidateException(
+                err=f"Resource with link string '{resource.link}' in element '{resource.element.name}' does not exist."
             )
         del self._namespace_resources[resource.link]
 
     def get_resource_by_link(self, link):
         clear_link = utils.clear_parameters(link)
         if clear_link not in self._namespace_resources:
-            raise ValueError(
-                f"Resource with link string '{clear_link}' does not exist."
+            raise exceptions.ValidateException(
+                err=f"Resource with link string '{clear_link}' does not exist. _namespace_resources: {self._namespace_resources}"
             )
         return self._namespace_resources[clear_link]
 
@@ -1128,8 +1134,8 @@ class ElementEngine:
                 )
                 self.add_resource(resource)
             else:
-                raise ValueError(
-                    f"Unsupported import type '{import_.kind}' for import "
+                raise exceptions.ValidateException(
+                    err=f"Unsupported import type '{import_.kind}' for import "
                     f"'{import_.name}'. Only '{ImportEnum.RESOURCE.value}' "
                     f"imports are currently supported."
                 )
@@ -1141,8 +1147,8 @@ class ElementEngine:
             if export.kind == ExportEnum.RESOURCE.value:
                 self.add_resource_by_export(export)
             else:
-                raise ValueError(
-                    f"Unsupported export type '{export.kind}' for export "
+                raise exceptions.ValidateException(
+                    err=f"Unsupported export type '{export.kind}' for export "
                     f"'{export.name}'. Only '{ExportEnum.RESOURCE.value}' "
                     f"exports are currently supported."
                 )
@@ -1150,8 +1156,8 @@ class ElementEngine:
     def add_resource(self, resource: Resource | ImportedResource) -> None:
         element = resource.element
         if element.link not in self._namespaces:
-            ValueError(
-                f"The element '{element}' is unknown. Please add the element"
+            exceptions.ValidateException(
+                err=f"The element '{element}' is unknown. Please add the element"
                 " before adding resources to it."
             )
         namespace = self._namespaces[resource.element.link]
@@ -1169,8 +1175,8 @@ class ElementEngine:
 
     def get_resource_by_link(self, element: "Element", link: str) -> "Resource":
         if element.link not in self._namespaces:
-            raise ValueError(
-                f"Can't load element {element}. Element"
+            raise exceptions.ValidateException(
+                err=f"Can't load element {element}. Element"
                 f" {self._namespaces[element.link].element} is not found."
             )
         namespace = self._namespaces[element.link]
@@ -1178,8 +1184,8 @@ class ElementEngine:
 
     def add_element(self, element: "Element") -> None:
         if element.link in self._namespaces:
-            raise ValueError(
-                f"Can't load element {element}. Element"
+            raise exceptions.ValidateException(
+                err=f"Can't load element {element}. Element"
                 f" {self._namespaces[element.link].element} already exists"
                 " with the same UUID."
             )
@@ -1190,7 +1196,9 @@ class ElementEngine:
 
     def remove_element(self, element: "Element") -> None:
         if element.link not in self._namespaces:
-            raise ValueError(f"Can't remove element {element}. Element does not exist.")
+            raise exceptions.ValidateException(
+                err=f"Can't remove element {element}. Element does not exist."
+            )
 
         del self._namespaces[element.link]
 
@@ -1202,24 +1210,28 @@ class ElementEngine:
         )
 
         if export.link in self._resource_exports:
-            raise ValueError(
-                f"Resource export with link '{export.link}' already exists."
+            raise exceptions.ValidateException(
+                err=f"Resource export with link '{export.link}' already exists."
             )
-        self._resource_exports[export.link] = resource
+        self._resource_exports[export.full_link] = resource
 
     def delete_resource_by_export(self, export: "Export") -> None:
-        del self._resource_exports[export.link]
+        del self._resource_exports[export.full_link]
 
     def get_resource_by_export_link(
         self, manifest: "Manifest", from_element: "Element", link: str
     ) -> "Resource":
-        # Implement check element here for export resources
-        if link not in self._resource_exports:
-            raise ValueError(
-                f"Resource {link} in manifest {manifest.name} ({manifest.version}) is not in export list "
-                f"in element {from_element.name}"
-            )
-        return self._resource_exports[link]
+        import_parts = link.split(".")
+        for export_link, resource in self._resource_exports.items():
+            if export_link == link:
+                return resource
+            export_parts = export_link.split(".")
+            if len(export_parts) > 1 and export_parts[1:] == import_parts:
+                return resource
+        raise exceptions.ValidateException(
+            err=f"Resource {link} in manifest {manifest.name} ({manifest.version}) is not in export list "
+            f"in element {from_element.name}"
+        )
 
 
 element_engine = ElementEngine()
@@ -1232,8 +1244,8 @@ class ServiceTarget(srv_models.ServiceTarget):
         if not Service.objects.get_one_or_none(
             filters={"uuid": ra_filters.EQ(self.service)}
         ):
-            raise ValueError(
-                "Service %s does not exist. Please create it first." % self.service
+            raise exceptions.ValidateException(
+                err="Service %s does not exist. Please create it first." % self.service
             )
 
     @classmethod

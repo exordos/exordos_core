@@ -158,10 +158,10 @@ class PaasLB(IaasLB):
                     if vhost.proxy_protocol_from
                     else None
                 ),
-            }
-            rvhost["routes"] = {
-                str(r.uuid): {"cond": r.condition.dump_to_simple_view()}
-                for r in routes_by_vhost.get(vhost.uuid, [])
+                "routes": {
+                    str(r.uuid): {"cond": r.condition.dump_to_simple_view()}
+                    for r in routes_by_vhost.get(vhost.uuid, [])
+                },
             }
 
             res.append(rvhost)
