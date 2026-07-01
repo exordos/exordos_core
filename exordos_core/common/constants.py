@@ -91,6 +91,9 @@ VAR_REALM_REFRESH_TOKEN_UUID = sys_uuid.UUID("eacf0c1f-3495-4986-89a5-80139526b8
 VAR_HS256_JWKS_ENCRYPTION_KEY_UUID = sys_uuid.UUID(
     "c371a647-e1a6-4bec-bef2-a50041bc5af2"
 )
+VAR_REGISTRATION_AUTO_PROVISION_UUID = sys_uuid.UUID(
+    "9eeb513b-9314-40a0-b599-32295a967400"
+)
 
 REPOSITORY_URL = "https://repo.exordos.com"
 ELEMENTS_PATH = "exordos-elements"

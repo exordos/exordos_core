@@ -15,6 +15,7 @@
 #    under the License.
 import contextlib
 import datetime
+from unittest import mock
 
 from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
@@ -415,6 +416,59 @@ class TestUsers(base.BaseIamResourceTest):
                 user_uuid=auth_test1_user.uuid,
                 code=str(user.confirmation_code),
             )
+
+    def test_confirm_email_provisions_workspace_when_enabled(
+        self,
+        user_api_noauth_client,
+        auth_test1_user,
+    ):
+        user = iam_models.User.objects.get_one(filters={"uuid": auth_test1_user.uuid})
+        user.email_verified = False
+        user.create_confirmation_code()
+        user.save()
+
+        with mock.patch(
+            "exordos_core.user_api.iam.api.controllers.UserController"
+            "._is_auto_provision_enabled",
+            return_value=True,
+        ):
+            client = user_api_noauth_client()
+            client.confirm_email(
+                user_uuid=auth_test1_user.uuid,
+                code=str(user.confirmation_code),
+            )
+
+        org = iam_models.Organization.get_default(user=user)
+        assert org is not None
+        assert org.name == user.name
+
+        project = iam_models.Project.get_default(user=user, organization=org)
+        assert project is not None
+        assert project.name == "default"
+
+    def test_confirm_email_no_provisioning_by_default(
+        self,
+        user_api_noauth_client,
+        auth_test1_user,
+    ):
+        user = iam_models.User.objects.get_one(filters={"uuid": auth_test1_user.uuid})
+        user.email_verified = False
+        user.create_confirmation_code()
+        user.save()
+
+        with mock.patch(
+            "exordos_core.user_api.iam.api.controllers.UserController"
+            "._is_auto_provision_enabled",
+            return_value=False,
+        ):
+            client = user_api_noauth_client()
+            client.confirm_email(
+                user_uuid=auth_test1_user.uuid,
+                code=str(user.confirmation_code),
+            )
+
+        org = iam_models.Organization.get_default(user=user)
+        assert org is None
 
     def test_delete_my_user_test1_auth_success(self, user_api_client, auth_test1_user):
         client = user_api_client(

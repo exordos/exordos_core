@@ -40,11 +40,13 @@ from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.openapi import utils as oa_utils
 
+from exordos_core.common import constants as common_c
 from exordos_core.user_api.iam import constants as c
 from exordos_core.user_api.iam import exceptions as iam_e
 from exordos_core.user_api.iam.api import openapi_specs as oa_specs
 from exordos_core.user_api.iam.clients import idp
 from exordos_core.user_api.iam.dm import models
+from exordos_core.vs.dm import models as vs_models
 
 LOG = logging.getLogger(__name__)
 
@@ -294,6 +296,31 @@ class UserController(
         # Don't leak user data
         return None
 
+    def _is_auto_provision_enabled(self) -> bool:
+        var = vs_models.Variable.objects.get_one_or_none(
+            filters={
+                "uuid": ra_filters.EQ(common_c.VAR_REGISTRATION_AUTO_PROVISION_UUID)
+            }
+        )
+        if not var or not var.value:
+            return False
+        return str(var.value).lower() in ("true", "1", "yes")
+
+    def _maybe_provision_workspace(self, user: models.User) -> None:
+        if not self._is_auto_provision_enabled():
+            return
+
+        # Lock the user row for the rest of the transaction so concurrent
+        # confirmation requests can't race past the get_default() check
+        # below and each provision a separate personal workspace.
+        locked_user = models.User.objects.get_one(
+            filters={"uuid": ra_filters.EQ(user.uuid)},
+            locked=True,
+        )
+        if models.Organization.get_default(user=locked_user) is not None:
+            return
+        locked_user.provision_personal_workspace()
+
     @actions.post
     def force_confirm_email(self, resource):
         rule = c.PERMISSION_USER_WRITE_ALL
@@ -301,12 +328,14 @@ class UserController(
             raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule=rule)
 
         resource.confirm_email()
+        self._maybe_provision_workspace(resource)
         return None
 
     @actions.post
     def confirm_email(self, resource, code=None):
         code = code or self._req.params.get("code", "")
         resource.confirm_email_by_code(code)
+        self._maybe_provision_workspace(resource)
         return resource
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_RESET_PASSWORD_USER)

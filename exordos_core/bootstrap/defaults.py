@@ -476,6 +476,31 @@ def set_disable_telemetry_var(spec: dict[str, tp.Any]) -> bool:
     return True
 
 
+def set_registration_auto_provision_var(spec: dict[str, tp.Any]) -> bool:
+    val_uuid = sys_uuid.UUID("5e0b40b7-9a12-41e4-9d98-0d39e60a76b2")
+    existing_value = vs_models.Value.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(val_uuid)}
+    )
+    if existing_value:
+        LOG.info("Registration auto provision variable already exists")
+        return True
+
+    LOG.info("Set registration_auto_provision variable")
+    reg_auto_provision_var = vs_models.Variable.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(c.VAR_REGISTRATION_AUTO_PROVISION_UUID)}
+    )
+    if not reg_auto_provision_var:
+        return False
+
+    vs_models.Value(
+        uuid=val_uuid,
+        variable=reg_auto_provision_var,
+        value=spec.get("registration_auto_provision", False),
+        project_id=c.EM_HIDDEN_PROJECT_ID,
+    ).insert()
+    return True
+
+
 def set_realm_uuid_var(spec: dict[str, tp.Any]) -> bool:
     val_uuid = sys_uuid.UUID("f134c97f-bb4d-4d67-9527-8c90e2f04f8c")
     existing_value = vs_models.Value.objects.get_one_or_none(

@@ -439,6 +439,22 @@ class User(
         role_binding.save()
         return role_binding
 
+    def provision_personal_workspace(self):
+        org = Organization(name=self.name, description="Personal workspace")
+        org.insert()
+        OrganizationMember(
+            organization=org,
+            user=self,
+            role=iam_c.OrganizationRole.OWNER.value,
+        ).insert()
+        project = Project(
+            name="default",
+            description="Default project",
+            organization=org,
+        )
+        project.insert()
+        project.add_owner(self)
+
     def get_my_roles(self):
         return RolesInfo(
             [
