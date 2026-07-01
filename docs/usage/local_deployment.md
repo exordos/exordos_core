@@ -107,18 +107,19 @@ ssh ubuntu@10.20.0.2
 Use the admin credentials to obtain an access token from the IAM service:
 
 ```bash
-curl --location 'http://10.20.0.2:11010/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/get_token/invoke' \
+curl --location 'http://10.20.0.2:80/api/core/v1/iam/clients/default/actions/get_token/invoke' \
     --header 'Content-Type: application/x-www-form-urlencoded' \
     --data-urlencode 'grant_type=password' \
     --data-urlencode 'username=<ADMIN_USERNAME>' \
     --data-urlencode 'password=<ADMIN_PASSWORD>' \
-    --data-urlencode 'client_id=ExordosCoreClientId' \
-    --data-urlencode 'client_secret=ExordosCoreSecret' \
     --data-urlencode 'scope=' \
     --data-urlencode 'ttl=86400'
 ```
 
-The response contains an `access_token` field. Use this token as a `Bearer` token in all subsequent API requests.
+The `clients/default` path is rewritten by Core's load balancer (port 80) to the real IAM client and has
+`X-Client-Id`/`X-Client-Secret` injected automatically, so no client credentials need to be passed here —
+see the equivalent setup in `exordos_ecosystem/web/README.md`. The response contains an `access_token`
+field. Use this token as a `Bearer` token in all subsequent API requests.
 
 ### CLI access
 

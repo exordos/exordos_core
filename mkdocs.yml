@@ -106,6 +106,9 @@ nav:
     - Security Guide: usage/security.md
     - Troubleshooting: usage/troubleshooting.md
     - Wizard: usage/wizard.md
+  - Developer Guides:
+    - Application Developer Guide: app-developer-guide/index.md
+    - Core Developer Guide: core-developer-guide/index.md
   - OpenAPI:
     - Boot API: openapi/openapi_boot.md
     - Orch API: openapi/openapi_orch.md

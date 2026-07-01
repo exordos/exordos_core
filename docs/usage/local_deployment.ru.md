@@ -107,18 +107,19 @@ ssh ubuntu@10.20.0.2
 Используйте учётные данные администратора для получения токена доступа от сервиса IAM:
 
 ```bash
-curl --location 'http://10.20.0.2:11010/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/get_token/invoke' \
+curl --location 'http://10.20.0.2:80/api/core/v1/iam/clients/default/actions/get_token/invoke' \
     --header 'Content-Type: application/x-www-form-urlencoded' \
     --data-urlencode 'grant_type=password' \
     --data-urlencode 'username=<ADMIN_USERNAME>' \
     --data-urlencode 'password=<ADMIN_PASSWORD>' \
-    --data-urlencode 'client_id=ExordosCoreClientId' \
-    --data-urlencode 'client_secret=ExordosCoreSecret' \
     --data-urlencode 'scope=' \
     --data-urlencode 'ttl=86400'
 ```
 
-В ответе содержится поле `access_token`. Используйте этот токен как `Bearer`-токен во всех последующих запросах к API.
+Путь `clients/default` переписывается балансировщиком Core (порт 80) на реальный IAM-клиент, а
+`X-Client-Id`/`X-Client-Secret` подставляются автоматически — учётные данные клиента передавать не нужно,
+см. аналогичную настройку в `exordos_ecosystem/web/README.md`. В ответе содержится поле `access_token`.
+Используйте этот токен как `Bearer`-токен во всех последующих запросах к API.
 
 ### Доступ через CLI
 
