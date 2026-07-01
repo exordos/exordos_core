@@ -15,6 +15,7 @@
 #    under the License.
 import contextlib
 import datetime
+import uuid as sys_uuid
 
 from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
@@ -425,6 +426,109 @@ class TestUsers(base.BaseIamResourceTest):
                 code=str(user.confirmation_code),
             )
 
+    def _create_unconfirmed_user(self, user_api_client, auth_user_admin, username):
+        client = user_api_client(
+            auth_user_admin,
+            permissions=[
+                iam_c.PERMISSION_USER_CREATE,
+            ],
+        )
+        created = client.create_user(username=username, password="testtest")
+        user = iam_models.User.objects.get_one(filters={"uuid": created["uuid"]})
+        user.create_confirmation_code()
+        user.save()
+        return user
+
+    def test_create_user_records_registration_client(
+        self, user_api_client, auth_user_admin
+    ):
+        client = user_api_client(
+            auth_user_admin,
+            permissions=[
+                iam_c.PERMISSION_USER_CREATE,
+            ],
+        )
+
+        user = client.create_user(username="reg_client_user", password="testtest")
+
+        user_obj = iam_models.User.objects.get_one(filters={"uuid": user["uuid"]})
+        assert user_obj.registration_client == sys_uuid.UUID(
+            common_c.DEFAULT_CLIENT_UUID
+        )
+
+    def _set_default_client_auto_provision(self, enabled):
+        iam_client = iam_models.IamClient.objects.get_one(
+            filters={"uuid": sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID)}
+        )
+        iam_client.registration_auto_provision = enabled
+        iam_client.save()
+
+    def test_confirm_email_provisions_workspace_when_enabled_on_client(
+        self,
+        user_api_client,
+        user_api_noauth_client,
+        auth_user_admin,
+    ):
+        self._set_default_client_auto_provision(True)
+        user = self._create_unconfirmed_user(
+            user_api_client, auth_user_admin, "provision_user"
+        )
+
+        client = user_api_noauth_client()
+        client.confirm_email(
+            user_uuid=user.uuid,
+            code=str(user.confirmation_code),
+        )
+
+        org = iam_models.Organization.get_default(user=user)
+        assert org is not None
+        assert org.name == user.name
+
+        project = iam_models.Project.get_default(user=user, organization=org)
+        assert project is not None
+        assert project.name == "default"
+
+    def test_confirm_email_no_provisioning_without_registration_client(
+        self,
+        user_api_client,
+        user_api_noauth_client,
+        auth_user_admin,
+    ):
+        self._set_default_client_auto_provision(True)
+        user = self._create_unconfirmed_user(
+            user_api_client, auth_user_admin, "no_reg_client_user"
+        )
+        user.registration_client = None
+        user.save()
+
+        client = user_api_noauth_client()
+        client.confirm_email(
+            user_uuid=user.uuid,
+            code=str(user.confirmation_code),
+        )
+
+        org = iam_models.Organization.get_default(user=user)
+        assert org is None
+
+    def test_confirm_email_no_provisioning_when_disabled_on_client(
+        self,
+        user_api_client,
+        user_api_noauth_client,
+        auth_user_admin,
+    ):
+        user = self._create_unconfirmed_user(
+            user_api_client, auth_user_admin, "disabled_client_user"
+        )
+
+        client = user_api_noauth_client()
+        client.confirm_email(
+            user_uuid=user.uuid,
+            code=str(user.confirmation_code),
+        )
+
+        org = iam_models.Organization.get_default(user=user)
+        assert org is None
+
     def test_delete_my_user_test1_auth_success(self, user_api_client, auth_test1_user):
         client = user_api_client(
             auth_test1_user,
@@ -485,6 +589,7 @@ class TestUsers(base.BaseIamResourceTest):
             "email",
             "otp_enabled",
             "email_verified",
+            "registration_client",
             "type",
         ]
 

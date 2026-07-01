@@ -17,6 +17,7 @@
 import errno
 import logging
 import mimetypes
+import uuid as sys_uuid
 from os import path as os_path
 import re
 import string
@@ -27,6 +28,7 @@ from authlib.integrations import requests_client
 from gcl_iam import rules
 from gcl_iam.api import controllers as iam_controllers
 from gcl_iam.api import field_perms as iam_fp
+from gcl_iam import exceptions as gcl_iam_e
 import jinja2
 import pyotp
 from restalchemy.api import actions
@@ -40,6 +42,7 @@ from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.openapi import utils as oa_utils
 
+from exordos_core.common import constants as common_c
 from exordos_core.user_api.iam import constants as c
 from exordos_core.user_api.iam import exceptions as iam_e
 from exordos_core.user_api.iam.api import openapi_specs as oa_specs
@@ -190,6 +193,10 @@ class UserController(
         )
         self.validate_secret(kwargs)
         kwargs.pop("email_verified", None)
+        kwargs.pop("registration_client", None)
+        iam_client = self._get_request_iam_client()
+        if iam_client is not None:
+            kwargs["registration_client"] = iam_client.uuid
         user = super().create(**kwargs)
         app_endpoint = _get_app_endpoint(req=self._req)
         user.resend_confirmation_event(app_endpoint=app_endpoint)
@@ -211,6 +218,7 @@ class UserController(
     def update(self, uuid, **kwargs):
         self.validate_secret(kwargs)
         kwargs.pop("email_verified", None)
+        kwargs.pop("registration_client", None)
         is_me = models.User.me().uuid == uuid
         if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
             return super().update(uuid, **kwargs)
@@ -294,6 +302,43 @@ class UserController(
         # Don't leak user data
         return None
 
+    def _get_request_iam_client(self) -> models.IamClient | None:
+        try:
+            return models.Token.my().iam_client
+        except gcl_iam_e.InvalidAuthTokenError:
+            # Anonymous registration (e.g. street sign-up) is not bound to
+            # a client token; attribute it to the default client.
+            return models.IamClient.objects.get_one_or_none(
+                filters={
+                    "uuid": ra_filters.EQ(
+                        sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID)
+                    )
+                }
+            )
+
+    def _is_auto_provision_enabled(self, user: models.User) -> bool:
+        if user.registration_client is None:
+            return False
+        client = models.IamClient.objects.get_one_or_none(
+            filters={"uuid": ra_filters.EQ(user.registration_client)}
+        )
+        return client is not None and client.registration_auto_provision
+
+    def _maybe_provision_workspace(self, user: models.User) -> None:
+        if not self._is_auto_provision_enabled(user):
+            return
+
+        # Lock the user row for the rest of the transaction so concurrent
+        # confirmation requests can't race past the get_default() check
+        # below and each provision a separate personal workspace.
+        locked_user = models.User.objects.get_one(
+            filters={"uuid": ra_filters.EQ(user.uuid)},
+            locked=True,
+        )
+        if models.Organization.get_default(user=locked_user) is not None:
+            return
+        locked_user.provision_personal_workspace()
+
     @actions.post
     def force_confirm_email(self, resource):
         rule = c.PERMISSION_USER_WRITE_ALL
@@ -301,12 +346,14 @@ class UserController(
             raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule=rule)
 
         resource.confirm_email()
+        self._maybe_provision_workspace(resource)
         return None
 
     @actions.post
     def confirm_email(self, resource, code=None):
         code = code or self._req.params.get("code", "")
         resource.confirm_email_by_code(code)
+        self._maybe_provision_workspace(resource)
         return resource
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_RESET_PASSWORD_USER)
