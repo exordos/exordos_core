@@ -4790,11 +4790,6 @@ components:
     Resource_Get:
       type: object
       properties:
-        uuid:
-          type: string
-          example: 00000000-0000-0000-0000-000000000000
-          format: uuid
-          readOnly: true
         created_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
@@ -4809,26 +4804,15 @@ components:
           format: date-time
           readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
-        element:
+        uuid:
           type: string
-        name:
-          type: string
-          minLength: 1
-          maxLength: 255
-          example: any_string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
           readOnly: true
-        status:
+        kind:
           type: string
-          enum:
-            - ACTIVE
-            - IN_PROGRESS
-            - NEW
-          example: NEW
-          default: NEW
-        resource_link_prefix:
-          type: string
-          minLength: 1
-          maxLength: 256
+          minLength: 0
+          maxLength: 64
           example: any_string
         value:
           type: object
@@ -4842,26 +4826,35 @@ components:
                 items: {}
           example:
             key: value
+        hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
         full_hash:
           type: string
           minLength: 0
           maxLength: 256
           example: any_string
           default: ''
-        link:
+        status:
           type: string
-          minLength: 2
-          maxLength: 256
+          minLength: 0
+          maxLength: 32
           example: any_string
-        kind:
+          default: ACTIVE
+        node:
           type: string
-          minLength: 2
-          maxLength: 256
-          example: any_string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        res_uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
       required:
-        - element
-        - resource_link_prefix
-        - value
+        - kind
     Resource_Create:
       type: object
       properties:
@@ -4987,11 +4980,6 @@ components:
     Resource_Filter:
       type: object
       properties:
-        uuid:
-          type: string
-          example: 00000000-0000-0000-0000-000000000000
-          format: uuid
-          readOnly: true
         created_at:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
@@ -5006,26 +4994,15 @@ components:
           format: date-time
           readOnly: true
           default: '2006-01-02T15:04:05.000576Z'
-        element:
+        uuid:
           type: string
-        name:
-          type: string
-          minLength: 1
-          maxLength: 255
-          example: any_string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
           readOnly: true
-        status:
+        kind:
           type: string
-          enum:
-            - ACTIVE
-            - IN_PROGRESS
-            - NEW
-          example: NEW
-          default: NEW
-        resource_link_prefix:
-          type: string
-          minLength: 1
-          maxLength: 256
+          minLength: 0
+          maxLength: 64
           example: any_string
         value:
           type: object
@@ -5039,26 +5016,35 @@ components:
                 items: {}
           example:
             key: value
+        hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
         full_hash:
           type: string
           minLength: 0
           maxLength: 256
           example: any_string
           default: ''
-        link:
+        status:
           type: string
-          minLength: 2
-          maxLength: 256
+          minLength: 0
+          maxLength: 32
           example: any_string
-        kind:
+          default: ACTIVE
+        node:
           type: string
-          minLength: 2
-          maxLength: 256
-          example: any_string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        res_uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
       required:
-        - element
-        - resource_link_prefix
-        - value
+        - kind
     Manifest_Get:
       type: object
       properties:
@@ -8924,11 +8910,6 @@ components:
           maxLength: 15
           example: any_string
           default:
-        email:
-          type: string
-          minLength: 5
-          maxLength: 128
-          example: user@example.com
         email_verified:
           type: boolean
           example: true
@@ -9002,7 +8983,6 @@ components:
           nullable: true
       required:
         - username
-        - email
     User_Filter:
       type: object
       properties:
@@ -15734,6 +15714,350 @@ components:
       required:
         - condition
         - action
+    UniversalAgent_Filter:
+      type: object
+      properties:
+        uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 0
+          maxLength: 255
+          example: any_string
+        description:
+          type: string
+          minLength: 0
+          maxLength: 255
+          example: any_string
+          default: ''
+        created_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        updated_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        capabilities:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - type: array
+                items: {}
+          example:
+            key: value
+          default: {}
+        facts:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - type: array
+                items: {}
+          example:
+            key: value
+          default: {}
+        node:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DISABLED
+            - ERROR
+            - NEW
+          example: NEW
+          default: NEW
+      required:
+        - uuid
+        - name
+        - node
+    UniversalAgent_Get:
+      type: object
+      properties:
+        uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 0
+          maxLength: 255
+          example: any_string
+        description:
+          type: string
+          minLength: 0
+          maxLength: 255
+          example: any_string
+          default: ''
+        created_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        updated_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        capabilities:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - type: array
+                items: {}
+          example:
+            key: value
+          default: {}
+        facts:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - type: array
+                items: {}
+          example:
+            key: value
+          default: {}
+        node:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DISABLED
+            - ERROR
+            - NEW
+          example: NEW
+          default: NEW
+      required:
+        - uuid
+        - name
+        - node
+    TargetResource_Filter:
+      type: object
+      properties:
+        created_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        updated_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+        kind:
+          type: string
+          minLength: 0
+          maxLength: 64
+          example: any_string
+        value:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - type: array
+                items: {}
+          example:
+            key: value
+        hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+        full_hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+        status:
+          type: string
+          minLength: 0
+          maxLength: 32
+          example: any_string
+          default: ACTIVE
+        node:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        res_uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+        agent:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        master:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        tracked_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          default: '2006-01-02T15:04:05.000576Z'
+        master_hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+        master_full_hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+      required:
+        - kind
+    TargetResource_Get:
+      type: object
+      properties:
+        created_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        updated_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          default: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+        kind:
+          type: string
+          minLength: 0
+          maxLength: 64
+          example: any_string
+        value:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - type: array
+                items: {}
+          example:
+            key: value
+        hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+        full_hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+        status:
+          type: string
+          minLength: 0
+          maxLength: 32
+          example: any_string
+          default: ACTIVE
+        node:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        res_uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+        agent:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        master:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+        tracked_at:
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          default: '2006-01-02T15:04:05.000576Z'
+        master_hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+        master_full_hash:
+          type: string
+          minLength: 0
+          maxLength: 256
+          example: any_string
+          default: ''
+      required:
+        - kind
     Profile_Get:
       type: object
       properties:
@@ -17183,6 +17507,9 @@ components:
       in: query
       schema:
         type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+        nullable: true
     size:
       name: size
       in: query
@@ -17728,8 +18055,8 @@ components:
       in: query
       schema:
         type: string
-        minLength: 2
-        maxLength: 256
+        minLength: 0
+        maxLength: 64
         example: any_string
     ImportUuid:
       name: ImportUuid
@@ -19130,6 +19457,115 @@ components:
           - OR
         example: OR
         default: OR
+    UniversalAgentUuid:
+      name: UniversalAgentUuid
+      in: path
+      schema:
+        type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+        readOnly: true
+      required: true
+    capabilities:
+      name: capabilities
+      in: query
+      schema:
+        type: object
+        additionalProperties:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: boolean
+            - type: object
+            - type: array
+              items: {}
+        example:
+          key: value
+        default: {}
+    facts:
+      name: facts
+      in: query
+      schema:
+        type: object
+        additionalProperties:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: boolean
+            - type: object
+            - type: array
+              items: {}
+        example:
+          key: value
+        default: {}
+    uuid:
+      name: uuid
+      in: query
+      schema:
+        type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+        readOnly: true
+    hash:
+      name: hash
+      in: query
+      schema:
+        type: string
+        minLength: 0
+        maxLength: 256
+        example: any_string
+        default: ''
+    ResourceRes_uuid:
+      name: ResourceRes_uuid
+      in: path
+      schema:
+        type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+      required: true
+    TargetResourceRes_uuid:
+      name: TargetResourceRes_uuid
+      in: path
+      schema:
+        type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+      required: true
+    master:
+      name: master
+      in: query
+      schema:
+        type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+        nullable: true
+    tracked_at:
+      name: tracked_at
+      in: query
+      schema:
+        type: string
+        x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        example: '2006-01-02T15:04:05.000576Z'
+        format: date-time
+        default: '2006-01-02T15:04:05.000576Z'
+    master_hash:
+      name: master_hash
+      in: query
+      schema:
+        type: string
+        minLength: 0
+        maxLength: 256
+        example: any_string
+        default: ''
+    master_full_hash:
+      name: master_full_hash
+      in: query
+      schema:
+        type: string
+        minLength: 0
+        maxLength: 256
+        example: any_string
+        default: ''
     ProfileUuid:
       name: ProfileUuid
       in: path
@@ -19371,6 +19807,13 @@ paths:
       tags:
         - MachinePool
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -19603,6 +20046,13 @@ paths:
       tags:
         - Node
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -19829,6 +20279,13 @@ paths:
       tags:
         - NodeSet
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -20058,6 +20515,13 @@ paths:
       tags:
         - Volume
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -20103,6 +20567,9 @@ paths:
           in: query
           schema:
             type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            nullable: true
         - name: size
           in: query
           schema:
@@ -20355,6 +20822,13 @@ paths:
       tags:
         - Config
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -20598,6 +21072,13 @@ paths:
             format: date-time
             readOnly: true
             default: '2006-01-02T15:04:05.000576Z'
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -20921,6 +21402,13 @@ paths:
       tags:
         - Element
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -21634,6 +22122,13 @@ paths:
       tags:
         - Export
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -21668,8 +22163,8 @@ paths:
           in: query
           schema:
             type: string
-            minLength: 2
-            maxLength: 256
+            minLength: 0
+            maxLength: 64
             example: any_string
         - name: link
           in: query
@@ -21720,6 +22215,13 @@ paths:
       tags:
         - Import
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -21762,8 +22264,8 @@ paths:
           in: query
           schema:
             type: string
-            minLength: 2
-            maxLength: 256
+            minLength: 0
+            maxLength: 64
             example: any_string
         - name: link
           in: query
@@ -21814,6 +22316,13 @@ paths:
       tags:
         - Manifest
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -22122,6 +22631,13 @@ paths:
       tags:
         - Resource
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -22212,8 +22728,8 @@ paths:
           in: query
           schema:
             type: string
-            minLength: 2
-            maxLength: 256
+            minLength: 0
+            maxLength: 64
             example: any_string
       responses:
         '200':
@@ -22257,6 +22773,13 @@ paths:
       tags:
         - Service
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -22548,6 +23071,13 @@ paths:
       tags:
         - IamClient
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -23169,6 +23699,13 @@ paths:
       tags:
         - Idp
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -23476,6 +24013,13 @@ paths:
       tags:
         - OrganizationMember
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -23622,6 +24166,13 @@ paths:
       tags:
         - Organization
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -23781,6 +24332,13 @@ paths:
       tags:
         - PermissionBinding
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -23927,6 +24485,13 @@ paths:
       tags:
         - Permission
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -24086,6 +24651,13 @@ paths:
       tags:
         - Project
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -24249,6 +24821,13 @@ paths:
       tags:
         - RoleBinding
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -24408,6 +24987,13 @@ paths:
       tags:
         - Role
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -24574,6 +25160,13 @@ paths:
       tags:
         - User
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: username
           in: query
           schema:
@@ -25088,6 +25681,13 @@ paths:
       tags:
         - LB
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -25782,6 +26382,13 @@ paths:
       tags:
         - Certificate
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -26005,6 +26612,13 @@ paths:
       tags:
         - Password
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -26201,6 +26815,13 @@ paths:
       tags:
         - RSAKey
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -26394,6 +27015,13 @@ paths:
       tags:
         - SSHKey
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: created_at
           in: query
           schema:
@@ -26612,6 +27240,13 @@ paths:
       tags:
         - Rule
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: name
           in: query
           schema:
@@ -26781,6 +27416,415 @@ paths:
         default:
           $ref: '#/components/responses/Error'
       operationId: Delete_v1_security_rules_RuleUuid
+  /v1/ua/:
+    get:
+      summary: Returns a list of all routes in the main route that are 
+        collection
+      tags: []
+      parameters:
+        - name: filters
+          description: "the filters to apply when filtering the routes (Is not\nimplemented
+            now)\n"
+          schema:
+            type: string
+          in: query
+        - name: order_by
+          description: "fields to order the routes by (Is not implemented\nnow)\n"
+          schema:
+            type: string
+          in: query
+      responses:
+        '200':
+          description: Get nested urls
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Filter_v1_ua
+  /v1/ua/agents/:
+    get:
+      summary: Get UniversalAgents
+      tags:
+        - UniversalAgent
+      parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
+        - name: name
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 255
+            example: any_string
+            default: ''
+        - name: description
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 255
+            example: any_string
+            default: ''
+        - name: created_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            readOnly: true
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: updated_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            readOnly: true
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: node
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            nullable: true
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - ACTIVE
+              - ERROR
+              - IN_PROGRESS
+              - NEW
+            example: NEW
+            readOnly: true
+            default: NEW
+      responses:
+        '200':
+          description: UniversalAgent_Filter
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UniversalAgent_Filter'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Filter_v1_ua_agents
+  /v1/ua/agents/{UniversalAgentUuid}:
+    get:
+      summary: Get UniversalAgent
+      tags:
+        - UniversalAgent
+      parameters:
+        - name: UniversalAgentUuid
+          in: path
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
+          required: true
+      responses:
+        '200':
+          description: UniversalAgent_Get
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UniversalAgent_Get'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Get_v1_ua_agents_UniversalAgentUuid
+  /v1/ua/resources/:
+    get:
+      summary: Get Resources
+      tags:
+        - Resource
+      parameters:
+        - name: created_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            readOnly: true
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: updated_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            readOnly: true
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
+        - name: kind
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 64
+            example: any_string
+        - name: value
+          in: query
+          schema:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: array
+              - type: boolean
+              - type: object
+            example: string
+            readOnly: true
+            nullable: true
+        - name: hash
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 256
+            example: any_string
+            default: ''
+        - name: full_hash
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 256
+            example: any_string
+            default: ''
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - ACTIVE
+              - ERROR
+              - IN_PROGRESS
+              - NEW
+            example: NEW
+            readOnly: true
+            default: NEW
+        - name: node
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            nullable: true
+      responses:
+        '200':
+          description: Resource_Filter
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Resource_Filter'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Filter_v1_ua_resources
+  /v1/ua/resources/{ResourceRes_uuid}:
+    get:
+      summary: Get Resource
+      tags:
+        - Resource
+      parameters:
+        - name: ResourceRes_uuid
+          in: path
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+          required: true
+      responses:
+        '200':
+          description: Resource_Get
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource_Get'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Get_v1_ua_resources_ResourceRes_uuid
+  /v1/ua/target_resources/:
+    get:
+      summary: Get TargetResources
+      tags:
+        - TargetResource
+      parameters:
+        - name: created_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            readOnly: true
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: updated_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            readOnly: true
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
+        - name: kind
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 64
+            example: any_string
+        - name: value
+          in: query
+          schema:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: array
+              - type: boolean
+              - type: object
+            example: string
+            readOnly: true
+            nullable: true
+        - name: hash
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 256
+            example: any_string
+            default: ''
+        - name: full_hash
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 256
+            example: any_string
+            default: ''
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - ACTIVE
+              - ERROR
+              - IN_PROGRESS
+              - NEW
+            example: NEW
+            readOnly: true
+            default: NEW
+        - name: node
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            nullable: true
+        - name: agent
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            nullable: true
+        - name: master
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            nullable: true
+        - name: tracked_at
+          in: query
+          schema:
+            type: string
+            x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+            example: '2006-01-02T15:04:05.000576Z'
+            format: date-time
+            default: '2006-01-02T15:04:05.000576Z'
+        - name: master_hash
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 256
+            example: any_string
+            default: ''
+        - name: master_full_hash
+          in: query
+          schema:
+            type: string
+            minLength: 0
+            maxLength: 256
+            example: any_string
+            default: ''
+      responses:
+        '200':
+          description: TargetResource_Filter
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TargetResource_Filter'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Filter_v1_ua_target_resources
+  /v1/ua/target_resources/{TargetResourceRes_uuid}:
+    get:
+      summary: Get TargetResource
+      tags:
+        - TargetResource
+      parameters:
+        - name: TargetResourceRes_uuid
+          in: path
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+          required: true
+      responses:
+        '200':
+          description: TargetResource_Get
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetResource_Get'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Get_v1_ua_target_resources_TargetResourceRes_uuid
   /v1/vs/:
     get:
       summary: Returns a list of all routes in the main route that are 
@@ -26816,6 +27860,13 @@ paths:
       tags:
         - Profile
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -27020,6 +28071,13 @@ paths:
       tags:
         - Value
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -27214,6 +28272,13 @@ paths:
       tags:
         - Variable
       parameters:
+        - name: uuid
+          in: query
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
         - name: project_id
           in: query
           schema:
@@ -27465,8 +28530,6 @@ tags:
     description: ''
   - name: Manifest
     description: ''
-  - name: Resource
-    description: ''
   - name: Service
     description: ''
   - name: IdpAuthorizationInfo
@@ -27508,6 +28571,12 @@ tags:
   - name: SSHKey
     description: ''
   - name: Rule
+    description: ''
+  - name: UniversalAgent
+    description: ''
+  - name: Resource
+    description: ''
+  - name: TargetResource
     description: ''
   - name: Profile
     description: ''

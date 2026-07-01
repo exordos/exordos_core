@@ -95,7 +95,7 @@ jobs:
             sleep 5
           done
           
-          while [ $(exordos ee l -o json -f name=core | jq -r .[0]."Status") != "ACTIVE" ]; do
+          while [ $(exordos ee l -o json -f name=core | jq -r .[0]."status") != "ACTIVE" ]; do
             sleep 2
           done
           exordos e e show core

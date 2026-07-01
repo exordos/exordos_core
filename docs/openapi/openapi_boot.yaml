@@ -622,6 +622,14 @@ components:
           format: uuid
       required:
         - kind
+    NodeVerifier_Get:
+      type: object
+      properties:
+        uuid:
+          type: string
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
     NodeEncryptionKey_Get:
       type: object
       properties:
@@ -919,6 +927,15 @@ components:
         type: string
         example: 00000000-0000-0000-0000-000000000000
         format: uuid
+      required: true
+    NodeVerifierUuid:
+      name: NodeVerifierUuid
+      in: path
+      schema:
+        type: string
+        example: 00000000-0000-0000-0000-000000000000
+        format: uuid
+        readOnly: true
       required: true
     NodeEncryptionKeyUuid:
       name: NodeEncryptionKeyUuid
@@ -1343,6 +1360,53 @@ paths:
         default:
           $ref: '#/components/responses/Error'
       operationId: Delete_v1_kind_KindModelKind_resources_ResourceRes_uuid
+  /v1/node_verifiers/{NodeVerifierUuid}:
+    get:
+      summary: Get NodeVerifier
+      tags:
+        - NodeVerifier
+      parameters:
+        - name: NodeVerifierUuid
+          in: path
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
+          required: true
+      responses:
+        '200':
+          description: NodeVerifier_Get
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeVerifier_Get'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Get_v1_node_verifiers_NodeVerifierUuid
+  /v1/node_verifiers/{NodeVerifierUuid}/actions/verify:
+    get:
+      summary: Verify NodeVerifier
+      tags:
+        - NodeVerifier
+      parameters:
+        - name: NodeVerifierUuid
+          in: path
+          schema:
+            type: string
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            readOnly: true
+          required: true
+      responses:
+        '200':
+          description: Get nested urls
+          content:
+            application/json:
+              schema: {}
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Verify_v1_node_verifiers_NodeVerifierUuid_actions_verify
   /v1/nodes/{NodeEncryptionKeyUuid}:
     get:
       summary: Get NodeEncryptionKey
@@ -1407,6 +1471,8 @@ tags:
   - name: Resource
     description: ''
   - name: KindModel
+    description: ''
+  - name: NodeVerifier
     description: ''
   - name: NodeEncryptionKey
     description: ''
