@@ -94,6 +94,31 @@ class MigrationStep(migrations.AbstarctMigrationStep):
                     LIMIT 1
                 );
             """,
+            # Organizations without an owner member (e.g. the owner user was
+            # deleted) cannot be represented in the old schema, where owner
+            # is NOT NULL. Fall back to any member, then to the oldest user.
+            """
+                UPDATE
+                    "iam_organizations" o
+                SET "owner" = (
+                    SELECT m."user"
+                    FROM "iam_organization_members" m
+                    WHERE m."organization" = o."uuid"
+                    LIMIT 1
+                )
+                WHERE o."owner" IS NULL;
+            """,
+            """
+                UPDATE
+                    "iam_organizations" o
+                SET "owner" = (
+                    SELECT u."uuid"
+                    FROM "iam_users" u
+                    ORDER BY u."created_at"
+                    LIMIT 1
+                )
+                WHERE o."owner" IS NULL;
+            """,
             """
                 ALTER TABLE "iam_organizations"
                     ALTER COLUMN "owner" SET NOT NULL;

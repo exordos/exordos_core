@@ -191,6 +191,15 @@ def user_api(user_api_service: test_utils.RestServiceTestCase):
     # TODO(slashburygin): setup_method(apply_migrations) should be called once, not every test. Should be fixed after squash migrations
     user_api_service.setup_method()
 
+    # Keep the legacy baseline for tests: no implicit personal workspace
+    # provisioning on email confirmation. Feature tests enable the flag
+    # explicitly.
+    default_client = iam_models.IamClient.objects.get_one(
+        filters={"uuid": dm_filters.EQ(sys_uuid.UUID(c.DEFAULT_CLIENT_UUID))}
+    )
+    default_client.registration_auto_provision = False
+    default_client.save()
+
     yield user_api_service
 
     # user_api_service.teardown_method()

@@ -370,6 +370,12 @@ class User(
         ra_types.Boolean(),
         default=False,
     )
+    # IamClient the user registered through; drives auto-provisioning
+    # of the personal workspace on email confirmation.
+    registration_client = properties.property(
+        ra_types.AllowNone(ra_types.UUID()),
+        default=None,
+    )
     confirmation_code = properties.property(
         ra_types.AllowNone(ra_types.UUID()),
         default=None,
@@ -438,6 +444,22 @@ class User(
         )
         role_binding.save()
         return role_binding
+
+    def provision_personal_workspace(self):
+        org = Organization(name=self.name, description="Personal workspace")
+        org.insert()
+        OrganizationMember(
+            organization=org,
+            user=self,
+            role=iam_c.OrganizationRole.OWNER.value,
+        ).insert()
+        project = Project(
+            name="default",
+            description="Default project",
+            organization=org,
+        )
+        project.insert()
+        project.add_owner(self)
 
     def get_my_roles(self):
         return RolesInfo(
@@ -1023,6 +1045,10 @@ class IamClient(
     client_id = properties.property(
         ra_types.String(max_length=64),
         required=True,
+    )
+    registration_auto_provision = properties.property(
+        ra_types.Boolean(),
+        default=True,
     )
     signature_algorithm = properties.property(
         KindModelSelectorType(
