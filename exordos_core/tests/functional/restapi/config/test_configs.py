@@ -174,6 +174,7 @@ class TestConfigUserApi:
 
         assert response.status_code == 200
         assert output["path"] == "/tmp/updated.conf"
+        client.delete(client.build_resource_uri(["config/configs", output["uuid"]]))
 
     def test_configs_update_status_new(
         self,

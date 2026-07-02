@@ -74,6 +74,10 @@ class TestVSServiceBuilder:
         assert updated.status == "ACTIVE"
         assert updated.value == "value_2"
 
+        variable.delete()
+        profile_2.delete()
+        profile_1.delete()
+
     def test_variables_value_set_undefined_profile(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -123,6 +127,10 @@ class TestVSServiceBuilder:
         assert updated.status == "ACTIVE"
         assert updated.value == "value_1"
 
+        variable.delete()
+        profile_2.delete()
+        profile_1.delete()
+
     def test_variables_selector_strategy_latest(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -161,6 +169,10 @@ class TestVSServiceBuilder:
         )
         assert updated.status == "ACTIVE"
         assert updated.value == "v2"
+
+        value_2.delete()
+        value_1.delete()
+        variable.delete()
 
     def test_variables_selector_recalculate_on_delete(
         self,
@@ -211,6 +223,9 @@ class TestVSServiceBuilder:
         assert updated.status == "ACTIVE"
         assert updated.value == "v1"
 
+        value_1.delete()
+        variable.delete()
+
     def test_variables_undefined_no_value_field_in_ua_resource(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -233,3 +248,5 @@ class TestVSServiceBuilder:
         )
         assert updated.status == "IN_PROGRESS"
         assert updated.value is None
+
+        variable.delete()

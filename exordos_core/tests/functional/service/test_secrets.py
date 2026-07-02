@@ -77,6 +77,10 @@ class TestSecretsServiceBuilder:
 
         assert password.status == "IN_PROGRESS"
 
+        password_url = client.build_resource_uri(["secret/passwords", output["uuid"]])
+        client.delete(password_url)
+        agent.delete()
+
     def test_in_progress_passwords(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -123,6 +127,13 @@ class TestSecretsServiceBuilder:
         assert password.status == "ACTIVE"
         assert password.value == "mynewpassword"
 
+        password_url = client.build_resource_uri(
+            ["secret/passwords", str(password.uuid)]
+        )
+        client.delete(password_url)
+        agent.delete()
+        render_actual_resource.delete()
+
     def test_update_passwords(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -142,7 +153,8 @@ class TestSecretsServiceBuilder:
         password = password_factory()
 
         url = client.build_collection_uri(["secret/passwords"])
-        client.post(url, json=password)
+        response = client.post(url, json=password)
+        password_uuid = response.json()["uuid"]
 
         self._service._iteration()
 
@@ -181,6 +193,11 @@ class TestSecretsServiceBuilder:
         password = stubs.Password.objects.get_one()
         assert password.status == "IN_PROGRESS"
 
+        password_url = client.build_resource_uri(["secret/passwords", password_uuid])
+        client.delete(password_url)
+        agent.delete()
+        render_actual_resource.delete()
+
     def test_delete_passwords(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -214,6 +231,8 @@ class TestSecretsServiceBuilder:
         target_resources = stubs.TargetResource.objects.get_all()
         assert len(target_resources) == 0
 
+        agent.delete()
+
     def test_update_passwords_active_on_valid_hash(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -233,7 +252,8 @@ class TestSecretsServiceBuilder:
         password = password_factory()
 
         url = client.build_collection_uri(["secret/passwords"])
-        client.post(url, json=password)
+        response = client.post(url, json=password)
+        password_uuid = response.json()["uuid"]
 
         self._service._iteration()
 
@@ -268,6 +288,11 @@ class TestSecretsServiceBuilder:
 
         cert = stubs.Password.objects.get_one()
         assert cert.status == "ACTIVE"
+
+        password_url = client.build_resource_uri(["secret/passwords", password_uuid])
+        client.delete(password_url)
+        agent.delete()
+        render_actual_resource.delete()
 
     def test_new_certificate(
         self,
@@ -306,6 +331,10 @@ class TestSecretsServiceBuilder:
         assert cert["uuid"] == str(certiface.uuid)
         assert certiface.status == "IN_PROGRESS"
 
+        cert_url = client.build_resource_uri(["secret/certificates", output["uuid"]])
+        client.delete(cert_url)
+        agent.delete()
+
     def test_in_progress_certificates(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -325,7 +354,8 @@ class TestSecretsServiceBuilder:
         cert = cert_factory()
 
         url = client.build_collection_uri(["secret/certificates"])
-        client.post(url, json=cert)
+        response = client.post(url, json=cert)
+        certificate_uuid = response.json()["uuid"]
 
         self._service._iteration()
 
@@ -354,6 +384,11 @@ class TestSecretsServiceBuilder:
         assert certificate.key == "mykey"
         assert certificate.cert == "mycert"
 
+        cert_url = client.build_resource_uri(["secret/certificates", certificate_uuid])
+        client.delete(cert_url)
+        agent.delete()
+        render_actual_resource.delete()
+
     def test_update_certificates(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -373,7 +408,8 @@ class TestSecretsServiceBuilder:
         cert = cert_factory()
 
         url = client.build_collection_uri(["secret/certificates"])
-        client.post(url, json=cert)
+        response = client.post(url, json=cert)
+        certificate_uuid = response.json()["uuid"]
 
         self._service._iteration()
 
@@ -416,6 +452,11 @@ class TestSecretsServiceBuilder:
         cert = models.Certificate.objects.get_one()
         assert cert.status == "IN_PROGRESS"
 
+        cert_url = client.build_resource_uri(["secret/certificates", certificate_uuid])
+        client.delete(cert_url)
+        agent.delete()
+        render_actual_resource.delete()
+
     def test_delete_certificates(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -449,6 +490,8 @@ class TestSecretsServiceBuilder:
         target_resources = stubs.TargetResource.objects.get_all()
         assert len(target_resources) == 0
 
+        agent.delete()
+
     def test_update_certificates_active_on_valid_hash(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -468,7 +511,8 @@ class TestSecretsServiceBuilder:
         cert = cert_factory()
 
         url = client.build_collection_uri(["secret/certificates"])
-        client.post(url, json=cert)
+        response = client.post(url, json=cert)
+        certificate_uuid = response.json()["uuid"]
 
         self._service._iteration()
 
@@ -504,6 +548,11 @@ class TestSecretsServiceBuilder:
 
         cert = models.Certificate.objects.get_one()
         assert cert.status == "ACTIVE"
+
+        cert_url = client.build_resource_uri(["secret/certificates", certificate_uuid])
+        client.delete(cert_url)
+        agent.delete()
+        render_actual_resource.delete()
 
     def test_new_ssh_key(
         self,
@@ -548,6 +597,10 @@ class TestSecretsServiceBuilder:
         assert host_key.value["target_public_key"] == "PUBLIC_KEY"
         assert str(host_key.agent) == default_node["uuid"]
 
+        key_url = client.build_resource_uri(["secret/ssh_keys", output["uuid"]])
+        client.delete(key_url)
+        agent.delete()
+
     def test_new_ssh_key_fake_node(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -582,6 +635,8 @@ class TestSecretsServiceBuilder:
 
         assert len(target_resources) == 0
         assert len(keys) == 0
+
+        agent.delete()
 
     def test_in_progress_ssh_keys(
         self,
@@ -634,6 +689,11 @@ class TestSecretsServiceBuilder:
         config = models.SSHKey.objects.get_one()
         assert config.status == "ACTIVE"
 
+        key_url = client.build_resource_uri(["secret/ssh_keys", output["uuid"]])
+        client.delete(key_url)
+        agent.delete()
+        host_actual_resource.delete()
+
     def test_update_ssh_keys(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -661,6 +721,7 @@ class TestSecretsServiceBuilder:
 
         assert response.status_code == 201
         assert output["status"] == "NEW"
+        key_uuid = output["uuid"]
 
         self._service._iteration()
 
@@ -701,6 +762,11 @@ class TestSecretsServiceBuilder:
         key = models.SSHKey.objects.get_one()
         assert key.status == "IN_PROGRESS"
 
+        key_url = client.build_resource_uri(["secret/ssh_keys", key_uuid])
+        client.delete(key_url)
+        agent.delete()
+        host_actual_resource.delete()
+
     def test_delete_ssh_keys(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -740,3 +806,5 @@ class TestSecretsServiceBuilder:
 
         target_resources = stubs.TargetResource.objects.get_all()
         assert len(target_resources) == 0
+
+        agent.delete()

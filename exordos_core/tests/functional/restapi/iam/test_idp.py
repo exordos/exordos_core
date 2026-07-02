@@ -20,6 +20,7 @@ import pytest
 from exordos_core.common import constants as common_c
 from exordos_core.tests.functional.restapi.iam import base
 from exordos_core.user_api.iam import constants as iam_c
+from exordos_core.user_api.iam.dm import models as iam_models
 
 
 class TestIdp(base.BaseIamResourceTest):
@@ -197,6 +198,8 @@ class TestIdp(base.BaseIamResourceTest):
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.put(url, json={"name": "updated"})
+
+        iam_models.Idp.objects.get_one(filters={"uuid": idp["uuid"]}).delete()
 
     def test_update_idp_with_permission_success(self, user_api_client, auth_user_admin):
         admin_client = user_api_client(

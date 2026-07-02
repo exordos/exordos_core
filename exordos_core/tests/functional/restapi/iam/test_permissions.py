@@ -91,9 +91,11 @@ class TestPermissions(base.BaseIamResourceTest):
     def test_delete_permission_by_user(
         self, user_api_client, auth_user_admin, auth_test1_user
     ):
-        client = user_api_client(auth_user_admin)
-        permission = client.create_permission(name="test_permission_to_delete")
+        admin_client = user_api_client(auth_user_admin)
+        permission = admin_client.create_permission(name="test_permission_to_delete")
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.delete_permission(uuid=permission["uuid"])
+
+        admin_client.delete_permission(uuid=permission["uuid"])

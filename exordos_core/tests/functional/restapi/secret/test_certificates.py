@@ -73,6 +73,9 @@ class TestCertificatesUserApi:
 
         assert response.status_code == 201
         assert self._secret_cmp_shallow(cert, output)
+        client.delete(
+            client.build_resource_uri(["secret/certificates", output["uuid"]])
+        )
 
     def test_certificates_add_several(
         self,
@@ -82,7 +85,7 @@ class TestCertificatesUserApi:
     ):
         client = user_api_client(auth_user_admin)
 
-        urls = []
+        uuids = []
         url = client.build_collection_uri(["secret/certificates"])
         for i in range(3):
             cert = cert_factory()
@@ -90,11 +93,14 @@ class TestCertificatesUserApi:
             output = response.json()
             assert response.status_code == 201
             assert self._secret_cmp_shallow(cert, output)
-            urls.append(url + "/" + output["uuid"])
+            uuids.append(output["uuid"])
 
-        for url in urls:
-            response = client.get(url)
+        for uuid in uuids:
+            response = client.get(
+                client.build_resource_uri(["secret/certificates", uuid])
+            )
             assert response.status_code == 200
+            client.delete(client.build_resource_uri(["secret/certificates", uuid]))
 
     def test_certificates_update(
         self,
@@ -124,6 +130,9 @@ class TestCertificatesUserApi:
         output = response.json()
         assert response.status_code == 200
         assert output["name"] == "foo-cert"
+
+        # cleanup
+        client.delete(url)
 
     def test_certificates_update_status_new(
         self,
@@ -162,6 +171,9 @@ class TestCertificatesUserApi:
         assert response.status_code == 200
         assert output["name"] == "foo-cert"
         assert output["status"] == "NEW"
+
+        # cleanup
+        client.delete(url)
 
     def test_certificates_delete(
         self,
@@ -206,3 +218,6 @@ class TestCertificatesUserApi:
         url = client.build_resource_uri(["secret/certificates", output["uuid"]])
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.put(url, json=update)
+
+        # cleanup
+        client.delete(url)

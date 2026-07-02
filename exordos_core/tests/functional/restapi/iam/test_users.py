@@ -93,6 +93,9 @@ class TestUsers(base.BaseIamResourceTest):
         assert user["password"] == "*******"
         assert user["username"] == name
 
+        # cleanup
+        client.delete_user(user["uuid"])
+
     def test_create_user_unauthenticated_fails(self, user_api_noauth_client):
         client = user_api_noauth_client()
 
@@ -140,6 +143,7 @@ class TestUsers(base.BaseIamResourceTest):
                 iam_c.PERMISSION_USER_CREATE,
             ],
         )
+        created_users = []
         for empty_name in ["", None]:
             name = f"test_no_names_{empty_name}".lower()
             user = client.create_user(
@@ -151,6 +155,11 @@ class TestUsers(base.BaseIamResourceTest):
             assert user["username"] == name
             assert not user.get("first_name")
             assert not user.get("last_name")
+            created_users.append(user)
+
+        # cleanup
+        for u in created_users:
+            client.delete_user(u["uuid"])
 
     def test_update_user_clear_first_last_name_success(
         self, user_api_client, auth_test1_user
@@ -642,6 +651,9 @@ class TestUsers(base.BaseIamResourceTest):
         assert user["username"] == "service-account"
         assert user["type"] == "service"
 
+        # cleanup
+        client.delete_user(user["uuid"])
+
     def test_service_user_password_auth_forbidden(
         self, user_api_client, auth_user_admin
     ):
@@ -673,6 +685,9 @@ class TestUsers(base.BaseIamResourceTest):
                 username="service-test", password="anypassword"
             )
 
+        # cleanup
+        client.delete_user(service_user["uuid"])
+
     def test_service_user_password_change_forbidden(
         self, user_api_client, auth_user_admin
     ):
@@ -684,7 +699,7 @@ class TestUsers(base.BaseIamResourceTest):
                 iam_c.PERMISSION_USER_CREATE,
             ],
         )
-        _ = client.create_user(
+        service_user = client.create_user(
             username="service-test-2",
             password="testtest",
             email="service2@test.com",
@@ -699,6 +714,9 @@ class TestUsers(base.BaseIamResourceTest):
         # Try to change password - should fail
         with pytest.raises(iam_exceptions.ServiceAccountPasswordChangeError):
             service_user_model.secret = "newpassword"
+
+        # cleanup
+        client.delete_user(service_user["uuid"])
 
     def test_regular_user_password_auth_works(
         self, user_api_client, auth_user_admin, default_client_id, default_client_secret
@@ -747,6 +765,9 @@ class TestUsers(base.BaseIamResourceTest):
         assert token_response is not None
         assert "access_token" in token_response
 
+        # cleanup
+        client.delete_user(regular_user["uuid"])
+
     def test_user_type_cannot_be_changed(self, user_api_client, auth_user_admin):
         """Test that user type cannot be changed after creation"""
         # Create a regular user via API
@@ -769,6 +790,9 @@ class TestUsers(base.BaseIamResourceTest):
         # Try to change user type - should fail with 403 Forbidden
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.update_user(uuid=regular_user["uuid"], type="service")
+
+        # cleanup
+        client.delete_user(regular_user["uuid"])
 
     def test_service_account_token_by_regular_user(
         self, user_api_client, auth_user_admin, default_client_id, default_client_secret
@@ -905,6 +929,14 @@ class TestUsers(base.BaseIamResourceTest):
         assert service_decoded["sub"] == str(service_user["uuid"])
         assert service_decoded["sub"] != regular_decoded["sub"]
 
+        # cleanup
+        service_binding.delete()
+        regular_binding.delete()
+        admin_client.delete_project(project["uuid"])
+        admin_client.delete_organization(org["uuid"])
+        admin_client.delete_user(service_user["uuid"])
+        admin_client.delete_user(regular_user["uuid"])
+
     def test_service_account_token_by_user_without_permission(
         self, user_api_client, auth_user_admin, default_client_id, default_client_secret
     ):
@@ -1017,6 +1049,14 @@ class TestUsers(base.BaseIamResourceTest):
             exc_info.value
         )
 
+        # cleanup
+        service_binding.delete()
+        regular_binding.delete()
+        admin_client.delete_project(project["uuid"])
+        admin_client.delete_organization(org["uuid"])
+        admin_client.delete_user(service_user["uuid"])
+        admin_client.delete_user(regular_user["uuid"])
+
     @pytest.mark.parametrize(
         "invalid_scope",
         [
@@ -1120,3 +1160,11 @@ class TestUsers(base.BaseIamResourceTest):
         # Since user cannot authenticate, we get 401 Unauthorized
         # This is expected behavior - authentication happens before scope validation
         assert "401" in str(exc_info.value) or "Unauthorized" in str(exc_info.value)
+
+        # cleanup
+        regular_binding.delete()
+        service_binding.delete()
+        admin_client.delete_user(regular_user["uuid"])
+        admin_client.delete_project(project["uuid"])
+        admin_client.delete_organization(org["uuid"])
+        admin_client.delete_user(service_user["uuid"])
