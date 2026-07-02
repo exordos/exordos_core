@@ -323,6 +323,10 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
         {"func": bootstrap_defaults.set_core_data_disk_size_var, "args": [spec]},
         {"func": bootstrap_defaults.set_ecosystem_endpoint_var, "args": [spec]},
         {"func": bootstrap_defaults.set_disable_telemetry_var, "args": [spec]},
+        {
+            "func": bootstrap_defaults.set_registration_auto_provision_var,
+            "args": [spec],
+        },
         {"func": bootstrap_defaults.set_realm_uuid_var, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_secret_var, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_access_token_var, "args": [spec]},
