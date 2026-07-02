@@ -177,6 +177,9 @@ class TestVolumeUserApi:
         assert response.status_code == 200
         assert output["node"].endswith(node["uuid"])
 
+        client.delete(client.build_resource_uri(["compute", "volumes", volume["uuid"]]))
+        client.delete(client.build_resource_uri(["compute", "nodes", node["uuid"]]))
+
     def test_volume_attach_already_attached(
         self,
         volume_factory: tp.Callable,
@@ -207,6 +210,9 @@ class TestVolumeUserApi:
             client.post(attach_url, json={"node": node["uuid"]})
 
         assert "already attached" in str(exc_info.value.cause.response.text).lower()
+
+        client.delete(client.build_resource_uri(["compute", "volumes", volume["uuid"]]))
+        client.delete(client.build_resource_uri(["compute", "nodes", node["uuid"]]))
 
     def test_volume_detach(
         self,
@@ -254,6 +260,9 @@ class TestVolumeUserApi:
         assert response.status_code == 200
         assert "node" not in output
 
+        client.delete(client.build_resource_uri(["compute", "volumes", volume["uuid"]]))
+        client.delete(client.build_resource_uri(["compute", "nodes", node["uuid"]]))
+
     def test_volume_detach_not_attached(
         self,
         volume_factory: tp.Callable,
@@ -275,6 +284,8 @@ class TestVolumeUserApi:
             client.post(detach_url)
 
         assert "not attached" in str(exc_info.value.cause.response.text).lower()
+
+        client.delete(client.build_resource_uri(["compute", "volumes", volume["uuid"]]))
 
     def test_newcomer_no_access(
         self,
@@ -312,3 +323,7 @@ class TestVolumeUserApi:
 
         assert response.status_code == 200
         assert len(response.json()) == 1
+
+        admin_client.delete(
+            admin_client.build_resource_uri(["compute", "volumes", volume_uuid])
+        )

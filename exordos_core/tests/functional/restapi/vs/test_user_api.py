@@ -232,6 +232,7 @@ class TestVSUserApi:
         assert response.status_code == 201
         assert output["uuid"] == variable["uuid"]
         assert output["name"] == variable["name"]
+        client.delete(client.build_resource_uri(["vs", "variables", variable["uuid"]]))
 
     def test_variables_update(
         self,
@@ -429,6 +430,8 @@ class TestVSUserApi:
         assert response.status_code == 201
         assert output["uuid"] == value["uuid"]
         assert output["value"] == 1
+        client.delete(client.build_resource_uri(["vs", "values", value["uuid"]]))
+        client.delete(client.build_resource_uri(["vs", "variables", variable["uuid"]]))
 
     def test_values_update(
         self,

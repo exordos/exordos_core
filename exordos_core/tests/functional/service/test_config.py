@@ -62,6 +62,7 @@ class TestConfigServiceBuilder:
 
         assert response.status_code == 201
         assert output["status"] == "NEW"
+        config_uuid = output["uuid"]
 
         self._service._iteration()
 
@@ -76,6 +77,11 @@ class TestConfigServiceBuilder:
         assert config.status == "IN_PROGRESS"
         assert render.status == "IN_PROGRESS"
         assert str(render.agent) == default_node["uuid"]
+
+        config_url = client.build_resource_uri(["config/configs", config_uuid])
+        client.delete(config_url)
+        agent.delete()
+        render.delete()
 
     def test_new_config_fake_node(
         self,
@@ -109,6 +115,8 @@ class TestConfigServiceBuilder:
         assert len(target_resources) == 0
         assert len(configs) == 0
 
+        agent.delete()
+
     def test_new_config_render_text(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -131,7 +139,7 @@ class TestConfigServiceBuilder:
         )
 
         url = client.build_collection_uri(["config/configs"])
-        client.post(url, json=config)
+        response = client.post(url, json=config)
 
         self._service._iteration()
 
@@ -139,6 +147,11 @@ class TestConfigServiceBuilder:
         render = [r for r in target_resources if r.kind == "render"][0]
 
         assert render.value["content"] == "TEST"
+
+        config_uuid = response.json()["uuid"]
+        config_url = client.build_resource_uri(["config/configs", config_uuid])
+        client.delete(config_url)
+        agent.delete()
 
     def test_in_progress_configs(
         self,
@@ -162,7 +175,7 @@ class TestConfigServiceBuilder:
         )
 
         url = client.build_collection_uri(["config/configs"])
-        client.post(url, json=config)
+        response = client.post(url, json=config)
 
         self._service._iteration()
 
@@ -186,6 +199,12 @@ class TestConfigServiceBuilder:
 
         config = models.Config.objects.get_one()
         assert config.status == "ACTIVE"
+
+        config_uuid = response.json()["uuid"]
+        config_url = client.build_resource_uri(["config/configs", config_uuid])
+        client.delete(config_url)
+        agent.delete()
+        render_actual_resource.delete()
 
     # NOTE(akremenetsky): Will be added and fixed later
     # def test_orphan_configs(
@@ -281,7 +300,8 @@ class TestConfigServiceBuilder:
         )
 
         url = client.build_collection_uri(["config/configs"])
-        client.post(url, json=config)
+        response = client.post(url, json=config)
+        config_uuid = response.json()["uuid"]
 
         self._service._iteration()
 
@@ -321,3 +341,8 @@ class TestConfigServiceBuilder:
 
         config = models.Config.objects.get_one()
         assert config.status == "IN_PROGRESS"
+
+        config_url = client.build_resource_uri(["config/configs", config_uuid])
+        client.delete(config_url)
+        agent.delete()
+        render_actual_resource.delete()

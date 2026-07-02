@@ -104,6 +104,9 @@ class TestComputeBootApi:
         assert "vmlinuz" not in response.text
         assert "0x80" in response.text
 
+        machine.delete()
+        pool.delete()
+
     def test_netboots_default_net_custom_kernel_initrd(
         self, boot_api: test_utils.RestServiceTestCase
     ):

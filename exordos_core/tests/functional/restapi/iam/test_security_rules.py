@@ -25,7 +25,7 @@ from exordos_core.user_api.security.dm import models as security_models
 
 class TestSecurityRules:
     @staticmethod
-    def _create_block_email_rule(user_uuid):
+    def _create_block_email_rule(user_uuid) -> security_models.Rule:
         rule = security_models.Rule(
             name="Block email update",
             condition=security_models.UriConditions(
@@ -38,6 +38,7 @@ class TestSecurityRules:
             operator=security_models.OperatorEnum.AND.value,
         )
         rule.insert()
+        return rule
 
     @staticmethod
     def _create_block_field_rule(user_uuid, fields, project_id=None):
@@ -56,6 +57,7 @@ class TestSecurityRules:
             project_id=project_id,
         )
         rule.insert()
+        return rule
 
     @staticmethod
     def _create_or_block_email_rule(user_uuid):
@@ -71,6 +73,7 @@ class TestSecurityRules:
             operator=security_models.OperatorEnum.OR.value,
         )
         rule.insert()
+        return rule
 
     @staticmethod
     def _build_rule_payload(name, user_uuid):
@@ -102,7 +105,7 @@ class TestSecurityRules:
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
         auth_test1_user: iam_clients.GenesisCoreAuth,
     ):
-        self._create_block_email_rule(auth_test1_user.uuid)
+        rule = self._create_block_email_rule(auth_test1_user.uuid)
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
@@ -110,6 +113,8 @@ class TestSecurityRules:
                 auth_test1_user.uuid,
                 email="new-email@example.com",
             )
+
+        rule.delete()
 
     def test_project_rule_applied_when_project_in_context(
         self,
@@ -154,7 +159,7 @@ class TestSecurityRules:
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
         auth_test1_user: iam_clients.GenesisCoreAuth,
     ):
-        self._create_block_email_rule(auth_test1_user.uuid)
+        rule = self._create_block_email_rule(auth_test1_user.uuid)
         client = user_api_client(auth_test1_user)
 
         response = client.update_user(
@@ -164,12 +169,14 @@ class TestSecurityRules:
 
         assert response["first_name"] == "Updated"
 
+        rule.delete()
+
     def test_or_only_rules_are_evaluated(
         self,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
         auth_test1_user: iam_clients.GenesisCoreAuth,
     ):
-        self._create_or_block_email_rule(auth_test1_user.uuid)
+        rule = self._create_or_block_email_rule(auth_test1_user.uuid)
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
@@ -177,6 +184,8 @@ class TestSecurityRules:
                 auth_test1_user.uuid,
                 email="new-email@example.com",
             )
+
+        rule.delete()
 
     def test_rules_create_success(
         self,
@@ -195,6 +204,11 @@ class TestSecurityRules:
         )
 
         assert created["name"] == "Create rule"
+
+        rule_obj = security_models.Rule.objects.get_one(
+            filters={"uuid": created["uuid"]}
+        )
+        rule_obj.delete()
 
     def test_rules_read_success(
         self,
@@ -343,6 +357,11 @@ class TestSecurityRules:
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.delete(resource_url)
 
+        admin_resource_url = admin_client.build_resource_uri(
+            ["security/rules/", created["uuid"]]
+        )
+        admin_client.delete(admin_resource_url)
+
     def test_rules_project_inherited_from_context(
         self,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
@@ -362,3 +381,8 @@ class TestSecurityRules:
         created = client.post(collection_url, json=rule_payload).json()
 
         assert created["project_id"] == auth_test1_p1_user.project_id
+
+        rule_obj = security_models.Rule.objects.get_one(
+            filters={"uuid": created["uuid"]}
+        )
+        rule_obj.delete()

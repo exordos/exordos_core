@@ -24,6 +24,7 @@ from gcl_iam.tests.functional import clients as iam_clients
 import requests
 
 from exordos_core.tests.functional.restapi.iam import base
+from exordos_core.user_api.iam.dm import models as iam_models
 from exordos_core.user_api.security.dm import models as security_models
 
 CREATE_USER_PATH = "iam/users/"
@@ -130,9 +131,9 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         auth_test1_user,
     ):
         """Any of Firebase / CAPTCHA / admin-bypass should allow creation."""
-        self._create_firebase_rule(allowed_app_ids=["test-app-id"])
-        self._create_captcha_rule()
-        self._create_admin_bypass_rule(
+        firebase_rule = self._create_firebase_rule(allowed_app_ids=["test-app-id"])
+        captcha_rule = self._create_captcha_rule()
+        admin_bypass_rule = self._create_admin_bypass_rule(
             allowed_identifiers=[
                 auth_user_admin.email,
                 str(auth_user_admin.uuid),
@@ -150,8 +151,11 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             "Authorization": f"Bearer {admin_token}",
             "X-Firebase-AppCheck": "valid_firebase_token_12345",
         }
-        response = self._post_create_user(user_api, headers, username_suffix="firebase")
-        assert response.status_code in (200, 201)
+        firebase_response = self._post_create_user(
+            user_api, headers, username_suffix="firebase"
+        )
+        assert firebase_response.status_code in (200, 201)
+        firebase_user_uuid = firebase_response.json()["uuid"]
 
         captcha_payload = json.dumps(
             {
@@ -189,10 +193,23 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             "exordos_core.user_api.security.dm.models.AdminBypassVerifier.execute",
             return_value=True,
         ):
-            response = self._post_create_user(
+            admin_bypass_response = self._post_create_user(
                 user_api, headers, username_suffix="admin_bypass"
             )
-        assert response.status_code in (200, 201)
+        assert admin_bypass_response.status_code in (200, 201)
+        admin_bypass_user_uuid = admin_bypass_response.json()["uuid"]
+
+        # cleanup
+        iam_models.User.objects.get_one(filters={"uuid": firebase_user_uuid}).delete()
+        iam_models.User.objects.get_one(
+            filters={"uuid": response.json()["uuid"]}
+        ).delete()
+        iam_models.User.objects.get_one(
+            filters={"uuid": admin_bypass_user_uuid}
+        ).delete()
+        firebase_rule.delete()
+        captcha_rule.delete()
+        admin_bypass_rule.delete()
 
     def _get_access_token(self, user_api, auth):
         client = iam_clients.GenesisCoreTestRESTClient(
@@ -207,10 +224,12 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         user_api,
         auth_test1_user,
     ):
-        """Без Firebase, CAPTCHA и без admin-bypass – должен быть 403 из SecurityRulesMiddleware."""
-        self._create_firebase_rule(allowed_app_ids=["test-app-id"])
-        self._create_captcha_rule()
-        self._create_admin_bypass_rule(allowed_identifiers=["non-existent@example.com"])
+        """Without Firebase, CAPTCHA, and without admin-bypass – should get 403 from SecurityRulesMiddleware."""
+        firebase_rule = self._create_firebase_rule(allowed_app_ids=["test-app-id"])
+        captcha_rule = self._create_captcha_rule()
+        admin_bypass_rule = self._create_admin_bypass_rule(
+            allowed_identifiers=["non-existent@example.com"]
+        )
 
         token = self._get_access_token(user_api, auth_test1_user)
         headers = {
@@ -221,6 +240,10 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
             user_api, headers, username_suffix="forbidden"
         )
         assert response.status_code == 403
+
+        firebase_rule.delete()
+        captcha_rule.delete()
+        admin_bypass_rule.delete()
 
     def test_grant_permission_action_matches_all(
         self,
@@ -284,7 +307,7 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
     ):
         """Anonymous user can register when GrantPermissionAction grants iam.user.create."""
         # Grant permission rule - no Firebase, no CAPTCHA needed
-        self._create_grant_permission_rule(permission="iam.user.create")
+        grant_rule = self._create_grant_permission_rule(permission="iam.user.create")
 
         # No Authorization header - completely anonymous request
         response = self._post_create_user(
@@ -298,6 +321,10 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         data = response.json()
         assert "uuid" in data
         assert data["username"] == "testuser_street_user"
+
+        # cleanup
+        iam_models.User.objects.get_one(filters={"uuid": data["uuid"]}).delete()
+        grant_rule.delete()
 
     def test_create_user_anonymous_without_rule_is_forbidden(
         self,
@@ -325,7 +352,7 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         passes the security Rule, regardless of whether the user is
         anonymous or authenticated.
         """
-        self._create_grant_permission_rule(permission="iam.user.create")
+        grant_rule = self._create_grant_permission_rule(permission="iam.user.create")
 
         token = self._get_access_token(user_api, auth_test1_user)
         headers = {"Authorization": f"Bearer {token}"}
@@ -338,3 +365,8 @@ class TestUserCreationSecurity(base.BaseIamResourceTest):
         assert response.status_code in (200, 201), (
             f"Auth user with Rule failed: {response.status_code} - {response.text[:200]}"
         )
+
+        # cleanup
+        user_uuid = response.json()["uuid"]
+        iam_models.User.objects.get_one(filters={"uuid": user_uuid}).delete()
+        grant_rule.delete()

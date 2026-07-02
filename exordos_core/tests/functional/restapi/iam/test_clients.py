@@ -48,6 +48,9 @@ class TestClients(base.BaseIamResourceTest):
 
         assert iam_client["name"] == iam_client_name
 
+        # cleanup
+        client.delete_iam_client(iam_client["uuid"])
+
     def test_create_iam_client_by_user1(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
         iam_client_name = "test_client[admin-user]"
@@ -146,14 +149,18 @@ class TestClients(base.BaseIamResourceTest):
         client = user_api_client(
             auth_test1_user,
         )
-        client.create_organization("OrganizationName1")
-        client.create_organization("OrganizationName2")
+        org1 = client.create_organization("OrganizationName1")
+        org2 = client.create_organization("OrganizationName2")
 
         result = client.me()
 
         assert result["user"]["uuid"] == auth_test1_user.uuid
         assert len(result["organization"]) == 2
         assert result["project_id"] is None
+
+        # cleanup
+        for org in [org2, org1]:
+            client.delete_organization(org["uuid"])
 
     def test_me_with_organization_and_project_success(
         self, user_api_client, auth_test1_p1_user
@@ -316,7 +323,7 @@ class TestClients(base.BaseIamResourceTest):
         self, user_api_client, auth_test1_user, decode_id_token, scope_test
     ):
         client = user_api_client(auth_test1_user)
-        client.create_organization("OrganizationName1")
+        org = client.create_organization("OrganizationName1")
         token_params = auth_test1_user.get_password_auth_params()
         token_params["scope"] = scope_test
 
@@ -328,6 +335,9 @@ class TestClients(base.BaseIamResourceTest):
         id_token = decode_id_token(token_info["id_token"])
         assert token_info["scope"] == scope_test
         assert id_token["project_id"] is None
+
+        # cleanup
+        client.delete_organization(org["uuid"])
 
     def test_get_scoped_token_one_project_one_organization_success(
         self, user_api_client, auth_test1_user, decode_id_token, scope_test
@@ -349,18 +359,22 @@ class TestClients(base.BaseIamResourceTest):
         assert token_info["scope"] == scope_test
         assert id_token["project_id"] == project["uuid"]
 
+        # cleanup
+        client.delete_project(project["uuid"])
+        client.delete_organization(org["uuid"])
+
     def test_get_scoped_token_two_project_two_organization_success(
         self, user_api_client, auth_test1_user, decode_id_token, scope_test
     ):
         client = user_api_client(auth_test1_user)
         org1 = client.create_organization("OrganizationName1")
-        project = client.create_project(
+        project1 = client.create_project(
             org1["uuid"], "ProjectName1Org1", uuid=TEST_PROJECT_ID
         )
-        client.create_project(org1["uuid"], "ProjectName2Org1")
+        project2 = client.create_project(org1["uuid"], "ProjectName2Org1")
         org2 = client.create_organization("OrganizationName2")
-        client.create_project(org2["uuid"], "ProjectName1Org2")
-        client.create_project(org2["uuid"], "ProjectName2Org2")
+        project3 = client.create_project(org2["uuid"], "ProjectName1Org2")
+        project4 = client.create_project(org2["uuid"], "ProjectName2Org2")
         token_params = auth_test1_user.get_password_auth_params()
         token_params["scope"] = scope_test
 
@@ -371,7 +385,13 @@ class TestClients(base.BaseIamResourceTest):
 
         id_token = decode_id_token(token_info["id_token"])
         assert token_info["scope"] == scope_test
-        assert id_token["project_id"] == project["uuid"]
+        assert id_token["project_id"] == project1["uuid"]
+
+        # cleanup
+        for p in [project4, project3, project2, project1]:
+            client.delete_project(p["uuid"])
+        for o in [org2, org1]:
+            client.delete_organization(o["uuid"])
 
     def test_refresh_token_wo_scope_success(
         self, user_api_client, auth_test1_user, decode_id_token
@@ -428,6 +448,10 @@ class TestClients(base.BaseIamResourceTest):
         assert first_id_token["project_id"] is None
         assert refreshed_token_info["scope"] == scope_test
         assert second_id_token["project_id"] == project["uuid"]
+
+        # cleanup
+        client.delete_project(project["uuid"])
+        client.delete_organization(org["uuid"])
 
     def test_garbage_refresh_token_with_scope_error(
         self, user_api_client, auth_test1_user
@@ -595,7 +619,9 @@ class TestClients(base.BaseIamResourceTest):
         env = service_token_environment
 
         # Setup role bindings with owner permissions
-        self._setup_role_bindings(env, regular_role="owner", service_role="owner")
+        regular_binding, service_binding = self._setup_role_bindings(
+            env, regular_role="owner", service_role="owner"
+        )
 
         # Create client for regular user
         regular_user_client = user_api_client(
@@ -628,6 +654,10 @@ class TestClients(base.BaseIamResourceTest):
         decoded_token = decode_id_token(access_token)
         assert decoded_token["sub"] == str(env["service_user"]["uuid"])
         assert decoded_token["sub"] != str(env["regular_user"]["uuid"])
+
+        # cleanup
+        regular_binding.delete()
+        service_binding.delete()
 
     @pytest.mark.parametrize(
         "test_scenario",
@@ -677,7 +707,7 @@ class TestClients(base.BaseIamResourceTest):
         env = service_token_environment
 
         # Setup role bindings according to scenario
-        self._setup_role_bindings(
+        regular_binding, service_binding = self._setup_role_bindings(
             env,
             regular_role=test_scenario["regular_role"],
             service_role=test_scenario["service_role"],
@@ -712,6 +742,10 @@ class TestClients(base.BaseIamResourceTest):
                 ),
                 data=request_data,
             )
+
+        # cleanup
+        regular_binding.delete()
+        service_binding.delete()
 
     def test_get_regular_token_with_access_token_grant_type_error(
         self,
@@ -819,3 +853,10 @@ class TestClients(base.BaseIamResourceTest):
                     "password": "regularpassword",
                 },
             )
+
+        # cleanup
+        regular_with_perm_binding.delete()
+        regular_binding.delete()
+        admin_client.delete_project(project["uuid"])
+        admin_client.delete_organization(org["uuid"])
+        admin_client.delete_user(regular_user_with_perm["uuid"])

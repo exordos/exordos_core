@@ -100,6 +100,10 @@ class TestHypervisorUserApi:
         assert self._hypervisor_cmp_shallow(hypervisor, output)
         assert output["status"] == nc.MachinePoolStatus.DISABLED.value
 
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", hypervisor["uuid"]])
+        )
+
     def test_hypervisors_add_several(
         self,
         pool_factory: tp.Callable,
@@ -135,6 +139,13 @@ class TestHypervisorUserApi:
                 self._hypervisor_cmp_shallow(hypervisor, item) for item in output
             )
 
+        for hypervisor in hypervisors:
+            client.delete(
+                client.build_resource_uri(
+                    ["compute", "hypervisors", hypervisor["uuid"]]
+                )
+            )
+
     def test_hypervisors_update(
         self,
         pool_factory: tp.Callable,
@@ -158,6 +169,10 @@ class TestHypervisorUserApi:
         assert response.status_code == 200
         assert output["avail_cores"] == 2
         assert output["avail_ram"] == 2048
+
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", hypervisor["uuid"]])
+        )
 
     def test_hypervisors_delete(
         self,
@@ -222,6 +237,10 @@ class TestHypervisorUserApi:
         assert response.status_code == 200
         assert len(response.json()) == 1
 
+        admin_client.delete(
+            admin_client.build_resource_uri(["compute", "hypervisors", hypervisor_uuid])
+        )
+
     def test_hypervisors_add_different_connection_uris(
         self,
         pool_factory: tp.Callable,
@@ -251,6 +270,11 @@ class TestHypervisorUserApi:
         response = client.post(url, json=hypervisor2)
         assert response.status_code == 201
 
+        for hv in [hypervisor1, hypervisor2]:
+            client.delete(
+                client.build_resource_uri(["compute", "hypervisors", hv["uuid"]])
+            )
+
     def test_hypervisors_add_same_connection_uri(
         self,
         pool_factory: tp.Callable,
@@ -279,3 +303,7 @@ class TestHypervisorUserApi:
         hypervisor2.pop("status", None)
         with pytest.raises(bazooka_exc.ConflictError):
             client.post(url, json=hypervisor2)
+
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", hypervisor1["uuid"]])
+        )

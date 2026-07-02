@@ -80,6 +80,7 @@ class TestSSHKeysUserApi:
 
         assert response.status_code == 201
         assert self._secret_cmp_shallow(key, output)
+        client.delete(client.build_resource_uri(["secret/ssh_keys", output["uuid"]]))
 
     def test_ssh_keys_add_several(
         self,
@@ -90,7 +91,7 @@ class TestSSHKeysUserApi:
     ):
         client = user_api_client(auth_user_admin)
 
-        urls = []
+        uuids = []
         url = client.build_collection_uri(["secret/ssh_keys"])
         for i in range(3):
             key = ssh_key_factory(
@@ -101,11 +102,12 @@ class TestSSHKeysUserApi:
             output = response.json()
             assert response.status_code == 201
             assert self._secret_cmp_shallow(key, output)
-            urls.append(url + "/" + output["uuid"])
+            uuids.append(output["uuid"])
 
-        for url in urls:
-            response = client.get(url)
+        for uuid in uuids:
+            response = client.get(client.build_resource_uri(["secret/ssh_keys", uuid]))
             assert response.status_code == 200
+            client.delete(client.build_resource_uri(["secret/ssh_keys", uuid]))
 
     def test_ssh_keys_add_same(
         self,
@@ -133,7 +135,9 @@ class TestSSHKeysUserApi:
         )
 
         with pytest.raises(bazooka_exc.ConflictError):
-            response = client.post(url, json=key)
+            client.post(url, json=key)
+
+        client.delete(client.build_resource_uri(["secret/ssh_keys", output["uuid"]]))
 
     def test_ssh_keys_update(
         self,
@@ -167,6 +171,7 @@ class TestSSHKeysUserApi:
         output = response.json()
         assert response.status_code == 200
         assert output["name"] == "foo-key"
+        client.delete(url)
 
     def test_ssh_keys_update_status_new(
         self,
@@ -207,6 +212,7 @@ class TestSSHKeysUserApi:
         assert response.status_code == 200
         assert output["name"] == "foo-key"
         assert output["status"] == "NEW"
+        client.delete(url)
 
     def test_ssh_keys_delete(
         self,
@@ -259,3 +265,4 @@ class TestSSHKeysUserApi:
         url = client.build_resource_uri(["secret/ssh_keys", output["uuid"]])
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.put(url, json=update)
+        client.delete(client.build_resource_uri(["secret/ssh_keys", output["uuid"]]))

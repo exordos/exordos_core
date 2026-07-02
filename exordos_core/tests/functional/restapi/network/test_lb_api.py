@@ -290,6 +290,12 @@ class TestLBApi:
         assert response.status_code == 201
         output = response.json()
         assert self._backend_pool_cmp_shallow(backend_pool, output)
+        client.delete(
+            client.build_resource_uri(
+                ["network", "lb", lb["uuid"], "backend_pools", output["uuid"]]
+            )
+        )
+        client.delete(client.build_resource_uri(["network", "lb", lb["uuid"]]))
 
     def test_creates_route_prefix_condition(
         self,

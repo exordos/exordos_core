@@ -59,6 +59,9 @@ class TestOrganizations(base.BaseIamResourceTest):
         assert len(members) == 1
         assert members[0]["role"] == c.OrganizationRole.OWNER.value
 
+        # cleanup
+        client.delete_organization(org["uuid"])
+
     def test_create_organization_test1_auth_success(
         self, user_api_client, auth_test1_user
     ):
@@ -71,6 +74,9 @@ class TestOrganizations(base.BaseIamResourceTest):
         assert org is not None
         assert len(members) == 1
         assert members[0]["role"] == c.OrganizationRole.OWNER.value
+
+        # cleanup
+        client.delete_organization(org["uuid"])
 
     def test_list_organizations_admin_auth_success(
         self, user_api_client, auth_user_admin
@@ -96,15 +102,22 @@ class TestOrganizations(base.BaseIamResourceTest):
     ):
         admin_client = user_api_client(auth_user_admin)
         test_user_client = user_api_client(auth_test1_user)
-        admin_client.create_organization(name="TestOrganization1")
-        admin_client.create_organization(name="TestOrganization2")
-        test_user_client.create_organization(name="TestOrganization3")
-        test_user_client.create_organization(name="TestOrganization4")
+        org1 = admin_client.create_organization(name="TestOrganization1")
+        org2 = admin_client.create_organization(name="TestOrganization2")
+        org3 = test_user_client.create_organization(name="TestOrganization3")
+        org4 = test_user_client.create_organization(name="TestOrganization4")
 
         orgs = test_user_client.list_organizations()
 
         assert isinstance(orgs, list)
         assert len(orgs) == 2
+
+        # cleanup
+        for org in [org4, org3, org2, org1]:
+            try:
+                admin_client.delete_organization(org["uuid"])
+            except Exception:
+                pass
 
     def test_list_all_organizations_test1_auth_success(
         self, user_api_client, auth_user_admin, auth_test1_user
@@ -116,15 +129,22 @@ class TestOrganizations(base.BaseIamResourceTest):
                 c.PERMISSION_ORGANIZATION_READ_ALL,
             ],
         )
-        admin_client.create_organization(name="TestOrganization1")
-        admin_client.create_organization(name="TestOrganization2")
-        test_user_client.create_organization(name="TestOrganization3")
-        test_user_client.create_organization(name="TestOrganization4")
+        org1 = admin_client.create_organization(name="TestOrganization1")
+        org2 = admin_client.create_organization(name="TestOrganization2")
+        org3 = test_user_client.create_organization(name="TestOrganization3")
+        org4 = test_user_client.create_organization(name="TestOrganization4")
 
         orgs = test_user_client.list_organizations()
 
         assert isinstance(orgs, list)
         assert len(orgs) == 6  # 2 for admin, 2 for test user and 2 default
+
+        # cleanup
+        for org in [org4, org3, org2, org1]:
+            try:
+                admin_client.delete_organization(org["uuid"])
+            except Exception:
+                pass
 
     def test_get_any_organization_test1_auth_success(
         self, user_api_client, auth_user_admin, auth_test1_user
@@ -142,6 +162,10 @@ class TestOrganizations(base.BaseIamResourceTest):
         assert org1_result["uuid"] == org1["uuid"]
         assert org2_result["uuid"] == org2["uuid"]
 
+        # cleanup
+        admin_client.delete_organization(org1["uuid"])
+        test_user_client.delete_organization(org2["uuid"])
+
     def test_update_organization_test1_auth_success(
         self, user_api_client, auth_test1_user
     ):
@@ -158,6 +182,9 @@ class TestOrganizations(base.BaseIamResourceTest):
         assert org1_result["uuid"] == org1["uuid"]
         assert org1_result["name"] == new_name
 
+        # cleanup
+        test_user_client.delete_organization(org1["uuid"])
+
     def test_update_other_organization_test1_auth_forbidden(
         self, user_api_client, auth_user_admin, auth_test1_user
     ):
@@ -170,6 +197,9 @@ class TestOrganizations(base.BaseIamResourceTest):
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             test_user_client.update_organization(uuid=org1["uuid"], name=new_name)
+
+        # cleanup
+        admin_client.delete_organization(org1["uuid"])
 
     def test_update_other_organization_test1_auth_success(
         self, user_api_client, auth_user_admin, auth_test1_user
@@ -190,6 +220,9 @@ class TestOrganizations(base.BaseIamResourceTest):
 
         assert org1_result["uuid"] == org1["uuid"]
         assert org1_result["name"] == new_name
+
+        # cleanup
+        admin_client.delete_organization(org1["uuid"])
 
     def test_delete_my_organization_test1_auth_access(
         self, user_api_client, auth_test1_user
@@ -220,6 +253,9 @@ class TestOrganizations(base.BaseIamResourceTest):
         with pytest.raises(bazooka_exc.ForbiddenError):
             test_user_client.delete_organization(org1["uuid"])
 
+        # cleanup
+        admin_client.delete_organization(org1["uuid"])
+
     @pytest.mark.sec_issue_10110_997
     def test_set_owner_role_in_foreign_organization_forbidden(
         self,
@@ -238,6 +274,9 @@ class TestOrganizations(base.BaseIamResourceTest):
                 user_uuid=auth_test1_user.uuid,
                 role=c.OrganizationRole.OWNER.value,
             )
+
+        # cleanup
+        admin_client.delete_organization(org["uuid"])
 
     @pytest.mark.sec_issue_10110_997
     def test_update_org_member_role_in_foreign_organization_forbidden(
@@ -264,6 +303,9 @@ class TestOrganizations(base.BaseIamResourceTest):
                 url,
                 json={"role": c.OrganizationRole.OWNER.value},
             )
+
+        # cleanup
+        admin_client.delete_organization(org["uuid"])
 
     @pytest.mark.sec_issue_10110_997
     def test_delete_other_org_member_in_foreign_organization_forbidden(
@@ -293,6 +335,9 @@ class TestOrganizations(base.BaseIamResourceTest):
         )
         with pytest.raises(bazooka_exc.ForbiddenError):
             test_user_client.delete(url)
+
+        # cleanup
+        admin_client.delete_organization(org["uuid"])
 
     def test_delete_member_organization_test1_auth_access(
         self, user_api_client, auth_user_admin, auth_test1_user

@@ -16,6 +16,8 @@
 
 import os
 import typing as tp
+from typing import Any
+from typing import Generator
 from urllib.parse import urlparse
 import uuid as sys_uuid
 
@@ -35,6 +37,8 @@ from exordos_core.common import utils
 from exordos_core.common.dm import targets as ct
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as node_models
+from exordos_core.compute.dm.models import Network
+from exordos_core.compute.dm.models import Subnet
 from exordos_core.compute.node_set.dm import models as node_set_models
 from exordos_core.config import constants as cc
 from exordos_core.config.dm import models as conf_models
@@ -50,6 +54,58 @@ from exordos_core.user_api.iam.dm import models as iam_models
 from exordos_core.user_api.network.dm import models as network_models
 
 FIRST_MIGRATION = "0000-root-d34de1.py"
+TEST_UUID_PREFIX = element_utils.UUID_PREFIX[::-1]
+
+
+def _make_uuid() -> sys_uuid.UUID:
+    return sys_uuid.UUID(TEST_UUID_PREFIX + str(sys_uuid.uuid4())[8:])
+
+
+def cleanup_test_entities():
+    models = [
+        # Network (leaf first)
+        network_models.Route,
+        network_models.BackendPool,
+        network_models.Vhost,
+        network_models.LB,
+        # Secret
+        secret_models.SSHKey,
+        secret_models.RSAKey,
+        secret_models.Certificate,
+        secret_models.Password,
+        # Config
+        conf_models.Config,
+        # Compute (leaf first)
+        node_models.MachinePoolReservations,
+        node_models.Machine,
+        node_models.Volume,
+        node_models.Interface,
+        node_models.Node,
+        node_models.MachinePool,
+        node_set_models.NodeSet,
+        # Infra
+        node_models.Port,
+        node_models.Subnet,
+        node_models.Network,
+        # Agent
+        sdk_ua_models.UniversalAgent,
+        # IAM (leaf first)
+        iam_models.RoleBinding,
+        iam_models.Role,
+        iam_models.PermissionBinding,
+        iam_models.Permission,
+        iam_models.IamClient,
+        iam_models.Project,
+        iam_models.Organization,
+        iam_models.User,
+    ]
+    for model in models:
+        try:
+            for obj in model.objects.get_all():
+                if str(obj.uuid).startswith(TEST_UUID_PREFIX):
+                    obj.delete()
+        except Exception:
+            pass
 
 
 @pytest.fixture(scope="session")
@@ -102,7 +158,7 @@ def default_client_uuid():
     return c.DEFAULT_CLIENT_UUID
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def user_api_service(context_storage):
     iam_engine_driver = user_drivers.DirectDriver()
 
@@ -118,16 +174,19 @@ def user_api_service(context_storage):
 
     yield rest_service
 
+    rest_service.teardown_method()
+
     rest_service.teardown_class()
 
 
 @pytest.fixture()
 def user_api(user_api_service: test_utils.RestServiceTestCase):
+    # TODO(slashburygin): setup_method(apply_migrations) should be called once, not every test. Should be fixed after squash migrations
     user_api_service.setup_method()
 
     yield user_api_service
 
-    user_api_service.teardown_method()
+    # user_api_service.teardown_method()
 
 
 @pytest.fixture()
@@ -169,7 +228,7 @@ def auth_test1_user(
         code=str(user_obj.confirmation_code),
     )
 
-    return iam_clients.GenesisCoreAuth(
+    auth = iam_clients.GenesisCoreAuth(
         username=user["username"],
         password=password,
         client_uuid=default_client_uuid,
@@ -178,6 +237,14 @@ def auth_test1_user(
         uuid=user["uuid"],
         email=user["email"],
     )
+
+    yield auth
+
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_user(auth.uuid)
+    except Exception:
+        pass
 
 
 @pytest.fixture()
@@ -202,7 +269,7 @@ def auth_test2_user(
         code=str(user_obj.confirmation_code),
     )
 
-    return iam_clients.GenesisCoreAuth(
+    auth = iam_clients.GenesisCoreAuth(
         username=user["username"],
         password=password,
         client_uuid=default_client_uuid,
@@ -211,6 +278,14 @@ def auth_test2_user(
         uuid=user["uuid"],
         email=user["email"],
     )
+
+    yield auth
+
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_user(auth.uuid)
+    except Exception:
+        pass
 
 
 @pytest.fixture()
@@ -250,12 +325,12 @@ def auth_test1_p1_user(
 
     org = client.create_organization(name="OrganizationU1P1")
     project = client.create_project(
-        uuid=str(sys_uuid.uuid4()),
+        uuid=str(_make_uuid()),
         organization_uuid=org["uuid"],
         name="ProjectU1P1",
     )
 
-    return iam_clients.GenesisCoreAuth(
+    result = iam_clients.GenesisCoreAuth(
         username=user["username"],
         password=password,
         client_uuid=default_client_uuid,
@@ -265,6 +340,24 @@ def auth_test1_p1_user(
         email=user["email"],
         project_id=project["uuid"],
     )
+
+    yield result
+
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_project(project["uuid"])
+    except Exception:
+        pass
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_organization(org["uuid"])
+    except Exception:
+        pass
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_user(user["uuid"])
+    except Exception:
+        pass
 
 
 @pytest.fixture()
@@ -299,12 +392,12 @@ def auth_test2_p1_user(
 
     org = client.create_organization(name="OrganizationU2P1")
     project = client.create_project(
-        uuid=str(sys_uuid.uuid4()),
+        uuid=str(_make_uuid()),
         organization_uuid=org["uuid"],
         name="ProjectU2P1",
     )
 
-    return iam_clients.GenesisCoreAuth(
+    result = iam_clients.GenesisCoreAuth(
         username=user["username"],
         password=password,
         client_uuid=default_client_uuid,
@@ -314,6 +407,24 @@ def auth_test2_p1_user(
         email=user["email"],
         project_id=project["uuid"],
     )
+
+    yield result
+
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_project(project["uuid"])
+    except Exception:
+        pass
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_organization(org["uuid"])
+    except Exception:
+        pass
+    try:
+        admin_client = user_api_client(auth_user_admin)
+        admin_client.delete_user(user["uuid"])
+    except Exception:
+        pass
 
 
 @pytest.fixture()
@@ -364,7 +475,7 @@ def node_factory():
         status: tp.Optional[str] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         status_value = nc.NodeStatus.NEW.value if status is None else status.value
         node = node_models.Node(
             uuid=uuid,
@@ -398,7 +509,7 @@ def node_set_factory():
         status: str = nc.NodeStatus.NEW.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         obj = node_set_models.NodeSet(
             uuid=uuid,
             name=name,
@@ -431,7 +542,7 @@ def pool_factory():
         all_ram: int = 16384,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         driver_spec = {"driver": "libvirt"} if driver_spec is None else driver_spec
         status_value = nc.MachinePoolStatus.ACTIVE.value if status is None else status
         storage_pool = node_models.ThinStoragePool(
@@ -476,7 +587,7 @@ def machine_factory(default_pool: tp.Dict[str, tp.Any]):
         build_status: str = nc.MachineBuildStatus.READY.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         pool = pool or sys_uuid.UUID(default_pool["uuid"])
         machine = node_models.Machine(
             uuid=uuid,
@@ -504,7 +615,7 @@ def volume_factory():
         project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         volume = node_models.Volume(
             uuid=uuid,
             name=name,
@@ -540,7 +651,7 @@ def config_factory():
         status: str = cc.ConfigStatus.NEW.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         target = ct.NodeTarget.from_node(target_node)
         body = conf_models.TextBodyConfig.from_text(content_body)
         if on_change_cmd is None:
@@ -577,7 +688,7 @@ def password_factory():
         value: tp.Optional[str] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         constructor = (
             secret_models.PlainSecretConstructor()
             if constructor is None
@@ -618,7 +729,7 @@ def cert_factory():
         status: tp.Optional[cc.ConfigStatus] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         constructor = (
             secret_models.PlainSecretConstructor()
             if constructor is None
@@ -668,7 +779,7 @@ def ssh_key_factory():
         authorized_keys=".ssh/authorized_keys",
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         target = ct.NodeTarget.from_node(target_node)
         constructor = (
             secret_models.PlainSecretConstructor()
@@ -704,7 +815,7 @@ def pool_builder_factory() -> tp.Callable:
         status: str = nc.BuilderStatus.ACTIVE.value,
         **kwargs,
     ) -> sdk_ua_models.UniversalAgent:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         agent = sdk_ua_models.UniversalAgent(
             uuid=uuid,
             capabilities={
@@ -716,7 +827,7 @@ def pool_builder_factory() -> tp.Callable:
             },
             facts={"facts": []},
             name=f"compute_pool_builder_{str(uuid)[:8]}",
-            node=sys_uuid.uuid4(),
+            node=_make_uuid(),
             status=status,
             **kwargs,
         )
@@ -733,7 +844,7 @@ def interface_factory() -> tp.Callable:
         mac: tp.Optional[str] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         interface = node_models.Interface(
             uuid=uuid,
             mac=mac or node_models.Port.generate_mac(),
@@ -755,7 +866,7 @@ def machine_pool_reservation_factory() -> tp.Callable:
         ram: int = 1024,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         reservation = node_models.MachinePoolReservations(
             uuid=uuid,
             pool=pool,
@@ -778,7 +889,7 @@ def lb_factory():
         project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         lb = network_models.LB(
             uuid=uuid,
             name=name,
@@ -804,7 +915,7 @@ def lb_factory_with_model():
         project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
         **kwargs,
     ) -> tp.Tuple[tp.Dict[str, tp.Any], network_models.LB]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         lb = network_models.LB(
             uuid=uuid,
             name=name,
@@ -838,7 +949,7 @@ def vhost_factory():
         proxy_protocol_from: list[str] | None = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         vhost = network_models.Vhost(
             parent=lb,
             uuid=uuid,
@@ -880,7 +991,7 @@ def vhost_factory_with_model():
         proxy_protocol_from: list[str] | None = None,
         **kwargs,
     ) -> tp.Tuple[tp.Dict[str, tp.Any], network_models.Vhost]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         vhost = network_models.Vhost(
             parent=lb,
             uuid=uuid,
@@ -917,7 +1028,7 @@ def backend_pool_factory():
         balance: str = network_models.BalanceTypes.RR.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         backend_pool = network_models.BackendPool(
             parent=lb,
             uuid=uuid,
@@ -949,7 +1060,7 @@ def backend_pool_factory_with_model():
         balance: str = network_models.BalanceTypes.RR.value,
         **kwargs,
     ) -> tp.Tuple[tp.Dict[str, tp.Any], network_models.BackendPool]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         backend_pool = network_models.BackendPool(
             parent=lb,
             uuid=uuid,
@@ -981,7 +1092,7 @@ def route_factory():
         enabled: bool = True,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
-        uuid = uuid or sys_uuid.uuid4()
+        uuid = uuid or _make_uuid()
         route = network_models.Route(
             parent=vhost,
             uuid=uuid,
@@ -1020,7 +1131,13 @@ def default_pool(
     pool.status = "ACTIVE"
     pool.save()
 
-    return default_pool
+    yield default_pool
+
+    url = client.build_resource_uri(["compute", "hypervisors", str(uuid)])
+    try:
+        client.delete(url)
+    except Exception:
+        pass
 
 
 @pytest.fixture
@@ -1045,7 +1162,7 @@ def default_node(
 def default_network(
     user_api_client: iam_clients.GenesisCoreTestRESTClient,
     auth_user_admin: iam_clients.GenesisCoreAuth,
-) -> node_models.Network:
+) -> Generator[Network, Any, None]:
     uuid = sys_uuid.UUID("00000000-1112-0100-0000-000000000000")
     network = node_models.Network(
         uuid=uuid,
@@ -1054,7 +1171,12 @@ def default_network(
     )
     network.insert()
 
-    return network
+    yield network
+
+    try:
+        network.delete()
+    except Exception:
+        pass
 
 
 @pytest.fixture
@@ -1062,7 +1184,7 @@ def default_subnet(
     default_network: node_models.Network,
     user_api_client: iam_clients.GenesisCoreTestRESTClient,
     auth_user_admin: iam_clients.GenesisCoreAuth,
-) -> node_models.Subnet:
+) -> Generator[Subnet, Any, None]:
     uuid = sys_uuid.UUID("00000000-1112-0130-0000-000000000000")
     subnet = node_models.Subnet(
         uuid=uuid,
@@ -1072,14 +1194,19 @@ def default_subnet(
     )
     subnet.insert()
 
-    return subnet
+    yield subnet
+
+    try:
+        subnet.delete()
+    except Exception:
+        pass
 
 
 @pytest.fixture
 def default_machine_agent(
     user_api_client: iam_clients.GenesisCoreTestRESTClient,
     auth_user_admin: iam_clients.GenesisCoreAuth,
-) -> tp.Dict[str, tp.Any]:
+) -> Generator[Any, Any, None]:
     uuid = sys_uuid.UUID("00000000-1112-0100-0000-000000000211")
     agent = sdk_ua_models.UniversalAgent(
         uuid=uuid,
@@ -1091,14 +1218,19 @@ def default_machine_agent(
     )
     agent.insert()
 
-    return agent.dump_to_simple_view()
+    yield agent.dump_to_simple_view()
+
+    try:
+        agent.delete()
+    except Exception:
+        pass
 
 
 @pytest.fixture
 def default_pool_builder(
     user_api_client: iam_clients.GenesisCoreTestRESTClient,
     auth_user_admin: iam_clients.GenesisCoreAuth,
-) -> tp.Dict[str, tp.Any]:
+) -> Generator[Any, Any, None]:
     uuid = sys_uuid.UUID("00000000-1112-0100-0000-000000000322")
     agent = sdk_ua_models.UniversalAgent(
         uuid=uuid,
@@ -1116,7 +1248,12 @@ def default_pool_builder(
     )
     agent.insert()
 
-    return agent.dump_to_simple_view()
+    yield agent.dump_to_simple_view()
+
+    try:
+        agent.delete()
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -1168,6 +1305,8 @@ def setup_db_for_worker(worker_id):
         path=worker_db_name_with_slash
     ).geturl()
     yield
+
+    cleanup_test_entities()
 
     if db_created:
         engines.engine_factory.configure_factory(db_url=db_uri)
