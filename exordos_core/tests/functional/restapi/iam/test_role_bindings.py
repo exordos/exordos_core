@@ -46,6 +46,11 @@ class TestRoleBindings(base.BaseIamResourceTest):
 
         assert role_binding["uuid"] == role_binding_uuid
 
+        # cleanup
+        client.delete_role_binding(role_binding["uuid"])
+        client.delete_role(role["uuid"])
+        client.delete_user(user["uuid"])
+
     def test_create_role_binding_by_user1(
         self, user_api_client, auth_user_admin, auth_test1_user
     ):
@@ -71,6 +76,10 @@ class TestRoleBindings(base.BaseIamResourceTest):
                 role_uuid=role["uuid"],
                 uuid=role_binding_uuid,
             )
+
+        # cleanup
+        client.delete_role(role["uuid"])
+        client.delete_user(user["uuid"])
 
     def test_list_role_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
@@ -131,6 +140,12 @@ class TestRoleBindings(base.BaseIamResourceTest):
 
         assert result["user"].split("/")[-1] == user2["uuid"]
 
+        # cleanup
+        client.delete_role_binding(role_binding_uuid)
+        client.delete_role(role["uuid"])
+        client.delete_user(user2["uuid"])
+        client.delete_user(user1["uuid"])
+
     def test_update_role_binding_by_user(
         self, user_api_client, auth_user_admin, auth_test1_user
     ):
@@ -163,6 +178,12 @@ class TestRoleBindings(base.BaseIamResourceTest):
                 uuid=role_binding_uuid,
                 user_uuid=user2["uuid"],
             )
+
+        # cleanup
+        client.delete_role_binding(role_binding_uuid)
+        client.delete_role(role["uuid"])
+        client.delete_user(user2["uuid"])
+        client.delete_user(user1["uuid"])
 
     def test_delete_role_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)

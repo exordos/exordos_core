@@ -188,7 +188,8 @@ class TestSendResetPasswordCode(base.BaseIamResourceTest):
             user_uuid=user_obj.uuid,
             code=str(user_obj.confirmation_code),
         )
-        return user, password
+        yield user, password
+        admin_client.delete_user(user["uuid"])
 
     def _send_reset_code_url(self, client, client_uuid):
         return client.build_resource_uri(

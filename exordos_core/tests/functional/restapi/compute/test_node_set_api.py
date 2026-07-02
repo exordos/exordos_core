@@ -102,6 +102,8 @@ class TestNodeSetUserApi:
         assert self._node_set_cmp_shallow(node_set, output)
         assert output["status"] == nc.NodeStatus.NEW.value
 
+        client.delete(client.build_resource_uri(["compute", "sets", node_set["uuid"]]))
+
     def test_node_sets_add_several(
         self,
         node_set_factory: tp.Callable,
@@ -130,6 +132,9 @@ class TestNodeSetUserApi:
         for node_set in node_sets:
             assert any(self._node_set_cmp_shallow(node_set, item) for item in output)
 
+        for ns in node_sets:
+            client.delete(client.build_resource_uri(["compute", "sets", ns["uuid"]]))
+
     def test_node_sets_update(
         self,
         node_set_factory: tp.Callable,
@@ -155,6 +160,8 @@ class TestNodeSetUserApi:
         assert response.status_code == 200
         assert output["cores"] == 2
         assert output["ram"] == 2048
+
+        client.delete(client.build_resource_uri(["compute", "sets", node_set["uuid"]]))
 
     def test_node_sets_delete(
         self,
@@ -221,6 +228,10 @@ class TestNodeSetUserApi:
 
         assert response.status_code == 200
         assert len(response.json()) == 1
+
+        admin_client.delete(
+            admin_client.build_resource_uri(["compute", "sets", set_uuid])
+        )
 
     def test_owner_has_access(
         self,

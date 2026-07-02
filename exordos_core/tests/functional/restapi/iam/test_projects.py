@@ -30,7 +30,7 @@ class TestProjects(base.BaseIamResourceTest):
         org = client.create_organization(
             name="TestOrganization",
         )
-        client.create_project(
+        project = client.create_project(
             name="TestProject",
             organization_uuid=org["uuid"],
         )
@@ -38,6 +38,10 @@ class TestProjects(base.BaseIamResourceTest):
         roles = client.get_user_roles(auth_test1_user.uuid)
 
         assert self._has_role(roles, common_c.OWNER_ROLE_UUID)
+
+        # cleanup
+        client.delete_project(project["uuid"])
+        client.delete_organization(org["uuid"])
 
     def test_list_projects_wo_user_projects(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
@@ -69,7 +73,7 @@ class TestProjects(base.BaseIamResourceTest):
             description="test role",
             project_id=u1p1["uuid"],
         )
-        admin_client.bind_role_to_user(
+        role_binding = admin_client.bind_role_to_user(
             role["uuid"],
             auth_test2_p1_user.uuid,
             u1p1["uuid"],
@@ -79,6 +83,10 @@ class TestProjects(base.BaseIamResourceTest):
         projects = client.list_projects()
 
         assert len(projects) == 2
+
+        # cleanup
+        admin_client.delete_role_binding(role_binding["uuid"])
+        admin_client.delete_role(role["uuid"])
 
     def test_list_projects_admin_user(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
@@ -103,6 +111,10 @@ class TestProjects(base.BaseIamResourceTest):
 
         assert project["name"] == "TestProject"
 
+        # cleanup
+        client.delete_project(project["uuid"])
+        client.delete_organization(org["uuid"])
+
     def test_create_project_wo_project_from_user(
         self,
         user_api_client,
@@ -118,6 +130,10 @@ class TestProjects(base.BaseIamResourceTest):
         )
 
         assert project["name"] == "TestProject"
+
+        # cleanup
+        client.delete_project(project["uuid"])
+        client.delete_organization(org["uuid"])
 
     @pytest.mark.sec_issue_10110_997
     def test_create_project_in_foreign_organization_forbidden(
@@ -137,6 +153,9 @@ class TestProjects(base.BaseIamResourceTest):
                 organization_uuid=org["uuid"],
                 name="TestProject",
             )
+
+        # cleanup
+        owner_client.delete_organization(org["uuid"])
 
     @pytest.mark.sec_issue_10110_997
     @pytest.mark.parametrize(
@@ -168,6 +187,10 @@ class TestProjects(base.BaseIamResourceTest):
         )
 
         assert project["name"] == "TestProject"
+
+        # cleanup
+        foreign_client.delete_project(project["uuid"])
+        owner_client.delete_organization(org["uuid"])
 
     def test_get_my_project_by_uuid(
         self,

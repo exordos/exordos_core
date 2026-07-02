@@ -72,6 +72,7 @@ class TestPasswordsUserApi:
 
         assert response.status_code == 201
         assert self._secret_cmp_shallow(password, output)
+        client.delete(client.build_resource_uri(["secret/passwords", output["uuid"]]))
 
     def test_passwords_add_several(
         self,
@@ -81,7 +82,7 @@ class TestPasswordsUserApi:
     ):
         client = user_api_client(auth_user_admin)
 
-        urls = []
+        uuids = []
         url = client.build_collection_uri(["secret/passwords"])
         for i in range(3):
             password = password_factory()
@@ -89,11 +90,12 @@ class TestPasswordsUserApi:
             output = response.json()
             assert response.status_code == 201
             assert self._secret_cmp_shallow(password, output)
-            urls.append(url + "/" + output["uuid"])
+            uuids.append(output["uuid"])
 
-        for url in urls:
-            response = client.get(url)
+        for uuid in uuids:
+            response = client.get(client.build_resource_uri(["secret/passwords", uuid]))
             assert response.status_code == 200
+            client.delete(client.build_resource_uri(["secret/passwords", uuid]))
 
     def test_passwords_add_not_default(
         self,
@@ -114,6 +116,7 @@ class TestPasswordsUserApi:
         assert response.status_code == 201
         assert output["method"] == sc.SecretMethod.AUTO_URL_SAFE
         assert output["constructor"]["kind"] == "plain"
+        client.delete(client.build_resource_uri(["secret/passwords", output["uuid"]]))
 
     def test_passwords_update(
         self,
@@ -143,6 +146,8 @@ class TestPasswordsUserApi:
         output = response.json()
         assert response.status_code == 200
         assert output["name"] == "foo-password"
+        # cleanup
+        client.delete(url)
 
     def test_passwords_update_status_new(
         self,
@@ -181,6 +186,8 @@ class TestPasswordsUserApi:
         assert response.status_code == 200
         assert output["name"] == "foo-password"
         assert output["status"] == "NEW"
+        # cleanup
+        client.delete(url)
 
     def test_passwords_delete(
         self,

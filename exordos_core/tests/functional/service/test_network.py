@@ -146,14 +146,16 @@ class TestNetworkService:
 
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_no_networks(self):
-        self._add_node()
+        node = self._add_node()
 
         self._service._iteration()
 
+        node.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_subnet(self):
-        self._add_node()
-        self._add_network()
+        node = self._add_node()
+        network, subnet = self._add_network()
 
         class FakeDriver(driver_base.DummyNetworkDriver):
             create_subnet_called = False
@@ -172,10 +174,22 @@ class TestNetworkService:
 
         assert FakeDriver.create_subnet_called
 
+        [
+            port.delete()
+            for port in models.Port.objects.get_all(
+                filters={
+                    "subnet": dm_filters.EQ(subnet.uuid),
+                },
+            )
+        ]
+        subnet.delete()
+        network.delete()
+        node.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_port(self):
         node = self._add_node()
-        _, subnet = self._add_network()
+        network, subnet = self._add_network()
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -220,10 +234,20 @@ class TestNetworkService:
         assert node.default_network["subnet"] == str(subnet.uuid)
         assert node.default_network["port"] == str(port_uuid)
 
+        port_obj = models.Port.objects.get_one(
+            filters={
+                "uuid": dm_filters.EQ(port_uuid),
+            },
+        )
+        port_obj.delete()
+        subnet.delete()
+        network.delete()
+        node.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_update_port_status(self):
         node = self._add_node()
-        _, subnet = self._add_network()
+        network, subnet = self._add_network()
         port = self._add_port(subnet, node)
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -257,9 +281,14 @@ class TestNetworkService:
         assert not FakeDriver.create_port_called
         assert updated_port.status == nc.PortStatus.ACTIVE
 
+        port.delete()
+        subnet.delete()
+        network.delete()
+        node.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_delete_port(self):
-        _, subnet = self._add_network()
+        network, subnet = self._add_network()
         port = self._add_port(subnet, save=False)
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -292,11 +321,14 @@ class TestNetworkService:
         assert not FakeDriver.create_port_called
         assert FakeDriver.delete_port_called
 
+        subnet.delete()
+        network.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_port_target_ip(self):
         extra = {"default_network": {"target_ipv4": "10.0.0.10"}}
         node = self._add_node(**extra)
-        _, subnet = self._add_network()
+        network, subnet = self._add_network()
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -342,12 +374,22 @@ class TestNetworkService:
         assert node.default_network["subnet"] == str(subnet.uuid)
         assert node.default_network["port"] == str(port_uuid)
 
+        port_obj = models.Port.objects.get_one(
+            filters={
+                "uuid": dm_filters.EQ(port_uuid),
+            },
+        )
+        port_obj.delete()
+        subnet.delete()
+        network.delete()
+        node.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_ip_range(self):
         node = self._add_node()
 
         extra = {"ip_range": netaddr.IPRange("10.0.0.100", "10.0.0.200")}
-        _, subnet = self._add_network(**extra)
+        network, subnet = self._add_network(**extra)
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -392,10 +434,20 @@ class TestNetworkService:
         assert node.default_network["subnet"] == str(subnet.uuid)
         assert node.default_network["port"] == str(port_uuid)
 
+        port_obj = models.Port.objects.get_one(
+            filters={
+                "uuid": dm_filters.EQ(port_uuid),
+            },
+        )
+        port_obj.delete()
+        subnet.delete()
+        network.delete()
+        node.delete()
+
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_hw_node_without_machine(self):
         extra = {"ip_range": netaddr.IPRange("10.0.0.100", "10.0.0.200")}
-        _, subnet = self._add_network(**extra)
+        network, subnet = self._add_network(**extra)
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -421,6 +473,9 @@ class TestNetworkService:
 
         assert not FakeDriver.create_subnet_called
         assert not FakeDriver.create_port_called
+
+        subnet.delete()
+        network.delete()
 
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_hw_node(
@@ -469,7 +524,7 @@ class TestNetworkService:
             "ip_range": netaddr.IPRange("10.0.0.100", "10.0.0.200"),
             "ip_discovery_range": netaddr.IPRange("10.0.0.201", "10.0.0.254"),
         }
-        _, subnet = self._add_network(**extra)
+        network, subnet = self._add_network(**extra)
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -513,3 +568,16 @@ class TestNetworkService:
         assert node.default_network["mac"] == hw_interface.mac
         assert node.default_network["subnet"] == str(subnet.uuid)
         assert node.default_network["port"] == str(port_uuid)
+
+        port_obj = models.Port.objects.get_one(
+            filters={
+                "uuid": dm_filters.EQ(port_uuid),
+            },
+        )
+        port_obj.delete()
+        subnet.delete()
+        network.delete()
+        hw_interface.delete()
+        hw_machine.delete()
+        hw_pool.delete()
+        node.delete()

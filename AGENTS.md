@@ -86,7 +86,7 @@ exordos_core/
 
 ```bash
 # Run all tests (unit + functional)
-tox -e py310,py311,py312,py313,py314
+tox -e py310,py312,py314
 
 # Run unit tests only
 tox -e py310
