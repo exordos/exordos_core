@@ -20,7 +20,10 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.storage import exceptions as storage_exceptions
 from restalchemy.storage.sql import orm as sql_orm
 
-from exordos_core.secret.dm import models
+from exordos_core.agent.universal.drivers.secret.dm import (
+    models as secret_driver_models,
+)
+from exordos_core.secret.dm import models as secret_models
 
 INTERNAL_IAM_CLIENT_SECRET_UUID = sys_uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -56,5 +59,13 @@ class TargetResource(ua_models.TargetResource):
     _ObjectCollection = ObjectCollection
 
 
-class Password(models.Password):
+class Resource(ua_models.Resource):
+    _ObjectCollection = ObjectCollection
+
+
+class Password(secret_models.Password):
+    _ObjectCollection = ObjectCollection
+
+
+class StoragePassword(secret_driver_models.Password):
     _ObjectCollection = ObjectCollection

@@ -20,6 +20,7 @@ from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 
+from exordos_core.common import exceptions as common_exceptions
 from exordos_core.secret import constants as sc
 from exordos_core.secret.dm import models
 
@@ -42,12 +43,30 @@ class PasswordsController(iam_controllers.PolicyBasedController):
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
-                "value": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
     )
 
+    def create(self, **kwargs):
+        if "value" in kwargs:
+            if (
+                kwargs.get("method", sc.SecretMethod.AUTO_HEX.value)
+                != sc.SecretMethod.MANUAL.value
+            ):
+                raise common_exceptions.ValidateException(
+                    err="value is allowed only for MANUAL method"
+                )
+
+        return super().create(**kwargs)
+
     def update(self, uuid, **kwargs):
+        if "value" in kwargs:
+            dm = self.get(uuid=uuid)
+            if kwargs.get("method", dm.method) != sc.SecretMethod.MANUAL.value:
+                raise common_exceptions.ValidateException(
+                    err="value is allowed only for MANUAL method"
+                )
+
         # Force config to be NEW
         # In order to regenerate renders
         kwargs["status"] = sc.SecretStatus.NEW.value

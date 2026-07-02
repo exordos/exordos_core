@@ -52,6 +52,7 @@ from exordos_core.network.lb.builders import iaas as net_lb_iaas
 from exordos_core.network.lb.builders import paas as net_lb_paas
 from exordos_core.network.lb.dm import models as lb_models
 from exordos_core.secret import service as secret_service
+from exordos_core.secret.builders import service as password_builder_svc
 from exordos_core.telemetry import service as telemetry_service
 from exordos_core.vs.builders import service as vs_builder_svc
 
@@ -186,6 +187,7 @@ class GeneralService(basic.BasicService):
         secret_svc = secret_service.SecretServiceBuilder(
             iter_min_period=iter_min_period,
         )
+        password_builder = password_builder_svc.PasswordBuilder()
         # Build the event sender only when event delivery is enabled (the
         # exordos_notification element drops an [events] override into the
         # config dir). When disabled, build_from_config would receive a None
@@ -225,6 +227,7 @@ class GeneralService(basic.BasicService):
             net_lb_iaas_builder,
             net_lb_paas_builder,
             secret_svc,
+            password_builder,
             em_builder,
             dns_sync,
             # non-essential services should be last

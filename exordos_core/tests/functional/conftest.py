@@ -14,7 +14,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
 import os
+import tempfile
 import typing as tp
 from urllib.parse import urlparse
 import uuid as sys_uuid
@@ -22,7 +24,10 @@ import uuid as sys_uuid
 import bazooka
 from gcl_iam import tokens
 from gcl_iam.tests.functional import clients as iam_clients
+from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.dm import models as sdk_ua_models
+from gcl_sdk.agents.universal.services import agent as ua_agent_service
+from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
 from gcl_sdk.events import clients as sdk_clients
 from gcl_sdk.infra.dm import models as sdk_infra_models
 import netaddr
@@ -30,6 +35,7 @@ import pytest
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage.sql import engines
 
+from exordos_core.agent.universal.drivers.secret import password as password_driver
 from exordos_core.common import constants as c
 from exordos_core.common import utils
 from exordos_core.common.dm import targets as ct
@@ -40,6 +46,7 @@ from exordos_core.config import constants as cc
 from exordos_core.config.dm import models as conf_models
 from exordos_core.elements.dm import utils as element_utils
 from exordos_core.secret import constants as sc
+from exordos_core.secret.builders import service as secret_service
 from exordos_core.secret.dm import models as secret_models
 from exordos_core.tests.functional import consts
 from exordos_core.tests.functional import utils as test_utils
@@ -591,6 +598,7 @@ def password_factory():
             project_id=project_id,
             status=status_value,
             constructor=constructor,
+            value=value,
             **kwargs,
         )
         view = obj.dump_to_simple_view()
@@ -1270,3 +1278,45 @@ def self_signed_cert():
         return cert_pem.decode(), key_pem.decode()
 
     return factory
+
+
+@pytest.fixture()
+def agent_service(
+    default_node: tp.Dict[str, tp.Any],
+    user_api_client: iam_clients.GenesisCoreTestRESTClient,
+):
+    agent_uuid = sys_uuid.UUID(default_node["uuid"])
+    orch_client = orch_db.DatabaseOrchClient()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_file_path = os.path.join(temp_dir, "password_target_fields.json")
+
+        with open(temp_file_path, "w", encoding="utf-8") as f:
+            json.dump({}, f, indent=4)
+
+        p_d = password_driver.PasswordCapabilityDriver(temp_file_path)
+        caps_drivers = [
+            p_d,
+        ]
+        agent = ua_agent_service.UniversalAgentService(
+            system_uuid=agent_uuid,
+            agent_uuid=agent_uuid,
+            orch_client=orch_client,
+            caps_drivers=caps_drivers,
+            facts_drivers=[],
+            iter_min_period=3,
+            payload_path=None,
+            verify_node_on_register=False,
+        )
+        agent._setup()
+        agent._register_agent()
+        yield agent
+
+
+@pytest.fixture()
+def password_builder():
+    yield secret_service.PasswordBuilder()
+
+
+@pytest.fixture()
+def universal_scheduler():
+    yield ua_scheduler_service.UniversalAgentSchedulerService(capabilities=["*"])
