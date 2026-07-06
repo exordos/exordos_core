@@ -47,6 +47,7 @@ GCTL_CFG_DIR = f"/home/{USER}/.exordos"
 SPEC_PATH = "/mnt/cdrom/spec.json"
 MANIFEST_PATH = "/mnt/cdrom/core.yaml"
 MANIFEST_COLLECTION = "/v1/em/manifests/"
+DOWNLOAD_MANIFEST_URL = f"{MANIFEST_COLLECTION}download/"
 ECOSYSTEM_REALM_MANIFEST_PATH = "/mnt/cdrom/ecosystem_realm.yaml"
 MAIN_SUBNET_UUID = sys_uuid.UUID("c910a7e1-61ae-4d56-bdd6-a59faa3cbda3")
 
@@ -265,7 +266,8 @@ def _ensure_exordos_config(spec: dict[str, tp.Any]):
 
 def _install_element_manifest(
     element_name: str,
-    manifest_path: str,
+    element_version: str | None,
+    manifest_path: str | None,
     spec: dict[str, tp.Any],
 ):
     """Idempotent element manifest installation."""
@@ -276,13 +278,6 @@ def _install_element_manifest(
     if element is not None:
         LOG.info("Element %s already installed, skipping", element_name)
         return
-
-    if not os.path.exists(manifest_path):
-        LOG.info("No manifest file found at %s", manifest_path)
-        return
-
-    with open(manifest_path) as f:
-        manifest_data = yaml.safe_load(f)
 
     auth = http_base.CoreIamAuthenticator(
         base_url="http://localhost:11010",
@@ -297,7 +292,34 @@ def _install_element_manifest(
         base_url="http://localhost:11010", auth=auth
     )
 
-    manifest_data = client.create(MANIFEST_COLLECTION, manifest_data)
+    if manifest_path is not None:
+        if os.path.exists(manifest_path):
+            with open(manifest_path) as f:
+                manifest_data = yaml.safe_load(f)
+                manifest_data = client.create(MANIFEST_COLLECTION, manifest_data)
+        elif element_version is not None:
+            manifest_data = client.create(
+                DOWNLOAD_MANIFEST_URL,
+                {"name": element_name, "version": element_version},
+            )
+        else:
+            LOG.info(
+                "No manifest file found at %s and no version provided, skipping",
+                manifest_path,
+            )
+            return
+    elif element_version is not None:
+        manifest_data = client.create(
+            DOWNLOAD_MANIFEST_URL,
+            {"name": element_name, "version": element_version},
+        )
+    else:
+        raise ValueError(
+            f"No manifest path or version provided for element {element_name}"
+        )
+
+    LOG.info("Installing manifest %s", element_name)
+
     try:
         client.do_action(
             MANIFEST_COLLECTION, "install", manifest_data["uuid"], invoke=True
@@ -388,10 +410,20 @@ def main() -> None:
             )
             bootstrap_defaults.add_core_set(spec)
             _ensure_exordos_config(spec)
-            _install_element_manifest("core", CONF.manifest_path, spec)
+            _install_element_manifest("core", None, CONF.manifest_path, spec)
             _install_element_manifest(
-                "ecosystem_realm", CONF.ecosystem_realm_manifest_path, spec
+                "ecosystem_realm", None, CONF.ecosystem_realm_manifest_path, spec
             )
+            if elements := spec.get("elements", []):
+                if isinstance(elements, list):
+                    for element_name in elements:
+                        _install_element_manifest(element_name, "latest", None, spec)
+                elif isinstance(elements, dict):
+                    for element_name, element_version in elements.items():
+                        _install_element_manifest(
+                            element_name, element_version, None, spec
+                        )
+
             _set_defaults_vs(spec)
             return
         except Exception:

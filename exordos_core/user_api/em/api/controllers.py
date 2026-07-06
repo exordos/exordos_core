@@ -25,9 +25,11 @@ from restalchemy.api import resources
 from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 from restalchemy.openapi import constants as oa_c
-from restalchemy.openapi import utils
+from restalchemy.openapi import utils as oa_utils
 import webob
 
+from exordos_core.clients import repo
+from exordos_core.common import constants as c
 from exordos_core.elements.dm import models
 from exordos_core.vs.dm import models as vs_models
 
@@ -36,19 +38,87 @@ class ElementHasNoProfileError(ra_e.ValidationErrorException):
     message = "Element has no profile"
 
 
+OA_SPEC_DOWNLOAD = dict(
+    summary="Download manifest",
+    tags=["Manifest"],
+    request_body=oa_c.build_openapi_req_body(
+        description="Download the manifest for the specified element name and version",
+        content_type=constants.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Name of the manifest",
+                    "example": "empty",
+                },
+                "version": {
+                    "type": "string",
+                    "description": "Version of the manifest",
+                    "example": "0.1.2",
+                },
+                "repository": {
+                    "type": "string",
+                    "description": "Url of the repository",
+                    "example": "https://repo.exordos.com/exordos-elements/",
+                },
+            },
+        },
+    ),
+    responses=oa_c.build_openapi_get_update_response(ref_name="Manifest_Get"),
+)
+
+
 class ElementManagerController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/em/"
 
 
 class SchemaController(controllers.Controller):
-    @utils.extend_schema(
+    @oa_utils.extend_schema(
         summary="Get manifest schema",
+        tags=["Manifest"],
         parameters=[],
         responses=oa_c.build_openapi_object_response({}),
     )
     def filter(self, *args, **kwargs) -> dict:
         models.element_engine.load_schemas()
         return models.element_engine.full_schema
+
+    def process_result(
+        self,
+        result: dict,
+        status_code: int = 200,
+        headers: tp.Optional[dict] = None,
+        add_location: bool = False,
+    ) -> webob.Response:
+        if headers is not None:
+            headers["Content-Type"] = constants.CONTENT_TYPE_APPLICATION_JSON
+        else:
+            headers = {"Content-Type": constants.CONTENT_TYPE_APPLICATION_JSON}
+        return webob.Response(
+            body=json.dumps(result).encode(),
+            status=status_code,
+            content_type=constants.CONTENT_TYPE_APPLICATION_JSON,
+            headerlist=[(k, v) for k, v in headers.items()] if headers else [],
+        )
+
+
+class DownloadController(controllers.Controller):
+    @oa_utils.extend_schema(**OA_SPEC_DOWNLOAD)
+    def create(
+        self,
+        name: str,
+        version: str | None = None,
+        repository: str | None = None,
+        **kwargs,
+    ) -> dict:
+        r = repo.Repository(repository or c.ELEMENT_REPO_URL)
+        data = r.get_manifest(name, version)
+        resource = models.Manifest(**data)
+        resource.validate_schema_base()
+        resource.save()
+        return resource.dump_to_simple_view()
 
     def process_result(
         self,

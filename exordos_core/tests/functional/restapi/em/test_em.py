@@ -50,6 +50,34 @@ class TestEmUserApi:
         assert response.status_code == 200
         assert isinstance(response.json(), dict)
 
+    def test_download(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+        download_url = client.build_collection_uri(["em", "manifests", "download"])
+
+        element_name = "empty"
+
+        response = client.post(download_url, json={"name": element_name})
+        output = response.json()
+        assert response.status_code == 201
+        assert isinstance(output, dict)
+        assert output["name"] == element_name
+
+        delete_url = client.build_resource_uri(["em", "manifests", output["uuid"]])
+        response = client.delete(delete_url)
+        assert response.status_code == 204
+
+        response = client.post(
+            download_url, json={"name": element_name, "version": "latest"}
+        )
+        output = response.json()
+        assert response.status_code == 201
+        assert isinstance(output, dict)
+        assert output["name"] == element_name
+
     def test_manifests(
         self,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,

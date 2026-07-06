@@ -22395,10 +22395,50 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Manifest_Create'
+  /v1/em/manifests/download/:
+    post:
+      summary: Download manifest
+      tags:
+        - Manifest
+      parameters: []
+      responses:
+        '200':
+          description: Manifest_Get
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Manifest_Get'
+        default:
+          $ref: '#/components/responses/Error'
+      operationId: Create_v1_em_manifests_download
+      requestBody:
+        description: Download the manifest for the specified element name and 
+          version
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Name of the manifest
+                  example: empty
+                version:
+                  type: string
+                  description: Version of the manifest
+                  example: 0.1.2
+                repository:
+                  type: string
+                  description: Url of the repository
+                  example: https://repo.exordos.com/exordos-elements/
   /v1/em/manifests/schema/:
     get:
       summary: Get manifest schema
-      tags: []
+      tags:
+        - Manifest
       parameters: []
       responses:
         '200':

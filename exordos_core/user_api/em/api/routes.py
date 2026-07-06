@@ -52,6 +52,15 @@ class SchemaRoute(routes.Route):
     ]
 
 
+class DownloadRoute(routes.Route):
+    """Handler for /v1/em/manifests/download/ endpoint"""
+
+    __controller__ = controllers.DownloadController
+    __allow_methods__ = [
+        routes.CREATE,
+    ]
+
+
 class ManifestRoute(routes.Route):
     """Handler for /v1/em/manifests/ endpoint"""
 
@@ -62,6 +71,7 @@ class ManifestRoute(routes.Route):
     uninstall = routes.action(ManifestUninstallActionRoute, invoke=True)
     validate = routes.action(ManifestValidateActionRoute, invoke=False)
     schema = routes.route(SchemaRoute)
+    download = routes.route(DownloadRoute)
 
 
 class ElementResourceRoute(routes.Route):

@@ -52,3 +52,9 @@ class NamespaceNotFound(GCException):
     @property
     def code(self) -> int:
         return 1000
+
+
+class ManifestNotFound(GCException):
+    __template__ = "validate error: {err}"
+
+    err: str
