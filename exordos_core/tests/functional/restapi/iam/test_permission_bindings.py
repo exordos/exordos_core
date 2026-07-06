@@ -125,6 +125,10 @@ class TestPermissionBindings(base.BaseIamResourceTest):
                 permission_uuid=permission["uuid"],
             )
 
+        client.delete_permission_binding(uuid=permission_binding["uuid"])
+        client.delete_role(uuid=role["uuid"])
+        client.delete_permission(uuid=permission["uuid"])
+
     def test_delete_permission_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 

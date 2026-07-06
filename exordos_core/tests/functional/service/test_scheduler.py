@@ -121,6 +121,8 @@ class TestSchedulerService:
         assert str(machines[0].pool) == default_pool["uuid"]
         assert str(machines[1].pool) == default_pool["uuid"]
 
+        machine.delete()
+
     def test_schedule_two_pools_single_iteration(
         self,
         default_machine_agent: tp.Dict[str, tp.Any],
@@ -147,21 +149,12 @@ class TestSchedulerService:
             pool.status = "ACTIVE"
             pool.save()
 
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
-
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
-
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
-
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
+        nodes = []
+        for _ in range(4):
+            view = node_factory()
+            node = models.Node.restore_from_simple_view(**view)
+            node.insert()
+            nodes.append(node)
 
         self._service._iteration()
         self._service._iteration()
@@ -176,6 +169,14 @@ class TestSchedulerService:
             str(m.pool) for m in machines
         ) == collections.Counter(**{f"{uuid_foo}": 2, f"{uuid_bar}": 2})
 
+        for m in machines:
+            m.delete()
+        for node in nodes:
+            node.delete()
+        for pool in pools:
+            if pool.uuid in (uuid_foo, uuid_bar):
+                pool.delete()
+
     def test_schedule_two_pools_different_iterations(
         self,
         default_machine_agent: tp.Dict[str, tp.Any],
@@ -187,8 +188,10 @@ class TestSchedulerService:
     ):
         client = user_api_client(auth_user_admin)
 
+        builders = []
         builder = pool_builder_factory()
         builder.insert()
+        builders.append(builder)
 
         uuid_foo = sys_uuid.uuid4()
         foo_pool = pool_factory(uuid=uuid_foo)
@@ -205,13 +208,12 @@ class TestSchedulerService:
             pool.status = "ACTIVE"
             pool.save()
 
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
-
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
+        nodes = []
+        for _ in range(2):
+            view = node_factory()
+            node = models.Node.restore_from_simple_view(**view)
+            node.insert()
+            nodes.append(node)
 
         self._service._iteration()
         self._service._iteration()
@@ -226,16 +228,15 @@ class TestSchedulerService:
             str(m.pool) for m in machines
         ) == collections.Counter(**{f"{uuid_foo}": 1, f"{uuid_bar}": 1})
 
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
-
-        view = node_factory()
-        node = models.Node.restore_from_simple_view(**view)
-        node.insert()
+        for _ in range(2):
+            view = node_factory()
+            node = models.Node.restore_from_simple_view(**view)
+            node.insert()
+            nodes.append(node)
 
         builder = pool_builder_factory()
         builder.insert()
+        builders.append(builder)
 
         self._service._iteration()
 
@@ -248,6 +249,16 @@ class TestSchedulerService:
         assert collections.Counter(
             str(m.pool) for m in machines
         ) == collections.Counter(**{f"{uuid_foo}": 2, f"{uuid_bar}": 2})
+
+        for m in machines:
+            m.delete()
+        for node in nodes:
+            node.delete()
+        for pool in pools:
+            if pool.uuid in (uuid_foo, uuid_bar):
+                pool.delete()
+        for builder in builders:
+            builder.delete()
 
     def test_schedule_hw_node(
         self,
@@ -290,6 +301,10 @@ class TestSchedulerService:
         assert machines[0].node == node.uuid
         assert machines[0].status == "SCHEDULED"
         assert nodes[0].status == "SCHEDULED"
+
+        hw_machine.delete()
+        hw_pool.delete()
+        node.delete()
 
     def test_schedule_hw_node_filtered_out_all(
         self,
@@ -334,6 +349,10 @@ class TestSchedulerService:
         assert nodes[0].status == "ERROR"
         assert nodes[0].description == "No suitable HW machines found"
 
+        hw_machine.delete()
+        hw_pool.delete()
+        node.delete()
+
     def test_schedule_hw_node_simple_weighter(
         self,
         default_pool: tp.Dict[str, tp.Any],
@@ -350,35 +369,18 @@ class TestSchedulerService:
         hw_pool.save()
 
         # HW machines
-        hw_machine = machine_factory(
-            machine_type="HW",
-            pool=hw_pool.uuid,
-            status="IDLE",
-            cores=4,
-            ram=2048,
-        )
-        hw_machine = models.Machine.restore_from_simple_view(**hw_machine)
-        hw_machine.insert()
-
-        hw_machine = machine_factory(
-            machine_type="HW",
-            pool=hw_pool.uuid,
-            status="IDLE",
-            cores=6,
-            ram=4096,
-        )
-        hw_machine = models.Machine.restore_from_simple_view(**hw_machine)
-        hw_machine.insert()
-
-        hw_machine = machine_factory(
-            machine_type="HW",
-            pool=hw_pool.uuid,
-            status="IDLE",
-            cores=1,
-            ram=2048,
-        )
-        hw_machine = models.Machine.restore_from_simple_view(**hw_machine)
-        hw_machine.insert()
+        hw_machines = []
+        for cores, ram in [(4, 2048), (6, 4096), (1, 2048)]:
+            hw_machine = machine_factory(
+                machine_type="HW",
+                pool=hw_pool.uuid,
+                status="IDLE",
+                cores=cores,
+                ram=ram,
+            )
+            hw_machine = models.Machine.restore_from_simple_view(**hw_machine)
+            hw_machine.insert()
+            hw_machines.append(hw_machine)
 
         # HW node
         node = node_factory(node_type="HW", cores=1, ram=1024)
@@ -394,7 +396,7 @@ class TestSchedulerService:
         assert len(nodes) == 1
 
         for machine in machines:
-            if machine.uuid == hw_machine.uuid:
+            if machine.uuid == hw_machines[-1].uuid:
                 break
         else:
             raise AssertionError("Machine not found")
@@ -404,3 +406,8 @@ class TestSchedulerService:
         assert machine.ram == 2048
         assert machine.status == "SCHEDULED"
         assert nodes[0].status == "SCHEDULED"
+
+        for hm in hw_machines:
+            hm.delete()
+        hw_pool.delete()
+        node.delete()

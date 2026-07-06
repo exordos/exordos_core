@@ -93,6 +93,8 @@ class TestNodeUserApi:
         node["status"] = "NEW"
         assert self._node_cmp_shallow(node, output)
 
+        client.delete(client.build_resource_uri(["compute", "nodes", node["uuid"]]))
+
     def test_nodes_add_several(
         self,
         node_factory: tp.Callable,
@@ -116,6 +118,9 @@ class TestNodeUserApi:
         for node in nodes:
             assert any(self._node_cmp_shallow(node, item) for item in output)
 
+        for n in nodes:
+            client.delete(client.build_resource_uri(["compute", "nodes", n["uuid"]]))
+
     def test_nodes_update(
         self,
         node_factory: tp.Callable,
@@ -138,6 +143,8 @@ class TestNodeUserApi:
         assert response.status_code == 200
         assert output["cores"] == 2
         assert output["ram"] == 2048
+
+        client.delete(client.build_resource_uri(["compute", "nodes", node["uuid"]]))
 
     def test_nodes_delete(
         self,
@@ -176,6 +183,8 @@ class TestNodeUserApi:
 
         assert response.status_code == 201
         assert output["disk_spec"]["size"] == nc.DEF_ROOT_DISK_SIZE
+
+        client.delete(client.build_resource_uri(["compute", "nodes", node["uuid"]]))
 
     # Hypervisors
 
@@ -224,6 +233,10 @@ class TestNodeUserApi:
         assert response.status_code == 201
         assert output["uuid"] == pool["uuid"]
 
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", pool["uuid"]])
+        )
+
     def test_hyper_add_nonadmin_negative(
         self,
         pool_factory: tp.Callable,
@@ -260,6 +273,10 @@ class TestNodeUserApi:
         assert response.status_code == 200
         assert output["name"] == "foo"
         assert output["description"] == "bar"
+
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", pool["uuid"]])
+        )
 
     def test_hyper_delete(
         self,
@@ -319,6 +336,10 @@ class TestNodeUserApi:
 
         assert response.status_code == 200
         assert len(response.json()) == 1
+
+        admin_client.delete(
+            admin_client.build_resource_uri(["compute", "nodes", node_uuid])
+        )
 
     def test_owner_has_access(
         self,
