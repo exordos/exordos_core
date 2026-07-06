@@ -17,18 +17,18 @@
 import errno
 import logging
 import mimetypes
-import uuid as sys_uuid
 from os import path as os_path
 import re
 import string
 import typing as tp
 from urllib import parse as urllib_parse
+import uuid as sys_uuid
 
 from authlib.integrations import requests_client
+from gcl_iam import exceptions as gcl_iam_e
 from gcl_iam import rules
 from gcl_iam.api import controllers as iam_controllers
 from gcl_iam.api import field_perms as iam_fp
-from gcl_iam import exceptions as gcl_iam_e
 import jinja2
 import pyotp
 from restalchemy.api import actions
@@ -310,9 +310,7 @@ class UserController(
             # a client token; attribute it to the default client.
             return models.IamClient.objects.get_one_or_none(
                 filters={
-                    "uuid": ra_filters.EQ(
-                        sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID)
-                    )
+                    "uuid": ra_filters.EQ(sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID))
                 }
             )
 

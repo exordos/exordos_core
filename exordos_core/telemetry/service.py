@@ -40,6 +40,22 @@ LOG = logging.getLogger(__name__)
 TELEMETRY_TIMEOUT = 30
 TELEMETRY_POOL_SIZE = 1
 
+# Initial retry cadence used until the stand has successfully registered
+# with the ecosystem at least once. exordos-bootstrap (which sets the VS
+# variables this service depends on) has no systemd ordering guarantee
+# relative to ec-gservice, so the very first iteration can race ahead of
+# the variables being set. Falling back to the full iter_min_period (can be
+# as long as an hour) in that case would leave the stand stuck in
+# PROVISIONING for a long time, so we start retrying quickly.
+#
+# Stands with no network access at all would otherwise keep retrying every
+# TELEMETRY_RETRY_PERIOD forever, so on every failed attempt the period is
+# doubled (TELEMETRY_RETRY_BACKOFF_FACTOR), up to the caller's steady-state
+# period. It resets back to TELEMETRY_RETRY_PERIOD once registration
+# succeeds, then relaxes to the steady-state period.
+TELEMETRY_RETRY_PERIOD = 30
+TELEMETRY_RETRY_BACKOFF_FACTOR = 2
+
 
 class TelemetryService(basic.BasicService):
     """Periodically collects and sends telemetry data to the ecosystem."""
@@ -49,6 +65,13 @@ class TelemetryService(basic.BasicService):
         self._client = bazooka.Client(default_timeout=TELEMETRY_TIMEOUT)
         self._executor = futures.ThreadPoolExecutor(max_workers=TELEMETRY_POOL_SIZE)
         self._pending_future = None
+        # Steady-state period requested by the caller (e.g. 1 hour). Until
+        # the stand registers successfully we back off from
+        # TELEMETRY_RETRY_PERIOD towards this value instead; see the
+        # comment on TELEMETRY_RETRY_PERIOD above.
+        self._steady_period = self._iter_min_period
+        self._registered = False
+        self._iter_min_period = TELEMETRY_RETRY_PERIOD
 
     def _get_variable_value(self, var_uuid):
         """Read variable value from ValuesStore by UUID."""
@@ -227,6 +250,20 @@ class TelemetryService(basic.BasicService):
         )
         LOG.info("Stand registered in ecosystem successfully")
 
+    def _mark_registered(self):
+        """Relax the retry cadence once the stand is confirmed registered."""
+        self._registered = True
+        self._iter_min_period = self._steady_period
+
+    def _backoff_retry(self):
+        """Grow the retry cadence towards the steady-state period on failure."""
+        if self._registered:
+            return
+        self._iter_min_period = min(
+            self._iter_min_period * TELEMETRY_RETRY_BACKOFF_FACTOR,
+            self._steady_period,
+        )
+
     def _send_telemetry(self, endpoint, realm_uuid, realm_secret, data):
         """Send telemetry data to the ecosystem endpoint."""
         url = f"{endpoint}/api/ecosystem/v1/realms/{realm_uuid}/actions/push_telemetry/invoke"
@@ -240,6 +277,7 @@ class TelemetryService(basic.BasicService):
                 auth=auth,
             )
             LOG.debug("Telemetry sent successfully")
+            self._mark_registered()
         except bazooka_exc.ForbiddenError:
             LOG.warning("Stand is not registered, attempting registration")
             try:
@@ -251,10 +289,13 @@ class TelemetryService(basic.BasicService):
                     auth=auth,
                 )
                 LOG.debug("Telemetry sent successfully after registration")
+                self._mark_registered()
             except Exception:
                 LOG.exception("Failed to register stand or send telemetry")
+                self._backoff_retry()
         except Exception:
             LOG.exception("Failed to send telemetry")
+            self._backoff_retry()
 
     def _check_pending_future(self):
         """Clear completed future to allow the next submission."""
@@ -281,7 +322,11 @@ class TelemetryService(basic.BasicService):
             realm_secret = self._get_variable_value(c.VAR_REALM_SECRET_UUID)
 
             if not all([ecosystem_endpoint, realm_uuid, realm_secret]):
-                LOG.debug("Telemetry variables are not configured, skipping")
+                self._backoff_retry()
+                LOG.info(
+                    "Telemetry variables are not configured yet, will retry in %ss",
+                    self._iter_min_period,
+                )
                 return
 
             # Collect telemetry data synchronously, send asynchronously
