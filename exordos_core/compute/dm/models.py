@@ -323,6 +323,21 @@ class Node(
         """Return the list of volumes for this node."""
         return self.disk_spec.volumes(self)
 
+    @property
+    def volume_project_id(self) -> sys_uuid.UUID:
+        """Project ID to use for this node's volumes.
+
+        Handle a special case for EM. We cannot put volumes in the same
+        project as the node because the volumes are created as children
+        of the node and they aren't present in the manifest. So EM
+        doesn't know about the volumes.
+        """
+        return (
+            self.project_id
+            if self.project_id != cc.EM_PROJECT_ID
+            else cc.EM_HIDDEN_PROJECT_ID
+        )
+
     def update_default_network(self, port: "Port") -> None:
         self.default_network = {
             "subnet": str(port.subnet),
@@ -363,18 +378,8 @@ class Node(
             )
             allocation.insert(session=session)
 
-        # Handle a special case for EM. We cannot put volumes in the same
-        # project as the node because the volumes are created as children
-        # of the node and they aren't present in the manifest. So EM
-        # doesn't know about the volumes.
-        volume_project_id = (
-            self.project_id
-            if self.project_id != cc.EM_PROJECT_ID
-            else cc.EM_HIDDEN_PROJECT_ID
-        )
-
         # Update or create volumes for the node
-        volumes = self.disk_spec.volumes(self, project_id=volume_project_id)
+        volumes = self.disk_spec.volumes(self, project_id=self.volume_project_id)
         for sdk_volume in volumes:
             # Need to convert as they are different types (SDK vs DM)
             view = sdk_volume.dump_to_simple_view()

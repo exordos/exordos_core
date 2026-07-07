@@ -78,7 +78,8 @@ class RepositoryController(
         description: str = "",
     ):
         self._enforce("upload")
-        return resource.upload(element_name, element_version, manifest, description)
+        resource.upload(element_name, element_version, manifest, description)
+        return resource
 
 
 class RepoElementController(
