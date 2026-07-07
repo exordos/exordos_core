@@ -146,13 +146,19 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
 
         # Create volumes
         for volume_uuid in target_map.keys() - actual_map.keys():
-            volume = target_map[volume_uuid]
-            volume.save()
+            # Need to convert as they are different types (SDK vs DM)
+            sdk_volume = target_map[volume_uuid]
+            view = sdk_volume.dump_to_simple_view()
+            volume = models.Volume.restore_from_simple_view(**view)
+            volume.insert()
 
         # Delete volumes
-        for volume_uuid in actual_map.keys() - target_map.keys():
-            volume = actual_map[volume_uuid]
-            volume.delete()
+        delete_uuids = actual_map.keys() - target_map.keys()
+        if delete_uuids:
+            for volume in models.Volume.objects.get_all(
+                filters={"uuid": dm_filters.In(delete_uuids)}
+            ):
+                volume.delete()
 
         # Update volumes
         need_update = {}
@@ -194,7 +200,9 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
             return False
 
         # Get volumes from disk specs
-        target_volumes = target_disk_spec.volumes(target_node)
+        target_volumes = target_disk_spec.volumes(
+            target_node, project_id=target_node.volume_project_id
+        )
         actual_volumes = actual_disk_spec.volumes(actual_node)
 
         return self._actualize_volumes(target_volumes, actual_volumes)

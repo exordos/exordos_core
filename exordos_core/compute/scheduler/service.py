@@ -555,6 +555,7 @@ class SchedulerService(basic.BasicService):
             try:
                 machine_volume = self._place_volume_into_pool(volume, pool)
                 machine_volume.pool = pool.pool.uuid
+                machine_volume.machine = node_map[volume.node].uuid
                 machine_volume.save()
 
                 volume.pool = pool.pool.uuid

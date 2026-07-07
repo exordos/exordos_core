@@ -19,6 +19,7 @@ import typing as tp
 import uuid as sys_uuid
 
 from gcl_iam.tests.functional import clients as iam_clients
+from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler import service
@@ -86,6 +87,46 @@ class TestSchedulerService:
         assert len(volumes) == 1
         assert str(machines[0].node) == default_node["uuid"]
         assert volumes[0].machine == machines[0].uuid
+
+    def test_schedule_extra_volume_on_scheduled_node(
+        self,
+        default_pool: tp.Dict[str, tp.Any],
+        default_node: tp.Dict[str, tp.Any],
+        default_machine_agent: tp.Dict[str, tp.Any],
+        default_pool_builder: tp.Dict[str, tp.Any],
+    ):
+        # Schedule the node with its root volume first
+        self._service._iteration()
+        self._service._iteration()
+
+        machine = models.Machine.objects.get_one(
+            filters={"node": dm_filters.EQ(sys_uuid.UUID(default_node["uuid"]))}
+        )
+
+        # Simulate a disk added to the already-scheduled node, as done by
+        # NodeBuilderService._actualize_volumes when the node's disk_spec
+        # is extended with an extra disk.
+        extra_volume = models.Volume(
+            uuid=sys_uuid.uuid4(),
+            name="data",
+            label="data",
+            node=sys_uuid.UUID(default_node["uuid"]),
+            size=20,
+            index=1,
+            project_id=machine.project_id,
+            status="NEW",
+        )
+        extra_volume.insert()
+
+        self._service._iteration()
+
+        machine_volumes = models.MachineVolume.objects.get_all(
+            filters={"node_volume": dm_filters.EQ(extra_volume.uuid)}
+        )
+        assert len(machine_volumes) == 1
+        assert machine_volumes[0].machine == machine.uuid
+
+        extra_volume.delete()
 
     def test_schedule_node_no_builders(
         self,
