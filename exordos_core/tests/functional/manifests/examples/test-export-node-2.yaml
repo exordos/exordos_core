@@ -1,0 +1,26 @@
+name: "test_export_node_2"
+description: "Test manifest that exports a node with the same name 'shared-node-name'"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.compute.nodes:
+    test_node:
+      name: "shared-node-name"
+      description: "Test node from manifest 2"
+      cores: 1
+      ram: 1024
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      disk_spec:
+        kind: "root_disk"
+        size: 10
+        image: "https://repo.exordos.com/exordos-base/1.1.2/exordos-base.raw.zst"
+
+exports:
+  shared_node:
+    link: "$core.compute.nodes.$test_node"

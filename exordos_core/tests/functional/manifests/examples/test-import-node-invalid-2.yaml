@@ -1,0 +1,28 @@
+name: "test_import_node_invalid_2"
+description: "Test manifest that imports a unknown node"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.compute.nodes:
+    test_node:
+      name: "shared-node-name"
+      description: $test_export_node_1.imports.$test_node:description
+      cores: 1
+      ram: 1024
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      disk_spec:
+        kind: "root_disk"
+        size: 10
+        image: "https://repo.exordos.com/exordos-base/1.1.2/exordos-base.raw.zst"
+
+imports:
+  test_node:
+    element: "$test_export_node_2"
+    kind: "resource"
+    link: "$core.compute.nodes.$test_node_unknown"
