@@ -53,7 +53,7 @@ class LBBuilder(builder.CoreInfraBuilder):
 
         node_set = models.TargetNodeSet(
             uuid=instance.uuid,
-            name=f"{self._name_prefix}-{instance.name}",
+            name=f"{self._name_prefix}-{instance.name or str(instance.uuid[:4])}",
             cores=instance.type.cpu,
             ram=instance.type.ram,
             replicas=instance.type.nodes_number,
