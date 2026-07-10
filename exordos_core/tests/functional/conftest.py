@@ -513,6 +513,39 @@ def node_factory():
 
 
 @pytest.fixture
+def node_factory_with_model():
+    def factory(
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "node",
+        cores: int = 1,
+        ram: int = 1024,
+        image: str = "ubuntu_24.04",
+        project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
+        status: tp.Optional[str] = None,
+        **kwargs,
+    ) -> tp.Tuple[tp.Dict[str, tp.Any], node_models.Node]:
+        uuid = uuid or _make_uuid()
+        status_value = nc.NodeStatus.NEW.value if status is None else status.value
+        node = node_models.Node(
+            uuid=uuid,
+            name=name,
+            cores=cores,
+            ram=ram,
+            project_id=project_id,
+            status=status_value,
+            disk_spec=sdk_infra_models.RootDiskSpec(image=image),
+            **kwargs,
+        )
+        view = node.dump_to_simple_view()
+        if status is None:
+            view.pop("status")
+        view.pop("node_set")
+        return view, node
+
+    return factory
+
+
+@pytest.fixture
 def node_set_factory():
     def factory(
         uuid: tp.Optional[sys_uuid.UUID] = None,

@@ -22,6 +22,7 @@ from gcl_looper.services import basic
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage import exceptions as ra_exceptions
 
 from exordos_core.common import constants as c
 from exordos_core.compute.dm import models as nm
@@ -358,7 +359,14 @@ class SecretServiceBuilder(basic.BasicService):
                 node=node.uuid,
                 status=sc.SecretStatus.IN_PROGRESS,
             )
-            key_host_resource.insert()
+            try:
+                key_host_resource.insert()
+            except ra_exceptions.ConflictRecords:
+                LOG.debug(
+                    "SSH key resource %s for node %s already exists",
+                    key_resource.uuid,
+                    node.uuid,
+                )
 
         key.status = sc.SecretStatus.IN_PROGRESS.value
         key.save()

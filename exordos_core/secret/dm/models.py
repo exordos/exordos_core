@@ -29,6 +29,7 @@ from restalchemy.storage.sql import orm
 from exordos_core.common import constants as c
 from exordos_core.common.dm import models as cm
 from exordos_core.common.dm import targets as ct
+from exordos_core.quota.dm.models import QuotaModelMixin
 from exordos_core.secret import constants as sc
 
 
@@ -65,6 +66,7 @@ class Secret(
 
 class Password(
     Secret,
+    QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
@@ -136,6 +138,7 @@ class DNSCoreCertificateMethod(AbstractCertificateMethod):
 
 class Certificate(
     Secret,
+    QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
@@ -217,6 +220,7 @@ class Certificate(
 
 class RSAKey(
     Secret,
+    QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
@@ -293,6 +297,7 @@ class RSAKey(
 
 class SSHKey(
     Secret,
+    QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):

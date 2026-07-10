@@ -89,10 +89,10 @@ exordos_core/
 tox -e py310,py312,py314
 
 # Run unit tests only
-tox -e py310
+tox -e py314
 
 # Run functional tests
-tox -e py310-functional
+tox -e py314-functional
 
 # Run linters
 tox -e ruff-check    # Check code style
