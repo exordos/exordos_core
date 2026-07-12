@@ -20,6 +20,7 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.audit.dm import models as audit_models
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
 from restalchemy.dm import filters as dm_filters
@@ -299,11 +300,14 @@ class NodeSet(
 
 
 class Node(
+    audit_models.AuditLogSQLStorableMixin,
     infra_models.Node,
     orm.SQLStorableWithJSONFieldsMixin,
 ):
     __tablename__ = "nodes"
     __jsonfields__ = ["default_network"]
+    __audit_service_name__ = nc.POLICY_SERVICE_NAME
+    __audit_resource_type__ = "node"
 
     uuid = properties.property(
         types.UUID(),

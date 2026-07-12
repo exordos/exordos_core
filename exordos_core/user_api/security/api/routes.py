@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from gcl_sdk.audit.api import routes as audit_routes
 from restalchemy.api import routes
 
 from exordos_core.user_api.security.api import controllers
@@ -31,4 +32,5 @@ class SecurityRoute(routes.Route):
     __controller__ = controllers.SecurityController
     __allow_methods__ = [routes.FILTER]
 
+    audit = routes.route(audit_routes.AuditRoute)
     rules = routes.route(RulesRoute)

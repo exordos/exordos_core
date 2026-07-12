@@ -56,3 +56,14 @@ enabled = False
 # exordos_notification element, which drops an [events] override into
 # /etc/exordos_core/exordos_core.d/ (loaded via --config-dir by ec-user-api).
 
+#[audit_delivery]
+# enabled = False
+# endpoint = http://127.0.0.1:8080/
+# api_version = v1
+# auth_token =
+# timeout = 5
+# batch_size = 100
+#
+# The separate core_audit element enables the worker by installing an active
+# config drop-in under /etc/exordos_core/exordos_core.d/ and restarting
+# ec-gservice. Installing the central audit element alone does not enable it.
