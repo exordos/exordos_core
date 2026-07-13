@@ -40,6 +40,7 @@ from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.openapi import utils as oa_utils
 
+from exordos_core.common import constants as common_c
 from exordos_core.user_api.iam import constants as c
 from exordos_core.user_api.iam import exceptions as iam_e
 from exordos_core.user_api.iam.api import openapi_specs as oa_specs
@@ -726,6 +727,15 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
         ),
     )
 
+    def get_resource_by_uuid(self, uuid, parent_resource=None):
+        is_default_alias = uuid == common_c.DEFAULT_CLIENT_ALIAS
+        if is_default_alias:
+            uuid = common_c.DEFAULT_CLIENT_UUID
+
+        resource = super().get_resource_by_uuid(uuid, parent_resource)
+        resource._resolved_from_default_alias = is_default_alias
+        return resource
+
     def create(self, **kwargs):
         if self.enforce(c.PERMISSION_IAM_CLIENT_CREATE):
             return super().create(**kwargs)
@@ -805,10 +815,16 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                 c.PARAM_CLIENT_SECRET,
                 self._req.headers.get(c.HEADER_CLIENT_SECRET, ""),
             )
-            resource.validate_client_creds(
-                client_id=client_id,
-                client_secret=client_secret,
+            is_default_alias = getattr(
+                resource,
+                "_resolved_from_default_alias",
+                False,
             )
+            if client_id or client_secret or not is_default_alias:
+                resource.validate_client_creds(
+                    client_id=client_id,
+                    client_secret=client_secret,
+                )
             payload = dict(
                 password=kwargs.get(c.PARAM_PASSWORD),
                 scope=kwargs.get(c.PARAM_SCOPE, ""),

@@ -634,6 +634,40 @@ class TestUsers(base.BaseIamResourceTest):
         )  # tries to authorise on init
         assert "access_token" in client._auth_cache
 
+    @pytest.mark.parametrize(
+        "client_uuid,client_credentials",
+        [
+            (common_c.DEFAULT_CLIENT_UUID, {}),
+            (
+                common_c.DEFAULT_CLIENT_ALIAS,
+                {"client_id": "invalid", "client_secret": "invalid"},
+            ),
+        ],
+    )
+    def test_default_client_authentication_boundary(
+        self,
+        user_api_client,
+        auth_test1_user,
+        client_uuid,
+        client_credentials,
+    ):
+        client = user_api_client(auth_test1_user)
+        token_params = {
+            "grant_type": iam_c.GRANT_TYPE_PASSWORD,
+            "username": auth_test1_user.username,
+            "password": auth_test1_user.password,
+            **client_credentials,
+        }
+
+        with pytest.raises(bazooka_exc.BaseHTTPException):
+            client.post(
+                url=(
+                    f"{client.endpoint}iam/clients/{client_uuid}"
+                    "/actions/get_token/invoke"
+                ),
+                data=token_params,
+            )
+
     def test_create_service_user_success(self, user_api_client, auth_user_admin):
         """Test creating a service account"""
         client = user_api_client(
