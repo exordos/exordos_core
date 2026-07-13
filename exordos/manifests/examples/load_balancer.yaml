@@ -107,7 +107,7 @@ resources:
 
   $core.network.lb:
     example_lb:
-      name: example_lb
+      name: example-lb
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       # You may set LB type with some params, for ex. more RAM:
       # type:
