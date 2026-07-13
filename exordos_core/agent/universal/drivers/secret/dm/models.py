@@ -114,6 +114,7 @@ class Certificate(Secret, orm.SQLStorableMixin):
         expiration_at = expiration_at.strftime(c.DEFAULT_DATETIME_FORMAT)
 
         value = self.meta
+        value["status"] = sc.SecretStatus.ACTIVE.value
         value["key"] = self.pkey
         value["cert"] = self.fullchain
         value["expiration_at"] = expiration_at
