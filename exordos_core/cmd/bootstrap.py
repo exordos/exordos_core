@@ -347,6 +347,10 @@ def _ensure_bootstrap_repo(manifests_dir: str) -> repo_models.Repository:
 MIGRATION_REPO_NAME = "migration-dummy-repo"
 CORE_CONFIG_PATH = "/etc/exordos_core/exordos_core.conf"
 UA_CONFIG_PATH = "/etc/exordos_universal_agent/exordos_universal_agent.conf"
+CORE_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/exordos_core.conf"
+UA_CONFIG_DATA_PATH = (
+    "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
+)
 
 _LAUNCHPAD_SECTION = """\
 [launchpad]
@@ -357,6 +361,21 @@ services =
     exordos_core.repo.builders.element:RepoElementBuilderService,
     exordos_core.repo.agents.universal.service:RepoElementAgentService
 """
+
+
+def _sync_config_to_data_path(content: str, data_path: str) -> None:
+    """Write the same config content to the mirrored data path.
+
+    Ensures config files under /var/lib/exordos/data/etc/ stay in sync
+    with their /etc/ counterparts.
+    """
+    try:
+        os.makedirs(os.path.dirname(data_path), exist_ok=True)
+        with open(data_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        LOG.info("Synced config to %s", data_path)
+    except OSError as e:
+        LOG.warning("Failed to sync config to %s: %s", data_path, e)
 
 
 def _migrate_installed_elements_configs() -> None:
@@ -382,6 +401,7 @@ def _migrate_installed_elements_configs() -> None:
             with open(CORE_CONFIG_PATH, "w", encoding="utf-8") as f:
                 f.write(content)
             LOG.info("Added [launchpad] section to %s", CORE_CONFIG_PATH)
+            _sync_config_to_data_path(content, CORE_CONFIG_DATA_PATH)
         else:
             LOG.info("[launchpad] section already exists in %s", CORE_CONFIG_PATH)
 
@@ -417,6 +437,7 @@ capabilities =
                 "Updated [universal_agent_scheduler] section in %s",
                 UA_CONFIG_PATH,
             )
+            _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
         else:
             LOG.info(
                 "[universal_agent_scheduler] section already up to date in %s",

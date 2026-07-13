@@ -146,6 +146,25 @@ class TestMakeInstalledManifest:
         }
         assert result.manifest == expected_manifest
 
+    def test_with_non_empty_optional_fields(self):
+        """Should include non-empty optional fields in the manifest."""
+        client = self._make_client()
+        em_manifest = self._make_em_manifest()
+        em_manifest.exports = {"exp1": {}}
+        em_manifest.imports = {"imp1": {}}
+        em_manifest.requirements = {"dep": {"from_version": "1.0.0"}}
+        em_manifest.resources = {"res1": {}}
+        em_manifest.openapi_spec = {"paths": {}}
+        em_element = self._make_em_element()
+
+        result = client._make_installed_manifest(em_manifest, em_element)
+
+        assert result.manifest["exports"] == {"exp1": {}}
+        assert result.manifest["imports"] == {"imp1": {}}
+        assert result.manifest["requirements"] == {"dep": {"from_version": "1.0.0"}}
+        assert result.manifest["resources"] == {"res1": {}}
+        assert result.manifest["openapi_spec"] == {"paths": {}}
+
 
 class TestMakeEmManifest:
     """Tests for RepoEmBackendClient._make_em_manifest."""

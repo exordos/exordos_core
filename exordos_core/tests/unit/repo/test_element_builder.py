@@ -502,6 +502,50 @@ class TestInstalledManifest:
         assert result.name == element.name
         assert result.version == "2.0.0"
 
+    def test_from_repo_element_filters_empty_optional_fields(self):
+        """Empty optional fields should be excluded from the manifest."""
+        element_uuid = sys_uuid.uuid4()
+        element = FakeElement(version="1.0.0")
+        element.uuid = element_uuid
+        element.manifest = {
+            "uuid": element_uuid,
+            "key": "value",
+            "exports": {},
+            "imports": {},
+            "requirements": {},
+            "resources": {},
+            "openapi_spec": None,
+        }
+        element.project_id = sys_uuid.uuid4()
+
+        result = builder_element.InstalledManifest.from_repo_element(element)
+
+        assert "exports" not in result.manifest
+        assert "imports" not in result.manifest
+        assert "requirements" not in result.manifest
+        assert "resources" not in result.manifest
+        assert "openapi_spec" not in result.manifest
+        assert result.manifest["key"] == "value"
+
+    def test_from_repo_element_keeps_non_empty_optional_fields(self):
+        """Non-empty optional fields should be preserved in the manifest."""
+        element_uuid = sys_uuid.uuid4()
+        element = FakeElement(version="1.0.0")
+        element.uuid = element_uuid
+        element.manifest = {
+            "uuid": element_uuid,
+            "exports": {"exp1": {}},
+            "resources": {"res1": {}},
+            "openapi_spec": {"paths": {}},
+        }
+        element.project_id = sys_uuid.uuid4()
+
+        result = builder_element.InstalledManifest.from_repo_element(element)
+
+        assert result.manifest["exports"] == {"exp1": {}}
+        assert result.manifest["resources"] == {"res1": {}}
+        assert result.manifest["openapi_spec"] == {"paths": {}}
+
     def test_get_resource_target_fields(self):
         manifest = builder_element.InstalledManifest(
             name="test",
