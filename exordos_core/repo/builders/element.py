@@ -65,6 +65,14 @@ class InstalledManifest(
             linked.
     """
 
+    MANIFEST_OPTIONAL_FIELDS = (
+        "openapi_spec",
+        "exports",
+        "imports",
+        "requirements",
+        "resources",
+    )
+
     version = properties.property(
         ra_types.String(min_length=5, max_length=64), required=True
     )
@@ -101,12 +109,21 @@ class InstalledManifest(
     @classmethod
     def from_repo_element(cls, element: models.RepoElement) -> "InstalledManifest":
         uuid = sys_uuid.UUID(str(element.manifest.get("uuid") or element.uuid))
+        # Filter out empty optional fields to keep the manifest consistent
+        # with _make_installed_manifest in the repo element driver, which
+        # also skips empty values. Without this, the agent detects a diff
+        # between target and actual resources on every iteration.
+        manifest = {
+            k: v
+            for k, v in element.manifest.items()
+            if k not in cls.MANIFEST_OPTIONAL_FIELDS or v
+        }
         return cls(
             uuid=uuid,
             name=element.name,
             description=element.manifest.get("description", ""),
             version=element.version,
-            manifest=element.manifest,
+            manifest=manifest,
             project_id=element.project_id,
         )
 

@@ -85,20 +85,10 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
             project_id=em_manifest.project_id,
         )
 
-        if em_manifest.openapi_spec is not None:
-            installed_manifest.manifest["openapi_spec"] = em_manifest.openapi_spec
-
-        if em_manifest.exports:
-            installed_manifest.manifest["exports"] = em_manifest.exports
-
-        if em_manifest.imports:
-            installed_manifest.manifest["imports"] = em_manifest.imports
-
-        if em_manifest.requirements:
-            installed_manifest.manifest["requirements"] = em_manifest.requirements
-
-        if em_manifest.resources:
-            installed_manifest.manifest["resources"] = em_manifest.resources
+        for field in re_builder.InstalledManifest.MANIFEST_OPTIONAL_FIELDS:
+            value = getattr(em_manifest, field)
+            if value:
+                installed_manifest.manifest[field] = value
 
         return installed_manifest
 
