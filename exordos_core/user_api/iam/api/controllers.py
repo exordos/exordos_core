@@ -162,6 +162,7 @@ class UserController(
                 "email": {
                     ra_c.UPDATE: iam_fp.Permissions.HIDDEN,
                 },
+                "registration_client": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
             },
         ),
         name_map={"secret": "password", "name": "username"},
