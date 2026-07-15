@@ -140,7 +140,13 @@ class TestSchedulerService:
         client.post(url, json=foo_pool)
 
         uuid_bar = sys_uuid.uuid4()
-        bar_pool = pool_factory(uuid=uuid_bar)
+        bar_pool = pool_factory(
+            uuid=uuid_bar,
+            driver_spec={
+                "kind": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.2/system",
+            },
+        )
         url = client.build_collection_uri(["compute", "hypervisors"])
         client.post(url, json=bar_pool)
 
@@ -199,7 +205,13 @@ class TestSchedulerService:
         client.post(url, json=foo_pool)
 
         uuid_bar = sys_uuid.uuid4()
-        bar_pool = pool_factory(uuid=uuid_bar)
+        bar_pool = pool_factory(
+            uuid=uuid_bar,
+            driver_spec={
+                "kind": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.2/system",
+            },
+        )
         url = client.build_collection_uri(["compute", "hypervisors"])
         client.post(url, json=bar_pool)
 

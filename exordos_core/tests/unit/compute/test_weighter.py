@@ -20,6 +20,10 @@ from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler.driver import base
 from exordos_core.compute.scheduler.driver.weighter import relative
 
+_DEFAULT_DRIVER_SPEC = models.LibvirtPoolDriverSpec(
+    connection_uri="qemu+tcp://127.0.0.1/system",
+)
+
 
 class TestSchedulerWeighter:
     @pytest.fixture
@@ -32,6 +36,7 @@ class TestSchedulerWeighter:
             # 50% used
             base.MachinePoolBundle(
                 pool=models.MachinePool(
+                    driver_spec=_DEFAULT_DRIVER_SPEC,
                     all_cores=100,
                     avail_cores=50,
                     all_ram=100000,
@@ -42,6 +47,7 @@ class TestSchedulerWeighter:
             # 20% used
             base.MachinePoolBundle(
                 pool=models.MachinePool(
+                    driver_spec=_DEFAULT_DRIVER_SPEC,
                     all_cores=100,
                     avail_cores=80,
                     all_ram=100000,
@@ -52,7 +58,11 @@ class TestSchedulerWeighter:
             # Fully used
             base.MachinePoolBundle(
                 pool=models.MachinePool(
-                    all_cores=100, avail_cores=0, all_ram=100000, avail_ram=0
+                    driver_spec=_DEFAULT_DRIVER_SPEC,
+                    all_cores=100,
+                    avail_cores=0,
+                    all_ram=100000,
+                    avail_ram=0,
                 ),
                 volumes=[],
             ),
@@ -63,6 +73,7 @@ class TestSchedulerWeighter:
         empty_pools = [
             base.MachinePoolBundle(
                 pool=models.MachinePool(
+                    driver_spec=_DEFAULT_DRIVER_SPEC,
                     all_cores=100,
                     avail_cores=100,
                     all_ram=100000,
@@ -87,6 +98,7 @@ class TestSchedulerWeighter:
         overused_pools = [
             base.MachinePoolBundle(
                 pool=models.MachinePool(
+                    driver_spec=_DEFAULT_DRIVER_SPEC,
                     all_cores=100,
                     avail_cores=-10,
                     all_ram=100000,

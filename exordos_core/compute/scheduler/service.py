@@ -159,7 +159,6 @@ class SchedulerService(basic.BasicService):
                 "status": dm_filters.EQ(nc.MachinePoolStatus.ACTIVE.value),
                 "machine_type": dm_filters.EQ(nc.NodeType.VM.value),
                 "builder": dm_filters.IsNot(None),
-                "driver_spec": dm_filters.NE("{}"),
             },
             limit=limit,
         )
@@ -486,7 +485,33 @@ class SchedulerService(basic.BasicService):
 
         for pool in unsheduled:
             builder = random.choice(pool_builders)
-            agent = random.choice(machine_agents[MACHINE_POOL_CAP])
+
+            # TODO(akremenetsky): In the target architecture, pool scheduling
+            # should be done through filters and weighters, similar to node
+            # scheduling. For now, use a simple condition for specific kinds.
+            # For exordos_local_hyper pools, only schedule on local agents
+            # whose node matches the pool's driver_spec.node.
+            # For other pools, exclude local agents (with local_pool capability)
+            # since they are dedicated to local hypervisors.
+            all_agents = machine_agents[MACHINE_POOL_CAP]
+            if pool.driver_spec.KIND == "exordos_local_hyper":
+                available_agents = [
+                    a for a in all_agents if a.node == pool.driver_spec.node
+                ]
+            else:
+                available_agents = [
+                    a for a in all_agents if "local_pool" not in a.list_capabilities
+                ]
+
+            if not available_agents:
+                LOG.warning(
+                    "No suitable agents found to schedule pool %s (kind=%s)",
+                    pool.uuid,
+                    pool.driver_spec.KIND,
+                )
+                continue
+
+            agent = random.choice(available_agents)
 
             try:
                 pool.builder = builder.uuid

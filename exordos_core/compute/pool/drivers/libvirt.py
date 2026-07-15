@@ -529,20 +529,16 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
         )
 
 
-class LibvirtPoolDriverSpec(tp.NamedTuple):
-    driver: tp.Literal["libvirt"]
-    network: str
-    storage_pool: str
-    connection_uri: str
-    machine_prefix: tp.Optional[str] = None
-    network_type: NetworkType = "network"
-    iface_rom_file: tp.Optional[str] = None
-    iface_mtu: int = 1450
-
-
 class LibvirtPoolDriver(base.AbstractPoolDriver):
     def __init__(self, pool: models.MachinePool, dry_run: bool = False):
-        self._spec = LibvirtPoolDriverSpec(**pool.driver_spec)
+        if pool.driver_spec is None or not isinstance(
+            pool.driver_spec, models.LibvirtPoolDriverSpec
+        ):
+            raise ValueError(
+                f"Unsupported driver spec kind: "
+                f"{pool.driver_spec.KIND if pool.driver_spec else None!r}"
+            )
+        self._spec = pool.driver_spec
         self._pool = pool
         # Check if connection string is valid and we can connect
         _ = self._client
@@ -860,6 +856,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         """Get pool info."""
         info = self._client.getInfo()
         return models.MachinePool(
+            driver_spec=self._spec,
             all_cores=info[2],
             all_ram=info[1],
         )

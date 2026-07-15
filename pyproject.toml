@@ -182,6 +182,7 @@ IamUserResetPassword = "exordos_core.events.payloads:ResetPasswordEventPayload"
 PasswordCapabilityDriver = "exordos_core.agent.universal.drivers.secret.password:PasswordCapabilityDriver"
 CoreDNSCertificateCapabilityDriver = "exordos_core.agent.universal.drivers.secret.cert:CoreDNSCertificateCapabilityDriver"
 PoolAgentDriver = "exordos_core.compute.agents.universal.drivers.pool:PoolAgentDriver"
+LocalPoolAgentDriver = "exordos_core.compute.agents.universal.drivers.pool:LocalPoolAgentDriver"
 
 [tool.uv]
 package = true

@@ -402,10 +402,7 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
 
         # Skip if the pool already exists
         for _pool in machine_pools:
-            if (
-                _pool.driver_spec["connection_uri"]
-                == pool.driver_spec["connection_uri"]
-            ):
+            if _pool.driver_spec.connection_uri == pool.driver_spec.connection_uri:
                 break
         else:
             # Pool does not exist, create it

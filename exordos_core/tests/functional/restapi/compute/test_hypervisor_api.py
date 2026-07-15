@@ -115,7 +115,7 @@ class TestHypervisorUserApi:
             hypervisor = pool_factory(
                 name=f"hypervisor_{i}",
                 driver_spec={
-                    "driver": "libvirt",
+                    "kind": "libvirt",
                     "connection_uri": f"qemu+tcp://10.20.0.{str(i + 1)}/system",
                 },
             )
@@ -217,7 +217,12 @@ class TestHypervisorUserApi:
 
         client = user_api_client(auth_test1_user)
 
-        hypervisor = pool_factory()
+        hypervisor = pool_factory(
+            driver_spec={
+                "kind": "libvirt",
+                "connection_uri": "qemu+tcp://10.20.0.2/system",
+            },
+        )
         hypervisor.pop("status", None)
         url = client.build_collection_uri(["compute", "hypervisors"])
 
@@ -252,7 +257,7 @@ class TestHypervisorUserApi:
 
         hypervisor1 = pool_factory(
             driver_spec={
-                "driver": "libvirt",
+                "kind": "libvirt",
                 "connection_uri": "qemu+tcp://10.20.0.10/system",
             },
         )
@@ -262,7 +267,7 @@ class TestHypervisorUserApi:
 
         hypervisor2 = pool_factory(
             driver_spec={
-                "driver": "libvirt",
+                "kind": "libvirt",
                 "connection_uri": "qemu+tcp://10.20.0.20/system",
             },
         )
@@ -286,7 +291,7 @@ class TestHypervisorUserApi:
 
         hypervisor1 = pool_factory(
             driver_spec={
-                "driver": "libvirt",
+                "kind": "libvirt",
                 "connection_uri": "qemu+tcp://10.20.0.10/system",
             },
         )
@@ -296,7 +301,7 @@ class TestHypervisorUserApi:
 
         hypervisor2 = pool_factory(
             driver_spec={
-                "driver": "libvirt",
+                "kind": "libvirt",
                 "connection_uri": "qemu+tcp://10.20.0.10/system",
             },
         )
