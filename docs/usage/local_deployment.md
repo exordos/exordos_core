@@ -126,9 +126,14 @@ field. Use this token as a `Bearer` token in all subsequent API requests.
 Configure the `exordos` CLI by registering a realm and a context with the admin credentials:
 
 ```bash
-exordos settings set-realm local --endpoint http://10.20.0.2:11010 --current
+exordos settings set-realm local --endpoint http://10.20.0.2:80/api/core --current
 exordos settings set-context local --name admin -u <ADMIN_USERNAME> -p <ADMIN_PASSWORD> --current
 ```
+
+The CLI authenticates against the `default` client alias (see above), which only Core's load
+balancer on port 80 knows how to rewrite. Pointing the realm at the node's own user-api port
+(`:11010`) instead skips the load balancer, so the alias can't be resolved and every command fails
+with `Can't parse value: uuid=default.`
 
 - `set-realm` registers the platform endpoint under the name `local` and marks it as the active realm.
 - `set-context` creates a named context with the admin credentials and marks it as the active context.

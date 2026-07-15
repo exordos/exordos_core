@@ -126,9 +126,14 @@ curl --location 'http://10.20.0.2:80/api/core/v1/iam/clients/default/actions/get
 Настройте CLI `exordos`, зарегистрировав realm и контекст с учётными данными администратора:
 
 ```bash
-exordos settings set-realm local --endpoint http://10.20.0.2:11010 --current
+exordos settings set-realm local --endpoint http://10.20.0.2:80/api/core --current
 exordos settings set-context local --name admin -u <ADMIN_USERNAME> -p <ADMIN_PASSWORD> --current
 ```
+
+CLI аутентифицируется через алиас клиента `default` (см. выше), который умеет переписывать только
+балансировщик Core на порту 80. Если указать в качестве realm порт user-api самой ноды (`:11010`),
+балансировщик будет пропущен, алиас не резолвится, и любая команда падает с
+`Can't parse value: uuid=default.`
 
 - `set-realm` — регистрирует endpoint платформы под именем `local` и устанавливает его как активный realm.
 - `set-context` — создаёт именованный контекст с учётными данными администратора и устанавливает его как активный.

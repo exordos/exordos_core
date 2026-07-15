@@ -268,26 +268,6 @@ resources:
           - kind: rewrite_url
             regex: "^/api/core/v1/iam/clients/default(.*)"
             replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
-    core_lb_static_route:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
-      condition:
-        kind: prefix
-        value: /
-        allowed_ips:
-          - 0.0.0.0/0
-        modifiers:
-          - kind: auto_header
-            headers:
-              - 'Host'
-              - 'X-Forwarded-For'
-              - 'X-Forwarded-Port'
-              - 'X-Forwarded-Proto'
-              - 'X-Forwarded-Prefix'
-        actions:
-          - kind: local_dir
-            path: /var/www/html
-            is_spa: true
 
 exports:
   local_domain:

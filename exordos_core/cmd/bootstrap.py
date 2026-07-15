@@ -22,6 +22,7 @@ import logging
 import os
 import pwd
 import re
+import subprocess
 import sys
 import time
 import typing as tp
@@ -334,15 +335,10 @@ def _sync_config_to_data_path(content: str, data_path: str) -> None:
 
 
 def _migrate_installed_elements_configs() -> None:
-    """Migrate config files for repo proxy support.
+    """Migrate the core config file for repo proxy support.
 
-    Idempotently updates two config files:
-
-    1. Adds [launchpad] section to the core config file.
-    2. Adds repo_proxy_installed_element to the capabilities list
-       in the universal agent config file.
+    Idempotently adds the [launchpad] section to the core config file.
     """
-    # 1. Add [launchpad] section to the core config
     try:
         with open(CORE_CONFIG_PATH, "r", encoding="utf-8") as f:
             content = f.read()
@@ -360,44 +356,91 @@ def _migrate_installed_elements_configs() -> None:
         else:
             LOG.info("[launchpad] section already exists in %s", CORE_CONFIG_PATH)
 
-    # 2. Replace [universal_agent_scheduler] section in the UA config
-    #    to ensure repo_proxy_installed_element is present in capabilities.
-    #    The section is fully rewritten to handle any indentation differences.
-    _UA_SCHEDULER_SECTION = """\
+
+# The parts of the universal agent config that evolve with the core image.
+# The scheduler section is fully rewritten to handle any indentation
+# differences; keep both literals in sync with
+# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
+_UA_SCHEDULER_SECTION = """\
 [universal_agent_scheduler]
 capabilities =
     em_*,
     password,
     certificate,
     paas_lb_agent,
-    repo_proxy_installed_element
+    repo_proxy_installed_element,
+    border_agent
 """
+_UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
+
+
+def _ensure_ua_config_current() -> None:
+    """Bring the universal agent config up to date with this image.
+
+    ec-bootstrap-templates restores /etc configs from the persisted
+    copies on the data disk, so template changes shipped in a new core
+    image never reach an upgraded stand on their own. Idempotently
+    reapply the image-defined parts of the UA config:
+
+    1. Rewrite the [universal_agent_scheduler] section with the current
+       capabilities list.
+    2. Ensure BorderAgentCapabilityDriver is present in caps_drivers
+       ([universal_agent] holds stand-specific endpoints, so only this
+       line is inserted, not the whole section).
+
+    On changes the result is synced back to the persisted copy and the
+    agent services (started before ec-bootstrap runs, thus holding the
+    stale config) are restarted to pick it up.
+    """
     try:
         with open(UA_CONFIG_PATH, "r", encoding="utf-8") as f:
             content = f.read()
     except FileNotFoundError:
         LOG.warning("Universal agent config not found: %s", UA_CONFIG_PATH)
-    else:
-        new_content = re.sub(
-            r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
-            _UA_SCHEDULER_SECTION,
-            content,
-            count=1,
-            flags=re.DOTALL | re.MULTILINE,
+        return
+
+    new_content = re.sub(
+        r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
+        _UA_SCHEDULER_SECTION,
+        content,
+        count=1,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+
+    if "BorderAgentCapabilityDriver" not in new_content:
+        new_content = new_content.replace(
+            "    LBAgentCapabilityDriver,\n",
+            "    LBAgentCapabilityDriver,\n" + _UA_BORDER_DRIVER_LINE,
+            1,
         )
-        if new_content != content:
-            with open(UA_CONFIG_PATH, "w", encoding="utf-8") as f:
-                f.write(new_content)
-            LOG.info(
-                "Updated [universal_agent_scheduler] section in %s",
+        if "BorderAgentCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert BorderAgentCapabilityDriver into caps_drivers in %s",
                 UA_CONFIG_PATH,
             )
-            _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
-        else:
-            LOG.info(
-                "[universal_agent_scheduler] section already up to date in %s",
-                UA_CONFIG_PATH,
-            )
+
+    if new_content == content:
+        LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
+        return
+
+    with open(UA_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    LOG.info("Updated universal agent config %s", UA_CONFIG_PATH)
+    _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
+
+    try:
+        subprocess.run(
+            [
+                "systemctl",
+                "try-restart",
+                "exordos-universal-agent",
+                "exordos-universal-scheduler",
+            ],
+            check=True,
+        )
+        LOG.info("Restarted universal agent services to apply the new config")
+    except (OSError, subprocess.CalledProcessError) as e:
+        LOG.warning("Failed to restart universal agent services: %s", e)
 
 
 def _migrate_installed_elements_to_repo() -> None:
@@ -691,6 +734,8 @@ def main() -> None:
     # TODO: Temporary code for RepoProxy migration. Remove this once all
     # working installations are migrated.
     _migrate_installed_elements_to_repo()
+
+    _ensure_ua_config_current()
 
     if not os.path.exists(SPEC_PATH):
         LOG.info("No spec file found at %s", SPEC_PATH)

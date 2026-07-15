@@ -34,6 +34,15 @@ cli_opts = [
         default="https://repo.exordos.com/exordos-lbaas/0.1.0/exordos-lbaas.raw.zst",
         help="URL to get image for LB dataplane VM",
     ),
+    cfg.StrOpt(
+        "border-image",
+        default=(
+            "https://repo.exordos.com/exordos-border/0.1.0/exordos-border.raw.zst"
+        ),
+        help="URL to get the image for a `core` (VM-based) border gateway. "
+        "The image must ship the universal agent with "
+        "BorderCapabilityDriver (border_node capability).",
+    ),
 ]
 
 

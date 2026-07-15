@@ -48,6 +48,16 @@ class LBRoute(routes.Route):
     backend_pools = routes.route(BackendPoolRoute, resource_route=True)
 
 
+class BorderRoute(routes.Route):
+    """Handler for /v1/network/border/ endpoint.
+
+    SNAT/DNAT rules are carried inline on the Border resource, so there are
+    no nested sub-collections.
+    """
+
+    __controller__ = controllers.BorderController
+
+
 class NetworkRoute(routes.Route):
     """Handler for /v1/network/ endpoint"""
 
@@ -55,3 +65,4 @@ class NetworkRoute(routes.Route):
     __allow_methods__ = [routes.FILTER]
 
     lb = routes.route(LBRoute)
+    border = routes.route(BorderRoute)
