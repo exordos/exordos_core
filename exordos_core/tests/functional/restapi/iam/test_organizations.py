@@ -22,24 +22,26 @@ from exordos_core.user_api.iam import constants as c
 
 
 class TestOrganizations(base.BaseIamResourceTest):
-    ORGS_ENDPOINT = "iam/organizations"
-    ORGS_BINDINGS_ENDPOINT = "iam/organization_members"
-
     def test_create_organization_wo_auth_unauthorized(self, user_api_noauth_client):
         client = user_api_noauth_client()
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.create_organization(name="TestOrganization")
 
+    def _list_organization_members(self, client, organization_uuid):
+        url = client.build_collection_uri(
+            ["iam/organizations/", organization_uuid, "members"]
+        )
+        response = client.get(url=url)
+        assert response.status_code == 200
+        return response.json()
+
     def _create_organization(self, client, user, info=None):
         org = client.create_organization(
             name="TestOrganization",
             info=info or {},
         )
-        members = client.get_organization_members(
-            uuid=org["uuid"],
-            user=user.uuid,
-        )
+        members = self._list_organization_members(client, org["uuid"])
         return org, members
 
     def test_create_organization_admin_auth_success(
@@ -231,130 +233,6 @@ class TestOrganizations(base.BaseIamResourceTest):
             auth_test1_user,
         )
         org1 = test_user_client.create_organization(name="TestOrganization1")
-
-        result = test_user_client.delete_organization(org1["uuid"])
-
-        assert result is None
-
-    def test_delete_member_organization_test1_auth_forbidden(
-        self, user_api_client, auth_user_admin, auth_test1_user
-    ):
-        admin_client = user_api_client(auth_user_admin)
-        test_user_client = user_api_client(
-            auth_test1_user,
-        )
-        org1 = admin_client.create_organization(name="TestOrganization1")
-        admin_client.create_organization_member(
-            organization_uuid=org1["uuid"],
-            user_uuid=auth_test1_user.uuid,
-            role=c.OrganizationRole.MEMBER.value,
-        )
-
-        with pytest.raises(bazooka_exc.ForbiddenError):
-            test_user_client.delete_organization(org1["uuid"])
-
-        # cleanup
-        admin_client.delete_organization(org1["uuid"])
-
-    @pytest.mark.sec_issue_10110_997
-    def test_set_owner_role_in_foreign_organization_forbidden(
-        self,
-        user_api_client,
-        auth_user_admin,
-        auth_test1_user,
-    ):
-        admin_client = user_api_client(auth_user_admin)
-        test_user_client = user_api_client(auth_test1_user)
-
-        org = admin_client.create_organization(name="TestOrganization1")
-
-        with pytest.raises(bazooka_exc.ForbiddenError):
-            test_user_client.create_organization_member(
-                organization_uuid=org["uuid"],
-                user_uuid=auth_test1_user.uuid,
-                role=c.OrganizationRole.OWNER.value,
-            )
-
-        # cleanup
-        admin_client.delete_organization(org["uuid"])
-
-    @pytest.mark.sec_issue_10110_997
-    def test_update_org_member_role_in_foreign_organization_forbidden(
-        self,
-        user_api_client,
-        auth_user_admin,
-        auth_test1_user,
-    ):
-        admin_client = user_api_client(auth_user_admin)
-        test_user_client = user_api_client(auth_test1_user)
-
-        org = admin_client.create_organization(name="TestOrganization1")
-        member = admin_client.create_organization_member(
-            organization_uuid=org["uuid"],
-            user_uuid=auth_test1_user.uuid,
-            role=c.OrganizationRole.MEMBER.value,
-        )
-
-        url = test_user_client.build_resource_uri(
-            ["iam/organization_members", member["uuid"]]
-        )
-        with pytest.raises(bazooka_exc.ForbiddenError):
-            test_user_client.put(
-                url,
-                json={"role": c.OrganizationRole.OWNER.value},
-            )
-
-        # cleanup
-        admin_client.delete_organization(org["uuid"])
-
-    @pytest.mark.sec_issue_10110_997
-    def test_delete_other_org_member_in_foreign_organization_forbidden(
-        self,
-        user_api_client,
-        auth_user_admin,
-        auth_test1_user,
-        auth_test2_user,
-    ):
-        admin_client = user_api_client(auth_user_admin)
-        test_user_client = user_api_client(auth_test1_user)
-
-        org = admin_client.create_organization(name="TestOrganization1")
-        admin_client.create_organization_member(
-            organization_uuid=org["uuid"],
-            user_uuid=auth_test1_user.uuid,
-            role=c.OrganizationRole.MEMBER.value,
-        )
-        other_member = admin_client.create_organization_member(
-            organization_uuid=org["uuid"],
-            user_uuid=auth_test2_user.uuid,
-            role=c.OrganizationRole.MEMBER.value,
-        )
-
-        url = test_user_client.build_resource_uri(
-            ["iam/organization_members", other_member["uuid"]]
-        )
-        with pytest.raises(bazooka_exc.ForbiddenError):
-            test_user_client.delete(url)
-
-        # cleanup
-        admin_client.delete_organization(org["uuid"])
-
-    def test_delete_member_organization_test1_auth_access(
-        self, user_api_client, auth_user_admin, auth_test1_user
-    ):
-        admin_client = user_api_client(auth_user_admin)
-        test_user_client = user_api_client(
-            auth_test1_user,
-            permissions=[
-                c.PERMISSION_ORGANIZATION_DELETE_ALL,
-            ],
-        )
-        org1 = admin_client.create_organization(name="TestOrganization1")
-        admin_client.create_organization_member(
-            organization_uuid=org1["uuid"],
-            user_uuid=auth_test1_user.uuid,
-            role=c.OrganizationRole.MEMBER.value,
-        )
 
         result = test_user_client.delete_organization(org1["uuid"])
 

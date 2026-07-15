@@ -429,39 +429,36 @@ class OrganizationController(
 
 
 class OrganizationMemberController(
-    controllers.BaseResourceControllerPaginated, EnforceMixin
+    controllers.BaseNestedResourceControllerPaginated, EnforceMixin
 ):
+    __pr_name__ = "organization"
     __resource__ = resources.ResourceByRAModel(
         models.OrganizationMember,
         convert_underscore=False,
     )
 
-    def create(self, organization, **kwargs):
+    def create(self, parent_resource: models.Organization, **kwargs):
         if not (
-            organization.are_i_owner()
+            parent_resource.are_i_owner()
             or self.enforce(c.PERMISSION_ORGANIZATION_WRITE_ALL)
         ):
-            raise iam_e.CanNotUpdateOrganization(name=organization.name)
+            raise iam_e.CanNotUpdateOrganization(name=parent_resource.name)
 
-        return super().create(organization=organization, **kwargs)
+        return super().create(parent_resource=parent_resource, **kwargs)
 
-    def update(self, uuid, **kwargs):
-        member = super().get(uuid)
-        organization = member.organization
-        if organization.are_i_owner() or self.enforce(
+    def update(self, parent_resource: models.Organization, uuid, **kwargs):
+        if parent_resource.are_i_owner() or self.enforce(
             c.PERMISSION_ORGANIZATION_WRITE_ALL
         ):
-            return super().update(uuid, **kwargs)
-        raise iam_e.CanNotUpdateOrganization(name=organization.name)
+            return super().update(parent_resource, uuid, **kwargs)
+        raise iam_e.CanNotUpdateOrganization(name=parent_resource.name)
 
-    def delete(self, uuid):
-        member = super().get(uuid)
-        organization = member.organization
-        if organization.are_i_owner() or self.enforce(
+    def delete(self, parent_resource: models.Organization, uuid):
+        if parent_resource.are_i_owner() or self.enforce(
             c.PERMISSION_ORGANIZATION_WRITE_ALL
         ):
-            return super().delete(uuid)
-        raise iam_e.CanNotUpdateOrganization(name=organization.name)
+            return super().delete(parent_resource, uuid)
+        raise iam_e.CanNotUpdateOrganization(name=parent_resource.name)
 
 
 class ProjectController(controllers.BaseResourceControllerPaginated, EnforceMixin):
