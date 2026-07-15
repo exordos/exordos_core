@@ -31,7 +31,7 @@ from exordos_core.secret.dm import models as secret_dm
 LOG = logging.getLogger(__name__)
 
 
-class DatabaseSecretBackendClient(base.AbstractBackendClient):
+class DatabasePasswordBackendClient(base.AbstractBackendClient):
     """Secret Backend client based on SQL database."""
 
     def get(self, resource: models.Resource) -> tp.Dict[str, tp.Any]:

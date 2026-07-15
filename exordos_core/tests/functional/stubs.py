@@ -69,3 +69,11 @@ class Password(secret_models.Password):
 
 class StoragePassword(secret_driver_models.Password):
     _ObjectCollection = ObjectCollection
+
+
+class Certificate(secret_models.Certificate):
+    _ObjectCollection = ObjectCollection
+
+
+class StorageCertificate(secret_driver_models.Certificate):
+    _ObjectCollection = ObjectCollection

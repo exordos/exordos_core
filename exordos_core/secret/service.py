@@ -547,5 +547,5 @@ class SecretServiceBuilder(basic.BasicService):
 
     def _iteration(self) -> None:
         with contexts.Context().session_manager():
-            self._actualize_certificates()
+            # self._actualize_certificates()
             self._actualize_ssh_keys()

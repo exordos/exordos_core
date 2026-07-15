@@ -28,6 +28,7 @@ LOG = logging.getLogger(__name__)
 
 CERT_TARGET_FIELDS_STORAGE = "/var/lib/exordos/exordos_core/cert_target_fields.json"
 DEFAULT_ADMIN_EMAIL = "infra@exordos.com"
+DEFAULT_PRIVATE_KEY_PATH = "/etc/exordos_core/certbot/privkey.pem"
 
 
 class CoreDNSCertificateCapabilityDriver(direct.DirectAgentDriver):
@@ -38,9 +39,11 @@ class CoreDNSCertificateCapabilityDriver(direct.DirectAgentDriver):
         user_api_base_url: str,
         username: str,
         password: str,
+        private_key_path: str = DEFAULT_PRIVATE_KEY_PATH,
         admin_email: str = DEFAULT_ADMIN_EMAIL,
+        storage_path: str = CERT_TARGET_FIELDS_STORAGE,
     ) -> None:
-        storage = fs.TargetFieldsFileStorage(CERT_TARGET_FIELDS_STORAGE)
+        storage = fs.TargetFieldsFileStorage(storage_path)
 
         auth = core_client_base.CoreIamAuthenticator(
             base_url=user_api_base_url, username=username, password=password
@@ -49,7 +52,9 @@ class CoreDNSCertificateCapabilityDriver(direct.DirectAgentDriver):
             base_url=user_api_base_url, auth=auth
         )
 
-        client = cert_back.CertBotBackendClient(dns_client, admin_email)
+        client = cert_back.CertBotBackendClient(
+            dns_client, admin_email, private_key_path
+        )
 
         super().__init__(storage=storage, client=client)
 

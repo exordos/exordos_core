@@ -37,6 +37,7 @@ import pytest
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage.sql import engines
 
+from exordos_core.agent.universal.drivers.secret import cert as cert_driver
 from exordos_core.agent.universal.drivers.secret import password as password_driver
 from exordos_core.common import constants as c
 from exordos_core.common import utils
@@ -1429,19 +1430,18 @@ def self_signed_cert():
 
 
 @pytest.fixture()
-def agent_service(
+def password_agent_service(
     default_node: tp.Dict[str, tp.Any],
     user_api_client: iam_clients.GenesisCoreTestRESTClient,
 ):
     agent_uuid = sys_uuid.UUID(default_node["uuid"])
     orch_client = orch_db.DatabaseOrchClient()
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_file_path = os.path.join(temp_dir, "password_target_fields.json")
-
-        with open(temp_file_path, "w", encoding="utf-8") as f:
+        passwords_temp_file_path = os.path.join(temp_dir, "password_target_fields.json")
+        with open(passwords_temp_file_path, "w", encoding="utf-8") as f:
             json.dump({}, f, indent=4)
 
-        p_d = password_driver.PasswordCapabilityDriver(temp_file_path)
+        p_d = password_driver.PasswordCapabilityDriver(passwords_temp_file_path)
         caps_drivers = [
             p_d,
         ]
@@ -1461,8 +1461,50 @@ def agent_service(
 
 
 @pytest.fixture()
+def cert_agent_service(
+    default_node: tp.Dict[str, tp.Any],
+    user_api_client: iam_clients.GenesisCoreTestRESTClient,
+):
+    agent_uuid = sys_uuid.UUID(default_node["uuid"])
+    orch_client = orch_db.DatabaseOrchClient()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cert_temp_file_path = os.path.join(temp_dir, "cert_target_fields.json")
+        with open(cert_temp_file_path, "w", encoding="utf-8") as f:
+            json.dump({}, f, indent=4)
+        privkey_temp_file_path = os.path.join(temp_dir, "privkey.pem")
+        c_d = cert_driver.CoreDNSCertificateCapabilityDriver(
+            user_api_base_url=c.DEFAULT_ROOT_ENDPOINT,
+            username=c.DEFAULT_DNS_CERT_USERNAME,
+            password=c.DEFAULT_DNS_CERT_PASSWORD,
+            storage_path=cert_temp_file_path,
+            private_key_path=privkey_temp_file_path,
+        )
+        caps_drivers = [
+            c_d,
+        ]
+        agent = ua_agent_service.UniversalAgentService(
+            system_uuid=agent_uuid,
+            agent_uuid=agent_uuid,
+            orch_client=orch_client,
+            caps_drivers=caps_drivers,
+            facts_drivers=[],
+            iter_min_period=3,
+            payload_path=None,
+            verify_node_on_register=False,
+        )
+        agent._setup()
+        agent._register_agent()
+        yield agent
+
+
+@pytest.fixture()
 def password_builder():
     yield secret_service.PasswordBuilder()
+
+
+@pytest.fixture()
+def certificate_builder():
+    yield secret_service.CertificateBuilder()
 
 
 @pytest.fixture()
