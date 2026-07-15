@@ -192,8 +192,7 @@ class Repository(
             types_dynamic.KindModelType(DummyMigrationDriverSpec),
             types_dynamic.KindModelType(DatabaseDriverSpec),
         ),
-        default=NginxDriverSpec,
-        required=False,
+        required=True,
     )
     next_refresh = properties.property(
         ra_types.UTCDateTimeZ(),
