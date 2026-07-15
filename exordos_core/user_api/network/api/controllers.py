@@ -111,3 +111,23 @@ class BackendPoolController(
             },
         ),
     )
+
+
+class BorderController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    __policy_service_name__ = "network"
+    __policy_name__ = "border"
+
+    __resource__ = resources.ResourceByRAModel(
+        models.Border,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "status": {constants.ALL: field_p.Permissions.RO},
+                "ipsv4": {constants.ALL: field_p.Permissions.RO},
+            },
+        ),
+    )

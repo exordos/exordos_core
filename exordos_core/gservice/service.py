@@ -48,6 +48,9 @@ from exordos_core.elements.builders import service as service_builder_svc
 from exordos_core.elements.services import builders as em_builders
 from exordos_core.janitor import service as janitor_service
 from exordos_core.network import service as n_network_service
+from exordos_core.network.border.builders import iaas as net_border_iaas
+from exordos_core.network.border.builders import paas as net_border_paas
+from exordos_core.network.border.dm import models as border_models
 from exordos_core.network.lb.builders import iaas as net_lb_iaas
 from exordos_core.network.lb.builders import paas as net_lb_paas
 from exordos_core.network.lb.dm import models as lb_models
@@ -123,6 +126,11 @@ class GeneralService(basic.BasicService):
             project_id=nc.NODE_SET_PROJECT,
         )
         net_lb_paas_builder = net_lb_paas.LBBuilder()
+        net_border_iaas_builder = net_border_iaas.BorderIaasBuilder(
+            instance_model=border_models.IaasBorder,
+            project_id=nc.NODE_SET_PROJECT,
+        )
+        net_border_paas_builder = net_border_paas.BorderBuilder()
 
         # Infra scheduler
         infra_scheduler = ua_scheduler_service.UniversalAgentSchedulerService(
@@ -228,6 +236,8 @@ class GeneralService(basic.BasicService):
             service_builder,
             net_lb_iaas_builder,
             net_lb_paas_builder,
+            net_border_iaas_builder,
+            net_border_paas_builder,
             secret_svc,
             password_builder,
             em_builder,

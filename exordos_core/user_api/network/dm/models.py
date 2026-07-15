@@ -608,3 +608,80 @@ class Route(ChildModel):
     def update(self, session=None, force=False):
         self._validate()
         super().update(session=session, force=force)
+
+
+# ---------------------------------------------------------------------------
+# Border (realm egress/ingress gateway) -- a universal-agent capability.
+# Deployment shapes mirror the LB above:
+#   * node set          -> border_node pinned to that node's agent
+#                          (distributed egress, e.g. a managed realm node);
+#   * type core_agent   -> border_agent on the core node's agent (step 0);
+#   * type core         -> a dedicated small VM gateway the platform
+#                          provisions itself (small installations that
+#                          should not turn the core node into the gateway).
+# `node` wins over `type` (an explicit pin is the most specific intent).
+# ---------------------------------------------------------------------------
+
+
+class BorderTypeCoreAgentKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+    KIND = "core_agent"
+
+
+class BorderTypeCoreKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+    """A dedicated VM-based border (calque of LBTypeCoreKind).
+
+    A border is a single gateway; there is no nodes_number — an HA pair
+    would need VRRP/conntrack sync, which this deliberately does not claim.
+    The image must ship the universal agent with BorderCapabilityDriver.
+    """
+
+    KIND = "core"
+
+    cpu = properties.property(types.Integer(min_value=1, max_value=128), default=1)
+    ram = properties.property(
+        types.Integer(min_value=512, max_value=1024**3), default=512
+    )
+    disk_size = properties.property(
+        types.Integer(min_value=10, max_value=1024**3),
+        default=10,
+    )
+
+
+class Border(
+    models.ModelWithUUID,
+    models.ModelWithNameDesc,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.TargetResourceMixin,
+):
+    __tablename__ = "net_border"
+
+    status = properties.property(
+        types.Enum([status.value for status in LBStatus]),
+        default=LBStatus.NEW.value,
+    )
+    # Optional target compute node. When set, the border capability is
+    # scheduled to that node's agent (border_node / distributed egress, e.g. a
+    # managed realm node) and `type` is ignored.
+    node = properties.property(types.AllowNone(types.UUID()), default=None)
+    type = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(BorderTypeCoreAgentKind),
+            types_dynamic.KindModelType(BorderTypeCoreKind),
+        ),
+        default=BorderTypeCoreAgentKind(),
+        required=True,
+    )
+    # Public IPv4s of a `core` (VM) border once its node is up — the
+    # entrypoint consumers point DNAT clients at (like LB.ipsv4).
+    ipsv4 = properties.property(
+        types.TypedList(types.String(max_length=15)),
+        default=lambda: [],
+    )
+    # Inline NAT rules, reconciled as part of the Border resource:
+    #   snat_rules: [{source_cidr, mode: "masquerade"|"snat", snat_to}]
+    #   forwards:   [{proto: "tcp"|"udp", public_ip, listen_port, to_host,
+    #                 to_port}]
+    snat_rules = properties.property(types.List(), default=lambda: [])
+    forwards = properties.property(types.List(), default=lambda: [])
