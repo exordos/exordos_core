@@ -46,7 +46,14 @@ class MetaPool(meta.MetaCoordinatorDataPlaneModel):
 
     __driver_map__ = {}
 
-    driver_spec = properties.property(types.Dict(), required=True)
+    driver_spec = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(models.LibvirtPoolDriverSpec),
+            types_dynamic.KindModelType(models.ExordosLocalHyperDriverSpec),
+            types_dynamic.KindModelType(models.DummyPoolDriverSpec),
+        ),
+        required=True,
+    )
     machine_type = properties.property(
         types.Enum([t.value for t in nc.NodeType]),
         default=nc.NodeType.VM.value,
@@ -88,8 +95,7 @@ class MetaPool(meta.MetaCoordinatorDataPlaneModel):
         if driver_key in self.__driver_map__:
             return self.__driver_map__[driver_key]
 
-        # TODO(akremenetsky): Use dynamic typing for this field
-        driver_kind = self.driver_spec["driver"]
+        driver_kind = self.driver_spec.KIND
 
         class_ = utils.load_from_entry_point(nc.EP_MACHINE_POOL_DRIVERS, driver_kind)
 
@@ -816,3 +822,9 @@ class PoolAgentDriver(meta.MetaCoordinatorAgentDriver):
             },
         },
     }
+
+
+class LocalPoolAgentDriver(PoolAgentDriver):
+    def get_capabilities(self) -> list[str]:
+        """Returns a list of capabilities supported by the driver."""
+        return super().get_capabilities() + ["local_pool"]

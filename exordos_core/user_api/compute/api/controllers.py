@@ -23,6 +23,7 @@ from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 from restalchemy.common import exceptions as ra_e
+from restalchemy.storage import exceptions as storage_exc
 
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as models
@@ -200,4 +201,37 @@ class HypervisorsController(
         if "machine_type" in kwargs and kwargs["machine_type"] != nc.NodeType.VM.value:
             raise ValueError("Hyper must be VM type")
 
+        self._validate_driver_spec_uniqueness(kwargs)
+
         return super().create(**kwargs)
+
+    def _validate_driver_spec_uniqueness(self, kwargs: dict) -> None:
+        """Validate that the driver_spec fields are unique among existing pools."""
+        driver_spec = kwargs["driver_spec"]
+        kind = driver_spec["kind"]
+
+        if kind == models.LibvirtPoolDriverSpec.KIND:
+            connection_uri = driver_spec["connection_uri"]
+            # TODO(akremenetsky): Use JSON field filter when restalchemy
+            # supports filtering by JSONB fields.
+            existing_pools = models.MachinePool.objects.get_all()
+            for pool in existing_pools:
+                if (
+                    pool.driver_spec.KIND == kind
+                    and pool.driver_spec.connection_uri == connection_uri
+                ):
+                    raise storage_exc.ConflictRecords(
+                        model="MachinePool",
+                        msg=f"connection_uri={connection_uri}",
+                    )
+        elif kind == models.ExordosLocalHyperDriverSpec.KIND:
+            node = str(driver_spec["node"])
+            # TODO(akremenetsky): Use JSON field filter when restalchemy
+            # supports filtering by JSONB fields.
+            existing_pools = models.MachinePool.objects.get_all()
+            for pool in existing_pools:
+                if pool.driver_spec.KIND == kind and str(pool.driver_spec.node) == node:
+                    raise storage_exc.ConflictRecords(
+                        model="MachinePool",
+                        msg=f"node={node}",
+                    )

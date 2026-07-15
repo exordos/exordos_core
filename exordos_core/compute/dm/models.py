@@ -102,6 +102,60 @@ class AbstractStoragePool(
         return self.available >= size
 
 
+class AbstractPoolDriverSpec(
+    types_dynamic.AbstractKindModel,
+    models.SimpleViewMixin,
+):
+    """Base class for all pool driver specs."""
+
+
+class LibvirtPoolDriverSpec(AbstractPoolDriverSpec):
+    KIND = "libvirt"
+
+    connection_uri = properties.property(
+        types.String(max_length=2048),
+        required=True,
+    )
+    network = properties.property(
+        types.AllowNone(types.String(max_length=255)),
+        default=None,
+    )
+    storage_pool = properties.property(
+        types.AllowNone(types.String(max_length=255)),
+        default=None,
+    )
+    machine_prefix = properties.property(
+        types.AllowNone(types.String(max_length=255)),
+        default=None,
+    )
+    network_type = properties.property(
+        types.Enum(["network", "bridge"]),
+        default="network",
+    )
+    iface_rom_file = properties.property(
+        types.AllowNone(types.String(max_length=255)),
+        default=None,
+    )
+    iface_mtu = properties.property(
+        types.Integer(min_value=0, max_value=65536),
+        default=1500,
+    )
+    iface_source = properties.property(
+        types.AllowNone(types.String(max_length=255)),
+        default=None,
+    )
+
+
+class ExordosLocalHyperDriverSpec(LibvirtPoolDriverSpec):
+    KIND = "exordos_local_hyper"
+
+    node = properties.property(types.UUID(), required=True)
+
+
+class DummyPoolDriverSpec(AbstractPoolDriverSpec):
+    KIND = "dummy"
+
+
 class ThinStoragePool(
     AbstractStoragePool,
     models.ModelWithNameDesc,
@@ -146,7 +200,14 @@ class MachinePool(
     __tablename__ = "machine_pools"
     __driver_map__ = {}
 
-    driver_spec = properties.property(types.Dict(), default=dict)
+    driver_spec = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(LibvirtPoolDriverSpec),
+            types_dynamic.KindModelType(ExordosLocalHyperDriverSpec),
+            types_dynamic.KindModelType(DummyPoolDriverSpec),
+        ),
+        required=True,
+    )
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     machine_type = properties.property(
@@ -173,26 +234,6 @@ class MachinePool(
         ),
         default=list,
     )
-
-    @property
-    def has_driver(self) -> bool:
-        return bool(self.driver_spec)
-
-    @classmethod
-    def default_hw_pool(cls) -> tp.Optional["MachinePool"]:
-        """Get the default pool for HW machines if exists.
-
-        The method returns the default pool if only a pool
-        with required parameters exists and there are not
-        other pools with similar parameters.
-        """
-        return cls.objects.get_one_or_none(
-            filters={
-                "machine_type": dm_filters.EQ(nc.NodeType.HW.value),
-                "driver_spec": dm_filters.EQ("{}"),
-                "status": dm_filters.EQ(nc.MachinePoolStatus.ACTIVE.value),
-            },
-        )
 
     def load_driver(self) -> tp.Type["AbstractPoolDriver"]:
         """

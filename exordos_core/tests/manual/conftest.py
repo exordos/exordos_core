@@ -511,7 +511,11 @@ def pool_factory():
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
         uuid = uuid or sys_uuid.uuid4()
-        driver_spec = {"driver": "libvirt"} if driver_spec is None else driver_spec
+        driver_spec = (
+            {"kind": "libvirt", "connection_uri": "qemu+tcp://127.0.0.1/system"}
+            if driver_spec is None
+            else driver_spec
+        )
         status_value = nc.MachinePoolStatus.ACTIVE.value if status is None else status
         storage_pool = node_models.ThinStoragePool(
             pool_type="dummy",
@@ -521,9 +525,9 @@ def pool_factory():
             available_actual=1000,
         )
 
-        pool = node_models.MachinePool(
-            uuid=uuid,
-            agent=agent,
+        pool = node_models.MachinePool.restore_from_simple_view(
+            uuid=str(uuid),
+            agent=str(agent) if agent else None,
             name=name,
             status=status_value,
             driver_spec=driver_spec,
@@ -531,7 +535,7 @@ def pool_factory():
             avail_ram=avail_ram,
             all_cores=all_cores,
             all_ram=all_ram,
-            storage_pools=[storage_pool],
+            storage_pools=[storage_pool.dump_to_simple_view()],
             **kwargs,
         )
         view = pool.dump_to_simple_view()

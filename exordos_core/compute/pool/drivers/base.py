@@ -143,16 +143,19 @@ class AbstractPoolDriver(abc.ABC):
 
 
 class DummyPoolDriver(AbstractPoolDriver):
-    SPEC = {"driver": "dummy"}
-
     def __init__(self, pool: models.MachinePool, dry_run: bool = False):
-        if pool.driver_spec != self.SPEC:
-            raise ValueError(f"Invalid driver spec: {pool.driver_spec}")
+        if pool.driver_spec is None or pool.driver_spec.KIND != "dummy":
+            raise ValueError(
+                f"Unsupported driver spec kind: "
+                f"{pool.driver_spec.KIND if pool.driver_spec else None!r}"
+            )
         super().__init__(dry_run=dry_run)
 
     def get_pool_info(self) -> models.MachinePool:
         """Get pool info."""
-        return models.MachinePool()
+        return models.MachinePool(
+            driver_spec=models.DummyPoolDriverSpec(),
+        )
 
     def list_pool_resources(
         self,
@@ -162,7 +165,13 @@ class DummyPoolDriver(AbstractPoolDriver):
         tp.Collection[models.MachineVolume],
     ]:
         """List pool resources."""
-        return models.MachinePool(), [], []
+        return (
+            models.MachinePool(
+                driver_spec=models.DummyPoolDriverSpec(),
+            ),
+            [],
+            [],
+        )
 
     def list_machines(
         self,

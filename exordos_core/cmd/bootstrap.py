@@ -30,7 +30,6 @@ import uuid as sys_uuid
 from oslo_config import cfg
 from restalchemy.common import config_opts as ra_config_opts
 from restalchemy.dm import filters as dm_filters
-from restalchemy.storage import exceptions as ra_exceptions
 from restalchemy.storage.sql import engines
 import yaml
 
@@ -175,50 +174,6 @@ def _apply_flat_network(stand: dict[str, tp.Any]) -> None:
         subnet.network = network.uuid
         subnet.insert()
         LOG.info("Created subnet %s", subnet.uuid)
-
-
-def _apply_startup_db(spec: dict[str, tp.Any]) -> None:
-    """Idempotent startup database configuration."""
-    stand = spec.get("stand", {})
-    if not stand:
-        LOG.info("No `stand` section found in %s", spec)
-        return
-
-    # Apply flat network configuration
-    _apply_flat_network(stand)
-
-    # Apply machine pools
-    # NOTE(akremenetsky): It maybe a problem for large installations
-    # with many machine pools, but it's fine for now.
-    machine_pools = models.MachinePool.objects.get_all()
-
-    for hypervisor in stand.get("hypervisors", []):
-        hypervisor["iface_mtu"] = 1500
-        pool_data = {
-            "name": "hypervisor",
-            "machine_type": "VM",
-            "driver_spec": hypervisor,
-        }
-        pool = models.MachinePool.restore_from_simple_view(**pool_data)
-
-        # Skip if the pool already exists
-        for _pool in machine_pools:
-            if (
-                _pool.driver_spec["connection_uri"]
-                == pool.driver_spec["connection_uri"]
-            ):
-                break
-        else:
-            # Pool does not exist, create it
-            try:
-                pool.insert()
-            except ra_exceptions.ConflictRecords:
-                LOG.info("Machine pool %s already exists", pool.uuid)
-            else:
-                LOG.info("Created machine pool %s", pool.uuid)
-            continue
-
-        LOG.info("Machine pool %s already exists, skipping", pool.uuid)
 
 
 def _ensure_exordos_config(spec: dict[str, tp.Any]):
