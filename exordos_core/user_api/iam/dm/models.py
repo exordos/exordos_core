@@ -914,6 +914,7 @@ class MeInfo:
             "confirmation_code_made_at",
             "user_source",
             "custom_props",
+            "registration_client",
         ]
         user = self._user.get_storable_snapshot()
         for drop_field in skip_fields:

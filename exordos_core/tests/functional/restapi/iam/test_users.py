@@ -456,6 +456,34 @@ class TestUsers(base.BaseIamResourceTest):
             common_c.DEFAULT_CLIENT_UUID
         )
 
+    def test_create_user_rejects_caller_supplied_registration_client(
+        self, user_api_client, auth_user_admin
+    ):
+        client = user_api_client(
+            auth_user_admin,
+            permissions=[
+                iam_c.PERMISSION_USER_CREATE,
+            ],
+        )
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.create_user(
+                username="reg_client_spoof_user",
+                password="testtest",
+                registration_client=str(sys_uuid.uuid4()),
+            )
+
+    def test_update_user_rejects_caller_supplied_registration_client(
+        self, user_api_client, auth_test1_user
+    ):
+        client = user_api_client(auth_test1_user)
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.update_user(
+                auth_test1_user.uuid,
+                registration_client=str(sys_uuid.uuid4()),
+            )
+
     def _set_default_client_auto_provision(self, enabled):
         iam_client = iam_models.IamClient.objects.get_one(
             filters={"uuid": sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID)}
@@ -589,7 +617,6 @@ class TestUsers(base.BaseIamResourceTest):
             "email",
             "otp_enabled",
             "email_verified",
-            "registration_client",
             "type",
         ]
 
