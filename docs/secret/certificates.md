@@ -2,8 +2,8 @@
 
 Certificates are a part for the Secret Manager service. The service allows to issue and manage certificates, store them in specified storage and use them for different purposes.
 
-The current implementation only support `dns_core` method (provider) to issue and manage certificates. This method supposed DNS challenges via Core DNS that is
-available from the internet.
+The certificate resource supports public ACME certificates through `dns_core`
+and private service certificates through `internal_ca`.
 
 Examples:
 
@@ -33,6 +33,10 @@ The main fields are:
 - **constructor** - In the context of the certificates, the constructor object creates and stores the certificate. The `plain` means create and store in the plain format.
 - **email** - the email address to use for the certificate.
 - **domains** - the list of domains to use for the certificate.
+- **cert** - the issued leaf certificate and its chain.
+- **key** - the issued leaf private key.
+- **ca_cert** - the public CA certificate for `internal_ca` resources. The CA
+  private key is never exposed by the API or manifest renderer.
 
 Also it's possible to specify domains with wildcards.
 
@@ -67,3 +71,33 @@ The `dns_core` provider allows to issue and manage certificates via Core DNS. It
 - Request a certificate for domains.
 - Pass the DNS challenge.
 - Some final preparation.
+
+### internal_ca
+
+The `internal_ca` provider issues certificates for services reachable only
+inside the Core local network. It creates a private certificate authority in
+the Secret Manager backend and returns a hostname-verified server certificate
+for the requested DNS names.
+
+```json
+{
+  "name": "internal-mail",
+  "project_id": "00000000-0000-0000-0000-000000000000",
+  "method": {
+    "kind": "internal_ca"
+  },
+  "constructor": {
+    "kind": "plain"
+  },
+  "email": "service@example.com",
+  "domains": ["mail.internal.example"]
+}
+```
+
+The CA is valid for ten years. Server certificates are valid for 90 days and
+are renewed under the same CA when the configured expiration threshold is
+reached. Core rotates the CA before a newly issued server certificate would
+outlive it; this changes `ca_cert` so client trust configuration is reconciled
+alongside the service certificate. Consumers should deliver `key` and `cert`
+only to the service node, deliver `ca_cert` to clients, and reload the affected
+services when rendered config resources change.

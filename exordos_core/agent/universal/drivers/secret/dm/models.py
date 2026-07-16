@@ -78,6 +78,14 @@ class Certificate(Secret, orm.SQLStorableMixin):
         types.String(min_length=1, max_length=10240),
         required=True,
     )
+    ca_key = properties.property(
+        types.AllowNone(types.String(min_length=1, max_length=10240)),
+        default=None,
+    )
+    ca_cert = properties.property(
+        types.AllowNone(types.String(min_length=1, max_length=10240)),
+        default=None,
+    )
     expiration_at = properties.property(types.UTCDateTimeZ())
 
     @classmethod
@@ -88,6 +96,8 @@ class Certificate(Secret, orm.SQLStorableMixin):
         csr_pem: bytes,
         fullchain_pem: str,
         expiration_at: datetime.datetime,
+        ca_key_pem: bytes | None = None,
+        ca_cert_pem: str | None = None,
     ) -> "Certificate":
         meta = resource.value.copy()
         meta["status"] = sc.SecretStatus.ACTIVE.value
@@ -97,6 +107,8 @@ class Certificate(Secret, orm.SQLStorableMixin):
             pkey=pkey_pem.decode(),
             fullchain=fullchain_pem,
             csr=csr_pem.decode(),
+            ca_key=None if ca_key_pem is None else ca_key_pem.decode(),
+            ca_cert=ca_cert_pem,
             status=sc.SecretStatus.ACTIVE.value,
             expiration_at=expiration_at,
             meta=meta,
@@ -113,10 +125,12 @@ class Certificate(Secret, orm.SQLStorableMixin):
         expiration_at = self.expiration_at.replace(tzinfo=datetime.timezone.utc)
         expiration_at = expiration_at.strftime(c.DEFAULT_DATETIME_FORMAT)
 
-        value = self.meta
+        value = self.meta.copy()
         value["status"] = sc.SecretStatus.ACTIVE.value
         value["key"] = self.pkey
         value["cert"] = self.fullchain
+        if self.ca_cert is not None:
+            value["ca_cert"] = self.ca_cert
         value["expiration_at"] = expiration_at
         value["overcome_threshold"] = self.is_under_threshold()
         return value

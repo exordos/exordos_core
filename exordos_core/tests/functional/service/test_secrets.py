@@ -119,6 +119,7 @@ class TestSecretsServiceBuilder:
         view["value"]["status"] = "ACTIVE"
         view["value"]["key"] = "mykey"
         view["value"]["cert"] = "mycert"
+        view["value"]["ca_cert"] = "my-ca-cert"
         render_actual_resource = ua_models.Resource.restore_from_simple_view(**view)
         render_actual_resource.insert()
 
@@ -128,6 +129,7 @@ class TestSecretsServiceBuilder:
         assert certificate.status == "ACTIVE"
         assert certificate.key == "mykey"
         assert certificate.cert == "mycert"
+        assert certificate.ca_cert == "my-ca-cert"
 
         cert_url = client.build_resource_uri(["secret/certificates", certificate_uuid])
         client.delete(cert_url)

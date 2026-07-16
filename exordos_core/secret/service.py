@@ -282,12 +282,14 @@ class SecretServiceBuilder(basic.BasicService):
             status_updated
             or actual_cert.key != certificate.key
             or actual_cert.cert != certificate.cert
+            or actual_cert.ca_cert != certificate.ca_cert
             or actual_cert.expiration_at != certificate.expiration_at
         ):
             if status_updated:
                 certificate.status = actual_cert.status
             certificate.key = actual_cert.key
             certificate.cert = actual_cert.cert
+            certificate.ca_cert = actual_cert.ca_cert
             certificate.expiration_at = actual_cert.expiration_at
             certificate.save()
             certificate_updated = True

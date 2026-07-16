@@ -134,6 +134,10 @@ class DNSCoreCertificateMethod(AbstractCertificateMethod):
     KIND = "dns_core"
 
 
+class InternalCACertificateMethod(AbstractCertificateMethod):
+    KIND = "internal_ca"
+
+
 class Certificate(
     Secret,
     orm.SQLStorableWithJSONFieldsMixin,
@@ -145,6 +149,7 @@ class Certificate(
     method = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(DNSCoreCertificateMethod),
+            types_dynamic.KindModelType(InternalCACertificateMethod),
         ),
         required=True,
         default=DNSCoreCertificateMethod,
@@ -163,6 +168,10 @@ class Certificate(
         default=None,
     )
     cert = properties.property(
+        types.AllowNone(types.String(min_length=1, max_length=10240)),
+        default=None,
+    )
+    ca_cert = properties.property(
         types.AllowNone(types.String(min_length=1, max_length=10240)),
         default=None,
     )
