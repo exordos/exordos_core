@@ -31,7 +31,6 @@ from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
-from exordos_core.compute.agents.universal.drivers import pool as ua_pool_drivers
 from exordos_core.compute.builders import node as node_builder_svc
 from exordos_core.compute.builders import node_set as set_builder_svc
 from exordos_core.compute.builders import pool as pool_builder_svc
@@ -100,19 +99,6 @@ class GeneralService(basic.BasicService):
         volume_builder = volume_builder_svc.VolumeBuilderService(
             iter_min_period=iter_min_period
         )
-        pool_driver = ua_pool_drivers.PoolAgentDriver(
-            meta_file="/var/lib/exordos/exordos_core/pool_agent_meta.json"
-        )
-        agent_uuid = sys_uuid.uuid5(ua_utils.system_uuid(), "machine_pool_agent")
-        machine_pool_agent = ua_agent_service.UniversalAgentService(
-            agent_uuid=agent_uuid,
-            orch_client=orch_db.DatabaseOrchClient(),
-            caps_drivers=[pool_driver],
-            facts_drivers=[],
-            iter_min_period=iter_min_period,
-            payload_path=None,
-        )
-
         set_builder = set_builder_svc.NodeSetBuilderService(
             instance_model=node_set_models.NodeSet,
             project_id=nc.NODE_SET_PROJECT,
@@ -223,7 +209,6 @@ class GeneralService(basic.BasicService):
             pool_builder_service,
             node_builder,
             volume_builder,
-            machine_pool_agent,
             cfg_service,
             service_builder,
             net_lb_iaas_builder,
