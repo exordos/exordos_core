@@ -130,6 +130,7 @@ class CertificatesController(iam_controllers.PolicyBasedController):
                 "status": {ra_c.ALL: field_p.Permissions.RO},
                 "key": {ra_c.ALL: field_p.Permissions.RO},
                 "cert": {ra_c.ALL: field_p.Permissions.RO},
+                "ca_cert": {ra_c.ALL: field_p.Permissions.RO},
                 "expiration_threshold": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "overcome_threshold": {ra_c.ALL: field_p.Permissions.HIDDEN},
             },

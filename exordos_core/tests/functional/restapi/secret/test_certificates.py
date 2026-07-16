@@ -77,6 +77,25 @@ class TestCertificatesUserApi:
             client.build_resource_uri(["secret/certificates", output["uuid"]])
         )
 
+    def test_internal_ca_certificate_method_is_accepted(
+        self,
+        cert_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+        cert = cert_factory(method=secret_models.InternalCACertificateMethod())
+        url = client.build_collection_uri(["secret/certificates"])
+
+        response = client.post(url, json=cert)
+        output = response.json()
+
+        assert response.status_code == 201
+        assert output["method"] == {"kind": "internal_ca"}
+        client.delete(
+            client.build_resource_uri(["secret/certificates", output["uuid"]])
+        )
+
     def test_certificates_add_several(
         self,
         cert_factory: tp.Callable,

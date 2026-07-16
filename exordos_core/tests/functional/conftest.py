@@ -740,6 +740,7 @@ def cert_factory():
         email: str = "user@genesis-core.tech",
         key: tp.Optional[str] = None,
         cert: tp.Optional[str] = None,
+        ca_cert: tp.Optional[str] = None,
         constructor: tp.Optional[secret_models.AbstractSecretConstructor] = None,
         method: tp.Optional[secret_models.AbstractCertificateMethod] = None,
         project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
@@ -765,6 +766,7 @@ def cert_factory():
             email=email,
             key=key,
             cert=cert,
+            ca_cert=ca_cert,
             **kwargs,
         )
         view = obj.dump_to_simple_view()
@@ -774,6 +776,8 @@ def cert_factory():
             view.pop("key")
         if cert is None:
             view.pop("cert")
+        if ca_cert is None:
+            view.pop("ca_cert")
         view.pop("expiration_threshold")
         view.pop("overcome_threshold")
 
