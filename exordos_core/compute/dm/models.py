@@ -117,14 +117,24 @@ class MachinePool(
         # `agent_private_key` lets a caller that already generated and
         # deployed a key to the agent (e.g. the bootstrap flow) keep both
         # sides in sync instead of getting a fresh, mismatched one here.
+        # A key may already exist for this node uuid (e.g. it's also
+        # registered as a plain compute Node, which provisions its own
+        # key the same way) - node uuid is the key's identity regardless
+        # of which agent process uses it, so reuse it instead of
+        # conflicting on insert.
         if isinstance(self.driver_spec, ExordosLocalHyperDriverSpec):
-            if agent_private_key is None:
-                _, agent_private_key = ua_crypto.generate_key_base64()
-            private_key = ua_models.NodeEncryptionKey(
-                uuid=self.driver_spec.node,
-                private_key=agent_private_key,
+            existing_keys = ua_models.NodeEncryptionKey.objects.get_all(
+                filters={"uuid": dm_filters.EQ(self.driver_spec.node)},
+                session=session,
             )
-            private_key.insert(session=session)
+            if not existing_keys:
+                if agent_private_key is None:
+                    _, agent_private_key = ua_crypto.generate_key_base64()
+                private_key = ua_models.NodeEncryptionKey(
+                    uuid=self.driver_spec.node,
+                    private_key=agent_private_key,
+                )
+                private_key.insert(session=session)
 
     def get_agent_private_key(self):
         enc_key = ua_models.NodeEncryptionKey.objects.get_one(
