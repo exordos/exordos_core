@@ -1,0 +1,11 @@
+# Copyright 2026 Genesis Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.
+
+# Build the Core-to-Audit integration separately because the rendered output
+# contains the manually supplied bearer token. Keep the output protected and
+# remove it after deploy.
+build:
+  elements:
+    - manifest: manifests/core_audit.yaml.j2

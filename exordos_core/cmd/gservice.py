@@ -17,6 +17,7 @@
 import logging
 import sys
 
+from gcl_sdk.audit import opts as audit_opts
 from gcl_sdk.events import opts as sdk_opts
 from oslo_config import cfg
 from restalchemy.common import config_opts as ra_config_opts
@@ -40,6 +41,7 @@ cli_opts = [
 CONF = cfg.CONF
 ra_config_opts.register_posgresql_db_opts(CONF)
 sdk_opts.register_event_opts(CONF)
+audit_opts.register_audit_delivery_opts(CONF)
 
 CONF.register_cli_opts(cli_opts, DOMAIN)
 

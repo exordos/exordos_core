@@ -1,0 +1,46 @@
+# Copyright 2026 Genesis Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.
+
+name: "core_audit"
+description: "Configure Exordos Core audit delivery"
+schema_version: 1
+version: "{{ version | default('1.0.0') }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+  audit:
+    from_version: "0.0.0"
+
+resources:
+  $core.config.configs:
+    core_audit_config:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exordos_core/exordos_core.d/90-audit-delivery.conf
+      mode: "0600"
+      owner: root
+      group: root
+      target:
+        kind: node_set
+        # core_set has a stable UUID in the core element manifest.
+        node_set: "70c88222-b4d9-46c3-9340-aa5bfaaa4b94"
+      on_change:
+        kind: shell
+        command: systemctl restart ec-gservice
+      body:
+        kind: text
+        content: |
+          [audit_delivery]
+          enabled = true
+          endpoint = http://audit.local.genesis-core.tech:8080/
+          api_version = v1
+          auth_token = {{ audit_token }}
+          timeout = 5
+          batch_size = 100
+
+# The token is supplied manually until exordos_core#470 adds declarative
+# service-token issuance and rotation. Do not add exports: this integration
+# element owns no public resource contract.

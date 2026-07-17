@@ -99,6 +99,13 @@ tox -e ruff-check    # Check code style
 tox -e mypy          # Type checking
 ```
 
+Do not store individual test-run reports, dated stand snapshots, or execution
+history in this repository. Keep only current test plans, runbooks, test IDs,
+automated tests, acceptance criteria, and concise coverage status here. Store
+sanitized historical run reports in
+`github/exordos/cassi/docs/test-runs/exordos-core/` and never include secrets,
+production payloads, full logs, databases, or binary artifacts.
+
 ### Build Commands
 
 ```bash

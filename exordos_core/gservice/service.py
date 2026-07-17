@@ -25,6 +25,8 @@ from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
 from gcl_sdk.agents.universal.services import agent as ua_agent_service
 from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
+from gcl_sdk.audit import opts as audit_opts
+from gcl_sdk.audit.services import senders as audit_senders
 from gcl_sdk.events import constants as event_c
 from gcl_sdk.events.services import senders
 from oslo_config import cfg
@@ -198,6 +200,12 @@ class GeneralService(basic.BasicService):
             event_sender = senders.EventSenderService.build_from_config()
         else:
             event_sender = None
+        if audit_opts.get_audit_delivery_config().enabled:
+            audit_sender = audit_senders.AuditSenderService.build_from_config(
+                iter_min_period=iter_min_period,
+            )
+        else:
+            audit_sender = None
         em_builder = em_builders.ElementManagerBuilder(iter_min_period=iter_min_period)
         janitor = janitor_service.ExpiredEmailConfirmationCodeJanitorService(
             iter_min_period=60 * 60,
@@ -238,6 +246,8 @@ class GeneralService(basic.BasicService):
         ]
         if event_sender is not None:
             self._services.append(event_sender)
+        if audit_sender is not None:
+            self._services.append(audit_sender)
         self._next_run_times = {id(s): 0 for s in self._services}
 
     def _setup(self):
