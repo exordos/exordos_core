@@ -393,6 +393,10 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
 
     for hypervisor in stand.get("hypervisors", []):
         hypervisor["iface_mtu"] = 1500
+        # Drop unset optional fields (e.g. `node`, only used by the
+        # "exordos_local_hyper" kind) so they don't trip up spec kinds
+        # that don't define them.
+        hypervisor = {k: v for k, v in hypervisor.items() if v is not None}
         pool_data = {
             "name": "hypervisor",
             "machine_type": "VM",
