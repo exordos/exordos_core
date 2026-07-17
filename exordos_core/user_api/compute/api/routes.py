@@ -54,10 +54,18 @@ class NodeRoute(routes.Route):
     get_private_key = routes.action(NodePrivateKeyActionRoute)
 
 
+class HypervisorAgentPrivateKeyActionRoute(routes.Action):
+    """Handler for /v1/compute/hypervisors/<uuid>/actions/get_agent_private_key/invoke endpoint"""
+
+    __controller__ = controllers.HypervisorsController
+
+
 class HypervisorRoute(routes.Route):
     """Handler for /v1/compute/hypervisors/ endpoint"""
 
     __controller__ = controllers.HypervisorsController
+
+    get_agent_private_key = routes.action(HypervisorAgentPrivateKeyActionRoute)
 
 
 class NodeSetPrivateKeyActionRoute(routes.Action):

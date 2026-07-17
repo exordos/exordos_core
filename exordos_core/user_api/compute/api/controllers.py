@@ -235,3 +235,9 @@ class HypervisorsController(
                         model="MachinePool",
                         msg=f"node={node}",
                     )
+
+    @actions.get
+    def get_agent_private_key(self, resource: models.MachinePool):
+        self._enforce("get_agent_private_key")
+
+        return resource.get_agent_private_key()
