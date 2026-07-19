@@ -18,6 +18,7 @@ import random
 import typing as tp
 import uuid as sys_uuid
 
+from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers.pool import AbstractPoolDriverSpec  # noqa: F401
 from gcl_sdk.agents.universal.drivers.pool import AbstractStoragePool  # noqa: F401
@@ -135,8 +136,25 @@ class MachinePool(
                     private_key=agent_private_key,
                 )
                 private_key.insert(session=session)
+            elif (
+                agent_private_key is not None
+                and existing_keys[0].private_key != agent_private_key
+            ):
+                # A caller that generated and already deployed a specific
+                # key (e.g. bootstrap) must end up in sync with the DB -
+                # an existing key from unrelated prior provisioning (e.g.
+                # this node's own compute Node) would otherwise silently
+                # win, leaving the agent unable to authenticate.
+                existing_keys[0].private_key = agent_private_key
+                existing_keys[0].save(session=session)
 
     def get_agent_private_key(self):
+        if not isinstance(self.driver_spec, ExordosLocalHyperDriverSpec):
+            raise ValueError(
+                "Agent private key is only available for local hypervisors "
+                f"(kind={self.driver_spec.KIND})"
+            )
+
         enc_key = ua_models.NodeEncryptionKey.objects.get_one(
             filters={"uuid": dm_filters.EQ(self.driver_spec.node)}
         )
