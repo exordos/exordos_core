@@ -46,9 +46,9 @@ exordos compute hypervisors init
 
 | Параметр | Описание |
 |---|---|
-| `--pool_name TEXT` | Имя пула хранилища libvirt для образов дисков виртуальных машин. По умолчанию: `default`. |
+| `--pool-name TEXT` | Имя пула хранилища libvirt для образов дисков виртуальных машин. По умолчанию: `default`. |
 | `--packer` / `-p` | Установить HashiCorp Packer вместе с настройкой гипервизора. |
-| `--romfile_version TEXT` | Версия ROM-файла сетевого интерфейса для установки. |
+| `--romfile-version TEXT` | Версия ROM-файла сетевого интерфейса для установки. По умолчанию: `latest`. |
 
 ## Bootstrap
 

@@ -46,9 +46,9 @@ Run `exordos compute hypervisors init --help` to see all available options. The 
 
 | Option | Description |
 |---|---|
-| `--pool_name TEXT` | Name of the libvirt storage pool to use for VM disk images. Defaults to `default`. |
+| `--pool-name TEXT` | Name of the libvirt storage pool to use for VM disk images. Defaults to `default`. |
 | `--packer` / `-p` | Install HashiCorp Packer alongside the hypervisor setup. |
-| `--romfile_version TEXT` | Version of the network interface ROM file to install. |
+| `--romfile-version TEXT` | Version of the network interface ROM file to install. Defaults to `latest`. |
 
 ## Bootstrap
 
