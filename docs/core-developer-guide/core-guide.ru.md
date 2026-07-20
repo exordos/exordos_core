@@ -1,11 +1,12 @@
 ---
+icon: lucide/cpu
 title: Руководство для разработчиков ядра
 ---
 
 Это руководство описывает внутреннюю архитектуру Exordos Core: как элементы, манифесты и ресурсы
 хранятся и приводятся в соответствие (reconcile) на вычислительных нодах. Оно предназначено для тех, кто
 работает над самим Exordos Core. Если вы хотите разработать элемент поверх платформы, см.
-[Руководство для разработчиков приложений](../app-developer-guide/index.ru.md).
+[Руководство для разработчиков приложений](../app-developer-guide/app-guide.md).
 
 ## Элементы, манифесты и ресурсы
 
@@ -64,7 +65,7 @@ Reconciliation выполняет `ElementManagerBuilder` (`elements/services/bu
 
 Автор манифеста, забывший префикс `f"`, не получает молча пустое значение — буквальный текст `{$...}`
 остаётся в результирующем выводе, где бы это значение ни оказалось (в конфигурационном файле, в командной
-строке сервиса и т.д.). См. [Диагностику проблем](../usage/troubleshooting.ru.md) — там описаны симптомы,
+строке сервиса и т.д.). См. [Диагностику проблем](../usage/troubleshooting.md) — там описаны симптомы,
 к которым это приводит.
 
 ## Основные типы ресурсов ядра
@@ -73,11 +74,11 @@ Reconciliation выполняет `ElementManagerBuilder` (`elements/services/bu
 - `$core.em.services` — systemd-сервисы на ноде или группе нод
 - `$core.vs.variables` — Variable Store, используется для платформенных значений по умолчанию
 - `$core.config.configs` — файлы, доставляемые на ноду; требует `project_id` и `body.kind`, см.
-  [Диагностику проблем](../usage/troubleshooting.ru.md)
+  [Диагностику проблем](../usage/troubleshooting.md)
 
 ## См. также
 
-- [Справочник по манифесту](../em/manifest.ru.md)
+- [Справочник по манифесту](../em/manifest.md)
 - [Service as a Service API](../em/service.md)
-- [Repo Proxy](./repo-proxy.ru.md)
-- [Диагностика проблем](../usage/troubleshooting.ru.md)
+- [Repo Proxy](./repo-proxy.md)
+- [Диагностика проблем](../usage/troubleshooting.md)

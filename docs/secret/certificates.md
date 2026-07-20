@@ -1,3 +1,6 @@
+---
+icon: lucide/badge-check
+---
 # Certificates
 
 Certificates are a part for the Secret Manager service. The service allows to issue and manage certificates, store them in specified storage and use them for different purposes.

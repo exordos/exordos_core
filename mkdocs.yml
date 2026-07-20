@@ -4,6 +4,7 @@ repo_name: exordos_core
 repo_url: https://github.com/exordos/exordos_core
 edit_uri: browse/docs/
 copyright: Copyright &copy; 2025-2026 Genesis Corporation
+use_directory_urls: false
 
 theme:
   name: zensical
@@ -16,7 +17,7 @@ theme:
     - navigation.tabs.sticky
     - navigation.sections
     - navigation.expand
-    - toc.integrate
+    - navigation.indexes
     - content.code.copy
   palette:
     - scheme: default
@@ -40,8 +41,39 @@ plugins:
           name: English
           build: true
         - locale: ru
-          name: Russian
+          name: Русский
           build: true
+          nav_translations:
+            Software: Продукт
+            Usage: Использование
+            Platform Overview: Обзор платформы
+            Licensing: Лицензирование
+            Local Deployment: Локальное развёртывание
+            Admin Guide: Руководство администратора
+            Support: Поддержка
+            Security: Безопасность
+            Troubleshooting: Устранение неполадок
+            Wizard: Мастер настройки
+            Developers: Разработчикам
+            App Guide: Руководство по приложениям
+            Core Guide: Руководство по ядру
+            OpenAPI: OpenAPI
+            Boot API: Boot API
+            Orch API: Orch API
+            Status API: Status API
+            User API: User API
+            Element: Элементы
+            Manifest: Манифест
+            API: API
+            Service as a Service API: Service as a Service API
+            Example commands: Примеры команд
+            IAM: IAM
+            Permissions: Права доступа
+            Network: Сеть
+            LBaaS API: LBaaS API
+            Secrets: Секреты
+            Certificates: Сертификаты
+            Passwords: Пароли
   - search:
       lang:
         - en
@@ -56,9 +88,12 @@ extra:
     - name: English
       link: ./
       lang: en
-    - name: Russian
-      link: ./index.ru/
+    - name: Русский
+      link: ./index.ru.html
       lang: ru
+
+extra_javascript:
+  - javascripts/i18n-nav.js
 
 markdown_extensions:
   - meta
@@ -101,29 +136,32 @@ markdown_extensions:
 nav:
   - Software: index.md
   - Usage:
+    - Platform Overview: usage/platform-overview.md
+    - Licensing: usage/licensing.md
     - Local Deployment: usage/local_deployment.md
     - Admin Guide: usage/admin-guide.md
-    - Security Guide: usage/security.md
+    - Support: usage/support-lifecycle.md
+    - Security: usage/security.md
     - Troubleshooting: usage/troubleshooting.md
     - Wizard: usage/wizard.md
-  - Developer Guides:
-    - Application Developer Guide: app-developer-guide/index.md
-    - Core Developer Guide: core-developer-guide/index.md
+  - Developers:
+    - App Guide: app-developer-guide/app-guide.md
+    - Core Guide: core-developer-guide/core-guide.md
     - Repo Proxy: core-developer-guide/repo-proxy.md
   - OpenAPI:
+    - User API: openapi/openapi_user.md
     - Boot API: openapi/openapi_boot.md
     - Orch API: openapi/openapi_orch.md
     - Status API: openapi/openapi_status.md
-    - User API: openapi/openapi_user.md
   - Element:
     - Manifest: em/manifest.md
     - API: em/api_documentation.md
     - Service as a Service API: em/service.md
     - Example commands: em/cli.md
   - IAM:
-    - Permissions Overview: iam/permissions_overview.md
+    - Permissions: iam/permissions_overview.md
   - Network:
-    - Load Balancer as a Service API: network/load_balancer.md
+    - LBaaS API: network/load_balancer.md
   - Secrets:
       - Certificates: secret/certificates.md
       - Passwords: secret/passwords.md

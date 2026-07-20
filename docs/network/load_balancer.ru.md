@@ -1,3 +1,6 @@
+---
+icon: lucide/share-2
+---
 # API Load Balancer as a Service
 
 ```mermaid

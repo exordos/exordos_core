@@ -1,3 +1,6 @@
+---
+icon: lucide/hard-drive-download
+---
 # Local Deployment
 
 This guide describes how to deploy a local installation of the Exordos platform on a single host machine.

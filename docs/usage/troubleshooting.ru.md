@@ -1,4 +1,5 @@
 ---
+icon: lucide/wrench
 title: Диагностика проблем
 ---
 
@@ -25,7 +26,7 @@ exordos compute nodes list
 exordos compute hypervisors list
 ```
 
-См. [Локальное развёртывание](local_deployment.ru.md) — требования к настройке гипервизора.
+См. [Локальное развёртывание](local_deployment.md) — требования к настройке гипервизора.
 
 ## `$core.config.configs` падает вместо рендеринга
 
@@ -99,5 +100,5 @@ ssh ubuntu@<node-ip> "sudo cat /etc/my_element_init.txt"
 
 ## См. также
 
-- [Справочник по манифесту](../em/manifest.ru.md)
-- [Руководство для разработчиков ядра](../core-developer-guide/index.ru.md)
+- [Справочник по манифесту](../em/manifest.md)
+- [Руководство для разработчиков ядра](../core-developer-guide/core-guide.md)

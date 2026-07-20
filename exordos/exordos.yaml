@@ -64,5 +64,11 @@ build:
           - FREQUENT_LOG_VACUUM
     # eco manifest must be after core manifest!
     - manifest: manifests/ecosystem_realm.yaml.j2
+    - manifest: manifests/exordos_docs.yaml.j2
+      artifacts:
+        - script: images/build_docs.sh
+          flatten: true
+          artifacts:
+            - ../exordos_docs/
     - manifest: manifests/core-node-set-example.yaml.j2
     - manifest: manifests/core-service-example.yaml.j2

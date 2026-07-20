@@ -1,3 +1,6 @@
+---
+icon: lucide/terminal
+---
 # Examples
 
 ## Build element from repository

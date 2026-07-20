@@ -1,3 +1,6 @@
+---
+icon: lucide/key-round
+---
 # Passwords
 
 Passwords are a part for the Secret Manager service. The service allows to generate and manage passwords, store them in specified storage and use them for different purposes.

@@ -1,4 +1,5 @@
 ---
+icon: lucide/package-open
 title: Application Developer Guide
 ---
 

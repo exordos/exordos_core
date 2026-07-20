@@ -1,3 +1,6 @@
+---
+icon: lucide/server
+---
 # API Service as a Service
 
 ```mermaid

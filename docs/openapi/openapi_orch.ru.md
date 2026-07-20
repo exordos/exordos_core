@@ -1,9 +1,9 @@
 ---
 icon: lucide/server-cog
 ---
-# OpenAPI Specification
+# Спецификация OpenAPI
 
-You can view the OpenAPI specification for the Orch API here:
+Здесь можно посмотреть спецификацию OpenAPI для Orch API:
 
 <div id="swagger-ui"></div>
 
