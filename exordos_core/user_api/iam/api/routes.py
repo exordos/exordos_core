@@ -97,16 +97,18 @@ class UserRoute(routes.Route):
     reset_password = routes.action(ResetPasswordAction, invoke=True)
 
 
+class OrganizationMemberRoute(routes.Route):
+    """Handler for /v1/iam/organizations/<uuid>/members/ endpoint"""
+
+    __controller__ = controllers.OrganizationMemberController
+
+
 class OrganizationController(routes.Route):
     """Handler for /v1/iam/organizations/ endpoint"""
 
     __controller__ = controllers.OrganizationController
 
-
-class OrganizationMemberRoute(routes.Route):
-    """Handler for /v1/iam/organization_members/<uuid>/members/ endpoint"""
-
-    __controller__ = controllers.OrganizationMemberController
+    members = routes.route(OrganizationMemberRoute, resource_route=True)
 
 
 class ProjectRoute(routes.Route):
@@ -279,7 +281,6 @@ class IamRoute(routes.Route):
     # main resources
     users = routes.route(UserRoute)
     organizations = routes.route(OrganizationController)
-    organization_members = routes.route(OrganizationMemberRoute)
     projects = routes.route(ProjectRoute)
     roles = routes.route(RoleRoute)
     role_bindings = routes.route(RoleBindingRoute)
