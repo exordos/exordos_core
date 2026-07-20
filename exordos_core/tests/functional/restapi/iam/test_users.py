@@ -683,6 +683,7 @@ class TestUsers(base.BaseIamResourceTest):
             "username": None,
             "password": auth_test1_user.password,
             "grant_type": grant_type,
+            "client_uuid": common_c.DEFAULT_CLIENT_UUID,
         }
         params[auth_param] = (getattr(auth_test1_user, auth_param, None),)
         auth = iam_clients.GenesisCoreAuth(**params)
@@ -717,6 +718,7 @@ class TestUsers(base.BaseIamResourceTest):
             "password": auth_test1_user.password,
             "grant_type": iam_c.GRANT_TYPE_PASSWORD_LOGIN,
             "login": getattr(auth_test1_user, login, "doesnt_exist"),
+            "client_uuid": common_c.DEFAULT_CLIENT_UUID,
         }
         if password is not None:
             params["password"] = password
@@ -755,6 +757,7 @@ class TestUsers(base.BaseIamResourceTest):
             "username": None,
             "password": auth_test1_user.password,
             "grant_type": grant_type,
+            "client_uuid": common_c.DEFAULT_CLIENT_UUID,
         }
         params[field_name] = login
 
