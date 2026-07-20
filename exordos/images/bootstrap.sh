@@ -143,6 +143,17 @@ source "$VENV_PATH/bin/activate"
 # from persistent configuration file.
 ra-apply-migration --config-dir "$GC_CFG_DIR/" --path "$GC_PATH/migrations"
 
+# --- Meta file migrations ---
+# Backup the pool agent meta file so it gets recreated with the new
+# schema (kind instead of driver). Idempotent: only move if the backup
+# doesn't already exist.
+POOL_META="/var/lib/exordos/exordos_core/pool_agent_meta.json"
+POOL_META_BAK="${POOL_META}.20260720"
+if [[ -f "${POOL_META}" && ! -f "${POOL_META_BAK}" ]]; then
+    log "Backing up ${POOL_META} to ${POOL_META_BAK}"
+    mv "${POOL_META}" "${POOL_META_BAK}"
+fi
+
 # Enable exordos core services
 log "systemctl enable --now ec-services"
 sudo systemctl enable --now \
