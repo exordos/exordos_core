@@ -86,7 +86,8 @@ Run `exordos bootstrap --help` to see all available options. The most important 
 | `--admin-password TEXT` | Password for the admin user. If not provided, a password is generated automatically. |
 | `--save-admin-password-file TEXT` | Save the admin password to a file instead of printing it to the console. |
 | `--ssh-public-key PATH` | Path to a public SSH key to inject into the VM. Can be specified multiple times. |
-| `--hyper-connection-uri TEXT` | Connection URI for the hypervisor, e.g. `qemu+tcp://10.0.0.1/system` or `qemu+ssh://user@10.0.0.1/system`. |
+| `--pool-agent-placement [core\|local]` | Where the pool agent that drives the hypervisor's libvirt runs. `core` (default) runs it inside core's own services, reaching libvirt over the network. `local` installs a dedicated universal agent on this host that talks to the local libvirt socket directly. |
+| `--hyper-connection-uri TEXT` | Connection URI for the hypervisor, e.g. `qemu+tcp://10.0.0.1/system` or `qemu+ssh://user@10.0.0.1/system`. Only used with `--pool-agent-placement=core`; defaults to the main network's first address (`qemu+tcp`) if not set. |
 | `--hyper-storage-pool TEXT` | Libvirt storage pool to use for VM disks. Defaults to `default`. |
 | `--force` / `-f` | Force rebuild if the output already exists. |
 

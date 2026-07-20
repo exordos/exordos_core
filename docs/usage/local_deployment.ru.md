@@ -86,7 +86,8 @@ exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.0.6/ -m co
 | `--admin-password TEXT` | Пароль администратора. Если не задан, генерируется автоматически. |
 | `--save-admin-password-file TEXT` | Сохранить пароль администратора в файл вместо вывода в консоль. |
 | `--ssh-public-key PATH` | Путь к публичному SSH-ключу для добавления в виртуальную машину. Можно указать несколько раз. |
-| `--hyper-connection-uri TEXT` | URI подключения к гипервизору, например `qemu+tcp://10.0.0.1/system` или `qemu+ssh://user@10.0.0.1/system`. |
+| `--pool-agent-placement [core\|local]` | Где будет жить пул-агент, управляющий libvirt гипервизора. `core` (по умолчанию) — агент работает внутри сервисов core и обращается к libvirt по сети. `local` — на этом хосте устанавливается отдельный универсальный агент, который обращается к локальному сокету libvirt напрямую. |
+| `--hyper-connection-uri TEXT` | URI подключения к гипервизору, например `qemu+tcp://10.0.0.1/system` или `qemu+ssh://user@10.0.0.1/system`. Используется только с `--pool-agent-placement=core`; если не задан, по умолчанию берётся первый адрес основной сети (`qemu+tcp`). |
 | `--hyper-storage-pool TEXT` | Пул хранилища libvirt для дисков виртуальных машин. По умолчанию: `default`. |
 | `--force` / `-f` | Принудительная пересборка, если результат уже существует. |
 

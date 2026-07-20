@@ -23,6 +23,7 @@ from gcl_sdk.agents.universal import utils as ua_utils
 from gcl_sdk.agents.universal.clients.backend import db as db_back
 from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
+from gcl_sdk.agents.universal.drivers import pool as ua_pool_drivers
 from gcl_sdk.agents.universal.services import agent as ua_agent_service
 from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
 from gcl_sdk.events import constants as event_c
@@ -101,6 +102,17 @@ class GeneralService(basic.BasicService):
         )
         volume_builder = volume_builder_svc.VolumeBuilderService(
             iter_min_period=iter_min_period
+        )
+        pool_driver = ua_pool_drivers.PoolAgentDriver(
+            meta_file="/var/lib/exordos/exordos_core/pool_agent_meta.json"
+        )
+        machine_pool_agent = ua_agent_service.UniversalAgentService(
+            agent_uuid=sys_uuid.uuid5(ua_utils.system_uuid(), "machine_pool_agent"),
+            orch_client=orch_db.DatabaseOrchClient(),
+            caps_drivers=[pool_driver],
+            facts_drivers=[],
+            iter_min_period=iter_min_period,
+            payload_path=None,
         )
         set_builder = set_builder_svc.NodeSetBuilderService(
             instance_model=node_set_models.NodeSet,
@@ -220,6 +232,7 @@ class GeneralService(basic.BasicService):
             pool_builder_service,
             node_builder,
             volume_builder,
+            machine_pool_agent,
             cfg_service,
             service_builder,
             net_lb_iaas_builder,
