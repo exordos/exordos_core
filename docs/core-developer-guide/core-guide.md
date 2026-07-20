@@ -1,11 +1,12 @@
 ---
+icon: lucide/cpu
 title: Core Developer Guide
 ---
 
 This guide describes the internal architecture of Exordos Core: how elements, manifests, and resources are
 stored and reconciled onto compute nodes. It's aimed at people working on Exordos Core itself. If you want
 to build an element on top of the platform instead, see the
-[Application Developer Guide](../app-developer-guide/index.md).
+[Application Developer Guide](../app-developer-guide/app-guide.md).
 
 ## Elements, manifests, and resources
 

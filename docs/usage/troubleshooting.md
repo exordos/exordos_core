@@ -1,4 +1,5 @@
 ---
+icon: lucide/wrench
 title: Troubleshooting
 ---
 
@@ -98,4 +99,4 @@ the bootstrap script manually once it has.
 ## See also
 
 - [Manifest reference](../em/manifest.md)
-- [Core Developer Guide](../core-developer-guide/index.md)
+- [Core Developer Guide](../core-developer-guide/core-guide.md)

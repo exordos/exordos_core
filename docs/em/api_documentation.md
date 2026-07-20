@@ -1,3 +1,6 @@
+---
+icon: lucide/code
+---
 # API Documentation
 
 ## Resources

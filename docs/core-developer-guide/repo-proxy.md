@@ -1,4 +1,5 @@
 ---
+icon: lucide/git-fork
 title: Repo Proxy
 ---
 
@@ -540,6 +541,6 @@ graph TB
 
 ## See also
 
-- [Core Developer Guide](index.md) — architecture overview, element engine, reconciliation
+- [Core Developer Guide](core-guide.md) — architecture overview, element engine, reconciliation
 - [Exports reference](exports.md) — how elements share resources
 - [Manifest reference](../em/manifest.md) — manifest YAML specification

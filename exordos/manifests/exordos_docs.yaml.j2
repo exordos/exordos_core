@@ -1,0 +1,58 @@
+#    Copyright 2026 Genesis Corporation.
+#    Licensed under the Apache License, Version 2.0 (the "License")
+
+name: "exordos_docs"
+description: "Exordos documentation site served from LB via local_dir_download"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+imports:
+  core_public_domain:
+    element: "$core"
+    kind: "resource"
+    link: "$core.dns.domains.$local_domain"
+
+resources:
+  $core.network.lb:
+    docs_lb:
+      name: "exordos-docs-lb"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type:
+        kind: core
+        ram: 1024
+        cpu: 1
+
+  $core.network.lb.$docs_lb.vhosts:
+    docs_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$docs_lb:uuid
+      domains:
+        - $core.network.lb.$docs_lb:index(ipsv4, 0)
+      protocol: http
+      port: 80
+
+  $core.network.lb.$docs_lb.vhosts.$docs_http.routes:
+    docs_http_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$docs_lb.vhosts.$docs_http:uuid
+      condition:
+        kind: prefix
+        value: /
+        actions:
+          - kind: local_dir_download
+            url: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/exordos_docs/{{ version }}/artifacts/exordos_docs.tar.zst"
+
+  $exordos_docs.imports.$core_public_domain.records:
+    docs_a_record:
+      domain: "$exordos_docs.imports.$core_public_domain:uuid"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type: "A"
+      record:
+        kind: "A"
+        name: "docs"
+        address: $core.network.lb.$docs_lb:index(ipsv4, 0)

@@ -1,3 +1,6 @@
+---
+icon: lucide/user-round
+---
 # OpenAPI Specification
 
 You can view the OpenAPI specification for the User API here:
@@ -21,7 +24,7 @@ You can view the OpenAPI specification for the User API here:
 
 <script src="https://unpkg.com/js-yaml@4/dist/js-yaml.min.js"></script>
 <script>
-  fetch('../openapi_user.yaml')
+  fetch('./openapi_user.yaml')
     .then(response => response.text())
     .then(yamlText => {
       const spec = jsyaml.load(yamlText);

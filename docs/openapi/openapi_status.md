@@ -1,3 +1,6 @@
+---
+icon: lucide/activity
+---
 # OpenAPI Specification
 
 You can view the OpenAPI specification for the Status API here:
@@ -21,7 +24,7 @@ You can view the OpenAPI specification for the Status API here:
 
 <script src="https://unpkg.com/js-yaml@4/dist/js-yaml.min.js"></script>
 <script>
-  fetch('../openapi_status.yaml')
+  fetch('./openapi_status.yaml')
     .then(response => response.text())
     .then(yamlText => {
       const spec = jsyaml.load(yamlText);

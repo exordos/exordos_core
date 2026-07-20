@@ -1,3 +1,6 @@
+---
+icon: lucide/key-round
+---
 ## 1. Permissions Overview
 
 In the Identity and Access Management (IAM) system, a **Permission** is a core entity that defines the right to perform a specific action on a specific resource. IAM operates on a **"deny by default" model**: if a user or service does not have an explicitly granted permission for an action, that action is blocked.

@@ -1,9 +1,9 @@
 ---
-icon: lucide/server-cog
+icon: lucide/power
 ---
-# OpenAPI Specification
+# Спецификация OpenAPI
 
-You can view the OpenAPI specification for the Orch API here:
+Здесь можно посмотреть спецификацию OpenAPI для Boot API:
 
 <div id="swagger-ui"></div>
 
@@ -24,7 +24,7 @@ You can view the OpenAPI specification for the Orch API here:
 
 <script src="https://unpkg.com/js-yaml@4/dist/js-yaml.min.js"></script>
 <script>
-  fetch('./openapi_orch.yaml')
+  fetch('./openapi_boot.yaml')
     .then(response => response.text())
     .then(yamlText => {
       const spec = jsyaml.load(yamlText);

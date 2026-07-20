@@ -1,4 +1,5 @@
 ---
+icon: lucide/git-fork
 title: Repo Proxy
 ---
 
@@ -243,7 +244,7 @@ class AbstractProxyRepoDriver(abc.ABC):
   перебирает инвентарь и сохраняет элементы. В режиме `copy` каждый элемент
   актуализируется (полная загрузка данных). В режиме `lazy` сохраняется только
   имя/версия. Устанавливает статус `ACTIVE` и планирует `next_refresh`.
-- **`_check_refresh`** — запускается каждые 10 итераций
+- **`refresh`** — запускается каждые 10 итераций
   (`REFRESH_CHECK_ITERATION_INTERVAL`). Для каждого репозитория, у которого
   `next_refresh` прошёл, вызывает `repo.update(force=True)` для запуска хука
   обновления.
@@ -544,5 +545,5 @@ graph TB
 
 ## См. также
 
-- [Руководство для разработчиков ядра](index.ru.md) — обзор архитектуры, element engine, reconciliation
-- [Справочник по манифесту](../em/manifest.ru.md) — спецификация YAML-манифеста
+- [Руководство для разработчиков ядра](core-guide.md) — обзор архитектуры, element engine, reconciliation
+- [Справочник по манифесту](../em/manifest.md) — спецификация YAML-манифеста

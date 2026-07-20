@@ -1,4 +1,5 @@
 ---
+icon: lucide/book-open
 title: Exordos Core
 ---
 
@@ -6,7 +7,13 @@ Welcome to Exordos Core!
 
 **Exordos** is an open-source NoOps platform for managing infrastructure at every level, along with the ecosystem built on top of it.
 
-## 📦 Installation
+[Platform Overview →](usage/platform-overview.md)
+
+[Usage Options and Licensing →](usage/licensing.md)
+
+[Support, Updates, and Product Development →](usage/support-lifecycle.md)
+
+## Installation
 
 ### Linux
 
@@ -14,7 +21,7 @@ Welcome to Exordos Core!
 curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
-## 🚀 Application Developer Guide
+## Application Developer Guide
 
 Everything you need to develop and deploy applications on the Exordos Core platform. In platform terminology, applications are called **elements**. The guide covers all stages of the element lifecycle:
 
@@ -23,29 +30,29 @@ Everything you need to develop and deploy applications on the Exordos Core platf
 - **Publishing** — releasing the element to the ecosystem registry.
 - **Deploying** — installing and running the element on the platform.
 
-[Go to the guide →](app-developer-guide/index.md)
+[Go to the guide →](app-developer-guide/app-guide.md)
 
-## 🔧 Core Developer Guide
+## Core Developer Guide
 
 A guide for developers of the platform core and ecosystem elements — for example, a new PaaS service that other developers will use going forward.
 
-[Go to the guide →](core-developer-guide/index.md)
+[Go to the guide →](core-developer-guide/core-guide.md)
 
-## 🛠️ Admin Guide
+## Admin Guide
 
 Platform administrator documentation: managing the installation, configuring components, monitoring and maintaining the deployment.
 
 [Go to the guide →](./usage/admin-guide.md)
 
-## 🔒 Security Guide
+## Security Guide
 
 Documentation for security engineers. Special focus on IAM and user management, system auditing, access policies, and other information security aspects of the platform.
 
 [Go to the guide →](./usage/security.md)
 
-## 🌐 Ecosystem
+## Ecosystem
 
-## 📎 Miscellaneous
+## Miscellaneous
 
 Additional reference materials for the platform:
 
