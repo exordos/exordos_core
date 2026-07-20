@@ -21,6 +21,7 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.clients.orch import base as orch_base
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 from restalchemy.dm import filters as dm_filters
@@ -484,7 +485,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if not pool.storage_pools:
             return False
 
-        storage_pool: models.AbstractStoragePool = pool.storage_pools[0]
+        storage_pool: ua_pool.AbstractStoragePool = pool.storage_pools[0]
         return storage_pool.has_capacity(size)
 
     def _reschedule_volume(
@@ -515,7 +516,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool: models.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
@@ -546,7 +547,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool: models.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?

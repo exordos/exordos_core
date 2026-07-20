@@ -16,11 +16,13 @@
 
 import pytest
 
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
+
 from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler.driver import base
 from exordos_core.compute.scheduler.driver.weighter import relative
 
-_DEFAULT_DRIVER_SPEC = models.LibvirtPoolDriverSpec(
+_DEFAULT_DRIVER_SPEC = ua_pool.LibvirtPoolDriverSpec(
     connection_uri="qemu+tcp://127.0.0.1/system",
 )
 
