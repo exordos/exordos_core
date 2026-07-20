@@ -2,11 +2,28 @@ version: 2
 updates:
   - package-ecosystem: "uv"
     directory: "/"
+    open-pull-requests-limit: 5
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+      day: "sunday"
+      time: "00:00"
+    groups:
+      core-packages:
+        patterns:
+          - "bazooka"
+          - "restalchemy"
+          - "gcl*"
+      other-packages:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "bazooka"
+          - "restalchemy"
+          - "gcl*"
   - package-ecosystem: "github-actions"
     directory: "/"
+    open-pull-requests-limit: 5
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+      day: "sunday"
+      time: "00:00"
