@@ -41,9 +41,7 @@ COMPUTE_PROJECT_UUID = _u("GenesisCore-Compute-Project")
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = [
-            "0066-machine-pools-driver-spec-kind-migration-138d02.py"
-        ]
+        self._depends = ["0066-machine-pools-driver-spec-kind-migration-138d02.py"]
 
     @property
     def migration_id(self):
