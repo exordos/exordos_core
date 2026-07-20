@@ -28,6 +28,7 @@ from gcl_iam import tokens
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.dm import models as sdk_ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import agent as ua_agent_service
 from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
 from gcl_sdk.events import clients as sdk_clients
@@ -566,7 +567,7 @@ def pool_factory():
             else driver_spec
         )
         status_value = nc.MachinePoolStatus.ACTIVE.value if status is None else status
-        storage_pool = node_models.ThinStoragePool(
+        storage_pool = ua_pool.ThinStoragePool(
             pool_type="dummy",
             capacity_usable=1000,
             capacity_provisioned=0,

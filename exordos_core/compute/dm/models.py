@@ -20,12 +20,7 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
-from gcl_sdk.agents.universal.drivers.pool import AbstractPoolDriverSpec  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import AbstractStoragePool  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import DummyPoolDriverSpec
-from gcl_sdk.agents.universal.drivers.pool import ExordosLocalHyperDriverSpec
-from gcl_sdk.agents.universal.drivers.pool import LibvirtPoolDriverSpec
-from gcl_sdk.agents.universal.drivers.pool import ThinStoragePool
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
 from restalchemy.dm import filters as dm_filters
@@ -77,9 +72,9 @@ class MachinePool(
 
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
-            types_dynamic.KindModelType(LibvirtPoolDriverSpec),
-            types_dynamic.KindModelType(ExordosLocalHyperDriverSpec),
-            types_dynamic.KindModelType(DummyPoolDriverSpec),
+            types_dynamic.KindModelType(ua_pool.LibvirtPoolDriverSpec),
+            types_dynamic.KindModelType(ua_pool.ExordosLocalHyperDriverSpec),
+            types_dynamic.KindModelType(ua_pool.DummyPoolDriverSpec),
         ),
         required=True,
     )
@@ -104,7 +99,7 @@ class MachinePool(
     storage_pools = properties.property(
         types.TypedList(
             types_dynamic.KindModelSelectorType(
-                types_dynamic.KindModelType(ThinStoragePool),
+                types_dynamic.KindModelType(ua_pool.ThinStoragePool),
             ),
         ),
         default=list,
@@ -123,7 +118,7 @@ class MachinePool(
         # key the same way) - node uuid is the key's identity regardless
         # of which agent process uses it, so reuse it instead of
         # conflicting on insert.
-        if isinstance(self.driver_spec, ExordosLocalHyperDriverSpec):
+        if isinstance(self.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
             existing_keys = ua_models.NodeEncryptionKey.objects.get_all(
                 filters={"uuid": dm_filters.EQ(self.driver_spec.node)},
                 session=session,
@@ -149,7 +144,7 @@ class MachinePool(
                 existing_keys[0].save(session=session)
 
     def get_agent_private_key(self):
-        if not isinstance(self.driver_spec, ExordosLocalHyperDriverSpec):
+        if not isinstance(self.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
             raise ValueError(
                 "Agent private key is only available for local hypervisors "
                 f"(kind={self.driver_spec.KIND})"

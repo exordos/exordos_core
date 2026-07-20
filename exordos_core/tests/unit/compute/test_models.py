@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 import pytest
 
@@ -26,7 +27,7 @@ from exordos_core.compute.dm import models
 
 def _local_hyper_pool(node_uuid: sys_uuid.UUID) -> models.MachinePool:
     return models.MachinePool(
-        driver_spec=models.ExordosLocalHyperDriverSpec(
+        driver_spec=ua_pool.ExordosLocalHyperDriverSpec(
             connection_uri="qemu:///system",
             node=node_uuid,
         ),
@@ -91,7 +92,7 @@ class TestMachinePoolInsert:
 
     def test_does_not_touch_the_db_for_non_local_hypervisors(self):
         pool = models.MachinePool(
-            driver_spec=models.LibvirtPoolDriverSpec(
+            driver_spec=ua_pool.LibvirtPoolDriverSpec(
                 connection_uri="qemu+tcp://127.0.0.1/system",
             ),
         )
@@ -118,7 +119,7 @@ class TestGetAgentPrivateKey:
 
     def test_raises_for_non_local_hypervisors(self):
         pool = models.MachinePool(
-            driver_spec=models.LibvirtPoolDriverSpec(
+            driver_spec=ua_pool.LibvirtPoolDriverSpec(
                 connection_uri="qemu+tcp://127.0.0.1/system",
             ),
         )

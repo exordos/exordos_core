@@ -17,6 +17,7 @@
 import uuid as sys_uuid
 
 from gcl_iam.api import controllers as iam_controllers
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
@@ -210,7 +211,7 @@ class HypervisorsController(
         driver_spec = kwargs["driver_spec"]
         kind = driver_spec["kind"]
 
-        if kind == models.LibvirtPoolDriverSpec.KIND:
+        if kind == ua_pool.LibvirtPoolDriverSpec.KIND:
             connection_uri = driver_spec["connection_uri"]
             # TODO(akremenetsky): Use JSON field filter when restalchemy
             # supports filtering by JSONB fields.
@@ -224,7 +225,7 @@ class HypervisorsController(
                         model="MachinePool",
                         msg=f"connection_uri={connection_uri}",
                     )
-        elif kind == models.ExordosLocalHyperDriverSpec.KIND:
+        elif kind == ua_pool.ExordosLocalHyperDriverSpec.KIND:
             node = str(driver_spec["node"])
             # TODO(akremenetsky): Use JSON field filter when restalchemy
             # supports filtering by JSONB fields.
