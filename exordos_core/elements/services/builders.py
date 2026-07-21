@@ -67,7 +67,7 @@ class ElementManagerBuilder(basic.BasicService):
                 em_status_model.api_status,
                 em_status_model.actual_status,
             )
-            em_status_model.actualize_status()
+            em_status_model.actualize_status(session)
 
     def _iteration(self):
         with contexts.Context().session_manager() as session:

@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from unittest import mock
 import uuid as sys_uuid
 
 import pytest
@@ -21,9 +22,11 @@ import pytest
 from exordos_core.common import exceptions
 from exordos_core.elements.dm.models import Element
 from exordos_core.elements.dm.models import ElementEngine
+from exordos_core.elements.dm.models import ElementIncorrectStatusesView
 from exordos_core.elements.dm.models import Export
 from exordos_core.elements.dm.models import Manifest
 from exordos_core.elements.dm.models import Resource
+from exordos_core.elements.dm.models import Status
 from exordos_core.elements.dm.models import element_engine
 
 
@@ -768,3 +771,58 @@ class TestElementEngineGetResourceByExportLink:
         assert result is compute_resource
         assert result.value["type"] == "compute"
         assert result is not storage_resource
+
+
+class TestElementIncorrectStatusesView:
+    def test_actualize_status_uses_passed_session(self):
+        session = mock.MagicMock()
+        view = ElementIncorrectStatusesView(
+            uuid=sys_uuid.uuid4(),
+            actual_status=Status.IN_PROGRESS.value,
+        )
+
+        view.actualize_status(session)
+
+        session.execute.assert_called_once()
+        args, _ = session.execute.call_args
+        assert "UPDATE em_elements" in args[0]
+        assert args[1] == (view.actual_status, view.uuid)
+
+
+class TestManifestUpgrade:
+    def test_upgrade_sets_element_status_to_in_progress(self, monkeypatch):
+        manifest = Manifest(
+            uuid=sys_uuid.uuid4(),
+            name="test-element",
+            version="2.0.0",
+            api_version="v1",
+            description="test",
+        )
+        element = Element(
+            uuid=sys_uuid.uuid4(),
+            name="test-element",
+            version="1.0.0",
+            api_version="v1",
+            description="test",
+            status=Status.ACTIVE.value,
+        )
+
+        def fake_get_one_or_none(self, *args, **kwargs):
+            if self.model_cls is Element:
+                return element
+            raise NotImplementedError
+
+        from restalchemy.storage.sql import orm
+
+        monkeypatch.setattr(
+            orm.ObjectCollection, "get_one_or_none", fake_get_one_or_none
+        )
+        monkeypatch.setattr(element_engine, "load_from_database", lambda: None)
+        monkeypatch.setattr(Element, "save", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            Manifest, "apply_element", lambda self, element: (self, element)
+        )
+
+        manifest.upgrade()
+
+        assert element.status == Status.IN_PROGRESS.value

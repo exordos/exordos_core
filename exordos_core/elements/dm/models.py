@@ -31,7 +31,6 @@ from restalchemy.dm import properties
 from restalchemy.dm import relationships
 from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic as ra_types_dyn
-from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import exceptions
@@ -209,6 +208,7 @@ class Manifest(
         element.api_version = self.api_version
         element.description = self.description
         element.manifest = self
+        element.status = Status.IN_PROGRESS.value
         element.save(session=session)
         return self.apply_element(element)
 
@@ -533,20 +533,18 @@ class ElementIncorrectStatusesView(
         read_only=True,
     )
 
-    def actualize_status(self):
-        engine = engines.engine_factory.get_engine()
-        with engine.session_manager() as s:
-            s.execute(
-                f"""
-                UPDATE {Element.__tablename__}
-                SET status = %s
-                WHERE uuid = %s;
-                """,
-                (
-                    self.actual_status,
-                    self.uuid,
-                ),
-            )
+    def actualize_status(self, session):
+        session.execute(
+            f"""
+            UPDATE {Element.__tablename__}
+            SET status = %s
+            WHERE uuid = %s;
+            """,
+            (
+                self.actual_status,
+                self.uuid,
+            ),
+        )
 
 
 class Requirement(
