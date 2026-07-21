@@ -421,8 +421,17 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             pool_machine.status == nc.MachineStatus.ACTIVE
             and guest_machine.status == nc.MachineStatus.ACTIVE
         ):
-            machine.status = nc.MachineStatus.ACTIVE.value
-            return
+            # Transition to ACTIVE only when the machine images are actual.
+            # Without this check the machine could be marked ACTIVE while
+            # pool_machine or guest_machine still use stale images from a
+            # previous version.
+            resolved_image = self._resolve_image(machine.image)
+            if (
+                machine.image == pool_machine.image
+                and resolved_image == guest_machine.image
+            ):
+                machine.status = nc.MachineStatus.ACTIVE.value
+                return
 
         # TODO(akremenetsky): Support more statuses
         machine.status = nc.MachineStatus.IN_PROGRESS.value

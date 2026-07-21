@@ -120,6 +120,10 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         machine.status = nc.MachineStatus.IN_PROGRESS.value
         machine.update(force=force)
 
+        if target_node.status != nc.NodeStatus.IN_PROGRESS.value:
+            target_node.status = nc.NodeStatus.IN_PROGRESS.value
+            target_node.save()
+
     def _is_root_volume(self, volume: models.Volume) -> bool:
         return volume.index == 0
 
