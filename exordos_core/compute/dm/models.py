@@ -104,37 +104,6 @@ class MachinePool(
         default=list,
     )
 
-    def insert(self, session=None, agent_private_key: str | None = None):
-        super().insert(session=session)
-
-        # A local hypervisor's agent authenticates to the orch/status APIs
-        # with a node encryption key, so provision one for its node uuid.
-        # `agent_private_key` lets a caller that already generated and
-        # deployed a key to the agent (e.g. the bootstrap flow) keep both
-        # sides in sync instead of getting a fresh, mismatched one here.
-        # A key may already exist for this node uuid (e.g. it's also
-        # registered as a plain compute Node, which provisions its own
-        # key the same way) - node uuid is the key's identity regardless
-        # of which agent process uses it, so reuse it instead of
-        # conflicting on insert.
-        if isinstance(self.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
-            enc_key = ua_models.NodeEncryptionKey.get_or_create(
-                self.driver_spec.node,
-                private_key=agent_private_key,
-                session=session,
-            )
-            if (
-                agent_private_key is not None
-                and enc_key.private_key != agent_private_key
-            ):
-                # A caller that generated and already deployed a specific
-                # key (e.g. bootstrap) must end up in sync with the DB -
-                # an existing key from unrelated prior provisioning (e.g.
-                # this node's own compute Node) would otherwise silently
-                # win, leaving the agent unable to authenticate.
-                enc_key.private_key = agent_private_key
-                enc_key.save(session=session)
-
 
 class Volume(
     infra_models.Volume,
