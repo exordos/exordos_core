@@ -21,6 +21,7 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 import pytest
+from restalchemy.storage import exceptions as ra_storage_exceptions
 
 from exordos_core.compute.dm import models
 
@@ -46,10 +47,11 @@ class TestMachinePoolInsert:
     def test_creates_a_key_when_none_exists(self):
         node_uuid = sys_uuid.uuid4()
         pool = _local_hyper_pool(node_uuid)
+        not_found = ra_storage_exceptions.RecordNotFound(model=None, filters={})
 
         with (
             patch.object(models.orm.SQLStorableMixin, "insert"),
-            _patched_objects(get_all=MagicMock(return_value=[])),
+            _patched_objects(get_one=MagicMock(side_effect=not_found)),
             patch.object(ua_models.NodeEncryptionKey, "insert") as key_insert,
         ):
             pool.insert(agent_private_key="a-generated-key")
@@ -63,7 +65,7 @@ class TestMachinePoolInsert:
 
         with (
             patch.object(models.orm.SQLStorableMixin, "insert"),
-            _patched_objects(get_all=MagicMock(return_value=[existing])),
+            _patched_objects(get_one=MagicMock(return_value=existing)),
             patch.object(ua_models.NodeEncryptionKey, "insert") as key_insert,
         ):
             pool.insert()
@@ -83,7 +85,7 @@ class TestMachinePoolInsert:
 
         with (
             patch.object(models.orm.SQLStorableMixin, "insert"),
-            _patched_objects(get_all=MagicMock(return_value=[existing])),
+            _patched_objects(get_one=MagicMock(return_value=existing)),
         ):
             pool.insert(agent_private_key="fresh-key")
 
@@ -103,7 +105,7 @@ class TestMachinePoolInsert:
         ):
             pool.insert()
 
-        mocked_objects.get_all.assert_not_called()
+        mocked_objects.get_one.assert_not_called()
 
 
 class TestGetAgentPrivateKey:
