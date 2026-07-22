@@ -303,8 +303,10 @@ def _ensure_bootstrap_repo(manifests_dir: str) -> repo_models.Repository:
 
 MIGRATION_REPO_NAME = "migration-dummy-repo"
 CORE_CONFIG_PATH = "/etc/exordos_core/exordos_core.conf"
+CORE_AGENT_CONFIG_PATH = "/etc/exordos_core/core_agent.conf"
 UA_CONFIG_PATH = "/etc/exordos_universal_agent/exordos_universal_agent.conf"
 CORE_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/exordos_core.conf"
+CORE_AGENT_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/core_agent.conf"
 UA_CONFIG_DATA_PATH = (
     "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
 )
@@ -373,6 +375,70 @@ capabilities =
     border_agent
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
+
+_CORE_AGENT_IAM_BINDING_KINDS = (
+    ("em_core_iam_role_bindings", "em_core_iam_rolebinding"),
+    ("em_core_iam_permission_bindings", "em_core_iam_permissionbinding"),
+)
+
+
+def _ensure_core_agent_config_current() -> None:
+    """Add canonical IAM binding kinds to an existing core-agent config.
+
+    Older persisted configs register only the deprecated singular kinds. Keep
+    those aliases for existing manifests and add the plural kinds emitted by
+    the current manifest schema.
+    """
+    try:
+        with open(CORE_AGENT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        LOG.warning("Core agent config not found: %s", CORE_AGENT_CONFIG_PATH)
+        return
+
+    new_content = content
+    for canonical_kind, compatibility_kind in _CORE_AGENT_IAM_BINDING_KINDS:
+        if re.search(rf"^{re.escape(canonical_kind)}\s*=", new_content, re.MULTILINE):
+            continue
+
+        compatibility_line = re.search(
+            rf"^{re.escape(compatibility_kind)}(?P<assignment>\s*=.*)$",
+            new_content,
+            re.MULTILINE,
+        )
+        if compatibility_line is None:
+            LOG.warning(
+                "Could not add %s because compatibility kind %s is absent in %s",
+                canonical_kind,
+                compatibility_kind,
+                CORE_AGENT_CONFIG_PATH,
+            )
+            continue
+
+        canonical_line = canonical_kind + compatibility_line.group("assignment")
+        new_content = new_content.replace(
+            compatibility_line.group(0),
+            canonical_line + "\n" + compatibility_line.group(0),
+            1,
+        )
+
+    if new_content == content:
+        LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
+        return
+
+    with open(CORE_AGENT_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    LOG.info("Updated core agent config %s", CORE_AGENT_CONFIG_PATH)
+    _sync_config_to_data_path(new_content, CORE_AGENT_CONFIG_DATA_PATH)
+
+    try:
+        subprocess.run(
+            ["systemctl", "try-restart", "ec-core-agent"],
+            check=True,
+        )
+        LOG.info("Restarted core agent service to apply the new config")
+    except (OSError, subprocess.CalledProcessError) as e:
+        LOG.warning("Failed to restart core agent service: %s", e)
 
 
 def _ensure_ua_config_current() -> None:
@@ -736,6 +802,7 @@ def main() -> None:
     # working installations are migrated.
     _migrate_installed_elements_to_repo()
 
+    _ensure_core_agent_config_current()
     _ensure_ua_config_current()
 
     if not os.path.exists(SPEC_PATH):

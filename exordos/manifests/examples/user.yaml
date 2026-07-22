@@ -29,7 +29,7 @@ resources:
       last_name: "Doe"
       description: "production engineer"
 
-  $core.iam.rolebinding:
+  $core.iam.role_bindings:
     jdoe_global_role_binding:
       role: "726f6c65-0000-0000-0000-000000000002"
       user: $core.iam.users.$jdoe:uuid
