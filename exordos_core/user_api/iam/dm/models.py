@@ -726,6 +726,7 @@ class OrganizationMember(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
     orm.SQLStorableMixin,
+    ua_models.TargetResourceMixin,
 ):
     __tablename__ = "iam_organization_members"
 

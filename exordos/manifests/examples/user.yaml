@@ -1,0 +1,45 @@
+name: "user_example"
+description: "Example element with IAM resources for ecosystem"
+schema_version: 1
+version: "1.0.0"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.iam.organizations:
+    jdoe_corp:
+      name: "jdoe-corp"
+      description: "John Corporation"
+
+  $core.iam.projects:
+    jdoe_pr:
+      name: "jdoe-pr"
+      description: "John environment"
+      organization: "$core.iam.organizations.$jdoe_corp:uuid"
+
+  $core.iam.users:
+    jdoe:
+      username: "jdoe"
+      email: "jdoe@corp.com"
+      password: "12345678"
+      first_name: "John"
+      last_name: "Doe"
+      description: "production engineer"
+
+  $core.iam.rolebinding:
+    jdoe_global_role_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      user: $core.iam.users.$jdoe:uuid
+    jdoe_project_role_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      user: $core.iam.users.$jdoe:uuid
+      project: $core.iam.projects.$jdoe_pr:uuid
+
+  $core.iam.organizations_members:
+    jdoe_organizations_member:
+      organization: "$core.iam.organizations.$jdoe_corp:uuid"
+      user: $core.iam.users.$jdoe:uuid
+      role: "OWNER"
