@@ -207,11 +207,8 @@ class HypervisorsController(
 
         pool = super().create(**kwargs)
 
-        # A local hypervisor's agent authenticates to the orch/status
-        # APIs with a node encryption key, so provision one for its
-        # node uuid.
-        if isinstance(pool.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
-            ua_models.NodeEncryptionKey.get_or_create(pool.driver_spec.node)
+        if pool.driver_spec.agent_key_node is not None:
+            ua_models.NodeEncryptionKey.get_or_create(pool.driver_spec.agent_key_node)
 
         return pool
 
