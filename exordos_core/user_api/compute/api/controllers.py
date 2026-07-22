@@ -17,6 +17,7 @@
 import uuid as sys_uuid
 
 from gcl_iam.api import controllers as iam_controllers
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
@@ -204,7 +205,15 @@ class HypervisorsController(
 
         self._validate_driver_spec_uniqueness(kwargs)
 
-        return super().create(**kwargs)
+        pool = super().create(**kwargs)
+
+        # A local hypervisor's agent authenticates to the orch/status
+        # APIs with a node encryption key, so provision one for its
+        # node uuid.
+        if isinstance(pool.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
+            ua_models.NodeEncryptionKey.get_or_create(pool.driver_spec.node)
+
+        return pool
 
     def _validate_driver_spec_uniqueness(self, kwargs: dict) -> None:
         """Validate that the driver_spec fields are unique among existing pools."""
