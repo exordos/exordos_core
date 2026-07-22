@@ -18,7 +18,6 @@ import random
 import typing as tp
 import uuid as sys_uuid
 
-from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
@@ -427,13 +426,10 @@ class Node(
             volume = Volume.restore_from_simple_view(**view)
             volume.insert(session=session)
 
-        # Generate private key for the node
-        _, key_base64 = ua_crypto.generate_key_base64()
-        private_key = ua_models.NodeEncryptionKey(
-            uuid=self.uuid,
-            private_key=key_base64,
-        )
-        private_key.insert(session=session)
+        # A key may already exist for this uuid (e.g. it's also
+        # registered as a local hypervisor's node, which provisions its
+        # own key the same way) - reuse it instead of conflicting.
+        ua_models.NodeEncryptionKey.get_or_create(self.uuid, session=session)
 
     def get_agent_private_key(self):
         enc_key = ua_models.NodeEncryptionKey.objects.get_one(
