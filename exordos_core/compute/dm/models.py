@@ -18,7 +18,6 @@ import random
 import typing as tp
 import uuid as sys_uuid
 
-from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
@@ -135,19 +134,6 @@ class MachinePool(
                 # win, leaving the agent unable to authenticate.
                 enc_key.private_key = agent_private_key
                 enc_key.save(session=session)
-
-    def get_agent_private_key(self):
-        if not isinstance(self.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
-            raise ValueError(
-                "Agent private key is only available for local hypervisors "
-                f"(kind={self.driver_spec.KIND})"
-            )
-
-        enc_key = ua_models.NodeEncryptionKey.objects.get_one(
-            filters={"uuid": dm_filters.EQ(self.driver_spec.node)}
-        )
-
-        return enc_key.private_key
 
 
 class Volume(

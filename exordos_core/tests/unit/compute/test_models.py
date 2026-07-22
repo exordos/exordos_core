@@ -20,7 +20,6 @@ from unittest.mock import patch
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
-import pytest
 from restalchemy.storage import exceptions as ra_storage_exceptions
 
 from exordos_core.compute.dm import models
@@ -106,28 +105,6 @@ class TestMachinePoolInsert:
             pool.insert()
 
         mocked_objects.get_one.assert_not_called()
-
-
-class TestGetAgentPrivateKey:
-    def test_returns_the_stored_key_for_a_local_hypervisor(self):
-        node_uuid = sys_uuid.uuid4()
-        pool = _local_hyper_pool(node_uuid)
-        stored = MagicMock(private_key="the-key")
-
-        with _patched_objects(get_one=MagicMock(return_value=stored)) as mocked_objects:
-            assert pool.get_agent_private_key() == "the-key"
-
-        mocked_objects.get_one.assert_called_once()
-
-    def test_raises_for_non_local_hypervisors(self):
-        pool = models.MachinePool(
-            driver_spec=ua_pool.LibvirtPoolDriverSpec(
-                connection_uri="qemu+tcp://127.0.0.1/system",
-            ),
-        )
-
-        with pytest.raises(ValueError, match="only available for local hypervisors"):
-            pool.get_agent_private_key()
 
 
 class TestNodeInsert:
