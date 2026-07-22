@@ -213,7 +213,8 @@ def _ensure_exordos_config(spec: dict[str, tp.Any]):
             f,
         )
     os.chown(config_path, uid, gid)
-    os.system("exordos autocomplete")
+    os.system("exordos autocomplete --shell bash")
+    os.system(f"sudo -u {USER} exordos autocomplete --shell bash")
 
 
 def _ensure_repository(
