@@ -18,13 +18,13 @@ import typing as tp
 from unittest import mock
 import uuid as sys_uuid
 
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as sdk_models
 import netaddr
 import pytest
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as c
-from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.network import service
 from exordos_core.network.driver import base as driver_base
@@ -264,7 +264,7 @@ class TestNetworkService:
                 self.__class__.create_subnet_called = True
 
             def list_ports(self, subnet: models.Subnet) -> tp.Iterable[models.Port]:
-                port.status = nc.PortStatus.ACTIVE.value
+                port.status = ua_pool.PortStatus.ACTIVE.value
                 return [port]
 
         self._save_network_driver(FakeDriver())
@@ -279,7 +279,7 @@ class TestNetworkService:
 
         assert not FakeDriver.create_subnet_called
         assert not FakeDriver.create_port_called
-        assert updated_port.status == nc.PortStatus.ACTIVE
+        assert updated_port.status == ua_pool.PortStatus.ACTIVE
 
         port.delete()
         subnet.delete()
@@ -306,7 +306,7 @@ class TestNetworkService:
                 self.__class__.create_subnet_called = True
 
             def list_ports(self, subnet: models.Subnet) -> tp.Iterable[models.Port]:
-                port.status = nc.PortStatus.ACTIVE.value
+                port.status = ua_pool.PortStatus.ACTIVE.value
                 return [port]
 
             def delete_port(self, port: models.Port) -> None:

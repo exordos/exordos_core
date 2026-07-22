@@ -23,7 +23,8 @@ import subprocess
 import typing as tp
 import uuid as sys_uuid
 
-from exordos_core.compute import constants as nc
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
+
 from exordos_core.compute.dm import models
 from exordos_core.network import exceptions
 from exordos_core.network.dhcp import isc
@@ -243,12 +244,12 @@ class FlatBridgeNetworkDriver(base.AbstractNetworkDriver):
                 raise DhcpPortAlreadyExists(port=port.uuid)
 
         # Add a new port, rebuild configuration, reload the service
-        port.status = nc.PortStatus.ACTIVE.value
+        port.status = ua_pool.PortStatus.ACTIVE.value
         try:
             ctx.add_port(port)
             self._apply_cfg(ctx)
         except Exception:
-            port.status = nc.PortStatus.NEW.value
+            port.status = ua_pool.PortStatus.NEW.value
             raise
 
         LOG.info(
@@ -269,7 +270,7 @@ class FlatBridgeNetworkDriver(base.AbstractNetworkDriver):
                 if p.uuid == port.uuid:
                     raise DhcpPortAlreadyExists(port=port.uuid)
 
-            port.status = nc.PortStatus.ACTIVE.value
+            port.status = ua_pool.PortStatus.ACTIVE.value
             ctx.add_port(port)
             new_ports.append(port)
 
@@ -278,7 +279,7 @@ class FlatBridgeNetworkDriver(base.AbstractNetworkDriver):
             self._apply_cfg(ctx)
         except Exception:
             for port in ports:
-                port.status = nc.PortStatus.NEW.value
+                port.status = ua_pool.PortStatus.NEW.value
             raise
 
         LOG.info(
@@ -362,12 +363,12 @@ class FlatBridgeNetworkDriver(base.AbstractNetworkDriver):
         # it's equivalent to replace
         ctx.delete_port(port)
 
-        port.status = nc.PortStatus.ACTIVE.value
+        port.status = ua_pool.PortStatus.ACTIVE.value
         try:
             ctx.add_port(port)
             self._apply_cfg(ctx)
         except Exception:
-            port.status = nc.PortStatus.NEW.value
+            port.status = ua_pool.PortStatus.NEW.value
             raise
 
         LOG.info(

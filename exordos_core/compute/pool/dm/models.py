@@ -18,6 +18,7 @@ import typing as tp
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models as ra_models
@@ -26,7 +27,6 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_network
 
-from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 
 
@@ -152,18 +152,18 @@ class PoolMachine(
     cores = properties.property(types.Integer(min_value=0, max_value=4096), default=0)
     ram = properties.property(types.Integer(min_value=0), default=0)
     status = properties.property(
-        types.Enum([s.value for s in nc.MachineStatus]),
-        default=nc.MachineStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.MachineStatus]),
+        default=ua_pool.MachineStatus.NEW.value,
     )
     machine_type = properties.property(
-        types.Enum([t.value for t in nc.NodeType]),
-        default=nc.NodeType.VM.value,
+        types.Enum([t.value for t in ua_pool.NodeType]),
+        default=ua_pool.NodeType.VM.value,
     )
     node = properties.property(types.AllowNone(types.UUID()), default=None)
     pool = properties.property(types.UUID(), required=True)
     boot = properties.property(
-        types.Enum([b.value for b in nc.BootAlternative]),
-        default=nc.BootAlternative.network.value,
+        types.Enum([b.value for b in ua_pool.BootAlternative]),
+        default=ua_pool.BootAlternative.network.value,
     )
     image = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
@@ -239,16 +239,16 @@ class GuestMachine(
         types.AllowNone(types_network.Hostname()), default=None
     )
     boot = properties.property(
-        types.Enum([b.value for b in nc.BootAlternative]),
-        default=nc.BootAlternative.network.value,
+        types.Enum([b.value for b in ua_pool.BootAlternative]),
+        default=ua_pool.BootAlternative.network.value,
     )
     block_devices = properties.property(types.Dict(), default=dict)
     net_devices = properties.property(types.Dict(), default=dict)
     pci_devices = properties.property(types.Dict(), default=dict)
 
     status = properties.property(
-        types.Enum([s.value for s in nc.MachineStatus]),
-        default=nc.MachineStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.MachineStatus]),
+        default=ua_pool.MachineStatus.NEW.value,
     )
 
     @classmethod

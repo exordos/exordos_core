@@ -517,7 +517,7 @@ def pool_factory():
             if driver_spec is None
             else driver_spec
         )
-        status_value = nc.MachinePoolStatus.ACTIVE.value if status is None else status
+        status_value = ua_pool.MachinePoolStatus.ACTIVE.value if status is None else status
         storage_pool = ua_pool.ThinStoragePool(
             pool_type="dummy",
             capacity_usable=1000,
@@ -556,7 +556,7 @@ def machine_factory(default_pool: tp.Dict[str, tp.Any]):
         cores: int = 1,
         ram: int = 1024,
         project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
-        status: str = nc.MachineStatus.ACTIVE.value,
+        status: str = ua_pool.MachineStatus.ACTIVE.value,
         build_status: str = nc.MachineBuildStatus.READY.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:

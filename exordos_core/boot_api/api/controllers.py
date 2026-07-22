@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from oslo_config import cfg
 from restalchemy.api import controllers
 from restalchemy.api import resources
@@ -22,7 +23,6 @@ from restalchemy.storage import exceptions as ra_storage_exceptions
 from exordos_core.boot_api.api import packers
 from exordos_core.boot_api.dm import models
 from exordos_core.common import constants as c
-from exordos_core.compute import constants as nc
 
 DOMAIN = "boot_api"
 CONF = cfg.CONF
@@ -56,7 +56,7 @@ class NetBootController(controllers.BaseResourceController):
                 uuid=uuid,
                 cores=0,
                 ram=0,
-                boot=nc.BootAlternative.network.value,
+                boot=ua_pool.BootAlternative.network.value,
                 project_id=c.SERVICE_PROJECT_ID,
             )
 

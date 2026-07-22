@@ -18,9 +18,8 @@ import typing as tp
 
 from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 import pytest
-
-from exordos_core.compute import constants as nc
 
 
 class TestVolumeUserApi:
@@ -68,7 +67,7 @@ class TestVolumeUserApi:
 
         assert response.status_code == 201
         assert self._volume_cmp_shallow(volume, output)
-        assert output["status"] == nc.VolumeStatus.NEW.value
+        assert output["status"] == ua_pool.VolumeStatus.NEW.value
 
     def test_volumes_add_several(
         self,
@@ -121,7 +120,7 @@ class TestVolumeUserApi:
         assert response.status_code == 200
         assert output["size"] == 20
         assert output["name"] == "updated-volume"
-        assert output["status"] == nc.VolumeStatus.IN_PROGRESS.value
+        assert output["status"] == ua_pool.VolumeStatus.IN_PROGRESS.value
 
     def test_volumes_delete(
         self,
