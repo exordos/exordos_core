@@ -119,29 +119,22 @@ class MachinePool(
         # of which agent process uses it, so reuse it instead of
         # conflicting on insert.
         if isinstance(self.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
-            existing_keys = ua_models.NodeEncryptionKey.objects.get_all(
-                filters={"uuid": dm_filters.EQ(self.driver_spec.node)},
+            enc_key = ua_models.NodeEncryptionKey.get_or_create(
+                self.driver_spec.node,
+                private_key=agent_private_key,
                 session=session,
             )
-            if not existing_keys:
-                if agent_private_key is None:
-                    _, agent_private_key = ua_crypto.generate_key_base64()
-                private_key = ua_models.NodeEncryptionKey(
-                    uuid=self.driver_spec.node,
-                    private_key=agent_private_key,
-                )
-                private_key.insert(session=session)
-            elif (
+            if (
                 agent_private_key is not None
-                and existing_keys[0].private_key != agent_private_key
+                and enc_key.private_key != agent_private_key
             ):
                 # A caller that generated and already deployed a specific
                 # key (e.g. bootstrap) must end up in sync with the DB -
                 # an existing key from unrelated prior provisioning (e.g.
                 # this node's own compute Node) would otherwise silently
                 # win, leaving the agent unable to authenticate.
-                existing_keys[0].private_key = agent_private_key
-                existing_keys[0].save(session=session)
+                enc_key.private_key = agent_private_key
+                enc_key.save(session=session)
 
     def get_agent_private_key(self):
         if not isinstance(self.driver_spec, ua_pool.ExordosLocalHyperDriverSpec):
