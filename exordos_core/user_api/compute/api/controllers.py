@@ -68,7 +68,7 @@ class VolumesController(
     )
 
     def update(self, uuid, **kwargs):
-        kwargs["status"] = nc.VolumeStatus.IN_PROGRESS.value
+        kwargs["status"] = ua_pool.VolumeStatus.IN_PROGRESS.value
 
         return super().update(uuid, **kwargs)
 
@@ -200,7 +200,7 @@ class HypervisorsController(
     )
 
     def create(self, **kwargs):
-        if "machine_type" in kwargs and kwargs["machine_type"] != nc.NodeType.VM.value:
+        if "machine_type" in kwargs and kwargs["machine_type"] != ua_pool.NodeType.VM.value:
             raise ValueError("Hyper must be VM type")
 
         self._validate_driver_spec_uniqueness(kwargs)

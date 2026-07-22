@@ -80,12 +80,12 @@ class MachinePool(
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     machine_type = properties.property(
-        types.Enum([t.value for t in nc.NodeType]),
-        default=nc.NodeType.VM.value,
+        types.Enum([t.value for t in ua_pool.NodeType]),
+        default=ua_pool.NodeType.VM.value,
     )
     status = properties.property(
-        types.Enum([s.value for s in nc.MachinePoolStatus]),
-        default=nc.MachinePoolStatus.DISABLED.value,
+        types.Enum([s.value for s in ua_pool.MachinePoolStatus]),
+        default=ua_pool.MachinePoolStatus.DISABLED.value,
     )
 
     avail_cores = properties.property(types.Integer(), default=0)
@@ -118,8 +118,8 @@ class Volume(
         default=lambda: sys_uuid.uuid4(),
     )
     status = properties.property(
-        types.Enum([s.value for s in nc.VolumeStatus]),
-        default=nc.VolumeStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.VolumeStatus]),
+        default=ua_pool.VolumeStatus.NEW.value,
     )
 
     # Internal field for scheduling purposes
@@ -303,18 +303,18 @@ class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixi
     )
     ram = properties.property(types.Integer(min_value=0), required=True)
     status = properties.property(
-        types.Enum([s.value for s in nc.MachineStatus]),
-        default=nc.MachineStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.MachineStatus]),
+        default=ua_pool.MachineStatus.NEW.value,
     )
     machine_type = properties.property(
-        types.Enum([t.value for t in nc.NodeType]),
-        default=nc.NodeType.VM.value,
+        types.Enum([t.value for t in ua_pool.NodeType]),
+        default=ua_pool.NodeType.VM.value,
     )
     node = properties.property(types.AllowNone(types.UUID()), default=None)
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
     boot = properties.property(
-        types.Enum([b.value for b in nc.BootAlternative]),
-        default=nc.BootAlternative.network.value,
+        types.Enum([b.value for b in ua_pool.BootAlternative]),
+        default=ua_pool.BootAlternative.network.value,
     )
     image = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
@@ -331,7 +331,7 @@ class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixi
     block_devices = properties.property(types.Dict(), default=dict)
 
     def set_active(self):
-        self.status = nc.MachineStatus.ACTIVE.value
+        self.status = ua_pool.MachineStatus.ACTIVE.value
         self.save()
 
 
@@ -356,15 +356,15 @@ class MachineVolume(
     # TODO(g.melikov): DON'T USE! Should be dropped.
     device_type = properties.property(types.String(max_length=64), default="")
     status = properties.property(
-        types.Enum([s.value for s in nc.VolumeStatus]),
-        default=nc.VolumeStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.VolumeStatus]),
+        default=ua_pool.VolumeStatus.NEW.value,
     )
     index = properties.property(
         types.Integer(min_value=0, max_value=4096), default=4096
     )
 
     def set_active(self):
-        self.status = nc.VolumeStatus.ACTIVE.value
+        self.status = ua_pool.VolumeStatus.ACTIVE.value
         self.save()
 
 
@@ -382,8 +382,8 @@ class Netboot(models.ModelWithUUID, orm.SQLStorableMixin, models.SimpleViewMixin
     __tablename__ = "netboots"
 
     boot = properties.property(
-        types.Enum([b.value for b in nc.BootAlternative]),
-        default=nc.BootAlternative.network.value,
+        types.Enum([b.value for b in ua_pool.BootAlternative]),
+        default=ua_pool.BootAlternative.network.value,
     )
 
 
@@ -573,8 +573,8 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
     )
     mac = properties.property(types.AllowNone(types.Mac()), default=None)
     status = properties.property(
-        types.Enum([s.value for s in nc.PortStatus]),
-        default=nc.PortStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.PortStatus]),
+        default=ua_pool.PortStatus.NEW.value,
     )
     source = properties.property(
         types.AllowNone(types.String(max_length=128)),
@@ -582,7 +582,7 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
     )
 
     def set_active(self):
-        self.status = nc.PortStatus.ACTIVE.value
+        self.status = ua_pool.PortStatus.ACTIVE.value
         self.save()
 
     @staticmethod
@@ -612,7 +612,7 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
             subnet=boot_subnet.uuid,
             source=boot_subnet.name,
             mac=Port.generate_mac(),
-            status=nc.PortStatus.ACTIVE.value,
+            status=ua_pool.PortStatus.ACTIVE.value,
         )
 
 
@@ -627,7 +627,7 @@ class NodeWithoutPorts(Node):
     def get_vm_nodes(cls):
         return cls.objects.get_all(
             filters={
-                "node_type": dm_filters.EQ(nc.NodeType.VM.value),
+                "node_type": dm_filters.EQ(ua_pool.NodeType.VM.value),
             }
         )
 

@@ -21,10 +21,9 @@ from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 import pytest
 from restalchemy.dm import filters as dm_filters
-
-from exordos_core.compute import constants as nc
 
 
 class TestHypervisorUserApi:
@@ -102,7 +101,7 @@ class TestHypervisorUserApi:
 
         assert response.status_code == 201
         assert self._hypervisor_cmp_shallow(hypervisor, output)
-        assert output["status"] == nc.MachinePoolStatus.DISABLED.value
+        assert output["status"] == ua_pool.MachinePoolStatus.DISABLED.value
 
         client.delete(
             client.build_resource_uri(["compute", "hypervisors", hypervisor["uuid"]])

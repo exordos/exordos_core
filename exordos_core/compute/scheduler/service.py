@@ -21,6 +21,7 @@ import uuid as sys_uuid
 
 from gcl_looper.services import basic
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
@@ -119,7 +120,7 @@ class SchedulerService(basic.BasicService):
         idle = models.Machine.objects.get_all(
             filters={
                 "node": dm_filters.Is(None),
-                "status": dm_filters.EQ(nc.MachineStatus.IDLE.value),
+                "status": dm_filters.EQ(ua_pool.MachineStatus.IDLE.value),
             },
             limit=limit,
         )
@@ -156,8 +157,8 @@ class SchedulerService(basic.BasicService):
         """Fetch pools and available volumes in the pools."""
         pools = models.MachinePool.objects.get_all(
             filters={
-                "status": dm_filters.EQ(nc.MachinePoolStatus.ACTIVE.value),
-                "machine_type": dm_filters.EQ(nc.NodeType.VM.value),
+                "status": dm_filters.EQ(ua_pool.MachinePoolStatus.ACTIVE.value),
+                "machine_type": dm_filters.EQ(ua_pool.NodeType.VM.value),
                 "builder": dm_filters.IsNot(None),
             },
             limit=limit,
@@ -280,8 +281,8 @@ class SchedulerService(basic.BasicService):
             ram=node.node.ram,
             node=node.node.uuid,
             project_id=node.node.project_id,
-            machine_type=nc.NodeType.VM.value,
-            status=nc.MachineStatus.SCHEDULED.value,
+            machine_type=ua_pool.NodeType.VM.value,
+            status=ua_pool.MachineStatus.SCHEDULED.value,
         )
 
         # Place volumes into the pool
@@ -321,16 +322,16 @@ class SchedulerService(basic.BasicService):
         idle_machines = self._get_idle_machines()
 
         idle_hws = [
-            m for m in idle_machines if m.machine.machine_type == nc.NodeType.HW.value
+            m for m in idle_machines if m.machine.machine_type == ua_pool.NodeType.HW.value
         ]
         idle_vms = [
-            m for m in idle_machines if m.machine.machine_type == nc.NodeType.VM.value
+            m for m in idle_machines if m.machine.machine_type == ua_pool.NodeType.VM.value
         ]
         vms = []
 
         for unscheduled_node in unscheduled:
             node: models.Node = unscheduled_node.node
-            if node.node_type == nc.NodeType.HW:
+            if node.node_type == ua_pool.NodeType.HW:
                 idle_machines = idle_hws
             else:
                 idle_machines = idle_vms
@@ -344,7 +345,7 @@ class SchedulerService(basic.BasicService):
             # There are no available HW machines for this node
             # This means we unable to proceed scheduling process
             # for this node.
-            if not idle_machines and node.node_type == nc.NodeType.HW:
+            if not idle_machines and node.node_type == ua_pool.NodeType.HW:
                 LOG.warning(
                     "No HW machines found to schedule node %s",
                     node.uuid,
@@ -358,7 +359,7 @@ class SchedulerService(basic.BasicService):
             # There are no available VM machines for this node
             # but it's not a problem. A virtual machine will be
             # created later.
-            if not idle_machines and node.node_type == nc.NodeType.VM:
+            if not idle_machines and node.node_type == ua_pool.NodeType.VM:
                 LOG.debug(
                     "No idle VM machines found to schedule node %s",
                     node.uuid,
@@ -382,7 +383,7 @@ class SchedulerService(basic.BasicService):
 
             # TODO(akremenetsky): Map volumes to machine volumes
             machine_bundle.machine.node = node.uuid
-            machine_bundle.machine.status = nc.MachineStatus.SCHEDULED.value
+            machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
             node.status = nc.NodeStatus.SCHEDULED.value
             try:
                 node.save()
@@ -396,7 +397,7 @@ class SchedulerService(basic.BasicService):
                 LOG.exception("Error scheduling node %s", node.uuid)
 
             # Actualize idle machines
-            if node.node_type == nc.NodeType.HW.value:
+            if node.node_type == ua_pool.NodeType.HW.value:
                 idle_hws.remove(machine_bundle)
             else:
                 idle_vms.remove(machine_bundle)

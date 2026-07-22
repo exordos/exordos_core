@@ -17,14 +17,6 @@
 import enum
 import uuid as sys_uuid
 
-from gcl_sdk.agents.universal.drivers.pool import BootAlternative  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import BootType  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import MachinePoolStatus  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import MachineStatus  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import NodeType  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import PortStatus  # noqa: F401
-from gcl_sdk.agents.universal.drivers.pool import VolumeStatus  # noqa: F401
-
 DEF_SQL_LIMIT = 300
 EP_NETWORK_DRIVERS = "gcn_network_driver"
 DEF_ROOT_DISK_SIZE = 10
