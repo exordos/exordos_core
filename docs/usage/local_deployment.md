@@ -4,7 +4,7 @@ This guide describes how to deploy a local installation of the Exordos platform 
 
 ## Dependencies
 
-It's assumed Linux (Ubuntu) is used as the OS on your machine.
+It's assumed Linux (Ubuntu 24.04 or 26.04) is used as the OS on your machine.
 
 ### Exordos CLI
 
@@ -18,9 +18,18 @@ curl -fsSL https://repo.exordos.com/install.sh | sh
 
 Install necessary packages:
 
+=== "Ubuntu 24.04"
+
 ```bash
 sudo apt update
 sudo apt install qemu-kvm qemu-utils libvirt-daemon-system libvirt-dev mkisofs -y
+```
+
+=== "Ubuntu 26.04"
+
+```bash
+sudo apt update
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev mkisofs -y
 ```
 
 Add the current user to the required groups:
