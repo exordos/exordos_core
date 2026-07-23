@@ -20,7 +20,7 @@ import typing as tp
 from gcl_sdk.agents.universal.drivers import direct
 from gcl_sdk.agents.universal.storage import fs
 
-from exordos_core.agent.universal.drivers.secret.backend import db as db_back
+from exordos_core.agent.universal.drivers.secret.backend import password as db_back
 
 LOG = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class PasswordCapabilityDriver(direct.DirectAgentDriver):
 
     def __init__(self, storage_path: str = PASSWORD_TARGET_FIELDS_STORAGE):
         storage = fs.TargetFieldsFileStorage(storage_path)
-        client = db_back.DatabaseSecretBackendClient()
+        client = db_back.DatabasePasswordBackendClient()
 
         super().__init__(storage=storage, client=client)
 

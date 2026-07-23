@@ -36,13 +36,11 @@ LOG = logging.getLogger(__name__)
 class CertBotBackendClient(base.AbstractBackendClient):
     """Cert bot backend client."""
 
-    DEFAULT_PRIVATE_KEY_PATH = "/etc/exordos_core/certbot/privkey.pem"
-
     def __init__(
         self,
         dns_client: dns_clients.TinyDNSCoreClient,
         admin_email: str,
-        private_key_path: str = DEFAULT_PRIVATE_KEY_PATH,
+        private_key_path: str,
     ) -> None:
         self._dns_client = dns_client
         self._admin_email = admin_email
@@ -89,7 +87,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
         cert_x509 = x509.load_pem_x509_certificate(fullchain_pem.encode())
         expiration_at = cert_x509.not_valid_after_utc
 
-        # Build storagable password and save
+        # Build storage_cert and save
         driver_cert = driver_dm.Certificate.from_cert_resource(
             resource, pkey_pem, csr_pem, fullchain_pem, expiration_at
         )

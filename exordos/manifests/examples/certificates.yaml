@@ -1,0 +1,54 @@
+name: "certificates-example"
+uuid: "b8a4de1c-2f56-4bc1-a3b8-4fe40124cccc"
+description: "Exordos certificates example"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.secret.certificates:
+    # DNS Core certificate (ACME via Let's Encrypt with DNS-01 challenge)
+    # Uses DNS CoreDNS plugin to automatically fulfill ACME challenges.
+    # After provisioning, cert and key are stored on the agent.
+    wildcard_cert:
+      name: "wildcard-cert"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      email: "admin@example.com"
+      method:
+        kind: dns_core
+      domains:
+        - "*.example.com"
+        - "example.com"
+      expiration_threshold: 30
+      overcome_threshold: false
+
+    # Multi-domain SAN certificate
+    # Subject Alternative Names for multiple service domains.
+    san_cert:
+      name: "san-cert"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      email: "devops@example.com"
+      method:
+        kind: dns_core
+      domains:
+        - "api.example.com"
+        - "auth.example.com"
+        - "admin.example.com"
+      expiration_threshold: 14
+
+    # Internal service certificate with no wildcards
+    internal_cert:
+      name: "internal-cert"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      email: "it@example.com"
+      method:
+        kind: dns_core
+      domains:
+        - "gitlab.internal.example.com"
+        - "jenkins.internal.example.com"
+      expiration_threshold: 7
+      overcome_threshold: true

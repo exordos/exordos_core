@@ -96,3 +96,38 @@ class PasswordBuilder(sdk_builder.UniversalBuilderService):
 
         if status_updated or password_updated:
             current_instance.save()
+
+
+class CertificateBuilder(sdk_builder.UniversalBuilderService):
+    def __init__(
+        self,
+        iter_min_period: int = 1,
+        iter_pause: float = 0.1,
+    ) -> None:
+        super().__init__(
+            instance_model=Certificate,
+            iter_min_period=iter_min_period,
+            iter_pause=iter_pause,
+        )
+
+    def actualize_outdated_instance(
+        self,
+        current_instance: Certificate,
+        actual_instance: Certificate,
+    ) -> None:
+        status_updated = current_instance.status != actual_instance.status
+        if status_updated:
+            current_instance.status = actual_instance.status
+
+        cert_updated = (
+            current_instance.key != actual_instance.key
+            or current_instance.cert != actual_instance.cert
+            or current_instance.expiration_at != actual_instance.expiration_at
+        )
+        if cert_updated:
+            current_instance.key = actual_instance.key
+            current_instance.cert = actual_instance.cert
+            current_instance.expiration_at = actual_instance.expiration_at
+
+        if status_updated or cert_updated:
+            current_instance.save()
