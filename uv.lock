@@ -650,7 +650,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -735,7 +735,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.9,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.3.2,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", specifier = ">=3.1.0,<4.0.0" },
+    { name = "gcl-sdk", specifier = ">=3.2.2,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "libvirt-python", specifier = ">=11.0.0,<13.0.0" },
@@ -837,7 +837,7 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.1.1"
+version = "3.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -851,9 +851,9 @@ dependencies = [
     { name = "restalchemy" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/3f/ab6643c189fb9451b48298d155f73995192b9d786ff9919e75b0cfabb246/gcl_sdk-3.1.1.tar.gz", hash = "sha256:bad0de7cbed53f685b3de73f2a1c9547d4dbd960454746ca117800b4d86b197a", size = 291529, upload-time = "2026-07-16T08:22:59.063Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/e0/021b141e46c8d831dcbfee085c19410e87b2fa91973cc8251e30595b75a9/gcl_sdk-3.2.2.tar.gz", hash = "sha256:6d579d975aefde5b7e399dfafce2738b70123c59bcf2a8c988bc73f74d394cca", size = 299068, upload-time = "2026-07-23T15:11:18.229Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/80/b30a013cd9a48235afea47a55a208f90e022f247da5efa412186bbf9a93b/gcl_sdk-3.1.1-py3-none-any.whl", hash = "sha256:9a82707cc6cc9d4261f253de6a485e7ebabea3694780d092716a94828805bedf", size = 234599, upload-time = "2026-07-16T08:22:57.566Z" },
+    { url = "https://files.pythonhosted.org/packages/05/4d/887c243f693b62ecc149a5ae3452b1d9cb4fe2c043049ab9aac1ce631ed1/gcl_sdk-3.2.2-py3-none-any.whl", hash = "sha256:1f34c569b9dbfa7c0ec0a7d00467846bfa93ed1db190a4750b2bc8c636ecd6a2", size = 247369, upload-time = "2026-07-23T15:11:16.661Z" },
 ]
 
 [[package]]
@@ -1848,7 +1848,7 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "pbr", marker = "python_full_version < '3.11'" },
+    { name = "pbr" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5f/26/85800d24c3aa7650bbd5fa0398aca78a84e8a8693f9c6a852148a196ddac/oslo_i18n-6.8.0.tar.gz", hash = "sha256:a0b4c64c1396869d7144dca60ad97c7eb028f78f61f91c7007531238051997df", size = 50114, upload-time = "2026-05-18T09:16:54.09Z" }
 wheels = [
@@ -1866,7 +1866,7 @@ resolution-markers = [
     "python_full_version >= '3.11' and python_full_version < '3.13'",
 ]
 dependencies = [
-    { name = "pbr", marker = "python_full_version >= '3.11'" },
+    { name = "pbr" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5e/69/72b03bb4d33f51a157c02d5297227bae48b9c359103856942b8774b608df/oslo_i18n-6.9.0.tar.gz", hash = "sha256:574bcf21873b185068bcec951de1ec093158ffdff05a8055fd18ddcb69f69e65", size = 50369, upload-time = "2026-07-10T13:44:34.301Z" }
 wheels = [
