@@ -29,6 +29,7 @@ class TestUaAgentsApi:
     def _agent_factory(
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: tp.Optional[str] = None,
+        node: tp.Optional[sys_uuid.UUID] = None,
         status: str = "ACTIVE",
         **kwargs,
     ) -> sys_uuid.UUID:
@@ -41,7 +42,7 @@ class TestUaAgentsApi:
             name=name,
             capabilities={"capabilities": ["test_capability"]},
             facts={"facts": []},
-            node=sys_uuid.uuid4(),
+            node=node or sys_uuid.uuid4(),
             status=status,
             **kwargs,
         )
@@ -146,6 +147,108 @@ class TestUaAgentsApi:
         assert response.status_code == 200
         uuids = [item["uuid"] for item in output]
         assert str(agent_uuid) in uuids
+
+    def test_admin_register_agent(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        agent_uuid = sys_uuid.uuid4()
+        node_uuid = sys_uuid.uuid4()
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["ua", "agents"])
+
+        response = client.post(
+            url,
+            json={
+                "uuid": str(agent_uuid),
+                "name": "external-agent",
+                "node": str(node_uuid),
+                "capabilities": {"capabilities": ["test_capability"]},
+                "facts": {"facts": []},
+            },
+        )
+        output = response.json()
+
+        assert response.status_code == 201
+        assert output["uuid"] == str(agent_uuid)
+        assert output["node"] == str(node_uuid)
+
+    def test_issue_key_creates_a_key(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        agent_uuid = self._agent_factory()
+        client = user_api_client(auth_user_admin)
+        url = client.build_resource_uri(
+            ["ua", "agents", str(agent_uuid), "actions", "issue_key", "invoke"]
+        )
+
+        response = client.post(url)
+        output = response.json()
+
+        assert response.status_code == 200
+        assert output["key"]
+
+    def test_issue_key_is_shared_by_agents_on_the_same_node(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        node_uuid = sys_uuid.uuid4()
+        agent1_uuid = self._agent_factory(node=node_uuid)
+        agent2_uuid = self._agent_factory(node=node_uuid)
+        client = user_api_client(auth_user_admin)
+
+        response1 = client.post(
+            client.build_resource_uri(
+                ["ua", "agents", str(agent1_uuid), "actions", "issue_key", "invoke"]
+            )
+        )
+        response2 = client.post(
+            client.build_resource_uri(
+                ["ua", "agents", str(agent2_uuid), "actions", "issue_key", "invoke"]
+            )
+        )
+
+        assert response1.json()["key"] == response2.json()["key"]
+
+    def test_issue_key_nonadmin_no_access(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_test1_user: iam_clients.GenesisCoreAuth,
+    ):
+        agent_uuid = self._agent_factory()
+        client = user_api_client(auth_test1_user)
+        url = client.build_resource_uri(
+            ["ua", "agents", str(agent_uuid), "actions", "issue_key", "invoke"]
+        )
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(url)
+
+    def test_issue_key_user_with_permission_can_issue(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_test1_user: iam_clients.GenesisCoreAuth,
+    ):
+        agent_uuid = self._agent_factory()
+        client = user_api_client(
+            auth_test1_user,
+            permissions=[
+                "agent.ua.read",
+                "agent.ua.issue_key",
+            ],
+        )
+        url = client.build_resource_uri(
+            ["ua", "agents", str(agent_uuid), "actions", "issue_key", "invoke"]
+        )
+
+        response = client.post(url)
+
+        assert response.status_code == 200
+        assert response.json()["key"]
 
 
 class TestUaResourcesApi:

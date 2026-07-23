@@ -16,6 +16,7 @@
 
 from gcl_iam.api import controllers as iam_controllers
 from gcl_sdk.agents.universal.dm import models as ua_models
+from restalchemy.api import actions
 from restalchemy.api import controllers as ra_controllers
 from restalchemy.api import resources
 
@@ -35,6 +36,14 @@ class AgentController(
         ua_models.UniversalAgent,
         convert_underscore=False,
     )
+
+    @actions.post
+    def issue_key(self, resource: ua_models.UniversalAgent):
+        self._enforce("issue_key")
+
+        enc_key = ua_models.NodeEncryptionKey.get_or_create(resource.node)
+
+        return {"key": enc_key.private_key}
 
 
 class ResourceController(

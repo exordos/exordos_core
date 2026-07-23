@@ -5,6 +5,16 @@ version: "{{ version }}"
 api_version: "v1"
 
 resources:
+
+  # IAM
+  $core.iam.permissions:
+    ua_agent_create:
+      name: "agent.ua.create"
+      description: "Register a Universal Agent"
+    ua_agent_issue_key:
+      name: "agent.ua.issue_key"
+      description: "Issue or fetch a Universal Agent node encryption key"
+
   $core.vs.profiles:
     develop:
       name: "develop"

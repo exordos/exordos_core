@@ -15,10 +15,14 @@
 #    under the License.
 
 import typing as tp
+import uuid as sys_uuid
 
 from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
+from gcl_sdk.agents.universal.api import crypto as ua_crypto
+from gcl_sdk.agents.universal.dm import models as ua_models
 import pytest
+from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
 
@@ -312,3 +316,34 @@ class TestHypervisorUserApi:
         client.delete(
             client.build_resource_uri(["compute", "hypervisors", hypervisor1["uuid"]])
         )
+
+    def test_node_reuses_an_existing_node_key(
+        self,
+        node_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        # A key may already exist for a node's uuid from another source
+        # (e.g. it's also registered as a local hypervisor's node) -
+        # registering the Node must reuse it instead of conflicting on
+        # insert.
+        node_uuid = sys_uuid.uuid4()
+        _, private_key = ua_crypto.generate_key_base64()
+        existing_key = ua_models.NodeEncryptionKey(
+            uuid=node_uuid, private_key=private_key
+        )
+        existing_key.insert()
+
+        client = user_api_client(auth_user_admin)
+        node = node_factory(uuid=node_uuid)
+        response = client.post(
+            client.build_collection_uri(["compute", "nodes"]), json=node
+        )
+        assert response.status_code == 201
+
+        key = ua_models.NodeEncryptionKey.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_uuid)}
+        )
+        assert key.private_key == private_key
+
+        client.delete(client.build_resource_uri(["compute", "nodes", str(node_uuid)]))

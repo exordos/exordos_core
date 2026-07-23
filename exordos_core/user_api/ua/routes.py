@@ -19,11 +19,19 @@ from restalchemy.api import routes
 from exordos_core.user_api.ua import controllers
 
 
+class IssueKeyAction(routes.Action):
+    """Handler for /v1/ua/agents/<uuid>/actions/issue_key/invoke endpoint"""
+
+    __controller__ = controllers.AgentController
+
+
 class AgentsRoute(routes.Route):
     """Handler for /v1/ua/agents/ endpoint"""
 
-    __allow_methods__ = [routes.FILTER, routes.GET]
+    __allow_methods__ = [routes.FILTER, routes.GET, routes.CREATE]
     __controller__ = controllers.AgentController
+
+    issue_key = routes.action(IssueKeyAction, invoke=True)
 
 
 class ResourcesRoute(routes.Route):
