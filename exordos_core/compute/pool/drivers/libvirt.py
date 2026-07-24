@@ -244,6 +244,19 @@ class XMLLibvirtMixin:
         root.appendChild(element)
 
     @classmethod
+    def _remove_direct_children(cls, parent: minidom.Element, tag_name: str) -> None:
+        """Remove `parent`'s direct-child elements named `tag_name`.
+
+        getElementsByTagName searches the whole subtree recursively, not
+        just direct children - removeChild() raises NotFoundErr if a
+        match it returns isn't actually a direct child of the node
+        you're calling it on.
+        """
+        for node in list(parent.childNodes):
+            if node.nodeType == node.ELEMENT_NODE and node.tagName == tag_name:
+                parent.removeChild(node)
+
+    @classmethod
     def document_set_tag(
         cls,
         docement: minidom.Document,
@@ -255,14 +268,12 @@ class XMLLibvirtMixin:
     ) -> None:
         root = parent or docement.firstChild
         # Firstly we need to remove the old value
-        for node in root.getElementsByTagName(tag_name):
-            root.removeChild(node)
+        cls._remove_direct_children(root, tag_name)
 
         # Also we need to remove the old value from the meta
         if meta_tag is not None:
             meta_node = docement.getElementsByTagName(META_TAG)[0]
-            for node in docement.getElementsByTagName(meta_tag):
-                meta_node.removeChild(node)
+            cls._remove_direct_children(meta_node, meta_tag)
 
             # Add the new value
             cls.add_element(docement, meta_tag, parent=meta_node, text=text)
@@ -280,8 +291,7 @@ class XMLLibvirtMixin:
     ) -> None:
         # Remove the old value from the meta
         meta_node = docement.getElementsByTagName(META_TAG)[0]
-        for node in docement.getElementsByTagName(tag):
-            meta_node.removeChild(node)
+        cls._remove_direct_children(meta_node, tag)
 
         # Add the new value
         cls.add_element(docement, tag, parent=meta_node, text=text, **kwargs)
@@ -1321,16 +1331,30 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
 
         :param machine: The machine to delete
         """
-        domain = self._client.lookupByUUIDString(str(machine.uuid))
-
-        # Remove the libvirt domain
+        # Idempotent: a retry after a previous delete already destroyed/
+        # undefined the domain but failed later (e.g. during volume
+        # cleanup below) must not crash here just because the domain is
+        # already gone.
         try:
-            domain.destroy()
-        except libvirt.libvirtError:
-            LOG.debug("The domain is not in the running state")
-        # FIXME(akremenetsky): Actully we should undefine the
-        # domain before volume deletion
-        domain.undefine()
+            domain = self._client.lookupByUUIDString(str(machine.uuid))
+        except libvirt.libvirtError as e:
+            if e.get_error_code() != libvirt.VIR_ERR_NO_DOMAIN:
+                raise
+            LOG.debug(
+                "Domain for machine %s not found, assuming already deleted",
+                machine.uuid,
+            )
+            domain = None
+
+        if domain is not None:
+            # Remove the libvirt domain
+            try:
+                domain.destroy()
+            except libvirt.libvirtError:
+                LOG.debug("The domain is not in the running state")
+            # FIXME(akremenetsky): Actully we should undefine the
+            # domain before volume deletion
+            domain.undefine()
 
         if delete_volumes:
             for volume in self.list_volumes(machine):
