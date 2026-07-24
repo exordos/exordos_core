@@ -611,7 +611,11 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            # The boot-network port is always type='network' regardless of
+            # the hypervisor's own network_type (see create_machine) - read
+            # the source attribute this specific interface actually has
+            # ('network' or 'bridge'), not the hypervisor's configured type.
+            source = source_el.get(iface.get("type"))
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -690,7 +694,9 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            # See _domain2machine: read the source attribute this specific
+            # interface actually has, not the hypervisor's network_type.
+            source = source_el.get(iface.get("type"))
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
