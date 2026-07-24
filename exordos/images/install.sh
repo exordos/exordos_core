@@ -169,6 +169,7 @@ sudo cp "$GC_PATH/etc/exordos_universal_agent/logging.yaml" /etc/exordos_univers
 # 1) The bootstrap script will transfer the data to the data disk
 # 2) It's speed up the first run since the migrations are already applied.
 # 3) It's allows to debug the migrations at build time.
+OS_DB__CONNECTION_URL="postgresql://$GC_PG_USER:$GC_PG_PASS@127.0.0.1:5432/$GC_PG_DB" ra-apply-migration --path "$GC_PATH/.venv/lib/python3.14/site-packages/gcl_sdk/migrations"
 OS_DB__CONNECTION_URL="postgresql://$GC_PG_USER:$GC_PG_PASS@127.0.0.1:5432/$GC_PG_DB" ra-apply-migration --path "$GC_PATH/migrations"
 
 deactivate

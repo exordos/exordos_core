@@ -142,6 +142,7 @@ log "Apply migrations"
 source "$VENV_PATH/bin/activate"
 # TODO(akremenetsky): Database configuration parameters should be taken
 # from persistent configuration file.
+ra-apply-migration --config-dir "$GC_CFG_DIR/" --path "$GC_PATH/.venv/lib/python3.14/site-packages/gcl_sdk/migrations"
 ra-apply-migration --config-dir "$GC_CFG_DIR/" --path "$GC_PATH/migrations"
 
 # --- Meta file migrations ---
