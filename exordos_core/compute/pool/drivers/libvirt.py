@@ -1340,6 +1340,10 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         except libvirt.libvirtError as e:
             if e.get_error_code() != libvirt.VIR_ERR_NO_DOMAIN:
                 raise
+            LOG.debug(
+                "Domain for machine %s not found, assuming already deleted",
+                machine.uuid,
+            )
             domain = None
 
         if domain is not None:

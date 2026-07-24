@@ -15,6 +15,7 @@
 #    under the License.
 
 import uuid as sys_uuid
+from unittest import mock
 from xml.dom import minidom
 from xml.etree import ElementTree as ET
 
@@ -117,3 +118,22 @@ class TestDeleteMachine:
 
         # Must not raise, even though no such domain was ever defined.
         driver.delete_machine(machine, delete_volumes=False)
+
+    def test_volume_cleanup_still_runs_when_the_domain_is_already_gone(self):
+        driver = _local_driver()
+        machine = models.Machine(
+            uuid=sys_uuid.uuid4(),
+            project_id=sys_uuid.uuid4(),
+            name="never-existed",
+            cores=1,
+            ram=512,
+        )
+
+        # The missing-domain path must fall through to volume cleanup,
+        # not skip it.
+        with mock.patch.object(
+            driver, "list_volumes", return_value=[]
+        ) as mock_list_volumes:
+            driver.delete_machine(machine, delete_volumes=True)
+
+        mock_list_volumes.assert_called_once_with(machine)
