@@ -41,6 +41,25 @@ MAX_VOLUME_INDEX = 4096
 CONSOLE_LOG_DIR = "/var/log/libvirt/qemu"
 
 
+def _interface_source(
+    iface: ET.Element, source_el: tp.Optional[ET.Element]
+) -> tp.Optional[str]:
+    """Return the logical network/bridge name this interface connects to.
+
+    A domain interface created as type='network' backed by a libvirt
+    network with <forward mode='bridge'/> gets rewritten by libvirt in
+    the live/persistent XML to type='bridge', but its <source> element
+    keeps both the original 'network' attribute (the logical name the
+    orchestrator/target state actually tracks) and the 'bridge' one
+    (the real underlying device). Prefer 'network' when present so a
+    boot port riding such a network still reports its logical name
+    instead of the bridge it happens to be implemented with.
+    """
+    if source_el is None:
+        return None
+    return source_el.get("network") or source_el.get(iface.get("type"))
+
+
 class StoragePoolType(enum.Enum):
     DIR = "dir"
     ZFS = "zfs"
@@ -611,7 +630,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            source = _interface_source(iface, source_el)
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -690,7 +709,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            source = _interface_source(iface, source_el)
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -1169,8 +1188,13 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             raise
 
         # Build interface XML
+        # Always type='network': `port.source` is the logical libvirt
+        # network name the orchestrator tracks (see create_machine), not
+        # necessarily a literal host bridge device - a bridge-type
+        # hypervisor still needs it resolved through a local libvirt
+        # network that forwards onto the real bridge.
         interface_xml = XMLLibvirtInstance.interface_xml(
-            iface_type=self._spec.network_type,
+            iface_type="network",
             mac=port.mac,
             rom=self._spec.iface_rom_file,
             mtu=self._spec.iface_mtu,
@@ -1269,9 +1293,12 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 mac=port.mac,
                 rom=self._spec.iface_rom_file,
                 mtu=self._spec.iface_mtu,
-                # TODO(akremenetsky): This parameter should be taken from
-                # the network
-                iface_type=self._spec.network_type,
+                # Always type='network': `port.source` is a logical
+                # libvirt network name the orchestrator tracks (the boot
+                # network at initial creation, or the main network when
+                # recreate_machine() rebuilds the domain post-flash), not
+                # necessarily a literal host bridge device.
+                iface_type="network",
                 source=port.source,
             )
 
