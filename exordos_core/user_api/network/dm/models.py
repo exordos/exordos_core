@@ -32,6 +32,7 @@ from restalchemy.storage.sql import orm
 
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import utils as u
+from exordos_core.quota.dm.models import QuotaModelMixin
 from exordos_core.secret import utils as su
 
 
@@ -68,6 +69,7 @@ class LB(
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
+    QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceMixin,
 ):

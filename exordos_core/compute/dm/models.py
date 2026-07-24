@@ -35,6 +35,7 @@ from exordos_core.common import system
 from exordos_core.common import utils
 from exordos_core.common.dm import models as cm
 from exordos_core.compute import constants as nc
+from exordos_core.quota.dm.models import QuotaModelMixin
 
 if tp.TYPE_CHECKING:
     from exordos_core.compute.pool.drivers.base import AbstractPoolDriver
@@ -301,6 +302,7 @@ class UnscheduledVolume(models.ModelWithUUID, orm.SQLStorableMixin):
 class NodeSet(
     infra_models.NodeSet,
     ua_models.InstanceWithDerivativesMixin,
+    QuotaModelMixin,
     orm.SQLStorableMixin,
 ):
     __tablename__ = "compute_sets"
@@ -340,6 +342,7 @@ class NodeSet(
 
 class Node(
     infra_models.Node,
+    QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
 ):
     __tablename__ = "nodes"

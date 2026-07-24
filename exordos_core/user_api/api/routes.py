@@ -23,6 +23,7 @@ from exordos_core.user_api.dns.api import routes as dns_routes
 from exordos_core.user_api.em.api import routes as em_routes
 from exordos_core.user_api.iam.api import routes as iam_routes
 from exordos_core.user_api.network.api import routes as network_routes
+from exordos_core.user_api.quota.api import routes as quota_routes
 from exordos_core.user_api.repo.api import routes as repo_routes
 from exordos_core.user_api.secret.api import routes as secret_routes
 from exordos_core.user_api.security.api import routes as security_routes
@@ -44,15 +45,16 @@ class ApiEndpointRoute(routes.Route):
     __controller__ = controllers.ApiEndpointController
     __allow_methods__ = [routes.FILTER]
 
+    compute = routes.route(compute_routes.ComputeRoute)
+    config = routes.route(config_routes.ConfigRoute)
     dns = routes.route(dns_routes.DnsRoute)
     health = routes.route(HealthRoute)
     iam = routes.route(iam_routes.IamRoute)
     em = routes.route(em_routes.ElementManagerRoute)
-    vs = routes.route(vs_routers.VSRoute)
-    config = routes.route(config_routes.ConfigRoute)
+    network = routes.route(network_routes.NetworkRoute)
+    quota = routes.route(quota_routes.QuotaRoute)
     secret = routes.route(secret_routes.SecretRoute)
     security = routes.route(security_routes.SecurityRoute)
-    compute = routes.route(compute_routes.ComputeRoute)
-    network = routes.route(network_routes.NetworkRoute)
     ua = routes.route(ua_routes.UaRoute)
+    vs = routes.route(vs_routers.VSRoute)
     repo = routes.route(repo_routes.RepoRoute)
