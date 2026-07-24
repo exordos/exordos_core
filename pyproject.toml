@@ -23,13 +23,12 @@ dependencies = [
     "bjoern>=3.2.2",  # BSD License (BSD-3-Clause)
     "gcl_looper>=1.2.3,<2.0.0",  # Apache-2.0
     "restalchemy>=15.2.2,<16.0.0",  # Apache-2.0
-    "libvirt-python>=11.0.0,<13.0.0",  # GNU Lesser General Public License v2 or later (LGPLv2+)
     "Authlib>=1.3.2,<2.0.0",  # BSD License (BSD-3-Clause)
     "bazooka>=1.3.0,<2.0.0",  # Apache-2.0
     "Jinja2>=3.1.5,<4.0.0",  # BSD License (BSD-3-Clause)
     "izulu>=0.50.0,<1.0.0",  # MIT License
     "gcl_iam>=1.3.2,<2.0.0",  # Apache-2.0
-    "gcl_sdk>=3.2.2,<4.0.0",  # Apache-2.0
+    "gcl_sdk[libvirt]>=3.2.2,<4.0.0",  # Apache-2.0
     "gcl_certbot_plugin>=0.0.9,<1.0.0",  # Apache-2.0
     "pyotp>=2.9.0,<3.0.0",  # MIT License
     "pyyaml>=6.0.0,<7.0.0",  # MIT
@@ -160,10 +159,6 @@ ec-bootstrap = "exordos_core.cmd.bootstrap:main"
 ec-bootstrap-templates = "exordos_core.cmd.bootstrap_templates:main"
 exordos-repo-proxy-gservice = "exordos_core.cmd.repo_proxy_gservice:main"
 
-[project.entry-points."gcn_machine_pool_driver"]
-DummyPoolDriver = "exordos_core.compute.pool.drivers.base:DummyPoolDriver"
-libvirt = "exordos_core.compute.pool.drivers.libvirt:LibvirtPoolDriver"
-
 [project.entry-points."gcn_network_driver"]
 DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
@@ -181,8 +176,6 @@ IamUserResetPassword = "exordos_core.events.payloads:ResetPasswordEventPayload"
 [project.entry-points."gcl_sdk_universal_agent"]
 PasswordCapabilityDriver = "exordos_core.agent.universal.drivers.secret.password:PasswordCapabilityDriver"
 CoreDNSCertificateCapabilityDriver = "exordos_core.agent.universal.drivers.secret.cert:CoreDNSCertificateCapabilityDriver"
-PoolAgentDriver = "exordos_core.compute.agents.universal.drivers.pool:PoolAgentDriver"
-LocalPoolAgentDriver = "exordos_core.compute.agents.universal.drivers.pool:LocalPoolAgentDriver"
 
 [tool.uv]
 package = true

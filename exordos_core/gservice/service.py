@@ -23,6 +23,7 @@ from gcl_sdk.agents.universal import utils as ua_utils
 from gcl_sdk.agents.universal.clients.backend import db as db_back
 from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
+from gcl_sdk.agents.universal.drivers import pool as ua_pool_drivers
 from gcl_sdk.agents.universal.services import agent as ua_agent_service
 from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
 from gcl_sdk.events import constants as event_c
@@ -31,7 +32,6 @@ from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
-from exordos_core.compute.agents.universal.drivers import pool as ua_pool_drivers
 from exordos_core.compute.builders import node as node_builder_svc
 from exordos_core.compute.builders import node_set as set_builder_svc
 from exordos_core.compute.builders import pool as pool_builder_svc

@@ -18,6 +18,7 @@ import logging
 import typing as tp
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from restalchemy.dm import filters as dm_filters
 
@@ -117,7 +118,7 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         machine.name = target_node.name
         machine.description = target_node.description
         # Also update the status to IN_PROGRESS
-        machine.status = nc.MachineStatus.IN_PROGRESS.value
+        machine.status = ua_pool.MachineStatus.IN_PROGRESS.value
         machine.update(force=force)
 
         if target_node.status != nc.NodeStatus.IN_PROGRESS.value:
@@ -135,7 +136,7 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         actual.boot = target.boot
         actual.device_type = target.device_type
         actual.label = target.label
-        actual.status = nc.VolumeStatus.IN_PROGRESS.value
+        actual.status = ua_pool.VolumeStatus.IN_PROGRESS.value
         actual.save()
 
     def _actualize_volumes(

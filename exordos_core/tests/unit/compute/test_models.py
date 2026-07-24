@@ -17,9 +17,31 @@ import uuid as sys_uuid
 from unittest.mock import patch
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 
 from exordos_core.compute.dm import models
+
+
+class TestMachinePoolInsert:
+    def test_never_touches_node_encryption_key(self):
+        # MachinePool doesn't know about node encryption keys - whoever
+        # creates a local-hypervisor pool (bootstrap, HypervisorsController)
+        # is responsible for provisioning the key itself.
+        pool = models.MachinePool(
+            driver_spec=ua_pool.ExordosLocalHyperDriverSpec(
+                connection_uri="qemu:///system",
+                node=sys_uuid.uuid4(),
+            ),
+        )
+
+        with (
+            patch.object(models.orm.SQLStorableMixin, "insert"),
+            patch.object(ua_models.NodeEncryptionKey, "get_or_create") as get_or_create,
+        ):
+            pool.insert()
+
+        get_or_create.assert_not_called()
 
 
 class TestNodeInsert:

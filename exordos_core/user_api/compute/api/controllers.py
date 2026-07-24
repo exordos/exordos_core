@@ -17,6 +17,8 @@
 import uuid as sys_uuid
 
 from gcl_iam.api import controllers as iam_controllers
+from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
@@ -66,7 +68,7 @@ class VolumesController(
     )
 
     def update(self, uuid, **kwargs):
-        kwargs["status"] = nc.VolumeStatus.IN_PROGRESS.value
+        kwargs["status"] = ua_pool.VolumeStatus.IN_PROGRESS.value
 
         return super().update(uuid, **kwargs)
 
@@ -198,19 +200,24 @@ class HypervisorsController(
     )
 
     def create(self, **kwargs):
-        if "machine_type" in kwargs and kwargs["machine_type"] != nc.NodeType.VM.value:
+        if "machine_type" in kwargs and kwargs["machine_type"] != ua_pool.NodeType.VM.value:
             raise ValueError("Hyper must be VM type")
 
         self._validate_driver_spec_uniqueness(kwargs)
 
-        return super().create(**kwargs)
+        pool = super().create(**kwargs)
+
+        if pool.driver_spec.agent_key_node is not None:
+            ua_models.NodeEncryptionKey.get_or_create(pool.driver_spec.agent_key_node)
+
+        return pool
 
     def _validate_driver_spec_uniqueness(self, kwargs: dict) -> None:
         """Validate that the driver_spec fields are unique among existing pools."""
         driver_spec = kwargs["driver_spec"]
         kind = driver_spec["kind"]
 
-        if kind == models.LibvirtPoolDriverSpec.KIND:
+        if kind == ua_pool.LibvirtPoolDriverSpec.KIND:
             connection_uri = driver_spec["connection_uri"]
             # TODO(akremenetsky): Use JSON field filter when restalchemy
             # supports filtering by JSONB fields.
@@ -224,7 +231,7 @@ class HypervisorsController(
                         model="MachinePool",
                         msg=f"connection_uri={connection_uri}",
                     )
-        elif kind == models.ExordosLocalHyperDriverSpec.KIND:
+        elif kind == ua_pool.ExordosLocalHyperDriverSpec.KIND:
             node = str(driver_spec["node"])
             # TODO(akremenetsky): Use JSON field filter when restalchemy
             # supports filtering by JSONB fields.

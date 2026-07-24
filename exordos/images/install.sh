@@ -153,10 +153,13 @@ source "$GC_PATH"/.venv/bin/activate
 
 sudo chown -R ubuntu:ubuntu "$GC_PATH"
 
-# In the dev mode the gcl_sdk package is installed from the local machine
+# In the dev mode the gcl_sdk package is installed from the local machine.
+# Reinstall with the same extras pyproject.toml declares (uv sync's normal
+# extra resolution doesn't apply to this manual editable install), or
+# libvirt-python silently goes missing and PoolAgentDriver can't be built.
 if [[ "$SDK_DEV_MODE" == "true" ]]; then
     uv pip uninstall gcl_sdk
-    uv pip install -e "$DEV_SDK_PATH"
+    uv pip install -e "$DEV_SDK_PATH[libvirt]"
 fi
 
 # Configuration for universal agent

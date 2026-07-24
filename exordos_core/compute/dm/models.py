@@ -19,6 +19,7 @@ import typing as tp
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
 from restalchemy.dm import filters as dm_filters
@@ -37,7 +38,6 @@ from exordos_core.common.dm import models as cm
 from exordos_core.compute import constants as nc
 
 if tp.TYPE_CHECKING:
-    from exordos_core.compute.pool.drivers.base import AbstractPoolDriver
     from exordos_core.network.driver.base import AbstractNetworkDriver
 
 
@@ -60,135 +60,6 @@ class IPRange(types.BaseType):
         return self.from_simple_type(value)
 
 
-class AbstractStoragePool(
-    models.SimpleViewMixin,
-    types_dynamic.AbstractKindModel,
-):
-    """The abstract model for storage pool.
-
-    This model is used to represent the storage pool and determine
-    the its interfaces.
-    """
-
-    uuid = properties.property(
-        types.UUID(),
-        read_only=True,
-        id_property=True,
-        default=lambda: sys_uuid.uuid4(),
-    )
-    pool_type = properties.property(types.String(), required=True)
-
-    @property
-    def capacity(self) -> int:
-        """Storage pool capacity."""
-        return 0
-
-    @property
-    def available(self) -> int:
-        """Storage pool available space."""
-        return 0
-
-    def allocate_capacity(self, size: int) -> None:
-        """Allocate capacity."""
-        raise NotImplementedError()
-
-    def free_capacity(self, size: int) -> None:
-        """Free capacity."""
-        raise NotImplementedError()
-
-    def has_capacity(self, size: int) -> bool:
-        """Check if the storage pool has enough capacity."""
-        return self.available >= size
-
-
-class AbstractPoolDriverSpec(
-    types_dynamic.AbstractKindModel,
-    models.SimpleViewMixin,
-):
-    """Base class for all pool driver specs."""
-
-
-class LibvirtPoolDriverSpec(AbstractPoolDriverSpec):
-    KIND = "libvirt"
-
-    connection_uri = properties.property(
-        types.String(max_length=2048),
-        required=True,
-    )
-    network = properties.property(
-        types.AllowNone(types.String(max_length=255)),
-        default=None,
-    )
-    storage_pool = properties.property(
-        types.AllowNone(types.String(max_length=255)),
-        default=None,
-    )
-    machine_prefix = properties.property(
-        types.AllowNone(types.String(max_length=255)),
-        default=None,
-    )
-    network_type = properties.property(
-        types.Enum(["network", "bridge"]),
-        default="network",
-    )
-    iface_rom_file = properties.property(
-        types.AllowNone(types.String(max_length=255)),
-        default=None,
-    )
-    iface_mtu = properties.property(
-        types.Integer(min_value=0, max_value=65536),
-        default=1500,
-    )
-    iface_source = properties.property(
-        types.AllowNone(types.String(max_length=255)),
-        default=None,
-    )
-
-
-class ExordosLocalHyperDriverSpec(LibvirtPoolDriverSpec):
-    KIND = "exordos_local_hyper"
-
-    node = properties.property(types.UUID(), required=True)
-
-
-class DummyPoolDriverSpec(AbstractPoolDriverSpec):
-    KIND = "dummy"
-
-
-class ThinStoragePool(
-    AbstractStoragePool,
-    models.ModelWithNameDesc,
-):
-    """The model represents thin provisioned storage pool."""
-
-    KIND = "thin_storage_pool"
-
-    capacity_usable = properties.property(types.Integer(min_value=0), default=0)
-    capacity_provisioned = properties.property(types.Integer(min_value=0), default=0)
-    oversubscription_ratio = properties.property(
-        types.Float(min_value=0.0), default=1.0
-    )
-    available_actual = properties.property(types.Integer(min_value=0), default=0)
-
-    @property
-    def capacity(self) -> int:
-        """Storage pool capacity."""
-        return int(self.capacity_usable * self.oversubscription_ratio)
-
-    @property
-    def available(self) -> int:
-        """Storage pool available space."""
-        return self.capacity - self.capacity_provisioned
-
-    def allocate_capacity(self, size: int) -> None:
-        """Allocate capacity."""
-        self.capacity_provisioned += size
-
-    def free_capacity(self, size: int) -> None:
-        """Free capacity."""
-        self.capacity_provisioned -= size
-
-
 class MachinePool(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
@@ -197,25 +68,24 @@ class MachinePool(
     models.SimpleViewMixin,
 ):
     __tablename__ = "machine_pools"
-    __driver_map__ = {}
 
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
-            types_dynamic.KindModelType(LibvirtPoolDriverSpec),
-            types_dynamic.KindModelType(ExordosLocalHyperDriverSpec),
-            types_dynamic.KindModelType(DummyPoolDriverSpec),
+            types_dynamic.KindModelType(ua_pool.LibvirtPoolDriverSpec),
+            types_dynamic.KindModelType(ua_pool.ExordosLocalHyperDriverSpec),
+            types_dynamic.KindModelType(ua_pool.DummyPoolDriverSpec),
         ),
         required=True,
     )
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     machine_type = properties.property(
-        types.Enum([t.value for t in nc.NodeType]),
-        default=nc.NodeType.VM.value,
+        types.Enum([t.value for t in ua_pool.NodeType]),
+        default=ua_pool.NodeType.VM.value,
     )
     status = properties.property(
-        types.Enum([s.value for s in nc.MachinePoolStatus]),
-        default=nc.MachinePoolStatus.DISABLED.value,
+        types.Enum([s.value for s in ua_pool.MachinePoolStatus]),
+        default=ua_pool.MachinePoolStatus.DISABLED.value,
     )
 
     avail_cores = properties.property(types.Integer(), default=0)
@@ -228,43 +98,11 @@ class MachinePool(
     storage_pools = properties.property(
         types.TypedList(
             types_dynamic.KindModelSelectorType(
-                types_dynamic.KindModelType(ThinStoragePool),
+                types_dynamic.KindModelType(ua_pool.ThinStoragePool),
             ),
         ),
         default=list,
     )
-
-    def load_driver(self) -> tp.Type["AbstractPoolDriver"]:
-        """
-        Load the driver for the machine pool.
-
-        This method will try to load all drivers from the
-        ``exordos_core.machine_pool_drivers`` entry point group and try to
-        instantiate them with the current machine pool. If a driver is
-        successfully loaded, it is stored in a cache for faster access.
-
-        If no driver is found, a ValueError is raised.
-
-        :return: The loaded driver class
-        :raises ValueError: If no driver is found
-        """
-        driver_key = str(self.driver_spec)
-
-        if driver_key in self.__driver_map__:
-            return self.__driver_map__[driver_key]
-
-        ep_group = utils.load_group_from_entry_point(nc.EP_MACHINE_POOL_DRIVERS)
-        for e in ep_group:
-            try:
-                class_ = e.load()
-                driver = class_(self)
-                self.__driver_map__[driver_key] = driver
-                return driver
-            except Exception:
-                # Just try another driver
-                pass
-
-        raise ValueError(f"Driver for spec '{self.driver_spec}' not found")
 
 
 class Volume(
@@ -280,8 +118,8 @@ class Volume(
         default=lambda: sys_uuid.uuid4(),
     )
     status = properties.property(
-        types.Enum([s.value for s in nc.VolumeStatus]),
-        default=nc.VolumeStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.VolumeStatus]),
+        default=ua_pool.VolumeStatus.NEW.value,
     )
 
     # Internal field for scheduling purposes
@@ -465,18 +303,18 @@ class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixi
     )
     ram = properties.property(types.Integer(min_value=0), required=True)
     status = properties.property(
-        types.Enum([s.value for s in nc.MachineStatus]),
-        default=nc.MachineStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.MachineStatus]),
+        default=ua_pool.MachineStatus.NEW.value,
     )
     machine_type = properties.property(
-        types.Enum([t.value for t in nc.NodeType]),
-        default=nc.NodeType.VM.value,
+        types.Enum([t.value for t in ua_pool.NodeType]),
+        default=ua_pool.NodeType.VM.value,
     )
     node = properties.property(types.AllowNone(types.UUID()), default=None)
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
     boot = properties.property(
-        types.Enum([b.value for b in nc.BootAlternative]),
-        default=nc.BootAlternative.network.value,
+        types.Enum([b.value for b in ua_pool.BootAlternative]),
+        default=ua_pool.BootAlternative.network.value,
     )
     image = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
@@ -493,7 +331,7 @@ class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixi
     block_devices = properties.property(types.Dict(), default=dict)
 
     def set_active(self):
-        self.status = nc.MachineStatus.ACTIVE.value
+        self.status = ua_pool.MachineStatus.ACTIVE.value
         self.save()
 
 
@@ -518,15 +356,15 @@ class MachineVolume(
     # TODO(g.melikov): DON'T USE! Should be dropped.
     device_type = properties.property(types.String(max_length=64), default="")
     status = properties.property(
-        types.Enum([s.value for s in nc.VolumeStatus]),
-        default=nc.VolumeStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.VolumeStatus]),
+        default=ua_pool.VolumeStatus.NEW.value,
     )
     index = properties.property(
         types.Integer(min_value=0, max_value=4096), default=4096
     )
 
     def set_active(self):
-        self.status = nc.VolumeStatus.ACTIVE.value
+        self.status = ua_pool.VolumeStatus.ACTIVE.value
         self.save()
 
 
@@ -544,8 +382,8 @@ class Netboot(models.ModelWithUUID, orm.SQLStorableMixin, models.SimpleViewMixin
     __tablename__ = "netboots"
 
     boot = properties.property(
-        types.Enum([b.value for b in nc.BootAlternative]),
-        default=nc.BootAlternative.network.value,
+        types.Enum([b.value for b in ua_pool.BootAlternative]),
+        default=ua_pool.BootAlternative.network.value,
     )
 
 
@@ -735,8 +573,8 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
     )
     mac = properties.property(types.AllowNone(types.Mac()), default=None)
     status = properties.property(
-        types.Enum([s.value for s in nc.PortStatus]),
-        default=nc.PortStatus.NEW.value,
+        types.Enum([s.value for s in ua_pool.PortStatus]),
+        default=ua_pool.PortStatus.NEW.value,
     )
     source = properties.property(
         types.AllowNone(types.String(max_length=128)),
@@ -744,7 +582,7 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
     )
 
     def set_active(self):
-        self.status = nc.PortStatus.ACTIVE.value
+        self.status = ua_pool.PortStatus.ACTIVE.value
         self.save()
 
     @staticmethod
@@ -774,7 +612,7 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
             subnet=boot_subnet.uuid,
             source=boot_subnet.name,
             mac=Port.generate_mac(),
-            status=nc.PortStatus.ACTIVE.value,
+            status=ua_pool.PortStatus.ACTIVE.value,
         )
 
 
@@ -789,7 +627,7 @@ class NodeWithoutPorts(Node):
     def get_vm_nodes(cls):
         return cls.objects.get_all(
             filters={
-                "node_type": dm_filters.EQ(nc.NodeType.VM.value),
+                "node_type": dm_filters.EQ(ua_pool.NodeType.VM.value),
             }
         )
 
