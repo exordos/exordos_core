@@ -1269,9 +1269,13 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 mac=port.mac,
                 rom=self._spec.iface_rom_file,
                 mtu=self._spec.iface_mtu,
-                # TODO(akremenetsky): This parameter should be taken from
-                # the network
-                iface_type=self._spec.network_type,
+                # The port a machine is created with is always the transient
+                # boot network (see pool.py's MetaMachine.dump_to_dp), which
+                # is always a plain libvirt virtual network - never the
+                # hypervisor's own (possibly bridge-type) main network. The
+                # real port replaces it later via attach_port(), which does
+                # use self._spec.network_type.
+                iface_type="network",
                 source=port.source,
             )
 
