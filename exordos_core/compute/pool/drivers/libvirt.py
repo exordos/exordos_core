@@ -1188,8 +1188,13 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             raise
 
         # Build interface XML
+        # Always type='network': `port.source` is the logical libvirt
+        # network name the orchestrator tracks (see create_machine), not
+        # necessarily a literal host bridge device - a bridge-type
+        # hypervisor still needs it resolved through a local libvirt
+        # network that forwards onto the real bridge.
         interface_xml = XMLLibvirtInstance.interface_xml(
-            iface_type=self._spec.network_type,
+            iface_type="network",
             mac=port.mac,
             rom=self._spec.iface_rom_file,
             mtu=self._spec.iface_mtu,
@@ -1288,12 +1293,11 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 mac=port.mac,
                 rom=self._spec.iface_rom_file,
                 mtu=self._spec.iface_mtu,
-                # The port a machine is created with is always the transient
-                # boot network (see pool.py's MetaMachine.dump_to_dp), which
-                # is always a plain libvirt virtual network - never the
-                # hypervisor's own (possibly bridge-type) main network. The
-                # real port replaces it later via attach_port(), which does
-                # use self._spec.network_type.
+                # Always type='network': `port.source` is a logical
+                # libvirt network name the orchestrator tracks (the boot
+                # network at initial creation, or the main network when
+                # recreate_machine() rebuilds the domain post-flash), not
+                # necessarily a literal host bridge device.
                 iface_type="network",
                 source=port.source,
             )
