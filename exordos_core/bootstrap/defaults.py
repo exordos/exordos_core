@@ -393,10 +393,17 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
 
     for hypervisor in stand.get("hypervisors", []):
         hypervisor["iface_mtu"] = 1500
+        # The stand spec describes the pool driver with a ``driver`` key, but
+        # ``MachinePool.driver_spec`` is a polymorphic kind selected by
+        # ``kind`` (e.g. LibvirtPoolDriverSpec.KIND == "libvirt"). Translate so
+        # restore_from_simple_view can resolve the kind.
+        driver_spec = dict(hypervisor)
+        if "driver" in driver_spec and "kind" not in driver_spec:
+            driver_spec["kind"] = driver_spec.pop("driver")
         pool_data = {
             "name": "hypervisor",
             "machine_type": "VM",
-            "driver_spec": hypervisor,
+            "driver_spec": driver_spec,
         }
         pool = compute_models.MachinePool.restore_from_simple_view(**pool_data)
 
