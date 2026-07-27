@@ -26,6 +26,11 @@ POLICY_SERVICE_NAME = "compute"
 
 NODE_SET_PROJECT = sys_uuid.UUID("11111113-bc70-4760-9fbf-9fcfe40da329")
 
+# Sentinel UUID for the transient boot-network port (see
+# Port.from_boot_network()) - a real UUID doesn't make sense for it since
+# it's replaced once the machine is flashed.
+BOOT_NETWORK_PORT_UUID = sys_uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 BootType = tp.Literal["hd", "network", "cdrom"]
 
