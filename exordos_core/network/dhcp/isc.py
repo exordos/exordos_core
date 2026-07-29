@@ -93,7 +93,7 @@ _host_template = """
 
 _subnet_template = """
 subnet {net_address} netmask {net_mask} {{
-	option domain-name-servers {dns_servers};
+	{dns_servers}
 	{routers}
 	{pool}
 	{hosts}
@@ -155,7 +155,16 @@ def dhcp_config(subnets: tp.Dict[models.Subnet, tp.List[models.Port]]) -> str:
         else:
             netboot = ""
 
-        dns_servers = ",".join(subnet.dns_servers)
+        # An option with no value is a syntax error, and dhcpd refuses the
+        # whole file over one: a subnet that names no resolver — a pool of
+        # addresses nothing is placed in, for instance — took the PXE server
+        # down for every network on the host, and the only sign of it was
+        # guests looping on "No configuration methods succeeded".
+        dns_servers = (
+            "option domain-name-servers %s;" % ",".join(subnet.dns_servers)
+            if subnet.dns_servers
+            else ""
+        )
 
         routes = [StaticRoute(**r) for r in subnet.routers]
 
