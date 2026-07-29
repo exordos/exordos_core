@@ -51,6 +51,8 @@ REPO_COLLECTION = "/v1/repo/repositories/"
 REPO_ELEMENT_COLLECTION = "/v1/repo/elements/"
 BOOTSTRAP_REPO_NAME = "bootstrap_repo_975aab1b"
 MAIN_SUBNET_UUID = sys_uuid.UUID("c910a7e1-61ae-4d56-bdd6-a59faa3cbda3")
+RAWSTOR_RELEASES_URL = "https://github.com/rawstor/librawstor/releases/download"
+RAWSTOR_PYTHON_VERSION = "3.12"
 
 
 cli_opts = [
@@ -612,6 +614,31 @@ def _ensure_repositories_from_spec(spec: dict[str, tp.Any]) -> None:
             LOG.exception("Failed to ensure repository %s (%s)", repo_name, repo_url)
 
 
+def _install_rawstor_packages(packages: tp.Sequence[str], version: str) -> None:
+    """Download and install the given rawstor .deb packages.
+
+    Runs as root inside the core VM during first-boot bootstrap, so no
+    sudo is needed here.
+    """
+    deb_dir = "/tmp/rawstor-packages"
+    os.makedirs(deb_dir, exist_ok=True)
+
+    deb_paths = []
+    for package in packages:
+        deb_name = f"{package}_{version}_amd64.deb"
+        url = f"{RAWSTOR_RELEASES_URL}/v{version}/{deb_name}"
+        deb_path = os.path.join(deb_dir, deb_name)
+        subprocess.run(["wget", url, "-P", deb_dir], check=True)
+        deb_paths.append(deb_path)
+
+    subprocess.run(["dpkg", "-i", *deb_paths], check=True)
+    subprocess.run(
+        ["apt-get", "install", "-f", "-y"],
+        env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+        check=True,
+    )
+
+
 def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
     """Idempotent element manifest installation."""
     migration_repo = repo_models.Repository.objects.get_one_or_none(
@@ -759,6 +786,11 @@ def main() -> None:
             )
             bootstrap_defaults.add_core_set(spec)
             _ensure_exordos_config(spec)
+            if spec.get("with_rawstor"):
+                _install_rawstor_packages(
+                    ["librawstor", f"python{RAWSTOR_PYTHON_VERSION}-rawstor"],
+                    spec["rawstor_version"],
+                )
             _install_element_from_bootstrap_repo("core", CONF.manifests_dir)
             _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
