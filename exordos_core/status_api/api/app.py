@@ -52,7 +52,6 @@ def get_openapi_engine():
             description=f"OpenAPI - Exordos Core {versions.API_VERSION_v1}",
         ),
         paths=openapi_structures.OpenApiPaths(),
-        components=openapi_structures.OpenApiComponents(),
     )
     return openapi_engine
 
