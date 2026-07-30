@@ -26,6 +26,7 @@ import subprocess
 import sys
 import time
 import typing as tp
+import urllib.request as urlrequest
 import uuid as sys_uuid
 
 from oslo_config import cfg
@@ -217,6 +218,40 @@ def _ensure_exordos_config(spec: dict[str, tp.Any]):
     os.system(f"sudo -u {USER} exordos autocomplete --shell bash")
 
 
+def _refuse_an_unreachable_repository(repository) -> None:
+    """Fail now if nothing answers at the repository's address.
+
+    The wait below is for a repository that is *becoming* active — its
+    inventory read, its elements saved. Nothing there distinguishes that
+    from one whose address answers nothing at all, so an unreachable
+    repository costs a full minute of polling and then a `RuntimeError`
+    that names the symptom rather than the cause.
+
+    Measured on a stand: a child realm was handed the address of a
+    repository on its parent's internal network, which its own overlay
+    drops by design. Sixty seconds went to asking again, and the bootstrap
+    it belonged to was retried whole afterwards.
+
+    Only what a driver can be asked for: a repository that publishes no
+    inventory path (the bootstrap driver reads a directory on this
+    machine) has no address to probe, and is left to the wait.
+    """
+    try:
+        inventory = repository.driver_spec.inventory_path
+    except Exception:  # pragma: no cover - a spec that cannot say has none
+        return
+    if not inventory:
+        return
+    try:
+        with urlrequest.urlopen(inventory, timeout=5) as response:
+            response.read(1)
+    except Exception as e:
+        raise RuntimeError(
+            "Repository %s is not reachable at %s: %s"
+            % (repository.name, inventory, e)
+        )
+
+
 def _ensure_repository(
     name: str,
     driver_spec: repo_models.NginxDriverSpec | repo_models.BootstrapDriverSpec,
@@ -259,6 +294,8 @@ def _ensure_repository(
         )
         repository.save()
         LOG.info("The repository is created: %s", name)
+
+    _refuse_an_unreachable_repository(repository)
 
     # Wait for repository to be active
     attempts = 120
