@@ -310,9 +310,7 @@ class UserController(
             # Anonymous registration (e.g. street sign-up) is not bound to
             # a client token; attribute it to the default client.
             return models.IamClient.objects.get_one_or_none(
-                filters={
-                    "uuid": ra_filters.EQ(sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID))
-                }
+                filters={"uuid": ra_filters.EQ(sys_uuid.UUID(str(common_c.ZERO_UUID)))}
             )
 
     def _is_auto_provision_enabled(self, user: models.User) -> bool:

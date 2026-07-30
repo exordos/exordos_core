@@ -45,7 +45,7 @@ class TestDnsApi:
         domain = {
             "uuid": str(sys_uuid.uuid4()),
             "name": DEF_DOMAIN,
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
         }
         client = user_api_client(auth_user_admin)
         url = client.build_collection_uri(["dns", "domains"])
@@ -134,7 +134,7 @@ class TestDnsApi:
 
         data = {
             "uuid": str(sys_uuid.uuid4()),
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
             "type": "A",
             "ttl": 0,
             "record": {"kind": "A", "name": "test", "address": "1.2.3.4"},
@@ -183,7 +183,7 @@ class TestDnsApi:
 
         data = {
             "uuid": str(sys_uuid.uuid4()),
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
             "type": "TXT",
             "ttl": 0,
             "record": {"kind": "TXT", "name": "test", "content": "a" * 5000},

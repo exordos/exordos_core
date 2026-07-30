@@ -7,6 +7,86 @@ api_version: "v1"
 resources:
 
   # IAM
+  # Bootstrap IAM resources. SQL seed inserts remain for initial API authentication.
+  # $core.iam.users:
+  #  admin:
+  #    uuid: "00000000-0000-0000-0000-000000000000"
+  #    username: "admin"
+  #    email: "admin@example.com"
+  #    password: "admin"
+  #    first_name: "Admin"
+  #    last_name: "User"
+  #    description: "System administrator"
+
+  #$core.iam.clients:
+  #  default:
+  #    uuid: "00000000-0000-0000-0000-000000000000"
+  #    name: "GenesisCoreClient"
+  #    description: "Exordos Core OIDC Client"
+  #   client_id: "GenesisCoreClientId"
+  #    secret: "GenesisCoreSecret"
+  #    signature_algorithm:
+  #      kind: HS256
+  #      secret_uuid: "00000000-0000-0000-0000-000000000001"
+  #      previous_secret_uuid: null
+
+  #$core.secret.passwords:
+  #  iam_client_hs256_secret:
+  #    uuid: "00000000-0000-0000-0000-000000000001"
+  #    name: "iam-client-hs256-secret"
+  #    description: "Default HS256 secret for IAM clients"
+  #    project_id: "$core.iam.projects.$admin:uuid"
+  #    constructor:
+  #      kind: plain
+  #    method: "MANUAL"
+  #    value: "secret"
+
+  $core.iam.organizations:
+    admin:
+      uuid: "36b790f9-1242-464b-8374-b3f9fc8842c0"
+      name: "admin"
+      description: "Admin Organization"
+    genesis_corporation:
+      uuid: "11111111-1111-1111-1111-111111111111"
+      name: "Genesis Corporation"
+      description: "The organization serves as the central platform for all services and elements developed by Genesis Corporation."
+
+  $core.iam.projects:
+    admin:
+      uuid: "00000000-0000-0000-0000-000000000000"
+      name: "admin"
+      description: "Admin Project"
+      organization: "$core.iam.organizations.$admin:uuid"
+    iam_core:
+      uuid: "c938820c-ab9c-56e4-919c-acd0e881996f"
+      name: "iam-core"
+      description: "Identity and Access Management Core Project"
+      organization: "$core.iam.organizations.$genesis_corporation:uuid"
+    compute_core:
+      uuid: "46f57877-f477-5916-bcd1-718d34cf3414"
+      name: "compute-core"
+      description: "Compute and Baremetal Core Project"
+      organization: "$core.iam.organizations.$genesis_corporation:uuid"
+    dns_core:
+      uuid: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+      name: "dns-core"
+      description: "Dns Core Project"
+      organization: "$core.iam.organizations.$genesis_corporation:uuid"
+
+  $core.iam.roles:
+    admin:
+      uuid: "0f3d47b1-1f06-4e2c-8ef0-84b6b6693693"
+      name: "admin"
+      description: "Admin Role"
+    newcomer:
+      uuid: "726f6c65-0000-0000-0000-000000000001"
+      name: "newcomer"
+      description: "Default role for newly registered users. Provides basic system access and onboarding capabilities."
+    owner:
+      uuid: "726f6c65-0000-0000-0000-000000000002"
+      name: "owner"
+      description: "Project ownership role. Grants full administrative privileges within a specific project. Automatically assigned during project creation process."
+
   $core.iam.permissions:
     ua_agent_create:
       name: "agent.ua.create"
@@ -14,7 +94,563 @@ resources:
     ua_agent_issue_key:
       name: "agent.ua.issue_key"
       description: "Issue or fetch a Universal Agent node encryption key"
+    allow_all:
+      uuid: "6883c42a-166d-4b22-a59b-9024abb10da1"
+      name: "*.*.*"
+      description: "Allow All"
+    compute_node_create:
+      uuid: "086988df-a84b-5c42-8f3a-1fd3d0dd3878"
+      name: "compute.node.create"
+      description: "Create own nodes"
+    compute_node_delete:
+      uuid: "31eff665-2e96-5202-873a-a2f3c812a281"
+      name: "compute.node.delete"
+      description: "Delete own nodes"
+    compute_node_get_private_key:
+      uuid: "b043aa0d-2535-5908-9198-42dc7faa1ba1"
+      name: "compute.node.get_private_key"
+      description: "Get node(s) agent private key"
+    compute_node_read:
+      uuid: "62dc01b3-f556-5ba3-bcd6-709c52d7418c"
+      name: "compute.node.read"
+      description: "List and read own nodes"
+    compute_node_update:
+      uuid: "44b6c954-867f-558b-9dba-b8c7baf9df38"
+      name: "compute.node.update"
+      description: "Update own nodes"
+    compute_node_set_create:
+      uuid: "28712ab0-4ce0-5b6e-b3bf-7546a1a405c6"
+      name: "compute.node_set.create"
+      description: "Create own node sets"
+    compute_node_set_delete:
+      uuid: "a111927f-efa6-501c-bb44-deab41cc5c40"
+      name: "compute.node_set.delete"
+      description: "Delete own node sets"
+    compute_node_set_get_private_key:
+      uuid: "35078e4a-7c08-5ecb-af28-ceb4c4e90f8f"
+      name: "compute.node_set.get_private_key"
+      description: "Get node(s) agent private key"
+    compute_node_set_read:
+      uuid: "93f0b1b3-6fd9-53b9-a58c-1678a3e63a42"
+      name: "compute.node_set.read"
+      description: "List and read own node sets"
+    compute_node_set_update:
+      uuid: "b140db60-8c0c-50ed-954a-c08f105e9a6c"
+      name: "compute.node_set.update"
+      description: "Update own node sets"
+    config_config_create:
+      uuid: "662d2b35-3f66-5c1d-9e67-3e37203de1f3"
+      name: "config.config.create"
+      description: "Create configs"
+    config_config_delete:
+      uuid: "36332a84-db81-51af-8b28-05ab0059eb48"
+      name: "config.config.delete"
+      description: "Delete configs"
+    config_config_read:
+      uuid: "ab09a33c-50bc-5102-b94f-d9b443cfeba0"
+      name: "config.config.read"
+      description: "List and read configs"
+    config_config_update:
+      uuid: "58a9b19d-00fe-5887-9896-28b5801025e7"
+      name: "config.config.update"
+      description: "Update configs"
+    dns_domain_create:
+      uuid: "57286e51-6554-5a13-bf43-08bebf9b37a3"
+      name: "dns.domain.create"
+      description: "Create own domains"
+    dns_domain_delete:
+      uuid: "e0896a81-15c0-5005-bfca-bcffa48867e8"
+      name: "dns.domain.delete"
+      description: "Delete own domains"
+    dns_domain_read:
+      uuid: "74d3d8e2-85fa-5a05-8caa-4a3036181f88"
+      name: "dns.domain.read"
+      description: "List and read own domains"
+    dns_domain_update:
+      uuid: "5d08d7dc-d455-59ae-aede-ae4db96b04e8"
+      name: "dns.domain.update"
+      description: "Update own domains"
+    dns_record_create:
+      uuid: "0e332cde-811c-5c91-a903-d2809acfe817"
+      name: "dns.record.create"
+      description: "Create own records"
+    dns_record_delete:
+      uuid: "3c937db2-917b-5353-82b6-66acabe83604"
+      name: "dns.record.delete"
+      description: "Delete own records"
+    dns_record_read:
+      uuid: "776e0696-32f6-50ba-b419-0bfc35c6dfe1"
+      name: "dns.record.read"
+      description: "List and read own records"
+    dns_record_update:
+      uuid: "63e98744-132e-5b67-8b83-8dc0cd7646b1"
+      name: "dns.record.update"
+      description: "Update own records"
+    em_service_create:
+      uuid: "1c0feca8-08cc-53cd-bc87-6a12c9d0ca81"
+      name: "em.service.create"
+      description: "Create services"
+    em_service_delete:
+      uuid: "3fb84d07-f56a-57be-99d6-ba890853e25d"
+      name: "em.service.delete"
+      description: "Delete services"
+    em_service_read:
+      uuid: "df63e401-39a3-5e54-833e-fb159b41e011"
+      name: "em.service.read"
+      description: "List and read services"
+    em_service_update:
+      uuid: "7fbfc393-ee82-5663-a025-961d5bff45ec"
+      name: "em.service.update"
+      description: "Update services"
+    em_element_create:
+      uuid: "f9d59d83-3c86-53f4-9ada-9753631d305f"
+      name: "em.element.create"
+      description: "Create elements"
+    em_element_delete:
+      uuid: "be1f2590-e0d4-5167-b153-41871a2a65f8"
+      name: "em.element.delete"
+      description: "Delete elements"
+    em_element_read:
+      uuid: "76f17af0-5b66-50b4-bf03-9f5997d87025"
+      name: "em.element.read"
+      description: "List and read elements"
+    em_element_update:
+      uuid: "6837803f-ab3c-5b11-93dc-e245e40a5929"
+      name: "em.element.update"
+      description: "Update elements"
+    iam_iam_client_create:
+      uuid: "29eeff9b-d316-590d-916a-766238fd669d"
+      name: "iam.iam_client.create"
+      description: "Allows creating IAM clients"
+    iam_iam_client_delete:
+      uuid: "9da293c0-1ba8-548a-a490-287d0266b507"
+      name: "iam.iam_client.delete"
+      description: "Allows deleting IAM clients"
+    iam_iam_client_read_all:
+      uuid: "4435daf0-0d20-5a00-adc8-90fd9a298147"
+      name: "iam.iam_client.read_all"
+      description: "Allows reading all IAM clients"
+    iam_iam_client_update:
+      uuid: "6d891b35-d0d9-5327-8b85-aa7a191b69c7"
+      name: "iam.iam_client.update"
+      description: "Allows updating IAM clients"
+    iam_organization_create:
+      uuid: "51330c56-c241-520f-8b83-234a0ab7ba1d"
+      name: "iam.organization.create"
+      description: "Allows creating new organizations"
+    iam_organization_delete:
+      uuid: "eea5828b-f702-5286-80b5-8afcc75cee71"
+      name: "iam.organization.delete"
+      description: "Allows deleting own organization"
+    iam_organization_delete_all:
+      uuid: "28da4c50-4487-5514-8131-dd898a7e0abd"
+      name: "iam.organization.delete_all"
+      description: "Allows deleting any organization"
+    iam_organization_read_all:
+      uuid: "c228157c-7923-59bf-8177-ab12c1e6f9c7"
+      name: "iam.organization.read_all"
+      description: "Allows viewing all organization details"
+    iam_organization_write_all:
+      uuid: "87c5691b-3f77-50eb-853b-abb0b4ff4a82"
+      name: "iam.organization.write_all"
+      description: "Allows modifying any organization`s data"
+    iam_permission_create:
+      uuid: "d9727cf5-6857-55dc-8030-d13693cc15df"
+      name: "iam.permission.create"
+      description: "Allows creating new permissions"
+    iam_permission_delete:
+      uuid: "03ca3f7f-9ef9-5169-a147-85fa0ff6a28d"
+      name: "iam.permission.delete"
+      description: "Allows deleting permissions"
+    iam_permission_read:
+      uuid: "98938bd5-b26b-5733-931b-471504c27c1c"
+      name: "iam.permission.read"
+      description: "Allows reading permissions"
+    iam_permission_update:
+      uuid: "9c540d33-dfd1-565c-82b4-3099ff277c6c"
+      name: "iam.permission.update"
+      description: "Allows updating existing permissions"
+    iam_permission_binding_create:
+      uuid: "9c60333d-ab15-504c-af52-095a752237e2"
+      name: "iam.permission_binding.create"
+      description: "Allows creating permission bindings"
+    iam_permission_binding_delete:
+      uuid: "81a119f2-3d32-5ab9-908b-f9b63a9cc8e6"
+      name: "iam.permission_binding.delete"
+      description: "Allows deleting permission bindings"
+    iam_permission_binding_read:
+      uuid: "e56faea9-9c58-5ab2-b508-6f467117c9f9"
+      name: "iam.permission_binding.read"
+      description: "Allows reading permission bindings"
+    iam_permission_binding_update:
+      uuid: "f4c9feb1-a5fc-5a92-b75b-eb47821514e2"
+      name: "iam.permission_binding.update"
+      description: "Allows updating permission bindings"
+    iam_project_delete_all:
+      uuid: "654071ab-12af-52c0-8391-ebbb582a0423"
+      name: "iam.project.delete_all"
+      description: "Allows deleting any project"
+    iam_project_list_all:
+      uuid: "eb8f0274-61eb-52ed-b054-18cd08b4ec99"
+      name: "iam.project.list_all"
+      description: "Allows listing projects in the system"
+    iam_project_read_all:
+      uuid: "626d4b57-3cc7-56d6-bf30-7c2ada04d6b0"
+      name: "iam.project.read_all"
+      description: "Allows reading all project details"
+    iam_project_write_all:
+      uuid: "c6c21054-6d17-5d67-b981-0ce0ef20e4e2"
+      name: "iam.project.write_all"
+      description: "Allows modifying any project`s data"
+    iam_role_create:
+      uuid: "5d3e126d-85be-5efb-9200-b7655db64fb4"
+      name: "iam.role.create"
+      description: "Allows creating new roles"
+    iam_role_delete:
+      uuid: "131ccaac-c6e5-5dfe-8ec2-4eeca913c938"
+      name: "iam.role.delete"
+      description: "Allows deleting roles"
+    iam_role_read:
+      uuid: "4737a4f2-dd9e-584c-9cb2-3927364481db"
+      name: "iam.role.read"
+      description: "Allows reading roles"
+    iam_role_write:
+      uuid: "b9d6d6ee-8310-58a2-a25f-ca972a7e009f"
+      name: "iam.role.write"
+      description: "Allows updating existing roles"
+    iam_role_binding_create:
+      uuid: "4c6a94fc-e18f-5d0e-8ada-daaf5d470dd2"
+      name: "iam.role_binding.create"
+      description: "Allows creating role bindings"
+    iam_role_binding_delete:
+      uuid: "d72c8adf-737b-5bbe-a026-61834dc309b6"
+      name: "iam.role_binding.delete"
+      description: "Allows deleting role bindings"
+    iam_role_binding_read:
+      uuid: "ff96b360-0f40-5aa4-9396-5de7aba31cb1"
+      name: "iam.role_binding.read"
+      description: "Allows reading role bindings"
+    iam_role_binding_update:
+      uuid: "91f74ad1-1359-5b5e-b4ff-62a580caa746"
+      name: "iam.role_binding.update"
+      description: "Allows updating role bindings"
+    iam_service_token_create:
+      uuid: "ef1dd949-29c5-514a-ad19-3502a343a9d8"
+      name: "iam.service_token.create"
+      description: "Create service account tokens"
+    iam_user_create:
+      uuid: "6e264a97-6640-59ae-8314-d55fdbf85b66"
+      name: "iam.user.create"
+      description: "Create IAM users"
+    iam_user_delete:
+      uuid: "bccfb7f4-9775-535b-8967-1d42c5d213f9"
+      name: "iam.user.delete"
+      description: "Allows users to delete their own account"
+    iam_user_delete_all:
+      uuid: "e25b27ac-85c1-50c9-b0a9-696048649c28"
+      name: "iam.user.delete_all"
+      description: "Allows deleting any user account"
+    iam_user_list:
+      uuid: "a8a7eea2-7514-53ac-a408-8b1235352310"
+      name: "iam.user.list"
+      description: "Allows listing users in the system"
+    iam_user_read_all:
+      uuid: "f64bbebd-c389-53b1-bed2-c725dc7dd1e8"
+      name: "iam.user.read_all"
+      description: "Allows reading all user profiles"
+    iam_user_write_all:
+      uuid: "880c3129-34ee-5fae-ab1f-6c8412333d49"
+      name: "iam.user.write_all"
+      description: "Allows modifying any user`s data"
+    network_lb_create:
+      uuid: "efabafc1-37ac-5845-a350-390fff7cdae4"
+      name: "network.lb.create"
+      description: "Create load balancers"
+    network_lb_delete:
+      uuid: "415c918d-d7d9-5d6e-aafc-15233c132608"
+      name: "network.lb.delete"
+      description: "Delete load balancers"
+    network_lb_read:
+      uuid: "bf77a2be-2d26-55a9-a239-c62e660f1ab4"
+      name: "network.lb.read"
+      description: "List and read load balancers"
+    network_lb_update:
+      uuid: "1f964856-a169-5403-8722-fa4f44385234"
+      name: "network.lb.update"
+      description: "Update load balancers"
+    network_lb_backendpool_create:
+      uuid: "1eec8be1-9e1d-5006-b909-907a635e5531"
+      name: "network.lb_backendpool.create"
+      description: "Create LB backend pools"
+    network_lb_backendpool_delete:
+      uuid: "572f3219-7fa0-5666-bf5e-3a59281685cb"
+      name: "network.lb_backendpool.delete"
+      description: "Delete LB backend pools"
+    network_lb_backendpool_read:
+      uuid: "b39f8ced-382d-59d7-8151-b980ac40eeea"
+      name: "network.lb_backendpool.read"
+      description: "List and read LB backend pools"
+    network_lb_backendpool_update:
+      uuid: "08c0f2ff-5aef-5652-859d-8d7125624059"
+      name: "network.lb_backendpool.update"
+      description: "Update LB backend pools"
+    network_lb_vhost_create:
+      uuid: "8a58a93d-486d-5ff4-b727-4e5726197264"
+      name: "network.lb_vhost.create"
+      description: "Create LB virtual hosts"
+    network_lb_vhost_delete:
+      uuid: "c2c96450-f23f-53f9-be44-64d50b519b93"
+      name: "network.lb_vhost.delete"
+      description: "Delete LB virtual hosts"
+    network_lb_vhost_read:
+      uuid: "bc87f63e-86de-5740-9c5c-7d19919eb992"
+      name: "network.lb_vhost.read"
+      description: "List and read LB virtual hosts"
+    network_lb_vhost_update:
+      uuid: "f9e9cf7c-c6c5-5f60-8eb7-ef4fc9153177"
+      name: "network.lb_vhost.update"
+      description: "Update LB virtual hosts"
+    network_lb_vhost_route_create:
+      uuid: "6f4186ea-6e43-504d-845a-16de6775f6d1"
+      name: "network.lb_vhost_route.create"
+      description: "Create LB vhost routes"
+    network_lb_vhost_route_delete:
+      uuid: "6b14f9a1-a64c-5ef8-b761-211d85069a20"
+      name: "network.lb_vhost_route.delete"
+      description: "Delete LB vhost routes"
+    network_lb_vhost_route_read:
+      uuid: "17860888-f181-5ed5-a2a1-38dbb6d4a598"
+      name: "network.lb_vhost_route.read"
+      description: "List and read LB vhost routes"
+    network_lb_vhost_route_update:
+      uuid: "f4e3fc03-383c-5569-a65e-5f04ea05e3c8"
+      name: "network.lb_vhost_route.update"
+      description: "Update LB vhost routes"
 
+  $core.iam.rolebinding:
+    admin_role:
+      uuid: "0e03425e-c46c-49c8-94f4-688a078d3178"
+      user: "00000000-0000-0000-0000-000000000000"
+      # user: "$core.iam.users.$admin:uuid"
+      role: "$core.iam.roles.$admin:uuid"
+
+  $core.iam.organizations_members:
+    admin_admin:
+      uuid: "50d31333-327e-54ff-97a8-6d24b7e44ca1"
+      organization: "$core.iam.organizations.$admin:uuid"
+      user: "00000000-0000-0000-0000-000000000000"
+      # user: "$core.iam.users.$admin:uuid"
+      role: "OWNER"
+    admin_genesis_corporation:
+      uuid: "a40b0ca8-3b15-59d9-842e-8f944a8a4ba0"
+      organization: "$core.iam.organizations.$genesis_corporation:uuid"
+      user: "00000000-0000-0000-0000-000000000000"
+      # user: "$core.iam.users.$admin:uuid"
+      role: "OWNER"
+
+  $core.iam.permissionbinding:
+    admin_allow_all:
+      uuid: "0fa34733-a6c3-4878-83a5-30c894d41b7c"
+      role: "$core.iam.roles.$admin:uuid"
+      permission: "$core.iam.permissions.$allow_all:uuid"
+    binding_newcomer_iam_user_delete:
+      role: "$core.iam.roles.$newcomer:uuid"
+      permission: "$core.iam.permissions.$iam_user_delete:uuid"
+      project_id: "c938820c-ab9c-56e4-919c-acd0e881996f"
+    binding_newcomer_iam_organization_create:
+      role: "$core.iam.roles.$newcomer:uuid"
+      permission: "$core.iam.permissions.$iam_organization_create:uuid"
+      project_id: "c938820c-ab9c-56e4-919c-acd0e881996f"
+    binding_newcomer_iam_organization_delete:
+      role: "$core.iam.roles.$newcomer:uuid"
+      permission: "$core.iam.permissions.$iam_organization_delete:uuid"
+      project_id: "c938820c-ab9c-56e4-919c-acd0e881996f"
+    binding_owner_compute_node_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_dns_domain_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_domain_read:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_domain_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_domain_create:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_domain_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_domain_update:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_domain_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_domain_delete:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_record_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_record_read:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_record_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_record_create:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_record_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_record_update:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_dns_record_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$dns_record_delete:uuid"
+      project_id: "29e2e6cc-0a74-5d07-997d-bbcb65b82c93"
+    binding_owner_compute_node_set_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_set_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_set_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_set_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_set_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_set_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_set_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_set_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_route_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_route_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_route_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_route_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_route_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_route_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_vhost_route_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_vhost_route_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_backendpool_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_backendpool_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_backendpool_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_backendpool_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_backendpool_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_backendpool_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_network_lb_backendpool_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$network_lb_backendpool_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_get_private_key:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_get_private_key:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_set_get_private_key:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_set_get_private_key:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_config_config_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$config_config_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_config_config_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$config_config_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_config_config_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$config_config_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_config_config_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$config_config_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_em_service_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$em_service_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_em_service_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$em_service_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_em_service_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$em_service_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_em_service_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$em_service_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_iam_service_token_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_service_token_create:uuid"
+    binding_owner_em_element_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$em_element_read:uuid"
+    binding_owner_iam_permission_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_permission_read:uuid"
+    binding_owner_iam_permission_binding_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_permission_binding_read:uuid"
+    binding_owner_iam_role_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_role_read:uuid"
+    binding_owner_iam_role_binding_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_role_binding_read:uuid"
   $core.vs.profiles:
     develop:
       name: "develop"

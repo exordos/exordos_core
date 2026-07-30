@@ -57,7 +57,7 @@ class NetBootController(controllers.BaseResourceController):
                 cores=0,
                 ram=0,
                 boot=nc.BootAlternative.network.value,
-                project_id=c.SERVICE_PROJECT_ID,
+                project_id=c.ZERO_UUID,
             )
 
         # Set netboot configuration

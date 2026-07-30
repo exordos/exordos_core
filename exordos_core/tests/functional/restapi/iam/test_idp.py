@@ -65,7 +65,7 @@ class TestIdp(base.BaseIamResourceTest):
             client.post(
                 url,
                 json=self._build_create_payload(
-                    iam_client_uuid=common_c.DEFAULT_CLIENT_UUID
+                    iam_client_uuid=str(common_c.ZERO_UUID)
                 ),
             )
 
@@ -169,7 +169,7 @@ class TestIdp(base.BaseIamResourceTest):
         )
         self._create_idp(
             admin_client,
-            iam_client_uuid=common_c.DEFAULT_CLIENT_UUID,
+            iam_client_uuid=str(common_c.ZERO_UUID),
         )
 
         url = self._collection_url(admin_client)
@@ -190,7 +190,7 @@ class TestIdp(base.BaseIamResourceTest):
         )
         idp = self._create_idp(
             admin_client,
-            iam_client_uuid=common_c.DEFAULT_CLIENT_UUID,
+            iam_client_uuid=str(common_c.ZERO_UUID),
         )
 
         client = user_api_client(auth_test1_user)
@@ -211,7 +211,7 @@ class TestIdp(base.BaseIamResourceTest):
         )
         idp = self._create_idp(
             admin_client,
-            iam_client_uuid=common_c.DEFAULT_CLIENT_UUID,
+            iam_client_uuid=str(common_c.ZERO_UUID),
         )
 
         url = self._resource_url(admin_client, idp["uuid"])
@@ -231,7 +231,7 @@ class TestIdp(base.BaseIamResourceTest):
         )
         idp = self._create_idp(
             admin_client,
-            iam_client_uuid=common_c.DEFAULT_CLIENT_UUID,
+            iam_client_uuid=str(common_c.ZERO_UUID),
         )
 
         client = user_api_client(auth_test1_user)
@@ -250,7 +250,7 @@ class TestIdp(base.BaseIamResourceTest):
         )
         idp = self._create_idp(
             admin_client,
-            iam_client_uuid=common_c.DEFAULT_CLIENT_UUID,
+            iam_client_uuid=str(common_c.ZERO_UUID),
         )
 
         url = self._resource_url(admin_client, idp["uuid"])

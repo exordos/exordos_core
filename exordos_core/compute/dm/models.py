@@ -771,8 +771,8 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
         return cls(
             # The UUID is not important for port in boot network.
             # It is just a placeholder.
-            uuid=sys_uuid.UUID("00000000-0000-0000-0000-000000000000"),
-            project_id=cc.SERVICE_PROJECT_ID,
+            uuid=cc.ZERO_UUID,
+            project_id=cc.ZERO_UUID,
             name="bootnet_port",
             subnet=boot_subnet.uuid,
             source=boot_subnet.name,

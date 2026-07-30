@@ -82,7 +82,7 @@ def bootstrap_repo_with_elements(manifests_dir, user_api):
     repo = repo_builder.Repository(
         name="test-driver-repo",
         description="Test driver repository",
-        project_id=c.SERVICE_PROJECT_ID,
+        project_id=c.ZERO_UUID,
         status="NEW",
         sync_mode=repo_models.SyncMode.COPY.value,
         driver_spec=repo_models.BootstrapDriverSpec(
@@ -225,7 +225,7 @@ class TestRepoEmBackendClientGet:
             uuid=sys_uuid.uuid4(),
             name="nonexistent",
             version="1.0.0",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             manifest={"name": "nonexistent", "version": "1.0.0", "resources": {}},
         )
         resource = _make_resource(installed)
@@ -320,7 +320,7 @@ class TestRepoEmBackendClientDelete:
             uuid=sys_uuid.uuid4(),
             name="nonexistent",
             version="1.0.0",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             manifest={"name": "nonexistent", "version": "1.0.0", "resources": {}},
         )
         resource = _make_resource(installed)

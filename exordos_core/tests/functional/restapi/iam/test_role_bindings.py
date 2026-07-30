@@ -17,6 +17,7 @@
 from bazooka import exceptions as bazooka_exc
 import pytest
 
+from exordos_core.common import constants as c
 from exordos_core.tests.functional.restapi.iam import base
 from exordos_core.user_api.iam import constants as iam_c
 
@@ -97,17 +98,15 @@ class TestRoleBindings(base.BaseIamResourceTest):
     def test_get_role_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 
-        permission = client.get_role_binding(
-            uuid="00000000-0000-0000-0000-000000000000"
-        )
+        permission = client.get_role_binding(uuid=c.NEW_ADMIN_ROLE_BINDING_UUID)
 
-        assert permission["uuid"] == "00000000-0000-0000-0000-000000000000"
+        assert permission["uuid"] == c.NEW_ADMIN_ROLE_BINDING_UUID
 
     def test_get_role_binding_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
-            client.get_role_binding(uuid="00000000-0000-0000-0000-000000000000")
+            client.get_role_binding(uuid=c.NEW_ADMIN_ROLE_BINDING_UUID)
 
     def test_update_role_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(
@@ -186,14 +185,28 @@ class TestRoleBindings(base.BaseIamResourceTest):
         client.delete_user(user1["uuid"])
 
     def test_delete_role_binding_by_admin(self, user_api_client, auth_user_admin):
-        client = user_api_client(auth_user_admin)
+        client = user_api_client(
+            auth_user_admin,
+            permissions=[
+                iam_c.PERMISSION_USER_CREATE,
+            ],
+        )
+        user = client.create_user(username="test_user", password="12345678")
+        role = client.create_role(name="test_role_to_delete")
+        role_binding = client.create_role_binding(
+            user_uuid=user["uuid"],
+            role_uuid=role["uuid"],
+        )
 
-        result = client.delete_role_binding(uuid="00000000-0000-0000-0000-000000000000")
+        result = client.delete_role_binding(uuid=role_binding["uuid"])
 
         assert result is None
+
+        client.delete_role(role["uuid"])
+        client.delete_user(user["uuid"])
 
     def test_delete_role_binding_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
-            client.delete_role_binding(uuid="00000000-0000-0000-0000-000000000000")
+            client.delete_role_binding(uuid=c.NEW_ADMIN_ROLE_BINDING_UUID)

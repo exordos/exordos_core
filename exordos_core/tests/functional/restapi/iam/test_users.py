@@ -452,9 +452,7 @@ class TestUsers(base.BaseIamResourceTest):
         user = client.create_user(username="reg_client_user", password="testtest")
 
         user_obj = iam_models.User.objects.get_one(filters={"uuid": user["uuid"]})
-        assert user_obj.registration_client == sys_uuid.UUID(
-            common_c.DEFAULT_CLIENT_UUID
-        )
+        assert user_obj.registration_client == sys_uuid.UUID(str(common_c.ZERO_UUID))
 
     def test_create_user_rejects_caller_supplied_registration_client(
         self, user_api_client, auth_user_admin
@@ -486,7 +484,7 @@ class TestUsers(base.BaseIamResourceTest):
 
     def _set_default_client_auto_provision(self, enabled):
         iam_client = iam_models.IamClient.objects.get_one(
-            filters={"uuid": sys_uuid.UUID(common_c.DEFAULT_CLIENT_UUID)}
+            filters={"uuid": sys_uuid.UUID(str(common_c.ZERO_UUID))}
         )
         iam_client.registration_auto_provision = enabled
         iam_client.save()
@@ -683,7 +681,7 @@ class TestUsers(base.BaseIamResourceTest):
             "username": None,
             "password": auth_test1_user.password,
             "grant_type": grant_type,
-            "client_uuid": common_c.DEFAULT_CLIENT_UUID,
+            "client_uuid": str(common_c.ZERO_UUID),
         }
         params[auth_param] = (getattr(auth_test1_user, auth_param, None),)
         auth = iam_clients.GenesisCoreAuth(**params)
@@ -718,7 +716,7 @@ class TestUsers(base.BaseIamResourceTest):
             "password": auth_test1_user.password,
             "grant_type": iam_c.GRANT_TYPE_PASSWORD_LOGIN,
             "login": getattr(auth_test1_user, login, "doesnt_exist"),
-            "client_uuid": common_c.DEFAULT_CLIENT_UUID,
+            "client_uuid": str(common_c.ZERO_UUID),
         }
         if password is not None:
             params["password"] = password
@@ -757,7 +755,7 @@ class TestUsers(base.BaseIamResourceTest):
             "username": None,
             "password": auth_test1_user.password,
             "grant_type": grant_type,
-            "client_uuid": common_c.DEFAULT_CLIENT_UUID,
+            "client_uuid": str(common_c.ZERO_UUID),
         }
         params[field_name] = login
 
@@ -811,7 +809,7 @@ class TestUsers(base.BaseIamResourceTest):
 
         # Get IAM client model
         iam_client = iam_models.IamClient.objects.get_one(
-            filters={"uuid": common_c.DEFAULT_CLIENT_UUID}
+            filters={"uuid": str(common_c.ZERO_UUID)}
         )
 
         # Try to get token with password - should fail
@@ -893,7 +891,7 @@ class TestUsers(base.BaseIamResourceTest):
         }
 
         token_response = client.post(
-            url=f"{client.endpoint}/iam/clients/{common_c.DEFAULT_CLIENT_UUID}/actions/get_token/invoke",
+            url=f"{client.endpoint}/iam/clients/{str(common_c.ZERO_UUID)}/actions/get_token/invoke",
             data=token_params,
         ).json()
 
@@ -1021,7 +1019,7 @@ class TestUsers(base.BaseIamResourceTest):
         }
 
         regular_token_response = regular_user_client.post(
-            url=f"{regular_user_client.endpoint}iam/clients/{common_c.DEFAULT_CLIENT_UUID}/actions/get_token/invoke",
+            url=f"{regular_user_client.endpoint}iam/clients/{str(common_c.ZERO_UUID)}/actions/get_token/invoke",
             data=regular_token_params,
         ).json()
 
@@ -1046,7 +1044,7 @@ class TestUsers(base.BaseIamResourceTest):
         }
 
         service_token_response = regular_user_client.post(
-            url=f"{regular_user_client.endpoint}iam/clients/{common_c.DEFAULT_CLIENT_UUID}/actions/get_token/invoke",
+            url=f"{regular_user_client.endpoint}iam/clients/{str(common_c.ZERO_UUID)}/actions/get_token/invoke",
             data=service_token_params,
         ).json()
 
@@ -1154,7 +1152,7 @@ class TestUsers(base.BaseIamResourceTest):
         }
 
         regular_token_response = regular_user_client.post(
-            url=f"{regular_user_client.endpoint}iam/clients/{common_c.DEFAULT_CLIENT_UUID}/actions/get_token/invoke",
+            url=f"{regular_user_client.endpoint}iam/clients/{str(common_c.ZERO_UUID)}/actions/get_token/invoke",
             data=regular_token_params,
         ).json()
 
@@ -1175,7 +1173,7 @@ class TestUsers(base.BaseIamResourceTest):
         # Should get 403 Forbidden due to missing permission
         with pytest.raises(bazooka_exc.ForbiddenError) as exc_info:
             regular_user_client.post(
-                url=f"{regular_user_client.endpoint}iam/clients/{common_c.DEFAULT_CLIENT_UUID}/actions/get_token/invoke",
+                url=f"{regular_user_client.endpoint}iam/clients/{str(common_c.ZERO_UUID)}/actions/get_token/invoke",
                 data=service_token_params,
             ).json()
 
@@ -1268,7 +1266,7 @@ class TestUsers(base.BaseIamResourceTest):
 
         # Get client credentials
         default_client = iam_models.IamClient.objects.get_one(
-            filters={"uuid": common_c.DEFAULT_CLIENT_UUID}
+            filters={"uuid": str(common_c.ZERO_UUID)}
         )
         default_client_id = str(default_client.uuid)
         default_client_secret = default_client.secret
@@ -1288,7 +1286,7 @@ class TestUsers(base.BaseIamResourceTest):
         # The user cannot authenticate, so we get 401 before scope validation
         with pytest.raises(Exception) as exc_info:
             regular_user_client.post(
-                url=f"{regular_user_client.endpoint}iam/clients/{common_c.DEFAULT_CLIENT_UUID}/actions/get_token/invoke",
+                url=f"{regular_user_client.endpoint}iam/clients/{str(common_c.ZERO_UUID)}/actions/get_token/invoke",
                 data=service_token_params,
             ).json()
 

@@ -78,7 +78,7 @@ class TestNetworkService:
             disk_spec=sdk_models.RootDiskSpec(
                 image="ubuntu_24.04",
             ),
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             **kwargs,
         )
         node.insert()
@@ -88,14 +88,14 @@ class TestNetworkService:
         network = models.Network(
             name="foo-network",
             driver_spec={"driver": "dummy"},
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         network.insert()
 
         subnet = models.Subnet(
             network=network.uuid,
             cidr=netaddr.IPNetwork("10.0.0.0/24"),
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             **kwargs,
         )
         subnet.insert()

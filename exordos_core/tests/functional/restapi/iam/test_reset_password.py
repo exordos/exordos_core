@@ -18,6 +18,7 @@ from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
 import pytest
 
+from exordos_core.common import constants as c
 from exordos_core.tests.functional.restapi.iam import base
 from exordos_core.user_api.iam import constants as iam_c
 from exordos_core.user_api.iam.dm import models as iam_models
@@ -146,7 +147,7 @@ class TestUserResetPassword(base.BaseIamResourceTest):
                 self._reset_password_url(admin_client, user["uuid"]),
                 json={
                     "new_password": "NewPassword4",
-                    "code": "00000000-0000-0000-0000-000000000000",
+                    "code": str(c.ZERO_UUID),
                 },
             )
 
