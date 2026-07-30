@@ -701,25 +701,40 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
         {"func": bootstrap_defaults.set_iam_default_client_secret_var, "args": [spec]},
     ]
 
-    # Perform all tasks to set default values until timeout
+    # The tasks are independent of one another — one activates a profile,
+    # the rest write down values — so a task that is still waiting must not
+    # hold the ones behind it. Taken strictly in order, the first of them
+    # did: `activate_profile` waits for rows an asynchronous service seeds,
+    # and while it waited the other thirteen had not run at all. The budget
+    # then expired on its account, and the whole bootstrap was retried from
+    # the top — twice, on a stand, before the profiles appeared.
+    #
+    # So: sweep the list, keep what is not done yet, and go round again.
+    # The deadline bounds *silence* rather than duration — as long as
+    # something completes, the rest are still worth waiting for; when a
+    # whole pass moves nothing, the wait is no longer waiting for anything.
     timeout_at = time.monotonic() + 120
     while tasks:
-        task = tasks[0]
+        pending = []
+        for task in tasks:
+            try:
+                completed = task["func"](*task["args"])
+            except Exception:
+                completed = False
+                LOG.exception(f"Unable to complete the task {task['func'].__name__}")
+            if not completed:
+                pending.append(task)
 
-        # Perform task
-        try:
-            completed = task["func"](*task["args"])
-        except Exception:
-            completed = False
-            LOG.exception(f"Unable to complete the task {task['func'].__name__}")
-
-        if completed:
-            tasks.pop(0)
-            continue
-
-        if time.monotonic() > timeout_at:
-            raise TimeoutError(f"Timeout reached to perform {task['func'].__name__}")
-        time.sleep(0.5)
+        if len(pending) < len(tasks):
+            timeout_at = time.monotonic() + 120
+        elif time.monotonic() > timeout_at:
+            raise TimeoutError(
+                "Timeout reached to perform %s"
+                % ", ".join(task["func"].__name__ for task in pending)
+            )
+        tasks = pending
+        if tasks:
+            time.sleep(0.5)
 
 
 def main() -> None:
