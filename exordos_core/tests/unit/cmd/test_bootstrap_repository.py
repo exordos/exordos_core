@@ -11,9 +11,7 @@ from exordos_core.cmd import bootstrap
 
 
 def _repository(inventory):
-    return mock.MagicMock(
-        name="repo", **{"driver_spec.inventory_path": inventory}
-    )
+    return mock.MagicMock(name="repo", **{"driver_spec.inventory_path": inventory})
 
 
 def test_a_repository_whose_address_answers_is_left_to_the_wait():
