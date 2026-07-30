@@ -138,6 +138,7 @@ class DNSCoreCertificateMethod(AbstractCertificateMethod):
 
 class Certificate(
     Secret,
+    ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
     ua_models.TargetResourceSQLStorableMixin,
