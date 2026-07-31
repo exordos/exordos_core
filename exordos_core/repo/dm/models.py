@@ -458,6 +458,10 @@ class RepoElement(
     )
 
     @property
+    def is_stable(self) -> bool:
+        return is_stable_version(self.version)
+
+    @property
     def dependencies(self) -> dict[str, dict[str, str]]:
         """Compute dependencies from manifest requirements.
 
