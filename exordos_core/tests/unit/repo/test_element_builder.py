@@ -554,7 +554,14 @@ class TestInstalledManifest:
         )
         fields = manifest.get_resource_target_fields()
         assert fields == frozenset(
-            ("uuid", "name", "description", "version", "manifest", "project_id")
+            (
+                "uuid",
+                "name",
+                "description",
+                "version",
+                "manifest",
+                "project_id",
+            )
         )
 
 

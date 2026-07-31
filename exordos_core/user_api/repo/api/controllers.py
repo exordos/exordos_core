@@ -15,12 +15,16 @@
 #    under the License.
 
 from gcl_iam.api import controllers as iam_controllers
+from packaging.version import InvalidVersion
+from packaging.version import parse as parse_version
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
+from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.dm import models
 
 
@@ -82,6 +86,35 @@ class RepositoryController(
         return resource
 
 
+class LatestStableElementsController(controllers.BaseResourceControllerPaginated):
+    __resource__ = resources.ResourceByRAModel(
+        models.RepoElement,
+        convert_underscore=False,
+        hidden_fields=["installation_state"],
+    )
+
+    def filter(self, filters, **kwargs):
+        elements_by_name = {}
+        elements = models.RepoElement.objects.get_all(
+            filters={
+                "latest": dm_filters.EQ(True),
+                "stable": dm_filters.EQ(True),
+            }
+        )
+        for element in elements:
+            try:
+                version = parse_version(element.version)
+            except InvalidVersion:
+                continue
+
+            current = elements_by_name.get(element.name)
+            candidate = (element.repository.priority, version, element)
+            if current is None or candidate[:2] > current[:2]:
+                elements_by_name[element.name] = candidate
+
+        return [candidate[2] for candidate in elements_by_name.values()]
+
+
 class RepoElementController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
@@ -104,7 +137,9 @@ class RepoElementController(
     )
 
     def get(self, uuid, **kwargs):
-        repo_element = super().get(uuid=uuid, **kwargs)
+        repo_element = controllers.BaseResourceControllerPaginated.get(
+            self, uuid=uuid, **kwargs
+        )
 
         # Actualize element if manifest is empty (lazy repository)
         if not repo_element.manifest:
@@ -117,8 +152,25 @@ class RepoElementController(
         if repo_element.installation_state == (
             models.RepoElementInstallationState.INSTALLED.value
         ):
-            raise ValueError("Cannot delete installed element")
+            raise common_exc.ValidateException(err="Cannot delete installed element")
         return super().delete(uuid)
+
+    @actions.get
+    def stable_versions(self, resource: models.RepoElement):
+        self._enforce("read")
+        elements = models.RepoElement.objects.get_all(
+            filters={
+                "name": dm_filters.EQ(resource.name),
+                "stable": dm_filters.EQ(True),
+                "uuid": dm_filters.NE(resource.uuid),
+            },
+            order_by={"version": "desc"},
+        )
+        return sorted(
+            elements,
+            key=lambda element: parse_version(element.version),
+            reverse=True,
+        )
 
     @actions.post
     def install(self, resource: models.RepoElement):

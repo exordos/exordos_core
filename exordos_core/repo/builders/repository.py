@@ -21,6 +21,7 @@ import typing as tp
 from gcl_looper.services.oslo import base as oslo_base
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.services import builder as sdk_builder
+from packaging import version as packaging_version
 
 from exordos_core.repo.dm import models
 
@@ -92,6 +93,7 @@ class RepoProxyBuilderService(
                 instance.actualize_element(element)
             else:
                 element.save()
+            self._set_latest_for_new_element(instance, element)
 
         LOG.info(
             "Saved %d elements to the database for repository %s",
@@ -132,6 +134,7 @@ class RepoProxyBuilderService(
                 instance.actualize_element(element)
             else:
                 element.save()
+            self._set_latest_for_new_element(instance, element)
             new_elements_count += 1
 
         if new_elements_count:
@@ -160,7 +163,10 @@ class RepoProxyBuilderService(
                 )
                 continue
 
+            was_latest_stable = element.stable and element.latest
             element.delete()
+            if was_latest_stable:
+                self._set_latest_for_outdated_element(instance, element.name)
             deleted_elements_count += 1
 
         if deleted_elements_count:
@@ -177,6 +183,51 @@ class RepoProxyBuilderService(
                 seconds=instance.refresh_rate
             )
             instance.update()
+
+    def _set_latest_for_new_element(
+        self, instance: models.Repository, element: models.RepoElement
+    ) -> None:
+        """Set `latest` when a new stable element is the greatest version."""
+        if not element.stable:
+            return
+
+        elements = models.RepoElement.objects.get_all(
+            filters={"repository": instance.uuid, "name": element.name},
+        )
+        latest_element = max(
+            (candidate for candidate in elements if candidate.stable),
+            key=lambda candidate: packaging_version.parse(candidate.version),
+        )
+        if latest_element.uuid != element.uuid:
+            return
+
+        for candidate in elements:
+            if candidate.uuid != element.uuid and candidate.latest:
+                candidate.latest = False
+                candidate.update()
+
+        if not element.latest:
+            element.latest = True
+            element.update()
+
+    def _set_latest_for_outdated_element(
+        self, instance: models.Repository, name: str
+    ) -> None:
+        """Promote the greatest remaining stable version after deleting latest."""
+        elements = models.RepoElement.objects.get_all(
+            filters={"repository": instance.uuid, "name": name},
+        )
+        stable_elements = [element for element in elements if element.stable]
+        if not stable_elements:
+            return
+
+        latest_element = max(
+            stable_elements,
+            key=lambda element: packaging_version.parse(element.version),
+        )
+        if not latest_element.latest:
+            latest_element.latest = True
+            latest_element.update()
 
     def post_update_instance_resource(
         self,
