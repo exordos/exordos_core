@@ -543,9 +543,9 @@ components:
           readOnly: true
           type: string
         realm_id:
-          example: ^[0-9a-f]{6,32}$
+          example: ^[a-z0-9]{1,63}$
           nullable: true
-          pattern: ^[0-9a-f]{6,32}$
+          pattern: ^[a-z0-9]{1,63}$
           readOnly: true
           type: string
         sync_only:
