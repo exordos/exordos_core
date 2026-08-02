@@ -63,7 +63,7 @@ class Domain(
     sync_to_ecosystem = properties.property(types.Boolean(), default=False)
     sync_only = properties.property(types.Boolean(), default=False)
     realm_id = properties.property(
-        types.AllowNone(types.BaseCompiledRegExpType(re.compile(r"^[0-9a-f]{6,32}$"))),
+        types.AllowNone(types.BaseCompiledRegExpType(re.compile(r"^[a-z0-9]{1,63}$"))),
         default=None,
     )
     # Used only for PDNS
