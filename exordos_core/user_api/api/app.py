@@ -24,6 +24,7 @@ from restalchemy.openapi import structures as openapi_structures
 
 from exordos_core import version
 from exordos_core.common import contexts as common_contexts
+from exordos_core.common.api.middlewares import cors as cors_mw
 from exordos_core.common.api.middlewares import errors as errors_mw
 from exordos_core.user_api.api import middlewares as user_api_mw
 from exordos_core.user_api.api import routes as app_routes
@@ -60,13 +61,17 @@ def get_openapi_engine():
     return openapi_engine
 
 
-def build_wsgi_application(context_storage, iam_engine_driver):
+def build_wsgi_application(context_storage, iam_engine_driver, allowed_origins=None):
     return middlewares.attach_middlewares(
         applications.OpenApiApplication(
             route_class=get_api_application(),
             openapi_engine=get_openapi_engine(),
         ),
         [
+            middlewares.configure_middleware(
+                cors_mw.CORSMiddleware,
+                allowed_origins=allowed_origins or [],
+            ),
             user_api_mw.SecurityRulesMiddleware,
             middlewares.configure_middleware(
                 iam_mw.GenesisCoreAuthMiddleware,

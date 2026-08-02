@@ -29,7 +29,6 @@ from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic
 from restalchemy.storage.sql import orm
 
-from exordos_core.common import exceptions as common_exc
 from exordos_core.common import utils
 from exordos_core.repo import constants as rc
 
@@ -222,10 +221,10 @@ class Repository(
         instantiate them with the current repository. If a driver is
         successfully loaded, it is stored in a cache for faster access.
 
-        If no driver is found, a ValidateException is raised.
+        If no driver is found, a ValueError is raised.
 
         :return: The loaded driver instance
-        :raises ValidateException: If no driver is found
+        :raises ValueError: If no driver is found
         """
         driver_key = str(self.driver_spec)
 
@@ -243,9 +242,7 @@ class Repository(
                 # Just try another driver
                 pass
 
-        raise common_exc.ValidateException(
-            err=f"Driver for spec '{self.driver_spec}' not found"
-        )
+        raise ValueError(f"Driver for spec '{self.driver_spec}' not found")
 
     def iter_elements_in_inventory(
         self, inventory: dict | None = None
@@ -326,15 +323,13 @@ class Repository(
             Created RepoElement instance
 
         Raises:
-            ValidateException: If upload is not supported by driver
+            ValueError: If upload is not supported by driver
         """
         driver = self.load_driver()
 
         # Check if driver supports upload
         if not driver.can_upload_element(element_name, element_version):
-            raise common_exc.ValidateException(
-                err="Upload is not supported by this repository driver"
-            )
+            raise ValueError("Upload is not supported by this repository driver")
 
         # Create element
         element = RepoElement(
@@ -415,7 +410,6 @@ class RepoElement(
         ra_types.Boolean(),
         default=False,
     )
-
     latest = properties.property(
         ra_types.Boolean(),
         default=False,
@@ -451,10 +445,6 @@ class RepoElement(
         ra_types.AllowNone(ra_types.UUID()),
         default=None,
     )
-
-    @property
-    def is_stable(self) -> bool:
-        return is_stable_version(self.version)
 
     @property
     def dependencies(self) -> dict[str, dict[str, str]]:
@@ -504,7 +494,7 @@ class RepoElement(
 
     def install(self) -> "RepoElement":
         if self.installation_state != RepoElementInstallationState.UNINSTALLED:
-            raise common_exc.ValidateException(err="Element must be uninstalled")
+            raise ValueError("Element must be uninstalled")
 
         # Check there is no installed element with the same name
         existing = RepoElement.objects.get_all(
@@ -516,9 +506,7 @@ class RepoElement(
             }
         )
         if existing:
-            raise common_exc.ValidateException(
-                err="Element with the same name is already installed"
-            )
+            raise ValueError("Element with the same name is already installed")
 
         self.installation_state = RepoElementInstallationState.INSTALLED.value
         self.update()
@@ -526,7 +514,7 @@ class RepoElement(
 
     def uninstall(self) -> "RepoElement":
         if self.installation_state != RepoElementInstallationState.INSTALLED:
-            raise common_exc.ValidateException(err="Element must be installed")
+            raise ValueError("Element must be installed")
 
         # Check that no other elements depend on this one. The dependency
         # bindings table records transitive dependencies, so if any record
@@ -536,8 +524,8 @@ class RepoElement(
             filters={"depends_on": ra_filters.EQ(self.uuid)}
         )
         if dependents:
-            raise common_exc.ValidateException(
-                err="Element cannot be uninstalled: other elements depend on it"
+            raise ValueError(
+                "Element cannot be uninstalled: other elements depend on it"
             )
 
         self.installation_state = RepoElementInstallationState.UNINSTALLED.value
@@ -556,9 +544,7 @@ class RepoElement(
 
     def upgrade(self, target: str) -> "RepoElement":
         if self.element is None:
-            raise common_exc.ValidateException(
-                err="Element must be installed to upgrade"
-            )
+            raise ValueError("Element must be installed to upgrade")
 
         target_element = RepoElement.objects.get_one(
             filters={
@@ -570,7 +556,7 @@ class RepoElement(
             target_element.installation_state
             != RepoElementInstallationState.UNINSTALLED
         ):
-            raise common_exc.ValidateException(err="Target element must be uninstalled")
+            raise ValueError("Target element must be uninstalled")
         runtime_element = self.element
         self.installation_state = RepoElementInstallationState.UNINSTALLED.value
         self.update()
@@ -587,20 +573,20 @@ class RepoElement(
             manifest: New manifest dict
 
         Raises:
-            ValidateException: If manifest name or version does not match element name/version
+            ValueError: If manifest name or version does not match element name/version
         """
         # Validate that name and version in manifest match the element
         manifest_name = manifest.get("name")
         manifest_version = manifest.get("version")
 
         if manifest_name != self.name:
-            raise common_exc.ValidateException(
-                err=f"Manifest name '{manifest_name}' does not match element name '{self.name}'"
+            raise ValueError(
+                f"Manifest name '{manifest_name}' does not match element name '{self.name}'"
             )
 
         if manifest_version != self.version:
-            raise common_exc.ValidateException(
-                err=f"Manifest version '{manifest_version}' does not match element version '{self.version}'"
+            raise ValueError(
+                f"Manifest version '{manifest_version}' does not match element version '{self.version}'"
             )
 
         self.manifest = manifest
