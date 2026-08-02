@@ -18,6 +18,7 @@ import uuid as sys_uuid
 
 import netaddr
 import pytest
+from restalchemy.common import exceptions as ra_exc
 
 from exordos_core.common import constants as c
 from exordos_core.user_api.dns.dm import models
@@ -87,6 +88,22 @@ def test_realm_scope_applies_to_supported_owner_names(record):
 def test_realm_scope_rejects_names_that_cannot_stay_flat(name):
     with pytest.raises(models.RealmRecordNameNotSupported):
         _a_record(_domain(), name=name)
+
+
+@pytest.mark.parametrize("realm_id", ["example", "a", "b" * 53])
+def test_realm_id_is_any_label_the_ecosystem_hands_out(realm_id):
+    """A realm may be ordered on a label of its own, so the label is one of
+    letters and digits -- not only a hex prefix of the realm uuid. What must
+    fit in 63 characters is the materialized label, owner name included."""
+    record = _a_record(_domain(realm_id=realm_id))
+
+    assert record.full_name == f"workspace-{realm_id}.exordos.io"
+
+
+@pytest.mark.parametrize("realm_id", ["Example", "my-realm", "b" * 64])
+def test_realm_id_outside_the_ecosystem_contract_is_refused(realm_id):
+    with pytest.raises(ra_exc.TypeError):
+        _domain(realm_id=realm_id)
 
 
 def test_regular_domain_naming_is_unchanged():

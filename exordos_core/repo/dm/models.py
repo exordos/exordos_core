@@ -429,7 +429,6 @@ class RepoElement(
         ra_types.Boolean(),
         default=False,
     )
-
     latest = properties.property(
         ra_types.Boolean(),
         default=False,
@@ -465,10 +464,6 @@ class RepoElement(
         ra_types.AllowNone(ra_types.UUID()),
         default=None,
     )
-
-    @property
-    def is_stable(self) -> bool:
-        return is_stable_version(self.version)
 
     @property
     def dependencies(self) -> dict[str, dict[str, str]]:
