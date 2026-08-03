@@ -52,7 +52,7 @@ REPO_ELEMENT_COLLECTION = "/v1/repo/elements/"
 BOOTSTRAP_REPO_NAME = "bootstrap_repo_975aab1b"
 MAIN_SUBNET_UUID = sys_uuid.UUID("c910a7e1-61ae-4d56-bdd6-a59faa3cbda3")
 RAWSTOR_RELEASES_URL = "https://github.com/rawstor/librawstor/releases/download"
-RAWSTOR_PYTHON_VERSION = "3.12"
+RAWSTOR_PYTHON_VERSION = "3.14"
 
 
 cli_opts = [
