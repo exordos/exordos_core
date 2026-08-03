@@ -30,6 +30,14 @@ class BorderAgent(
     """Border capability applied on the core node's agent (step 0).
 
     Carries the NAT / forward rules the DP agent renders into nftables.
+
+    There was a `routes` here too, sent empty by everything that built one
+    and read by nothing — it would have been the hook for reaching a realm
+    across a router, which is not the way this went: the hypervisors share
+    a segment with the load balancer, so the address is attracted by ARP
+    and there is no route for anyone to hold. The data plane dropped it
+    first, and what a field costs when only one side drops it is the whole
+    capability. If the routed variant arrives, this comes back with it.
     """
 
     status = properties.property(
@@ -38,7 +46,6 @@ class BorderAgent(
     )
     snat_rules = properties.property(types.List(), default=lambda: [])
     forwards = properties.property(types.List(), default=lambda: [])
-    routes = properties.property(types.List(), default=lambda: [])
 
     @classmethod
     def get_resource_kind(cls) -> str:
@@ -50,7 +57,6 @@ class BorderAgent(
                 "uuid",
                 "snat_rules",
                 "forwards",
-                "routes",
             )
         )
 
@@ -120,7 +126,3 @@ class PaasBorder(models.Border, ua_models.InstanceWithDerivativesMixin):
 
     def get_forwards(self):
         return self.forwards or []
-
-    def get_routes(self):
-        # Reserved for explicit static routes the border must install.
-        return []

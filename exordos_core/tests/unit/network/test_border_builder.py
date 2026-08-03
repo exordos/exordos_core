@@ -44,17 +44,15 @@ def test_paasborder_getters_read_inline_rules():
     )
     assert border.get_snat_rules() == snat
     assert border.get_forwards() == forwards
-    assert border.get_routes() == []
 
 
-def _instance(snat=None, forwards=None, routes=None, node=None, kind="core_agent"):
+def _instance(snat=None, forwards=None, node=None, kind="core_agent"):
     inst = mock.MagicMock()
     inst.uuid = sys_uuid.uuid4()
     inst.node = node
     inst.type.kind = kind
     inst.get_snat_rules.return_value = snat or []
     inst.get_forwards.return_value = forwards or []
-    inst.get_routes.return_value = routes or []
     return inst
 
 
@@ -93,7 +91,6 @@ def test_produces_single_border_agent_passing_rules_through():
     assert agent.uuid == inst.uuid
     assert agent.snat_rules == snat
     assert agent.forwards == forwards
-    assert agent.routes == []
 
 
 def test_produces_border_node_when_target_node_set():
@@ -216,3 +213,16 @@ def test_status_error_when_any_actual_error():
         inst, _collection("ACTIVE", "ERROR")
     )
     assert inst.status == cc.ServiceStatus.ERROR.value
+
+
+def test_a_border_resource_names_no_field_the_data_plane_dropped():
+    """`routes` was sent empty by everything that built one and read by
+    nothing, and the data plane dropped it first. What a field costs when
+    only one side drops it is the whole capability: the agent builds its
+    model from the resource's keys, so one name it does not have failed
+    every border resource. The general check against the data-plane model
+    lives in the functional suite, which is where a gcl_sdk new enough to
+    have dropped it is the one installed."""
+    for model in (border_models.BorderAgent, border_models.BorderNode):
+        assert "routes" not in model.get_resource_target_fields(model)
+        assert "routes" not in set(model.properties.properties)
