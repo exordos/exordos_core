@@ -344,6 +344,12 @@ CORE_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/exordos_core.con
 UA_CONFIG_DATA_PATH = (
     "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
 )
+# A node that wires its guests into another installation's overlay runs a
+# dedicated SDN agent (written by `exordos compute hypervisors
+# register-agent --write-config`). Both agents' evpn drivers would keep
+# their state in one meta file, so the node's own agent gives the
+# capability up — this config is the marker that it did.
+SDN_AGENT_CONFIG_PATH = "/etc/exordos_universal_agent/sdn_agent.conf"
 
 _LAUNCHPAD_SECTION = """\
 [launchpad]
@@ -398,20 +404,40 @@ def _migrate_installed_elements_configs() -> None:
 # The scheduler section is fully rewritten to handle any indentation
 # differences; keep both literals in sync with
 # etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
-_UA_SCHEDULER_SECTION = """\
-[universal_agent_scheduler]
-capabilities =
-    em_*,
-    password,
-    certificate,
-    paas_lb_agent,
-    repo_proxy_installed_element,
-    border_agent
-"""
+_UA_CAPABILITIES = [
+    "em_*",
+    "password",
+    "certificate",
+    "paas_lb_agent",
+    "repo_proxy_installed_element",
+    "border_agent",
+]
+# Advertised only by an installation that carries an overlay. A capability
+# is an offer to be scheduled work of that kind, and an installation with no
+# `ovs_evpn` network has none to offer -- so on the upgrade of one that never
+# asked for an overlay, this list, and the agent restart that follows a
+# change to it, do not happen.
+_UA_EVPN_CAPABILITIES = [
+    "evpn_port",
+    "evpn_host",
+    "evpn_nf",
+    "evpn_address_set",
+    "bgp_rr",
+]
+
+
+def _ua_scheduler_section(with_overlay: bool) -> str:
+    caps = _UA_CAPABILITIES + (_UA_EVPN_CAPABILITIES if with_overlay else [])
+    return "[universal_agent_scheduler]\ncapabilities =\n%s\n" % ",\n".join(
+        "    %s" % cap for cap in caps
+    )
+
+
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
+_UA_EVPN_DRIVER_LINE = "    EvpnAgentCapabilityDriver,\n"
 
 
-def _ensure_ua_config_current() -> None:
+def _ensure_ua_config_current(with_overlay: bool = False) -> None:
     """Bring the universal agent config up to date with this image.
 
     ec-bootstrap-templates restores /etc configs from the persisted
@@ -420,7 +446,9 @@ def _ensure_ua_config_current() -> None:
     reapply the image-defined parts of the UA config:
 
     1. Rewrite the [universal_agent_scheduler] section with the current
-       capabilities list.
+       capabilities list. The evpn ones are in it only when this
+       installation carries an overlay (`with_overlay`) -- see
+       `bootstrap_defaults.overlay_is_wanted`.
     2. Ensure BorderAgentCapabilityDriver is present in caps_drivers
        ([universal_agent] holds stand-specific endpoints, so only this
        line is inserted, not the whole section).
@@ -438,7 +466,7 @@ def _ensure_ua_config_current() -> None:
 
     new_content = re.sub(
         r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
-        _UA_SCHEDULER_SECTION,
+        _ua_scheduler_section(with_overlay),
         content,
         count=1,
         flags=re.DOTALL | re.MULTILINE,
@@ -453,6 +481,22 @@ def _ensure_ua_config_current() -> None:
         if "BorderAgentCapabilityDriver" not in new_content:
             LOG.warning(
                 "Could not insert BorderAgentCapabilityDriver into caps_drivers in %s",
+                UA_CONFIG_PATH,
+            )
+
+    if (
+        with_overlay
+        and "EvpnAgentCapabilityDriver" not in new_content
+        and not os.path.exists(SDN_AGENT_CONFIG_PATH)
+    ):
+        new_content = new_content.replace(
+            _UA_BORDER_DRIVER_LINE,
+            _UA_BORDER_DRIVER_LINE + _UA_EVPN_DRIVER_LINE,
+            1,
+        )
+        if "EvpnAgentCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert EvpnAgentCapabilityDriver into caps_drivers in %s",
                 UA_CONFIG_PATH,
             )
 
@@ -787,14 +831,19 @@ def main() -> None:
     # working installations are migrated.
     _migrate_installed_elements_to_repo()
 
-    _ensure_ua_config_current()
+    # Read first, because whether the agent is offered the evpn capabilities
+    # is a question about this installation and the spec is half the answer
+    # (the other half is a network somebody made through the API later).
+    spec = None
+    if os.path.exists(SPEC_PATH):
+        with open(SPEC_PATH, "r", encoding="utf-8") as f:
+            spec = json.load(f)
 
-    if not os.path.exists(SPEC_PATH):
+    _ensure_ua_config_current(bootstrap_defaults.overlay_is_wanted(spec))
+
+    if spec is None:
         LOG.info("No spec file found at %s", SPEC_PATH)
         return
-
-    with open(SPEC_PATH, "r", encoding="utf-8") as f:
-        spec = json.load(f)
 
     bootstrap_defaults.save_developer_keys(spec.get("developer_keys", ""))
 

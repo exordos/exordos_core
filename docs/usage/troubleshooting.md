@@ -96,6 +96,27 @@ If the database value is empty, the manifest itself has a rendering problem — 
 the database has content but the file on disk doesn't, the node hasn't received it yet — wait, or re-run
 the bootstrap script manually once it has.
 
+## CLI acts as the wrong user after switching identity
+
+The `exordos` CLI caches access and refresh tokens per **realm** in
+`~/.exordos/exordos_tokens.json`, not per user. As long as a realm has a cached
+token, the CLI reuses it and ignores the username you pass — so switching the
+authenticated identity on the same realm (a different `settings set-context`, or
+a `-u`/`--username` override) silently keeps acting as the previously cached user.
+The symptom is a tenant that "sees everything" or an admin that unexpectedly gets
+`403`: the visibility filter and permission checks reflect the cached identity,
+not the one you meant to use.
+
+There is no `logout` command. Clear the cache when you change identity:
+
+```bash
+rm ~/.exordos/exordos_tokens.json
+```
+
+The cache is refreshed automatically on the next command. This matters most when
+testing multi-tenant behaviour, where admin and tenant runs alternate against one
+realm.
+
 ## See also
 
 - [Manifest reference](../em/manifest.md)

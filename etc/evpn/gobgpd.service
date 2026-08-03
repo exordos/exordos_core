@@ -1,0 +1,16 @@
+[Unit]
+Description=gobgpd (exordos evpn fabric)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# /etc/gobgp.conf is rendered by the universal agent's evpn_node capability
+# from the evpn_host target resource; the agent (re)starts this service when
+# the config changes. Not enabled at build: without a config gobgpd would
+# fail-loop, and an install that never uses an ovs_evpn network never needs it.
+ExecStart=/usr/local/bin/gobgpd -f /etc/gobgp.conf
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

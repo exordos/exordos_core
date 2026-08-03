@@ -88,14 +88,11 @@ class DatabaseProxyRepoDriver(base.AbstractProxyRepoDriver):
 
     def can_upload_element(self, name: str, version: str) -> bool:
         """Check if element can be uploaded to repository."""
-        existing = repo_models.RepoElement.objects.get_all(
-            filters={
-                "name": ra_filters.EQ(name),
-                "version": ra_filters.EQ(version),
-                "repository": ra_filters.EQ(self._repository.uuid),
-            }
-        )
-        return not existing
+        # This driver stores what it is given, so it always can. Whether
+        # *this* version is already here is a different question, and one
+        # the repository answers (it owns the elements) — answering it here
+        # told the caller their repository does not support uploading.
+        return True
 
     def upload_element(self, element: repo_models.RepoElement) -> None:
         """Upload element to repository.

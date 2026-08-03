@@ -21,6 +21,24 @@ from exordos_core.compute.dm import models
 
 
 class AbstractNetworkDriver(abc.ABC):
+    def bind(self, network: models.Network) -> None:
+        """Point a cached driver instance at the network row just loaded.
+
+        Drivers are cached per network so the entry point is resolved once,
+        but the model they hold is a snapshot: without rebinding, editing any
+        network field the cache key does not cover would never reach the
+        compiler.
+        """
+
+    def refresh_generated(self, subnet: models.Subnet) -> None:
+        """Bring what the installation generates for this subnet up to date.
+
+        Optional: a driver that generates nothing needs no sweep. For those
+        that do, this is called every iteration rather than only when a port
+        is compiled — otherwise an upgrade that changes a default reaches a
+        busy installation and never a quiet one.
+        """
+
     @abc.abstractmethod
     def list_subnets(self) -> tp.Iterable[models.Subnet]:
         """Return subnet list from data plane."""
@@ -52,6 +70,17 @@ class AbstractNetworkDriver(abc.ABC):
     @abc.abstractmethod
     def update_subnet(self, subnet: models.Subnet) -> models.Subnet:
         """Update the subnet in data plane."""
+
+    def port_is_stale(self, port: models.Port, actual_port: models.Port) -> bool:
+        """True when the port's data plane no longer matches the model.
+
+        The service actualizes a port when its address changed. A driver
+        whose port carries more than an address — filtering, network
+        functions, floating addresses, all of which live in objects the port
+        only references — says so here, otherwise editing any of them would
+        reach the data plane no earlier than the port's next re-creation.
+        """
+        return False
 
     def create_ports(self, ports: tp.List[models.Port]) -> tp.List[models.Port]:
         """Create a list of ports."""

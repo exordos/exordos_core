@@ -100,3 +100,26 @@ def test_a_changed_image_sends_the_machine_back_to_the_network(builder):
         ),
     )
     assert boot == nc.BootAlternative.network.value
+
+
+def test_an_overlay_guest_installs_on_its_own_network(builder):
+    """A guest of an overlay has no way to reach the installation's boot
+    network, and putting a foot of every tenant's guest on that shared
+    segment for the length of an install is not a thing to do quietly. Its
+    own hypervisor answers its DHCP, hands it a boot script and proxies the
+    boot API — so it netboots through the network it will live on."""
+    overlay = mock.MagicMock()
+    overlay.network.driver_spec = {"driver": pool_builder.OVERLAY_DRIVER}
+    port = mock.MagicMock()
+    port.subnet = overlay
+    assert builder._netboots_on_its_own_network(port) is True
+
+    # A port on a plain network still goes to the boot network to install.
+    flat = mock.MagicMock()
+    flat.network.driver_spec = {"driver": "flat_bridge"}
+    port.subnet = flat
+    assert builder._netboots_on_its_own_network(port) is False
+
+    # ... and so does one whose network cannot be read at all.
+    port.subnet = None
+    assert builder._netboots_on_its_own_network(port) is False

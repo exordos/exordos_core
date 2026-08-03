@@ -78,12 +78,42 @@ class Ipam:
     ) -> None:
         self._pool_map[subnet] = self.calculate_pool(subnet, ports)
 
+    @staticmethod
+    def infrastructure_addresses(
+        subnet: net_models.Subnet,
+    ) -> tp.List[netaddr.IPAddress]:
+        """Addresses of the subnet that belong to no guest.
+
+        The gateways it hands out over DHCP (``routers[*].via`` — on an
+        overlay that address is the hypervisor's egress namespace) and its
+        netboot server. Handing one of them to a port would collide with the
+        infrastructure the same subnet tells its guests to use.
+        """
+        addresses = []
+        for router in subnet.routers or []:
+            via = router.get("via") if isinstance(router, dict) else None
+            if via is not None:
+                addresses.append(netaddr.IPAddress(str(via)))
+        if subnet.next_server:
+            try:
+                addresses.append(netaddr.IPAddress(str(subnet.next_server)))
+            except netaddr.AddrFormatError:
+                # next_server may be a hostname; nothing to reserve then.
+                pass
+        return [a for a in addresses if a in subnet.cidr]
+
     def calculate_pool(
         self, subnet: net_models.Subnet, ports: tp.Iterable[net_models.Port]
     ) -> tp.List[tp.Tuple[int, int]]:
         ip_start, ip_end = subnet.cidr[0], subnet.cidr[-1]
         if subnet.ip_range_pair:
             ip_start, ip_end = subnet.ip_range_pair
+        elif subnet.cidr.size > 2:
+            # Without an explicit range the pool is the whole prefix — minus
+            # its first and last address, which are the network and the
+            # broadcast, not hosts. (A subnet used to hand out its own
+            # network address to the first guest.)
+            ip_start, ip_end = subnet.cidr[1], subnet.cidr[-2]
 
         # IP range and discovery range should not overlap
         if subnet.ip_discovery_range and (
@@ -95,6 +125,8 @@ class Ipam:
             )
 
         pool = [(int(ip_start), int(ip_end))]
+        for address in self.infrastructure_addresses(subnet):
+            self.occupy_ip(int(address), pool)
         for port in ports:
             if port.ipv4 is not None:
                 # Exclude IPs from the discovery range

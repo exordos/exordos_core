@@ -26,6 +26,17 @@ POLICY_SERVICE_NAME = "compute"
 
 NODE_SET_PROJECT = sys_uuid.UUID("11111113-bc70-4760-9fbf-9fcfe40da329")
 
+# The network driver that makes a network an overlay. Named once: the
+# answer decides where a guest's interface is plugged, and three copies
+# of it is how one of them ends up meaning something else.
+OVERLAY_DRIVER = "ovs_evpn"
+
+# The key inside a node's ``default_network`` that pins which network it
+# belongs on. The rest of that field describes the port the node was
+# given; this one says which network to give it a port on, and it is the
+# only part a caller sets.
+DEFAULT_NETWORK_KEY = "network"
+
 
 BootType = tp.Literal["hd", "network", "cdrom"]
 

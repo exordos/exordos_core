@@ -23,6 +23,7 @@ import netaddr
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.network import ipam as net_ipam
 from exordos_core.network.dm import models as net_models
@@ -30,6 +31,8 @@ from exordos_core.network.driver import base as net_base
 
 LOG = logging.getLogger(__name__)
 TARGET_IP_KEY = "target_ipv4"
+NETWORK_KEY = nc.DEFAULT_NETWORK_KEY  # node's pinned target network
+OVERLAY_DRIVER = "ovs_evpn"  # overlay networks are opt-in (pin required)
 
 
 class NetworkService(basic.BasicService):
@@ -99,6 +102,14 @@ class NetworkService(basic.BasicService):
     ]:
         network_map = collections.defaultdict(dict)
 
+        # Every network, not only the ones that still have a subnet: a
+        # network whose last subnet was deleted has to be visited too, or its
+        # driver never hears about the deletion and whatever the subnet left
+        # on the hypervisors — a guest's VLAN, its patch pair, its record in
+        # the host responder — stays there for good.
+        for network in models.Network.objects.get_all():
+            network_map[network] = {}
+
         for subnet in subnet_map.keys():
             network_map[subnet.network][subnet] = subnet_map[subnet]
 
@@ -134,6 +145,19 @@ class NetworkService(basic.BasicService):
             target_subnet = target_subnets[uuid]
             actual_subnet = actual_subnets[uuid]
             target_ports = subnet_map[target_subnet]
+
+            # What the installation generates for a subnet — its services and
+            # its default group — is kept current here rather than only when
+            # a port happens to be compiled. Otherwise an upgrade that
+            # changes a default reaches a busy installation and never a
+            # quiet one: the subnets that need no port work would keep
+            # whatever was seeded the day they were made.
+            try:
+                driver.refresh_generated(target_subnet.cast_to_base())
+            except Exception:
+                LOG.exception(
+                    "Error refreshing the generated objects of subnet %s", uuid
+                )
 
             try:
                 self._actualize_subnet(
@@ -211,10 +235,12 @@ class NetworkService(basic.BasicService):
             target_port = target_ports[uuid]
             actual_port = actual_ports[uuid]
 
-            # Actualize a small set of fields so far
+            # Actualize a small set of fields so far, plus whatever else the
+            # driver considers part of the port (see `port_is_stale`).
             if (
                 target_port.ipv4 != actual_port.ipv4
                 or target_port.mask != actual_port.mask
+                or driver.port_is_stale(target_port.cast_to_base(), actual_port)
             ):
                 try:
                     driver.update_port(target_port.cast_to_base())
@@ -244,12 +270,58 @@ class NetworkService(basic.BasicService):
                         actual_port.uuid,
                     )
 
+    @staticmethod
+    def _pinned_network(node: models.NodeWithoutPorts) -> str | None:
+        """Which network this node belongs to, if something says so.
+
+        The node's own copy first, then the set that generated it. The
+        set is the authority — a node's copy is made from it when the
+        node is generated, and a set that is created and pinned in two
+        steps generates its nodes in between. Reading only the copy
+        placed those nodes by the default rule and left them there for
+        good, because a placed node cannot be moved afterwards.
+        """
+        wanted = (node.default_network or {}).get(NETWORK_KEY)
+        if wanted is not None:
+            return str(wanted)
+        set_uuid = getattr(node, "node_set", None)
+        if set_uuid is None:
+            return None
+        node_set = models.NodeSet.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(set_uuid)}
+        )
+        wanted = (getattr(node_set, "default_network", None) or {}).get(NETWORK_KEY)
+        return str(wanted) if wanted is not None else None
+
     def _is_subnet_match(
         self, node: models.NodeWithoutPorts, subnet: net_models.Subnet
     ) -> bool:
-        # TODO(akremenetsky): Only single network is supported for now
-        # TODO(akremenetsky): Remove the dirty hack to exclude boot network
-        return subnet.next_server is None
+        # The boot subnet is never a data-plane target (dirty hack until
+        # boot networking is modelled properly).
+        if subnet.next_server is not None:
+            return False
+        # An address pool holds addresses for something else to claim — a
+        # floating address answered by proxy ARP, say — and never hosts a
+        # node itself. Honouring a pin here too would be worse than useless:
+        # the pin would place a guest somewhere that cannot carry it.
+        if not getattr(subnet, "placeable", True):
+            return False
+        # A node may pin its network via ``default_network["network"]`` — the
+        # only way to place nodes on a specific network when several coexist
+        # (e.g. the flat management network plus an ovs_evpn private one).
+        # Without a pin the node lands on any non-boot subnet (single-network
+        # behaviour preserved for existing installs).
+        wanted = self._pinned_network(node)
+        if wanted is not None:
+            # subnet.network is a prefetched relationship (Network object).
+            subnet_network = getattr(subnet.network, "uuid", subnet.network)
+            return str(subnet_network) == str(wanted)
+        # Overlay networks are opt-in: an unpinned node must never land on
+        # an ovs_evpn subnet (subnet iteration order is not deterministic,
+        # and a management-plane node placed on an overlay has no
+        # connectivity until its fabric is wired).
+        driver_spec = getattr(subnet.network, "driver_spec", None) or {}
+        return driver_spec.get("driver") != OVERLAY_DRIVER
 
     def _allocate_port(
         self,

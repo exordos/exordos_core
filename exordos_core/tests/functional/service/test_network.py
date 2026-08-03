@@ -210,7 +210,10 @@ class TestNetworkService:
 
                 self.__class__.create_port_called = True
                 assert port.subnet == subnet.uuid
-                assert port.ipv4 == netaddr.IPAddress("10.0.0.0")
+                # A DHCP subnet defaults its gateway/DNS to .1 (reserved out
+                # of the guest pool), and .0 is the network address, so the
+                # first guest of a fresh subnet starts at .2.
+                assert port.ipv4 == netaddr.IPAddress("10.0.0.2")
                 assert port.mask == netaddr.IPAddress("255.255.255.0")
                 port_uuid = port.uuid
                 return port
@@ -228,7 +231,7 @@ class TestNetworkService:
                 "uuid": dm_filters.EQ(str(node.uuid)),
             },
         )
-        assert node.default_network["ipv4"] == "10.0.0.0"
+        assert node.default_network["ipv4"] == "10.0.0.2"
         assert node.default_network["mask"] == "255.255.255.0"
         assert node.default_network["mac"]
         assert node.default_network["subnet"] == str(subnet.uuid)

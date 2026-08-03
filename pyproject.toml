@@ -167,6 +167,7 @@ libvirt = "exordos_core.compute.pool.drivers.libvirt:LibvirtPoolDriver"
 [project.entry-points."gcn_network_driver"]
 DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
+OvsEvpnNetworkDriver = "exordos_core.network.driver.evpn:OvsEvpnNetworkDriver"
 
 [project.entry-points."exordos.repo_proxy.drivers"]
 NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"

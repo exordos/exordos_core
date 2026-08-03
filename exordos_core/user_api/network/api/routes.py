@@ -58,11 +58,69 @@ class BorderRoute(routes.Route):
     __controller__ = controllers.BorderController
 
 
+class NetworkCRUDRoute(routes.Route):
+    """Handler for /v1/network/networks/ endpoint"""
+
+    __controller__ = controllers.NetworkCRUDController
+
+
+class SubnetRoute(routes.Route):
+    """Handler for /v1/network/subnets/ endpoint"""
+
+    __controller__ = controllers.SubnetController
+
+
+class SecurityGroupRoute(routes.Route):
+    """Handler for /v1/network/catalog/security_groups/ endpoint"""
+
+    __controller__ = controllers.SecurityGroupController
+
+
+class IdentityGroupRoute(routes.Route):
+    """Handler for /v1/network/catalog/identity_groups/ endpoint"""
+
+    __controller__ = controllers.IdentityGroupController
+
+
+class AddressRoute(routes.Route):
+    """Handler for /v1/network/catalog/addresses/ endpoint"""
+
+    __controller__ = controllers.AddressController
+
+
+class PortRoute(routes.Route):
+    """Handler for /v1/network/ports/ endpoint"""
+
+    __controller__ = controllers.PortController
+
+
+class NetworkFunctionRoute(routes.Route):
+    """Handler for /v1/network/nfs/ endpoint"""
+
+    __controller__ = controllers.NetworkFunctionController
+
+
+class CatalogRoute(routes.Route):
+    """Handler for /v1/network/catalog/ endpoint (reference objects)"""
+
+    __controller__ = controllers.CatalogController
+    __allow_methods__ = [routes.FILTER]
+
+    security_groups = routes.route(SecurityGroupRoute)
+    identity_groups = routes.route(IdentityGroupRoute)
+    addresses = routes.route(AddressRoute)
+
+
 class NetworkRoute(routes.Route):
     """Handler for /v1/network/ endpoint"""
 
     __controller__ = controllers.NetworkController
     __allow_methods__ = [routes.FILTER]
 
+    networks = routes.route(NetworkCRUDRoute)
+    subnets = routes.route(SubnetRoute)
+    ports = routes.route(PortRoute)
+    nfs = routes.route(NetworkFunctionRoute)
+    catalog = routes.route(CatalogRoute)
     lb = routes.route(LBRoute)
     border = routes.route(BorderRoute)

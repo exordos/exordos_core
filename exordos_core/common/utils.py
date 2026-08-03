@@ -15,6 +15,7 @@
 #    under the License.
 
 from importlib.metadata import entry_points
+import ipaddress
 import os
 import typing as tp
 from urllib.parse import urlparse
@@ -95,6 +96,24 @@ def validate_url(url: str) -> bool:
         return all([result.scheme, result.netloc])
     except ValueError:
         return False
+
+
+def is_cidr(value: tp.Any) -> bool:
+    """True for an IP address or prefix, in either family."""
+    try:
+        ipaddress.ip_network(str(value), strict=False)
+    except ValueError:
+        return False
+    return True
+
+
+def is_ip(value: tp.Any) -> bool:
+    """True for a bare IP address (no prefix), in either family."""
+    try:
+        ipaddress.ip_address(str(value))
+    except ValueError:
+        return False
+    return True
 
 
 def get_api_client(*args, **kwargs) -> bazooka.Client:

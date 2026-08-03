@@ -33,6 +33,12 @@ VAR_IAM_DEFAULT_CLIENT_SECRET_UUID = sys_uuid.UUID(
     "784c1f6d-f9e2-47e0-a3ba-16725854ac09"
 )
 NETWORK_UUID = "1d4f64db-817a-4862-a588-c9e950823cc1"
+# Well-known ids for the optional ovs_evpn private overlay network seeded at
+# bootstrap. A node manifest pins to PRIVATE_NETWORK_UUID via
+# ``default_network: {network: <uuid>}`` to land on the private network.
+PRIVATE_NETWORK_UUID = "2e5f75ec-928b-4973-b699-daab8c5d3ea2"
+PRIVATE_SUBNET_UUID = "3f6a86fd-a39c-4a84-c7aa-ebbc9d6e4fb3"
+PRIVATE_NETWORK_CIDR = "10.100.0.0/24"
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 DEFAULT_SQL_LIMIT = 100
 
