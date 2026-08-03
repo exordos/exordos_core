@@ -48,6 +48,10 @@ class DNSSyncService(basic.BasicService):
         self._initialized = False
         self._last_full_sync_at = FULL_SYNC_INTERVAL + 1  # sync immediately on start
         self._last_fast_sync_dt = None
+        self._owner_tag = None
+        # Set once an ecosystem refuses the filter expression, so a
+        # mirror talking to an older one asks for it only the first time.
+        self._filter_lang_refused = False
 
     def _get_variable_value(self, var_uuid):
         """Read variable value from ValuesStore by UUID."""
@@ -88,6 +92,30 @@ class DNSSyncService(basic.BasicService):
         resp = self._client.get(url, auth=auth)
         return resp.json()
 
+    def _eco_owner_tag(self, endpoint, headers):
+        """The tag the ecosystem stamps on the records this mirror writes.
+
+        Asked once, of the installation that does the stamping, so the
+        answer cannot drift from what it actually wrote. Without it the
+        mirror still creates and updates -- it only stops removing, which
+        is the safe half to lose.
+        """
+        if self._owner_tag is not None:
+            return self._owner_tag
+        url = f"{endpoint}/api/core/v1/iam/clients/{c.ZERO_UUID}/actions/introspect"
+        try:
+            info = self._client.get(url, headers=headers).json()
+        except Exception:
+            LOG.exception("Failed to ask the ecosystem who this realm is")
+            return None
+        user_uuid = ((info or {}).get("user_info") or {}).get("uuid")
+        if not user_uuid:
+            LOG.warning("Introspection carries no subject; nothing will be removed")
+            return None
+        self._owner_tag = c.owner_user_tag(user_uuid)
+        LOG.info("Records of this realm are owned by %s", self._owner_tag)
+        return self._owner_tag
+
     def _eco_list_domains(self, endpoint, headers):
         """GET /api/core/v1/dns/domains/ -> list of domains."""
         url = f"{endpoint}/api/core/v1/dns/domains/"
@@ -104,20 +132,54 @@ class DNSSyncService(basic.BasicService):
         )
         return resp.json()
 
-    def _eco_list_records(self, endpoint, headers, eco_domain_uuid):
-        """GET /api/core/v1/dns/domains/{uuid}/records/"""
+    def _eco_list_records(self, endpoint, headers, eco_domain_uuid, owner_tag=None):
+        """GET /api/core/v1/dns/domains/{uuid}/records/
+
+        Asks for this mirror's own records when it knows which those are:
+        the rest of the zone is not its business, and a zone is read on
+        every reconciliation. An ecosystem that does not understand the
+        filter answers 400, and then the whole zone comes back and the
+        owner is checked here instead -- the same answer, read further
+        from the index.
+        """
         url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
+        if owner_tag and not self._filter_lang_refused:
+            try:
+                resp = self._client.get(
+                    url,
+                    headers=headers,
+                    params={"q": 'tags:"%s"' % owner_tag},
+                )
+                return resp.json()
+            except bazooka_exc.BadRequestError:
+                LOG.info("The ecosystem does not filter by tag; reading whole zones")
+                self._filter_lang_refused = True
         resp = self._client.get(url, headers=headers)
         return resp.json()
 
     def _eco_create_record(self, endpoint, headers, eco_domain_uuid, record_data):
-        """POST /api/core/v1/dns/domains/{uuid}/records/"""
+        """POST /api/core/v1/dns/domains/{uuid}/records/
+
+        A record can be there without this mirror having seen it: asking
+        for its own records hides anything written before records carried
+        an owner. Creating what is already there is then an update, not a
+        conflict to report every minute.
+        """
         url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
-        self._client.post(
-            url,
-            json=record_data,
-            headers=headers,
-        )
+        try:
+            self._client.post(
+                url,
+                json=record_data,
+                headers=headers,
+            )
+        except bazooka_exc.ConflictError:
+            self._eco_update_record(
+                endpoint,
+                headers,
+                eco_domain_uuid,
+                record_data["uuid"],
+                record_data,
+            )
 
     def _eco_update_record(
         self, endpoint, headers, eco_domain_uuid, record_uuid, record_data
@@ -296,8 +358,14 @@ class DNSSyncService(basic.BasicService):
             }
         )
 
-        # Get ecosystem records
-        eco_records = self._eco_list_records(endpoint, headers, eco_domain_uuid)
+        # Which of the zone's records are this mirror's own -- asked of
+        # the ecosystem when it can answer that, and sorted out here when
+        # it cannot.
+        owner_tag = self._eco_owner_tag(endpoint, headers)
+
+        eco_records = self._eco_list_records(
+            endpoint, headers, eco_domain_uuid, owner_tag
+        )
         eco_records = [r for r in eco_records if r.get("type") != "SOA"]
 
         # Build UUID-keyed maps
@@ -353,9 +421,21 @@ class DNSSyncService(basic.BasicService):
                     rec.name,
                 )
 
-        # Delete extra
+        # Delete extra -- but only what this mirror put there. A zone in
+        # the ecosystem is not this realm's alone: the ecosystem publishes
+        # the realm's own ingress records into it, and an operator may add
+        # more. Anything not carrying this mirror's owner tag, including
+        # anything created before tags existed, is somebody else's row.
         for uid in eco_uuids - local_uuids:
             eco_rec = eco_map[uid]
+            if not owner_tag or owner_tag not in (eco_rec.get("tags") or []):
+                LOG.debug(
+                    "Keeping %s %s in ecosystem domain %s: not this realm's row",
+                    eco_rec.get("type"),
+                    eco_rec.get("name"),
+                    domain_name,
+                )
+                continue
             LOG.info(
                 "Deleting record %s %s from ecosystem domain %s",
                 eco_rec.get("type"),

@@ -21,6 +21,7 @@ from restalchemy.api import controllers as ra_controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 
+from exordos_core.user_api.api import controllers as core_controllers
 from exordos_core.user_api.dns.dm import models
 
 CONF = cfg.CONF
@@ -50,6 +51,7 @@ class DomainController(
 
 
 class RecordController(
+    core_controllers.OwnedTagsControllerMixin,
     iam_controllers.NestedPolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
 ):
@@ -60,6 +62,10 @@ class RecordController(
     __resource__ = resources.ResourceByRAModel(
         models.Record,
         convert_underscore=False,
+        # Query parameters are parsed against the model, which is also what
+        # the filter expression (`?q=`) needs: it is how a caller asks for
+        # the records of one owner instead of reading the zone.
+        process_filters=True,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
