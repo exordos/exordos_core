@@ -69,7 +69,6 @@ class BorderBuilder(builder.PaaSBuilder):
                     agent_uuid=instance.node,
                     snat_rules=instance.get_snat_rules(),
                     forwards=instance.get_forwards(),
-                    routes=instance.get_routes(),
                 )
             ]
         elif instance.type.kind == "core":
@@ -81,7 +80,6 @@ class BorderBuilder(builder.PaaSBuilder):
                     agent_uuid=sys_uuid.UUID(node_uuid),
                     snat_rules=instance.get_snat_rules(),
                     forwards=instance.get_forwards(),
-                    routes=instance.get_routes(),
                 )
                 for node_uuid in self._get_iaas_nodes(instance)
             ]
@@ -91,7 +89,6 @@ class BorderBuilder(builder.PaaSBuilder):
                     uuid=instance.uuid,
                     snat_rules=instance.get_snat_rules(),
                     forwards=instance.get_forwards(),
-                    routes=instance.get_routes(),
                 )
             ]
 
