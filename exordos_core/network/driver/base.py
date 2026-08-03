@@ -21,6 +21,15 @@ from exordos_core.compute.dm import models
 
 
 class AbstractNetworkDriver(abc.ABC):
+    def bind(self, network: models.Network) -> None:
+        """Point a cached driver instance at the network row just loaded."""
+
+    def refresh_generated(self, subnet: models.Subnet) -> None:
+        """Bring what the installation generates for this subnet up to date.
+
+        Called every iteration, so an upgraded default reaches idle subnets.
+        """
+
     @abc.abstractmethod
     def list_subnets(self) -> tp.Iterable[models.Subnet]:
         """Return subnet list from data plane."""
@@ -52,6 +61,14 @@ class AbstractNetworkDriver(abc.ABC):
     @abc.abstractmethod
     def update_subnet(self, subnet: models.Subnet) -> models.Subnet:
         """Update the subnet in data plane."""
+
+    def port_is_stale(self, port: models.Port) -> bool:
+        """True when the port's data plane no longer matches the model.
+
+        For state beyond the address that lives in objects the port only
+        references (filtering, NFs, floating addresses).
+        """
+        return False
 
     def create_ports(self, ports: tp.List[models.Port]) -> tp.List[models.Port]:
         """Create a list of ports."""

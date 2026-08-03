@@ -14,10 +14,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from gcl_sdk.agents.universal.api import controllers as sdk_controllers
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.agents.universal.status_api import controllers as status_controllers
+from gcl_sdk.agents.universal.status_api.dm import models as status_models
 from oslo_config import cfg
 from restalchemy.api import controllers
 from restalchemy.api import resources
+from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_storage_exceptions
 
 from exordos_core.boot_api.api import packers
@@ -69,3 +73,42 @@ class NetBootController(controllers.BaseResourceController):
         )
 
         return netboot, 200, {"Content-Type": "application/octet-stream"}
+
+
+class BootResourcesController(status_controllers.ResourcesController):
+    """Keep Seed's guest-machine provisioning on the isolated Boot network."""
+
+    def create(self, parent_resource, **kwargs):
+        if parent_resource.kind == "guest_machine":
+            return sdk_controllers.BaseSdkNestedResourceController.create(
+                self, parent_resource=parent_resource, **kwargs
+            )
+        return super().create(parent_resource=parent_resource, **kwargs)
+
+    def filter(self, parent_resource, filters, order_by=None):
+        if parent_resource.kind == "guest_machine":
+            return status_models.Resource.objects.get_all(
+                filters={
+                    **(filters or {}),
+                    "kind": dm_filters.EQ(parent_resource.kind),
+                }
+            )
+        return super().filter(parent_resource, filters, order_by)
+
+    def get(self, uuid, parent_resource, **kwargs):
+        if parent_resource.kind == "guest_machine":
+            return status_models.Resource.objects.get_one(
+                filters={
+                    "kind": dm_filters.EQ(parent_resource.kind),
+                    "uuid": dm_filters.EQ(str(uuid)),
+                }
+            )
+        return super().get(uuid, parent_resource, **kwargs)
+
+    def update(self, parent_resource, uuid, **kwargs):
+        if parent_resource.kind == "guest_machine":
+            kwargs["kind"] = parent_resource
+            return sdk_controllers.BaseSdkNestedResourceController.update(
+                self, parent_resource=parent_resource, uuid=uuid, **kwargs
+            )
+        return super().update(parent_resource=parent_resource, uuid=uuid, **kwargs)

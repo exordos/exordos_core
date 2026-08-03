@@ -14,11 +14,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import collections
 import logging
 import typing as tp
 import uuid as sys_uuid
 
 import netaddr
+from restalchemy.dm import filters as dm_filters
 
 from exordos_core.network import exceptions as net_exceptions
 from exordos_core.network.dm import models as net_models
@@ -47,10 +49,38 @@ class IpamIpRangeOverlap(net_exceptions.CGNetException):
     ip_range_b: netaddr.IPRange
 
 
+def ledger_reservations(
+    subnets: tp.Iterable[net_models.Subnet],
+) -> tp.Dict[str, tp.List[netaddr.IPAddress]]:
+    """Addresses the catalog ledger holds in these subnets, by subnet uuid.
+
+    The ledger and the port allocator hand out addresses from one pool, so
+    every allocation has to see both; a freed row is a receipt, not a hold.
+    """
+    from exordos_core.user_api.network.dm import models as net_api_models
+
+    uuids = [subnet.uuid for subnet in subnets]
+    if not uuids:
+        return {}
+    held = collections.defaultdict(list)
+    for row in net_api_models.Address.objects.get_all(
+        filters={
+            "subnet": dm_filters.In(uuids),
+            "allocation": dm_filters.EQ(
+                net_api_models.AddressAllocation.RESERVED.value
+            ),
+        }
+    ):
+        if row.address:
+            held[str(row.subnet)].append(netaddr.IPAddress(row.address))
+    return held
+
+
 class Ipam:
     def __init__(
         self,
         subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
+        reserved: tp.Optional[tp.Mapping[str, tp.Iterable[netaddr.IPAddress]]] = None,
     ) -> None:
         """
         Initialize IPAM with a subnet map.
@@ -67,23 +97,58 @@ class Ipam:
         :type subnet_map: Dict[net_models.Subnet, List[net_models.Port]]
         """
         self._pool_map = {}
+        # Addresses already reported as out of pool; see occupy_ip.
+        self._reported_out_of_pool: set[int] = set()
 
         # TODO(akremenetsky): No need to calculate the pool for each subnet here,
         # we may do it in a lazy way when it will be required
+        reserved = reserved or {}
         for subnet, ports in subnet_map.items():
-            self.add_subnet(subnet, ports)
+            self.add_subnet(subnet, ports, reserved.get(str(subnet.uuid), ()))
 
     def add_subnet(
-        self, subnet: net_models.Subnet, ports: tp.Iterable[net_models.Port]
+        self,
+        subnet: net_models.Subnet,
+        ports: tp.Iterable[net_models.Port],
+        reserved: tp.Iterable[netaddr.IPAddress] = (),
     ) -> None:
-        self._pool_map[subnet] = self.calculate_pool(subnet, ports)
+        self._pool_map[subnet] = self.calculate_pool(subnet, ports, reserved)
+
+    @staticmethod
+    def infrastructure_addresses(
+        subnet: net_models.Subnet,
+    ) -> tp.List[netaddr.IPAddress]:
+        """Addresses of the subnet that belong to no guest.
+
+        Its DHCP gateways (``routers[*].via``; on an overlay, the egress
+        namespace) and its netboot server.
+        """
+        addresses = []
+        for router in subnet.routers or []:
+            via = router.get("via") if isinstance(router, dict) else None
+            if via is not None:
+                addresses.append(netaddr.IPAddress(str(via)))
+        if subnet.next_server:
+            try:
+                addresses.append(netaddr.IPAddress(str(subnet.next_server)))
+            except netaddr.AddrFormatError:
+                # next_server may be a hostname; nothing to reserve then.
+                pass
+        return [a for a in addresses if a in subnet.cidr]
 
     def calculate_pool(
-        self, subnet: net_models.Subnet, ports: tp.Iterable[net_models.Port]
+        self,
+        subnet: net_models.Subnet,
+        ports: tp.Iterable[net_models.Port],
+        reserved: tp.Iterable[netaddr.IPAddress] = (),
     ) -> tp.List[tp.Tuple[int, int]]:
         ip_start, ip_end = subnet.cidr[0], subnet.cidr[-1]
         if subnet.ip_range_pair:
             ip_start, ip_end = subnet.ip_range_pair
+        elif subnet.cidr.size > 2:
+            # Without an explicit range: the prefix minus network and
+            # broadcast addresses.
+            ip_start, ip_end = subnet.cidr[1], subnet.cidr[-2]
 
         # IP range and discovery range should not overlap
         if subnet.ip_discovery_range and (
@@ -95,6 +160,13 @@ class Ipam:
             )
 
         pool = [(int(ip_start), int(ip_end))]
+        for address in self.infrastructure_addresses(subnet):
+            self.occupy_ip(int(address), pool)
+        taken = {int(netaddr.IPAddress(p.ipv4)) for p in ports if p.ipv4 is not None}
+        # Only what falls in the pool.
+        for address in {int(a) for a in reserved} - taken:
+            if int(ip_start) <= address <= int(ip_end):
+                self.occupy_ip(address, pool)
         for port in ports:
             if port.ipv4 is not None:
                 # Exclude IPs from the discovery range
@@ -135,6 +207,12 @@ class Ipam:
         # are out of range of chosen IPs. It's a problem since occupied
         # cannot be calculated correctly. Therefore we just log it and do
         # nothing. Perhaps we should raise an exception in the future.
+        #
+        # Once per address: this runs every few seconds, and bootstrap puts
+        # the core below the allocation range on purpose.
+        if address in self._reported_out_of_pool:
+            return
+        self._reported_out_of_pool.add(address)
         LOG.warning("IP %s is not in the pool", address)
 
     def allocate_ip(

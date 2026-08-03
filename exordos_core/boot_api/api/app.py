@@ -17,7 +17,6 @@
 import functools
 
 from gcl_sdk.agents.universal.api import middlewares as sdk_mw
-from gcl_sdk.agents.universal.api import packers as sdk_packers
 from restalchemy.api import applications
 from restalchemy.api import middlewares
 from restalchemy.api import routes
@@ -28,6 +27,7 @@ from restalchemy.openapi import structures as openapi_structures
 
 from exordos_core import version
 from exordos_core.boot_api.api import routes as app_routes
+from exordos_core.boot_api.api import packers
 from exordos_core.boot_api.api import versions
 
 
@@ -69,9 +69,7 @@ def build_wsgi_application():
             functools.partial(
                 sdk_mw.SdkContextMiddleware,
                 context_kwargs={
-                    "encryption_information_class": (
-                        sdk_packers.NoEncryptionInformation
-                    )
+                    "encryption_information_class": (packers.BootEncryptionInformation)
                 },
             ),
             errors_mw.ErrorsHandlerMiddleware,

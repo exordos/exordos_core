@@ -113,14 +113,20 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         self,
         machine: pool_models.Machine,
     ) -> tp.Tuple[tp.Collection[models.Port], tp.Collection[models.MachineVolume]]:
-        """Fetch the machine dependencies."""
+        """Fetch the machine dependencies, ordered by index.
+
+        The machine is built from the first of each, and index 0 is the
+        primary leg, so row order must not decide it.
+        """
         ports = models.Port.objects.get_all(
             filters={"node": dm_filters.EQ(machine.node.uuid)}
         )
         volumes = models.MachineVolume.objects.get_all(
             filters={"machine": dm_filters.EQ(machine.uuid)}
         )
-        return ports, sorted(volumes, key=lambda v: v.index)
+        return sorted(ports, key=lambda p: p.index), sorted(
+            volumes, key=lambda v: v.index
+        )
 
     def _get_or_fetch_machine_ctx(
         self,
@@ -295,7 +301,10 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 boot = ua_pool.BootAlternative.network.value
                 # Any port for the boot network is fine. The port will be replaced
                 # after the machine is flashed and switched to the main network.
-                port = models.Port.from_boot_network()
+                # Unless it is an overlay port: a tenant guest stays off the
+                # boot network.
+                if not port.is_overlay():
+                    port = models.Port.from_boot_network()
         else:
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
@@ -307,7 +316,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                     boot = ua_pool.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
-                    port = models.Port.from_boot_network()
+                    if not port.is_overlay():
+                        port = models.Port.from_boot_network()
 
         # Set correct boot value for the machine (root model)
         machine.boot = boot

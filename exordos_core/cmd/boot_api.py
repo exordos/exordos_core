@@ -15,6 +15,8 @@
 #    under the License.
 
 import logging
+import os
+import pwd
 import sys
 
 from gcl_looper.services import bjoern_service
@@ -24,6 +26,7 @@ from restalchemy.common import config_opts as ra_config_opts
 from restalchemy.storage.sql import engines
 
 from exordos_core.boot_api.api import app
+from exordos_core.boot_api.api import packers
 from exordos_core.common import config
 from exordos_core.common import log as infra_log
 
@@ -73,6 +76,24 @@ CONF.register_cli_opts(api_cli_opts, DOMAIN)
 ra_config_opts.register_posgresql_db_opts(CONF)
 
 
+def _prepare_nonce_store(worker_user):
+    """Provision the shared replay store before the API workers drop privileges."""
+    if worker_user and os.getuid() == 0:
+        identity = pwd.getpwnam(worker_user)
+        uid, gid = identity.pw_uid, identity.pw_gid
+    else:
+        uid, gid = os.geteuid(), os.getegid()
+    os.makedirs(packers.BOOT_NONCES_DIR, mode=0o700, exist_ok=True)
+    directory = os.open(
+        packers.BOOT_NONCES_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    )
+    try:
+        os.fchown(directory, uid, gid)
+        os.fchmod(directory, 0o700)
+    finally:
+        os.close(directory)
+
+
 def main():
     # Parse config
     config.parse(sys.argv[1:])
@@ -90,6 +111,8 @@ def main():
             port=CONF[DOMAIN].bind_port,
             bjoern_kwargs=dict(reuse_port=True),
         )
+
+        _prepare_nonce_store(service.__mp_downgrade_user__)
 
         service.add_setup(
             lambda: engines.engine_factory.configure_postgresql_factory(conf=CONF)

@@ -41,6 +41,16 @@ class NodeSet(compute_models.NodeSet):
         "set_agent_volume": Volume,
     }
 
+    def _node_interfaces(self) -> tp.Optional[list]:
+        """The legs this set hands, whole, to each of its nodes.
+
+        The template is validated to hold no per-node address. None stays
+        None, so such nodes are placed by the legacy rule.
+        """
+        if self.interfaces is None:
+            return None
+        return list(self.interfaces)
+
     def gen_nodes(
         self,
         project_id: sys_uuid.UUID,
@@ -68,6 +78,8 @@ class NodeSet(compute_models.NodeSet):
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
                 disk_spec=self.disk_spec.node_spec(self, node_uuid),
+                # `default_network` is written back from the index-0 port.
+                interfaces=self._node_interfaces(),
             )
             nodes.append(node)
 

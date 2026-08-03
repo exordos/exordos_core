@@ -17,24 +17,39 @@
 import collections
 import logging
 import typing as tp
+import uuid as sys_uuid
 
 from gcl_looper.services import basic
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 import netaddr
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.network import ipam as net_ipam
 from exordos_core.network.dm import models as net_models
 from exordos_core.network.driver import base as net_base
 
 LOG = logging.getLogger(__name__)
-TARGET_IP_KEY = "target_ipv4"
+
+# The interface whose address the node publishes as its own.
+PRIMARY_INDEX = 0
+
+
+class PlacementError(Exception):
+    """A node asked for a leg that cannot be built as asked.
+
+    The caller's to fix, so it is logged rather than retried.
+    """
 
 
 class NetworkService(basic.BasicService):
-    def _get_new_vm_nodes(self) -> tp.List[models.NodeWithoutPorts]:
-        return models.NodeWithoutPorts.get_vm_nodes()
+    def _get_vm_nodes(self) -> tp.List[models.Node]:
+        """Every VM node: one with some legs built may still lack others."""
+        return models.Node.objects.get_all(
+            filters={"node_type": dm_filters.EQ(ua_pool.NodeType.VM.value)}
+        )
 
     def _get_new_hw_ports(
         self, subnets: tp.Iterable[net_models.Subnet]
@@ -44,6 +59,10 @@ class NetworkService(basic.BasicService):
 
         if not nodes:
             return ports
+
+        # A bare-metal node has a row per addressed interface; each of its
+        # ports takes the next device slot.
+        indexes = collections.Counter()
 
         # Prepare ports for HW nodes.
         # Need to detect the corresponding subnets
@@ -59,7 +78,12 @@ class NetworkService(basic.BasicService):
                         machine=node.machine,
                         mask=subnet.cidr.netmask,
                         source=subnet.name,
+                        index=indexes[node.node],
+                        # Keeps the subnet's project, not the node's; the
+                        # ownership check exempts it by provenance.
+                        provenance=nc.PortProvenance.GENERATED.value,
                     )
+                    indexes[node.node] += 1
                     ports.append(port)
 
         return ports
@@ -99,6 +123,11 @@ class NetworkService(basic.BasicService):
     ]:
         network_map = collections.defaultdict(dict)
 
+        # Every network, including those whose last subnet was deleted, so
+        # the driver can clean up what the subnet left on the hypervisors.
+        for network in models.Network.objects.get_all():
+            network_map[network] = {}
+
         for subnet in subnet_map.keys():
             network_map[subnet.network][subnet] = subnet_map[subnet]
 
@@ -134,6 +163,15 @@ class NetworkService(basic.BasicService):
             target_subnet = target_subnets[uuid]
             actual_subnet = actual_subnets[uuid]
             target_ports = subnet_map[target_subnet]
+
+            # Refresh generated services and default group on every pass,
+            # so an upgraded default reaches subnets with no port work too.
+            try:
+                driver.refresh_generated(target_subnet.cast_to_base())
+            except Exception:
+                LOG.exception(
+                    "Error refreshing the generated objects of subnet %s", uuid
+                )
 
             try:
                 self._actualize_subnet(
@@ -188,8 +226,8 @@ class NetworkService(basic.BasicService):
             target_port.interface = p.interface
 
             try:
-                # Update `default_network` for the node
-                if "port" not in target_port.node.default_network:
+                # `default_network` is the primary leg's port and no other.
+                if target_port.index == PRIMARY_INDEX:
                     target_port.node.update_default_network(p)
                 target_port.update()
             except Exception:
@@ -211,10 +249,12 @@ class NetworkService(basic.BasicService):
             target_port = target_ports[uuid]
             actual_port = actual_ports[uuid]
 
-            # Actualize a small set of fields so far
+            # Actualize a small set of fields so far, plus whatever else the
+            # driver considers part of the port (see `port_is_stale`).
             if (
                 target_port.ipv4 != actual_port.ipv4
                 or target_port.mask != actual_port.mask
+                or driver.port_is_stale(target_port.cast_to_base())
             ):
                 try:
                     driver.update_port(target_port.cast_to_base())
@@ -233,9 +273,7 @@ class NetworkService(basic.BasicService):
 
                 try:
                     # Update `default_network` for the node as well
-                    if target_port.node.default_network.get("port") == str(
-                        target_port.uuid
-                    ):
+                    if target_port.index == PRIMARY_INDEX:
                         target_port.node.update_default_network(actual_port)
                     target_port.update()
                 except Exception:
@@ -244,44 +282,119 @@ class NetworkService(basic.BasicService):
                         actual_port.uuid,
                     )
 
-    def _is_subnet_match(
-        self, node: models.NodeWithoutPorts, subnet: net_models.Subnet
-    ) -> bool:
-        # TODO(akremenetsky): Only single network is supported for now
-        # TODO(akremenetsky): Remove the dirty hack to exclude boot network
-        return subnet.next_server is None
+    @staticmethod
+    def _is_placeable(subnet: net_models.Subnet) -> bool:
+        """Whether a node can sit on this subnet at all.
 
-    def _allocate_port(
+        Not the boot subnet (dirty hack until boot networking is modelled),
+        nor an address pool.
+        """
+        if subnet.next_server is not None:
+            return False
+        return getattr(subnet, "placeable", True)
+
+    def _resolve_subnet(
         self,
-        node: models.NodeWithoutPorts,
+        interface: models.NodeInterfaceOnSubnetKind,
+        subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
+        strict: bool = True,
+    ) -> net_models.Subnet:
+        """Which subnet this leg goes on.
+
+        A network with several placeable subnets is refused rather than
+        resolved by row order, which would differ between installations.
+        Not ``strict`` for a legacy pin: the node is already placed that way
+        on live installations, so ambiguity only warns and the first wins.
+        """
+        if interface.subnet is not None:
+            for subnet in subnet_map:
+                if str(subnet.uuid) == str(interface.subnet):
+                    return subnet
+            raise PlacementError(f"subnet {interface.subnet} does not exist")
+
+        candidates = [
+            subnet
+            for subnet in subnet_map
+            if str(getattr(subnet.network, "uuid", subnet.network))
+            == str(interface.network)
+            and self._is_placeable(subnet)
+        ]
+        if not candidates:
+            raise PlacementError(
+                f"network {interface.network} has no subnet a node can sit on"
+            )
+        if len(candidates) > 1:
+            listed = ", ".join(sorted(str(s.uuid) for s in candidates))
+            message = (
+                f"network {interface.network} has {len(candidates)} placeable "
+                f"subnets ({listed}); name the one you mean with `subnet`"
+            )
+            if strict:
+                raise PlacementError(message)
+            LOG.warning("Legacy pin resolved by order: %s", message)
+        return candidates[0]
+
+    def _auto_subnet(
+        self,
+        subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
+    ) -> net_models.Subnet:
+        """Where a node that declared nothing lands (the legacy rule).
+
+        Overlays stay opt-in: iteration order is not deterministic, and a
+        management node on an overlay has no connectivity until it is wired.
+        """
+        for subnet in subnet_map:
+            if not self._is_placeable(subnet):
+                continue
+            if not nc.is_overlay(getattr(subnet.network, "driver_spec", None)):
+                return subnet
+        raise PlacementError("no subnet an undeclared node can sit on")
+
+    @staticmethod
+    def _leg_project(node: models.Node) -> sys_uuid.UUID:
+        """The project a node's legs belong to.
+
+        For a set-generated node, the set owner's: the node lives in the set
+        project, but what its legs name belongs to the owner.
+        """
+        if node.node_set is None or node.project_id != nc.NODE_SET_PROJECT:
+            return node.project_id
+        node_set = models.NodeSet.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(node.node_set)}
+        )
+        return node_set.project_id if node_set is not None else node.project_id
+
+    def _build_port(
+        self,
+        node: models.Node,
+        subnet: net_models.Subnet,
+        index: int,
+        target_ip: tp.Optional[netaddr.IPAddress],
+        config: tp.Optional[tp.Any],
+        port_security: bool,
         ipam: net_ipam.Ipam,
         subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
     ) -> net_models.Port:
-        # Figure out the correct subnet
-        for subnet, ports in subnet_map.items():
-            if self._is_subnet_match(node, subnet):
-                break
-        else:
-            raise ValueError("No suitable subnet found for node %s", node.uuid)
-
-        target_ip = None
-        if node.default_network.get(TARGET_IP_KEY):
-            target_ip = netaddr.IPAddress(node.default_network[TARGET_IP_KEY])
-
         ip = ipam.allocate_ip(subnet, target_ip)
         mask = subnet.cidr.netmask
-        target_mask = mask if target_ip else None
-        port = models.Port(
+        fields = dict(
             target_ipv4=target_ip,
-            target_mask=target_mask,
+            target_mask=mask if target_ip else None,
             ipv4=ip,
             mask=mask,
             node=node.uuid,
             mac=models.Port.generate_mac(),
-            project_id=node.project_id,
+            project_id=self._leg_project(node),
             subnet=subnet.uuid,
             source=subnet.name,
+            index=index,
+            # The compiler may rewrite and remove it.
+            provenance=nc.PortProvenance.GENERATED.value,
+            port_security=port_security,
         )
+        if config is not None:
+            fields["config"] = config
+        port = models.Port(**fields)
         net_port = net_models.Port.restore_from_simple_view(
             **port.dump_to_simple_view()
         )
@@ -290,37 +403,215 @@ class NetworkService(basic.BasicService):
 
         return net_port
 
+    @staticmethod
+    def _legacy_interface(
+        node: models.Node,
+    ) -> tp.Optional[models.NodeInterfaceOnSubnetKind]:
+        """The leg a pre-`interfaces` node asked for, if it asked for one.
+
+        `default_network.network` and `target_ipv4` are still honoured for one
+        release: sealing the field would 400 existing manifests on upgrade.
+        """
+        legacy = node.default_network or {}
+        network = legacy.get("network")
+        address = legacy.get("target_ipv4")
+        if not network and not address:
+            return None
+        LOG.warning(
+            "Node %s places itself with `default_network`, which is "
+            "deprecated and will stop being read; declare `interfaces` "
+            "instead (see docs/network/node-interfaces.md)",
+            node.uuid,
+        )
+        return models.NodeInterfaceOnSubnetKind(
+            network=sys_uuid.UUID(str(network)) if network else None,
+            address=netaddr.IPAddress(address) if address else None,
+        )
+
+    def _adopt_port(
+        self,
+        node: models.Node,
+        interface: models.NodeInterfaceOnPortKind,
+        index: int,
+    ) -> None:
+        """Take an existing port as one of this node's legs.
+
+        The port keeps its own configuration and provenance (see
+        `NodeInterfaceOnPortKind`).
+        """
+        port = net_models.Port.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(interface.port)}
+        )
+        if port is None:
+            raise PlacementError(f"port {interface.port} does not exist")
+        if str(port.project_id) != str(node.project_id):
+            raise PlacementError(f"port {interface.port} belongs to another project")
+        attached = getattr(port.node, "uuid", port.node)
+        if attached is not None and str(attached) != str(node.uuid):
+            raise PlacementError(
+                f"port {interface.port} is already a leg of node {attached}"
+            )
+        if str(attached) == str(node.uuid) and port.index == index:
+            return
+        port.node = node.uuid
+        port.index = index
+        port.update()
+
+    def _leg_holds(
+        self,
+        port: net_models.Port,
+        interface: tp.Any,
+        subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
+    ) -> bool:
+        """Whether a built leg still is the one declared at its index.
+
+        False when it has to be rebuilt; config and port security are
+        updated in place.
+        """
+        if interface.KIND != "subnet":
+            return False
+        # A port read from the database carries its subnet's row.
+        built_on = str(getattr(port.subnet, "uuid", port.subnet))
+        if interface.subnet is not None:
+            if built_on != str(interface.subnet):
+                return False
+        else:
+            # Any subnet of the network will do: re-resolving would refuse a
+            # built leg once the network gains a second placeable subnet.
+            on = next((sn for sn in subnet_map if str(sn.uuid) == built_on), None)
+            if on is None or str(getattr(on.network, "uuid", on.network)) != str(
+                interface.network
+            ):
+                return False
+        if interface.address is not None and str(port.ipv4) != str(interface.address):
+            return False
+        config = interface.config.dump_to_simple_view()
+        current = port.config.dump_to_simple_view() if port.config else None
+        if current != config or port.port_security != interface.port_security:
+            port.config = interface.config
+            port.port_security = interface.port_security
+            port.update()
+        return True
+
+    def _reconcile_interfaces(
+        self,
+        node: models.Node,
+        existing: tp.List[net_models.Port],
+        ipam: net_ipam.Ipam,
+        subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
+    ) -> None:
+        """Bring a node's ports in line with what it declared.
+
+        Only generated ports are added and removed here, so the declaration
+        never fights the ports API.
+        """
+        if node.interfaces is None:
+            # Legacy placement: one port, and only for a node that has none.
+            if existing:
+                return
+            legacy = self._legacy_interface(node)
+            self._build_port(
+                node=node,
+                subnet=(
+                    self._resolve_subnet(legacy, subnet_map, strict=False)
+                    if legacy is not None and legacy.network is not None
+                    else self._auto_subnet(subnet_map)
+                ),
+                index=PRIMARY_INDEX,
+                target_ip=legacy.address if legacy is not None else None,
+                config=None,
+                port_security=True,
+                ipam=ipam,
+                subnet_map=subnet_map,
+            ).insert()
+            return
+
+        wanted = {}
+        for position, interface in enumerate(node.interfaces):
+            index = interface.index if interface.index is not None else position
+            wanted[index] = interface
+
+        generated = {
+            port.index: port
+            for port in existing
+            if port.provenance == nc.PortProvenance.GENERATED.value
+        }
+
+        # Undeclared legs go; the data plane follows on the next pass.
+        for index, port in generated.items():
+            if index not in wanted:
+                port.delete()
+
+        for index, interface in sorted(wanted.items()):
+            built = generated.get(index)
+            if built is not None and self._leg_holds(built, interface, subnet_map):
+                continue
+            if built is not None:
+                # A leg's placement is its identity: changed means rebuilt.
+                built.delete()
+            if interface.KIND == "port":
+                self._adopt_port(node, interface, index)
+                continue
+            subnet = self._resolve_subnet(interface, subnet_map)
+            self._build_port(
+                node=node,
+                subnet=subnet,
+                index=index,
+                target_ip=(
+                    netaddr.IPAddress(interface.address) if interface.address else None
+                ),
+                config=interface.config,
+                port_security=interface.port_security,
+                ipam=ipam,
+                subnet_map=subnet_map,
+            ).insert()
+
     def _iteration(self) -> None:
         ipam = None
 
         with contexts.Context().session_manager():
-            new_vm_nodes = self._get_new_vm_nodes()
+            vm_nodes = self._get_vm_nodes()
             subnet_map = self._get_subnet_map()
             new_hw_ports = self._get_new_hw_ports(subnet_map.keys())
             network_map = self._build_network_map(subnet_map)
 
-            # There are new nodes. Allocate ports to them.
-            for node in new_vm_nodes:
+            ports_by_node = collections.defaultdict(list)
+            for ports in subnet_map.values():
+                for port in ports:
+                    attached = getattr(port.node, "uuid", port.node)
+                    if attached is not None:
+                        ports_by_node[str(attached)].append(port)
+
+            for node in vm_nodes:
                 # Initialize ipam if needed
                 if ipam is None:
-                    ipam = net_ipam.Ipam(subnet_map)
+                    ipam = net_ipam.Ipam(
+                        subnet_map, net_ipam.ledger_reservations(subnet_map)
+                    )
 
-                # Try to allocate a port for the new node
                 try:
-                    port = self._allocate_port(node, ipam, subnet_map)
-                    port.insert()
-                except ValueError:
-                    LOG.error("No suitable subnet found for node %s", node.uuid)
-                    continue
+                    self._reconcile_interfaces(
+                        node,
+                        ports_by_node.get(str(node.uuid), []),
+                        ipam,
+                        subnet_map,
+                    )
+                except PlacementError as e:
+                    LOG.error(
+                        "Cannot give node %s the interfaces it asked for: %s",
+                        node.uuid,
+                        e,
+                    )
                 except Exception:
-                    ipam.deallocate_ip(port.subnet, port.ipv4)
-                    LOG.exception("Error allocating port for node %s", node.uuid)
+                    LOG.exception("Error allocating ports for node %s", node.uuid)
 
             # There are new HW ports. Allocate IPs to them.
             for port in new_hw_ports:
                 # Initialize ipam if needed
                 if ipam is None:
-                    ipam = net_ipam.Ipam(subnet_map)
+                    ipam = net_ipam.Ipam(
+                        subnet_map, net_ipam.ledger_reservations(subnet_map)
+                    )
                 try:
                     port.ipv4 = ipam.allocate_ip(port.subnet)
                     port.insert()

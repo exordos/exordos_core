@@ -107,7 +107,43 @@ class VolumesController(
         return resource
 
 
+class ForeignSubnetMixin:
+    """Declaring a leg in somebody else's subnet needs `foreign_subnet`.
+
+    Checked on the HTTP path, the only place with a caller to ask; manifests
+    write the model directly and are admin-only. The `port` kind is already
+    refused across projects when adopted.
+    """
+
+    def _enforce_foreign_subnets(self, interfaces):
+        if not interfaces or self._ctx_project_id is None:
+            return
+        for interface in interfaces:
+            owner = self._interface_owner(interface)
+            if owner is not None and str(owner) != str(self._ctx_project_id):
+                self._enforce("foreign_subnet")
+                return
+
+    @staticmethod
+    def _interface_owner(interface):
+        """Whose subnet — or whose network, when the leg names the sugar."""
+        if getattr(interface, "KIND", None) != "subnet":
+            return None
+        for ref, model in (
+            (getattr(interface, "subnet", None), models.Subnet),
+            (getattr(interface, "network", None), models.Network),
+        ):
+            if not ref:
+                continue
+            target = model.objects.get_one_or_none(filters={"uuid": dm_filters.EQ(ref)})
+            # A dangling reference is the model's to refuse, not a 403.
+            if target is not None:
+                return target.project_id
+        return None
+
+
 class NodesController(
+    ForeignSubnetMixin,
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
 ):
@@ -124,6 +160,9 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                # `default_network` stays writable for one more release:
+                # manifests using the released `target_ipv4` would get a 400.
+                # Deprecated in NetworkService._legacy_interface.
             },
         ),
     )
@@ -132,11 +171,14 @@ class NodesController(
         # Validate disk spec
         node = self.model(**kwargs)
         node.disk_spec.validate()
+        self._enforce_foreign_subnets(node.interfaces)
 
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
+        if "interfaces" in kwargs:
+            self._enforce_foreign_subnets(kwargs["interfaces"])
 
         return super().update(uuid, **kwargs)
 
@@ -168,6 +210,7 @@ class NodesController(
 
 
 class NodeSetsController(
+    ForeignSubnetMixin,
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
 ):
@@ -193,11 +236,14 @@ class NodeSetsController(
         # Validate disk spec
         node_set = self.model(**kwargs)
         node_set.disk_spec.validate()
+        self._enforce_foreign_subnets(node_set.interfaces)
 
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
+        if "interfaces" in kwargs:
+            self._enforce_foreign_subnets(kwargs["interfaces"])
 
         return super().update(uuid, **kwargs)
 

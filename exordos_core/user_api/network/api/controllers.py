@@ -20,7 +20,11 @@ from restalchemy.api import constants
 from restalchemy.api import controllers as ra_controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
+from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common import exceptions as ex_exceptions
+from exordos_core.compute import constants as nc
+from exordos_core.compute.dm import models as compute_models
 from exordos_core.user_api.network.dm import models
 
 CONF = cfg.CONF
@@ -28,6 +32,135 @@ CONF = cfg.CONF
 
 class NetworkController(ra_controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/network/"
+
+
+def _own_or(project_id, filters, others=None):
+    """The caller's own rows, or those matching ``others``, within ``filters``."""
+    scope = dm_filters.AND({"project_id": dm_filters.EQ(project_id)})
+    if others:
+        scope = dm_filters.OR(scope, dm_filters.AND(others))
+    return dm_filters.AND(filters, scope) if filters else scope
+
+
+class _VisibleScopeMixin:
+    """A listing wider than the caller's project, as `_visible_scope` says."""
+
+    def filter(self, filters, order_by=None):
+        self._enforce("read")
+        if self._ctx_project_id is not None:
+            return super(iam_controllers.PolicyBasedController, self).filter(
+                self._visible_scope(filters), order_by=order_by
+            )
+        return super().filter(filters, order_by=order_by)
+
+
+class NetworkCRUDController(
+    _VisibleScopeMixin,
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for networks over the ``compute.Network`` model.
+
+    For ``ovs_evpn`` the driver allocates ``vni``/``rt``/``mtu``.
+    """
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "network"
+
+    __resource__ = resources.ResourceByRAModel(
+        compute_models.Network,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # A VNI named here could be another network's overlay.
+                "driver_spec": {constants.UPDATE: field_p.Permissions.RO},
+            },
+        ),
+    )
+
+    # The core allocates the rest. `flat_bridge` is operator-only: its spec
+    # names a host file the core rewrites.
+    CALLER_SPEC_KEYS = frozenset({"driver", "mtu"})
+    MTU_RANGE = (576, 9000)
+
+    def _validate_driver_spec(self, spec) -> None:
+        spec = spec or {}
+        if not nc.is_overlay(spec):
+            raise ex_exceptions.ValidateException(
+                err=f"driver_spec.driver must be {nc.OVERLAY_DRIVER!r}"
+            )
+        extra = set(spec) - self.CALLER_SPEC_KEYS
+        if extra:
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"driver_spec may carry only {sorted(self.CALLER_SPEC_KEYS)}; "
+                    f"{sorted(extra)} are allocated by the core"
+                )
+            )
+        mtu = spec.get("mtu")
+        if mtu is not None and not (
+            isinstance(mtu, int) and self.MTU_RANGE[0] <= mtu <= self.MTU_RANGE[1]
+        ):
+            raise ex_exceptions.ValidateException(
+                err="driver_spec.mtu must be an integer in %d..%d" % self.MTU_RANGE
+            )
+
+    def create(self, **kwargs):
+        self._validate_driver_spec(kwargs.get("driver_spec"))
+        # Publishing exposes the network to every project. Manifests bypass
+        # this gate; they are operator-authored.
+        if kwargs.get("access") == "public":
+            self._enforce("share")
+        return super().create(**kwargs)
+
+    def update(self, uuid, **kwargs):
+        if kwargs.get("access") == "public":
+            self._enforce("share")
+        return super().update(uuid, **kwargs)
+
+    def _visible_scope(self, filters):
+        """Own networks plus every ``access=public`` one."""
+        return _own_or(
+            self._ctx_project_id, filters, {"access": dm_filters.EQ("public")}
+        )
+
+
+class SubnetController(
+    _VisibleScopeMixin,
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for subnets over the ``compute.Subnet`` model."""
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "subnet"
+
+    __resource__ = resources.ResourceByRAModel(
+        compute_models.Subnet,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # Ownership is checked on create only.
+                "network": {constants.UPDATE: field_p.Permissions.RO},
+            },
+        ),
+    )
+
+    def _visible_scope(self, filters):
+        """Own subnets plus those of public networks, to allocate from."""
+        public_nets = [
+            n.uuid
+            for n in compute_models.Network.objects.get_all(
+                filters={"access": dm_filters.EQ("public")}
+            )
+        ]
+        return _own_or(
+            self._ctx_project_id,
+            filters,
+            {"network": dm_filters.In(public_nets)} if public_nets else None,
+        )
 
 
 class LBController(
@@ -111,6 +244,289 @@ class BackendPoolController(
             },
         ),
     )
+
+
+class NetworkFunctionController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """Read and edit network functions, never create them.
+
+    The compiler finds functions by their owner; an ownerless one would look
+    in force while nothing reads it.
+    """
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "nf"
+
+    __resource__ = resources.ResourceByRAModel(
+        models.NetworkFunction,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # The compiler's: a nulled owner orphans the function while
+                # a second one is seeded beside it.
+                "provenance": {constants.ALL: field_p.Permissions.RO},
+                "kind": {constants.UPDATE: field_p.Permissions.RO},
+                "owner_subnet": {constants.ALL: field_p.Permissions.RO},
+                "owner_network": {constants.ALL: field_p.Permissions.RO},
+            },
+        ),
+    )
+
+    def create(self, **kwargs):
+        raise ex_exceptions.ValidateException(
+            err=(
+                "network functions are not created on their own: a subnet is "
+                "seeded with its DHCP and its default group, a network with "
+                "its resolver and metadata proxy, and a port with what it "
+                "expands into. Edit the one that already serves the object "
+                "you mean"
+            )
+        )
+
+
+def _network_of(subnet):
+    """The network uuid a subnet names, however the row hands it over."""
+    return getattr(subnet.network, "uuid", subnet.network)
+
+
+class PortController(
+    _VisibleScopeMixin,
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for ports over the ``compute.Port`` model."""
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "port"
+
+    __resource__ = resources.ResourceByRAModel(
+        compute_models.Port,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "status": {constants.ALL: field_p.Permissions.RO},
+                "machine": {constants.ALL: field_p.Permissions.RO},
+                # `generated` rows may sit outside their node's project.
+                "provenance": {constants.ALL: field_p.Permissions.RO},
+                # On the platform's legs the address is IPAM's, and it is
+                # what a door onto the node leads to.
+                "ipv4": {constants.UPDATE: field_p.Permissions.RO},
+            },
+        ),
+    )
+
+    def _own_overlay_subnets(self):
+        """The caller's overlay subnets, where foreign ports are shown.
+
+        Flat subnets are shared metal; an overlay subnet is the tenant's own
+        segment, so any port in it is theirs to see.
+        """
+        subnets = compute_models.Subnet.objects.get_all(
+            filters={"project_id": dm_filters.EQ(self._ctx_project_id)}
+        )
+        if not subnets:
+            return []
+        networks = {
+            str(network.uuid): network
+            for network in compute_models.Network.objects.get_all(
+                filters={
+                    "uuid": dm_filters.In(
+                        list({str(_network_of(subnet)) for subnet in subnets})
+                    )
+                }
+            )
+        }
+        return [
+            subnet.uuid
+            for subnet in subnets
+            if nc.is_overlay(
+                getattr(networks.get(str(_network_of(subnet))), "driver_spec", None)
+            )
+        ]
+
+    def _visible_scope(self, filters):
+        """Own ports plus any port on the caller's overlay subnets.
+
+        A managed service's port (requester-managed) would otherwise hold
+        addresses in the tenant's subnet invisibly. Read-only: `update` and
+        `delete` still force `project_id`.
+        """
+        subnets = self._own_overlay_subnets()
+        return _own_or(
+            self._ctx_project_id,
+            filters,
+            {"subnet": dm_filters.In(subnets)} if subnets else None,
+        )
+
+    def get(self, uuid, **kwargs):
+        """What `filter` lists, fetched one by one.
+
+        `get` cannot take the `OR` scope, so fetch wide and decide; a
+        refusal re-asks the narrow way so "not yours" fails as before.
+        """
+        self._enforce("read")
+        # The policy-based `get` takes the uuid by keyword, the base one
+        # positionally.
+        if self._ctx_project_id is None:
+            return super().get(uuid=uuid, **kwargs)
+        port = super(iam_controllers.PolicyBasedController, self).get(uuid, **kwargs)
+        if str(port.project_id) == str(self._ctx_project_id):
+            return port
+        subnet = getattr(port.subnet, "uuid", port.subnet)
+        if any(str(subnet) == str(own) for own in self._own_overlay_subnets()):
+            return port
+        return super().get(uuid=uuid, **kwargs)
+
+
+class CatalogController(ra_controllers.RoutesListController):
+    """Namespace router for /v1/network/catalog/ reference objects."""
+
+    __TARGET_PATH__ = "/v1/network/catalog/"
+
+
+class SecurityGroupController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for security-group reference objects."""
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "security_group"
+
+    __resource__ = resources.ResourceByRAModel(
+        models.SecurityGroup,
+        convert_underscore=False,
+    )
+
+
+class IdentityGroupController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for identity groups; the wire bit is allocated, never given."""
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "identity_group"
+
+    __resource__ = resources.ResourceByRAModel(
+        models.IdentityGroup,
+        convert_underscore=False,
+        hidden_fields=["identity"],
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # Naming a bit would claim another group's membership.
+                "identity": {constants.ALL: field_p.Permissions.RO},
+                # The bit is only unique within its network.
+                "network": {constants.UPDATE: field_p.Permissions.RO},
+            },
+        ),
+    )
+
+    def create(self, **kwargs):
+        kwargs["identity"] = models.IdentityGroup.allocate_identity(
+            kwargs.get("network")
+        )
+        return super().create(**kwargs)
+
+
+class ProxyServiceController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for the doors an overlay network opens onto the installation.
+
+    Needs `custom_destination` to name a bare address (not ownership-
+    checkable) or to open a door on a non-private network (whose other
+    tenants' agents would talk to the door owner as if to the platform).
+    """
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "proxy_service"
+
+    __resource__ = resources.ResourceByRAModel(
+        models.ProxyService,
+        convert_underscore=False,
+    )
+
+    def _gate_privileged(self, kwargs, uuid=None) -> None:
+        # Fields an update omits are taken from the stored row.
+        existing = None
+        if uuid is not None:
+            existing = models.ProxyService.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(uuid)}
+            )
+        destination = kwargs.get("destination", getattr(existing, "destination", None))
+        kind = getattr(destination, "KIND", None) or (
+            destination.get("kind") if isinstance(destination, dict) else None
+        )
+        if kind == "address":
+            self._enforce("custom_destination")
+        network = kwargs.get("network", getattr(existing, "network", None))
+        if network is None:
+            return
+        found = compute_models.Network.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(network)}
+        )
+        if found is not None and found.access != "private":
+            self._enforce("custom_destination")
+
+    def create(self, **kwargs):
+        self._gate_privileged(kwargs)
+        return super().create(**kwargs)
+
+    def update(self, uuid, **kwargs):
+        self._gate_privileged(kwargs, uuid=uuid)
+        return super().update(uuid, **kwargs)
+
+
+class AddressController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    """CRUD for address reference objects — the IPAM ledger."""
+
+    __policy_service_name__ = "network"
+    __policy_name__ = "address"
+
+    __resource__ = resources.ResourceByRAModel(
+        models.Address,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # The compiler's. A caller-written `floating` origin would
+                # open the fabric guard to any address.
+                "origin": {constants.ALL: field_p.Permissions.RO},
+                "owner_port": {constants.ALL: field_p.Permissions.RO},
+                "association": {constants.ALL: field_p.Permissions.RO},
+                # An allocation does not move: an update naming only the
+                # address would pin one past the create-time gate below.
+                "address": {constants.UPDATE: field_p.Permissions.RO},
+                "subnet": {constants.UPDATE: field_p.Permissions.RO},
+            },
+        ),
+    )
+
+    def _gate_explicit_address(self, kwargs) -> None:
+        # Pinning a specific address in a foreign (public) subnet is
+        # privileged; auto-allocation there is not.
+        if kwargs.get("address") is not None and kwargs.get("subnet") is not None:
+            subnet = compute_models.Subnet.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(kwargs["subnet"])}
+            )
+            if subnet is not None and str(subnet.project_id) != str(
+                self._ctx_project_id
+            ):
+                self._enforce("explicit_address")
+
+    def create(self, **kwargs):
+        self._gate_explicit_address(kwargs)
+        return super().create(**kwargs)
 
 
 class BorderController(

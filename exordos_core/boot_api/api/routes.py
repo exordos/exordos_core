@@ -39,6 +39,14 @@ class UniversalAgentsRoute(orch_routes.UniversalAgentsRoute):
     ]
 
 
+class BootResourcesRoute(status_routes.ResourcesRoute):
+    __controller__ = controllers.BootResourcesController
+
+
+class BootKindRoute(status_routes.KindRoute):
+    resources = routes.route(BootResourcesRoute, resource_route=True)
+
+
 class ApiEndpointRoute(routes.Route):
     """Handler for /v1/ endpoint"""
 
@@ -49,4 +57,4 @@ class ApiEndpointRoute(routes.Route):
     boots = routes.route(NetbootRoute)
     node_verifiers = routes.route(status_routes.NodeVerifiersRoute)
     agents = routes.route(UniversalAgentsRoute)
-    kind = routes.route(status_routes.KindRoute)
+    kind = routes.route(BootKindRoute)

@@ -18,7 +18,9 @@ import ipaddress
 import logging
 import os
 import pathlib
+import re
 import pwd
+import subprocess
 import typing as tp
 import uuid as sys_uuid
 
@@ -32,6 +34,7 @@ from exordos_core.common import constants as c
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.compute.node_set.dm import models as node_set_models
+from exordos_core.elements.dm import models as element_models
 from exordos_core.secret import utils as secret_utils
 from exordos_core.user_api.iam.dm import models as iam_models
 from exordos_core.vs.dm import models as vs_models
@@ -76,6 +79,19 @@ def set_var(
     return True
 
 
+def seed_core_set_target(node_set):
+    """Keep the bootstrap set desired while profile values are resolving."""
+    resource = element_models.Resource.objects.get_one(
+        filters={"uuid": dm_filters.EQ(node_set.uuid)}
+    )
+    if resource.target_resource is not None:
+        return
+    target = ua_models.TargetResourceMixin.to_ua_resource(node_set, kind=resource.kind)
+    target.insert()
+    resource.target_resource = target
+    resource.update()
+
+
 def add_core_set(
     spec: dict[str, tp.Any], set_active: bool = False
 ) -> "node_set_models.NodeSet":
@@ -86,6 +102,12 @@ def add_core_set(
     is installed, the core set and nodes will be detected on the data
     plane and won't be created again.
     """
+    existing = node_set_models.NodeSet.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(c.CORE_SET_UUID)}
+    )
+    if existing is not None:
+        seed_core_set_target(existing)
+        return existing
     disks = []
     for idx, disk in enumerate(spec["stand"]["bootstraps"][0]["disks"]):
         # The first disk is the system disk with an image
@@ -112,15 +134,11 @@ def add_core_set(
         # It will be reworked after HA is implemented
         replicas=1,
     )
-    try:
-        node_set.insert()
-    except ra_exceptions.ConflictRecords:
-        LOG.info("Node set %s already exists", node_set.uuid)
-        # Finish operation if the core set already exists
-        return node_set
+    node_set.insert()
 
     if set_active:
         node_set.set_active()
+    seed_core_set_target(node_set)
     # Convert instance to resource
     node_set_resource = node_set.to_ua_resource()
     node_set_resource.insert()
@@ -134,12 +152,11 @@ def add_core_set(
         node_uuids=[sys_uuid.UUID(spec["stand"]["bootstraps"][0]["uuid"])],
     )
 
-    prefix = spec["stand"]["hypervisors"][0]["machine_prefix"]
     for i, node in enumerate(nodes):
         bootstrap_spec = spec["stand"]["bootstraps"][i]
 
-        # Special naming for core nodes
-        node.name = f"{prefix}{str(node.uuid)[:8]}-{node.name}"
+        # Keep the model name: pool drivers add their domain prefix themselves.
+        # The core name also prevents reflashing this running bootstrap node.
         node.insert()
 
         if set_active:
@@ -163,7 +180,8 @@ def add_core_set(
                     ipv4=port["ip"],
                     mac=port["mac"],
                     status="ACTIVE",
-                    project_id=str(c.ZERO_UUID),
+                    project_id=str(node_set.project_id),
+                    provenance=nc.PortProvenance.GENERATED.value,
                 )
             )
             p.insert()
@@ -378,6 +396,141 @@ def apply_flat_network(stand: dict[str, tp.Any]) -> None:
         LOG.info("Created subnet %s", subnet.uuid)
 
 
+def overlay_is_wanted(spec: tp.Optional[dict[str, tp.Any]]) -> bool:
+    """Whether this installation has an overlay, or has asked for one.
+
+    The switch for the whole EVPN surface: the presence of the
+    ``stand.private_network`` block, or an overlay network created later
+    through the API. Older specs lack the block, so an upgrade changes
+    nothing on an installation without an overlay.
+    """
+    if ((spec or {}).get("stand") or {}).get("private_network") is not None:
+        return True
+    try:
+        for network in compute_models.Network.objects.get_all():
+            if nc.is_overlay(network.driver_spec):
+                return True
+    except Exception:
+        # Unknown: answer the safe way; the next pass asks again.
+        LOG.exception("Cannot tell whether this installation carries an overlay")
+    return False
+
+
+def apply_private_network(stand: dict[str, tp.Any]) -> None:
+    """Seed the ovs_evpn private overlay network idempotently.
+
+    Only when ``stand["private_network"]`` (``name`` / ``cidr`` / ``dhcp``)
+    is present. The network emits no dataplane resources until a node lands
+    a port on it, so seeding it before the fabric is configured is safe.
+    """
+    if stand.get("private_network") is None:
+        return
+    cfg = stand["private_network"] or {}
+    try:
+        compute_models.Network.objects.get_one(
+            filters={"uuid": dm_filters.EQ(c.PRIVATE_NETWORK_UUID)}
+        )
+        LOG.info("Private network already exists")
+        return
+    except ra_exceptions.RecordNotFound:
+        pass
+
+    network = compute_models.Network.restore_from_simple_view(
+        name=cfg.get("name", "private"),
+        uuid=c.PRIVATE_NETWORK_UUID,
+        driver_spec={"driver": nc.OVERLAY_DRIVER},
+        project_id=c.ZERO_UUID,
+    )
+    network.insert()
+    LOG.info("Created private network %s", network.uuid)
+
+    cidr = ipaddress.ip_network(cfg.get("cidr", c.PRIVATE_NETWORK_CIDR))
+    # The host-local EVPN responder is the overlay's gateway and resolver.
+    gateway = str(cidr.network_address + 1)
+    subnet = compute_models.Subnet.restore_from_simple_view(
+        name=cfg.get("name", "private"),
+        uuid=c.PRIVATE_SUBNET_UUID,
+        cidr=str(cidr),
+        ip_range=_net_range(cidr, 10),
+        ip_discovery_range=None,
+        dhcp=bool(cfg.get("dhcp", True)),
+        dns_servers=[gateway],
+        routers=[{"to": "0.0.0.0/0", "via": gateway}],
+        next_server=None,
+        project_id=c.ZERO_UUID,
+    )
+    subnet.network = network.uuid
+    subnet.insert()
+    LOG.info("Created private subnet %s", subnet.uuid)
+
+
+EVPN_RR_CONF_PATH = "/etc/exordos_core/exordos_core.d/evpn.conf"
+
+
+def render_evpn_rr_config(spec: dict[str, tp.Any]) -> tp.Optional[str]:
+    """Render the [evpn] route-reflector config for the network service.
+
+    The core node is the route reflector. Returns ``None`` when the stand
+    lacks the data or wants no overlay (the drop-in costs an `ec-gservice`
+    restart).
+    """
+    if not overlay_is_wanted(spec):
+        return None
+    stand = spec.get("stand", {})
+    bootstraps = stand.get("bootstraps") or []
+    network = stand.get("network") or {}
+    if not bootstraps or not network.get("cidr"):
+        return None
+    core = bootstraps[0]
+    core_ip = next((p["ip"] for p in core.get("ports", []) if p.get("ip")), None)
+    if not core.get("uuid") or not core_ip:
+        return None
+    # In a multi-hypervisor realm the extra hypervisors reach the RR through
+    # the control node's flat address (Border forwards 179):
+    # ``evpn_rr_address`` overrides what clients peer with, and
+    # ``evpn_peer_prefixes`` adds the prefixes they peer from.
+    rr_address = stand.get("evpn_rr_address") or core_ip
+    peer_prefixes = [network["cidr"]]
+    for extra in stand.get("evpn_peer_prefixes") or []:
+        if extra not in peer_prefixes:
+            peer_prefixes.append(extra)
+    # Overlay guests' DNS NF forwards to the core's resolver (core.local).
+    return (
+        "[evpn]\n"
+        "rr_agent = %(agent)s\n"
+        "rr_addresses = %(rr)s\n"
+        "rr_peer_prefixes = %(prefixes)s\n"
+        "dns_forwarders = %(ip)s\n"
+    ) % {
+        "agent": core["uuid"],
+        "rr": rr_address,
+        "prefixes": ",".join(peer_prefixes),
+        "ip": core_ip,
+    }
+
+
+def apply_evpn_rr_config(spec: dict[str, tp.Any]) -> None:
+    """Write the [evpn] RR drop-in idempotently and refresh the service."""
+    content = render_evpn_rr_config(spec)
+    if content is None:
+        return
+    try:
+        with open(EVPN_RR_CONF_PATH) as f:
+            if f.read() == content:
+                return
+    except FileNotFoundError:
+        pass
+    os.makedirs(os.path.dirname(EVPN_RR_CONF_PATH), exist_ok=True)
+    with open(EVPN_RR_CONF_PATH, "w") as f:
+        f.write(content)
+    LOG.info("Wrote evpn RR config %s", EVPN_RR_CONF_PATH)
+    # ec-gservice hosts the network service; nudge it to reread the config.
+    try:
+        subprocess.run(["systemctl", "try-restart", "ec-gservice"], check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        LOG.warning("Could not restart ec-gservice for evpn RR config: %s", e)
+
+
 def apply_startup_db(spec: dict[str, tp.Any]) -> None:
     """Idempotent startup database configuration."""
     stand = spec.get("stand", {})
@@ -387,6 +540,12 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
 
     # Apply flat network configuration
     apply_flat_network(stand)
+
+    # Apply the optional ovs_evpn private overlay network
+    apply_private_network(stand)
+
+    # Configure the EVPN route reflector (the core node) for the private net
+    apply_evpn_rr_config(spec)
 
     # Apply machine pools
     # NOTE(akremenetsky): It maybe a problem for large installations
@@ -697,3 +856,224 @@ def set_iam_default_client_secret_var(spec: dict) -> bool:
         spec["iam"]["default_client_secret"],
         c.VAR_IAM_DEFAULT_CLIENT_SECRET_UUID,
     )
+
+
+# --- the universal agent's own config ------------------------------------
+#
+# Not in `cmd/bootstrap.py`: importing it registers CLI options, which kills
+# a running service with `ArgsAlreadyParsedError`, and the reconcile loop
+# needs this code.
+
+UA_CONFIG_PATH = "/etc/exordos_universal_agent/exordos_universal_agent.conf"
+UA_CONFIG_DATA_PATH = (
+    "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
+)
+# Present when a dedicated SDN agent serves another installation's overlay
+# (`exordos compute hypervisors register-agent --write-config`). The two
+# evpn drivers would share one meta file, so the node's own agent drops evpn.
+SDN_AGENT_CONFIG_PATH = "/etc/exordos_universal_agent/sdn_agent.conf"
+
+
+def _sync_config_to_data_path(content: str, data_path: str) -> None:
+    """Write the same config content to the mirrored data path.
+
+    Ensures config files under /var/lib/exordos/data/etc/ stay in sync
+    with their /etc/ counterparts.
+    """
+    try:
+        os.makedirs(os.path.dirname(data_path), exist_ok=True)
+        with open(data_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        LOG.info("Synced config to %s", data_path)
+    except OSError as e:
+        LOG.warning("Failed to sync config to %s: %s", data_path, e)
+
+
+# The parts of the universal agent config that evolve with the core image.
+# The scheduler section is fully rewritten to handle any indentation
+# differences; keep both literals in sync with
+# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
+_UA_CAPABILITIES = [
+    "em_*",
+    "secret",
+    "password",
+    "certificate",
+    "paas_lb_agent",
+    "repo_proxy_installed_element",
+    "border_agent",
+]
+# Advertised only by an installation that carries an overlay, so an upgrade
+# without one changes no capability and restarts no agent.
+_UA_EVPN_CAPABILITIES = [
+    "evpn_port",
+    "evpn_host",
+    "evpn_nf",
+    "bgp_rr",
+]
+
+
+def _ua_scheduler_section(with_overlay: bool) -> str:
+    caps = _UA_CAPABILITIES + (_UA_EVPN_CAPABILITIES if with_overlay else [])
+    return "[universal_agent_scheduler]\ncapabilities =\n%s\n" % ",\n".join(
+        "    %s" % cap for cap in caps
+    )
+
+
+_UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
+_UA_EVPN_DRIVER_LINE = "    EvpnAgentCapabilityDriver,\n"
+_UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
+
+# Extra lines appended to the [SecretCapabilityDriver] section when
+# migrating from [UserCapabilityDriver]. Keep in sync with
+# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
+_UA_SECRET_DRIVER_EXTRA_LINES = (
+    "em_core_iam_users = /v1/iam/users/, password\n"
+    "em_core_iam_clients = /v1/iam/clients/, secret, "
+    "filter:project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+)
+
+
+def _migrate_ua_secret_driver(content: str) -> str:
+    """Migrate UserCapabilityDriver to SecretCapabilityDriver.
+
+    Replaces the driver name in caps_drivers, renames the
+    [UserCapabilityDriver] section to [SecretCapabilityDriver], and
+    appends the IAM users/clients endpoint lines required by the
+    secret driver. Idempotent.
+    """
+    if "UserCapabilityDriver" in content:
+        content = content.replace(
+            "    UserCapabilityDriver,\n",
+            "    SecretCapabilityDriver,\n",
+            1,
+        )
+        content = content.replace(
+            "[UserCapabilityDriver]",
+            "[SecretCapabilityDriver]",
+            1,
+        )
+
+    if "em_core_iam_users" not in content:
+        match = re.search(
+            r"(\[SecretCapabilityDriver\].*?)(?=^\[|\Z)",
+            content,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if match is not None:
+            section = match.group(0)
+            if not section.endswith("\n"):
+                section += "\n"
+            section += _UA_SECRET_DRIVER_EXTRA_LINES
+            content = content[: match.start()] + section + content[match.end() :]
+        else:
+            LOG.warning(
+                "Could not find [SecretCapabilityDriver] section to append "
+                "IAM users/clients endpoints"
+            )
+
+    return content
+
+
+def _ensure_ua_config_current(with_overlay: bool = False) -> None:
+    """Bring the universal agent config up to date with this image.
+
+    ec-bootstrap-templates restores /etc configs from the persisted
+    copies on the data disk, so template changes shipped in a new core
+    image never reach an upgraded stand on their own. Idempotently
+    reapply the image-defined parts of the UA config:
+
+    1. Rewrite the [universal_agent_scheduler] section with the current
+       capabilities list. The evpn ones are in it only when this
+       installation carries an overlay (`with_overlay`) -- see
+       `bootstrap_defaults.overlay_is_wanted`.
+    2. Ensure BorderAgentCapabilityDriver is present in caps_drivers
+       ([universal_agent] holds stand-specific endpoints, so only this
+       line is inserted, not the whole section).
+    3. Migrate UserCapabilityDriver to SecretCapabilityDriver in
+       caps_drivers and rename the [UserCapabilityDriver] section,
+       appending the IAM users/clients endpoints required by the
+       secret driver.
+
+    On changes the result is synced back to the persisted copy and the
+    agent services (started before ec-bootstrap runs, thus holding the
+    stale config) are restarted to pick it up.
+    """
+    try:
+        with open(UA_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        LOG.warning("Universal agent config not found: %s", UA_CONFIG_PATH)
+        return
+
+    new_content = re.sub(
+        r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
+        _ua_scheduler_section(with_overlay),
+        content,
+        count=1,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+
+    if "BorderAgentCapabilityDriver" not in new_content:
+        new_content = new_content.replace(
+            "    LBAgentCapabilityDriver,\n",
+            "    LBAgentCapabilityDriver,\n" + _UA_BORDER_DRIVER_LINE,
+            1,
+        )
+        if "BorderAgentCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert BorderAgentCapabilityDriver into caps_drivers in %s",
+                UA_CONFIG_PATH,
+            )
+
+    if "OpaqueSecretCapabilityDriver" not in new_content:
+        new_content = new_content.replace(
+            "    PasswordCapabilityDriver,\n",
+            _UA_OPAQUE_SECRET_DRIVER_LINE + "    PasswordCapabilityDriver,\n",
+            1,
+        )
+        if "OpaqueSecretCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert OpaqueSecretCapabilityDriver into caps_drivers in %s",
+                UA_CONFIG_PATH,
+            )
+
+    new_content = _migrate_ua_secret_driver(new_content)
+
+    if (
+        with_overlay
+        and "EvpnAgentCapabilityDriver" not in new_content
+        and not os.path.exists(SDN_AGENT_CONFIG_PATH)
+    ):
+        new_content = new_content.replace(
+            _UA_BORDER_DRIVER_LINE,
+            _UA_BORDER_DRIVER_LINE + _UA_EVPN_DRIVER_LINE,
+            1,
+        )
+        if "EvpnAgentCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert EvpnAgentCapabilityDriver into caps_drivers in %s",
+                UA_CONFIG_PATH,
+            )
+
+    if new_content == content:
+        LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
+        return
+
+    with open(UA_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    LOG.info("Updated universal agent config %s", UA_CONFIG_PATH)
+    _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
+
+    try:
+        subprocess.run(
+            [
+                "systemctl",
+                "try-restart",
+                "exordos-universal-agent",
+                "exordos-universal-scheduler",
+            ],
+            check=True,
+        )
+        LOG.info("Restarted universal agent services to apply the new config")
+    except (OSError, subprocess.CalledProcessError) as e:
+        LOG.warning("Failed to restart universal agent services: %s", e)

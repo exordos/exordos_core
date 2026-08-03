@@ -37,6 +37,18 @@ ELEMENT_NAMESPACE = sys_uuid.UUID("f277e88a-cd58-4c33-a0c3-23a1086a53b7")
 SCHEMA_REF_PREFIX = "#/components/schemas/"
 UUID_PREFIX = "12345678"
 REGEXP = re.compile(r"\$(.+?)(?:\:(.+))?$")
+# SDN resources the user API creates but the core agent has no model for
+# (see `core_agent.conf.j2`): a manifest declaring one validated and then
+# never applied, so the schema does not offer them.
+UNMANAGED_RESOURCE_TYPES = frozenset(
+    (
+        "$core.network.catalog.identity_groups",
+        "$core.network.catalog.proxy_services",
+        "$core.network.catalog.security_groups",
+        "$core.network.nfs",
+        "$core.network.ports",
+    )
+)
 
 
 @dataclasses.dataclass
@@ -348,6 +360,8 @@ def build_full_schema(
                 if not model:
                     continue
                 resource = f"$core.{api_parts}"
+                if resource in UNMANAGED_RESOURCE_TYPES:
+                    continue
                 model["path"] = path
                 copy_schema_closure(
                     user_api_spec["components"]["schemas"],

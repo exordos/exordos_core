@@ -1052,6 +1052,161 @@ def lb_factory_with_model():
 
 
 @pytest.fixture
+def network_factory():
+    def factory(
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "network-default",
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        driver_spec: tp.Optional[tp.Dict[str, tp.Any]] = None,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        network = Network(
+            uuid=uuid,
+            name=name,
+            project_id=project_id,
+            # The only driver a caller may ask for over the API.
+            driver_spec=(
+                driver_spec if driver_spec is not None else {"driver": "ovs_evpn"}
+            ),
+            **kwargs,
+        )
+        return network.dump_to_simple_view()
+
+    return factory
+
+
+@pytest.fixture
+def subnet_factory():
+    def factory(
+        network_uuid: sys_uuid.UUID,
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "subnet-default",
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        cidr: str = "10.42.0.0/24",
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        subnet = Subnet(
+            uuid=uuid,
+            name=name,
+            project_id=project_id,
+            network=sys_uuid.UUID(str(network_uuid)),
+            cidr=netaddr.IPNetwork(cidr),
+            **kwargs,
+        )
+        return subnet.dump_to_simple_view()
+
+    return factory
+
+
+@pytest.fixture
+def security_group_factory():
+    def factory(
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "sg-default",
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        rules: tp.Optional[tp.List[tp.Dict[str, tp.Any]]] = None,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        sg = network_models.SecurityGroup(
+            uuid=uuid,
+            name=name,
+            project_id=project_id,
+            rules=rules if rules is not None else [],
+            **kwargs,
+        )
+        return sg.dump_to_simple_view()
+
+    return factory
+
+
+@pytest.fixture
+def address_factory():
+    def factory(
+        subnet_uuid: sys_uuid.UUID,
+        address: tp.Optional[str] = None,
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        addr = network_models.Address(
+            uuid=uuid,
+            project_id=project_id,
+            subnet=sys_uuid.UUID(str(subnet_uuid)),
+            address=address,
+            **kwargs,
+        )
+        view = addr.dump_to_simple_view()
+        # The compiler's fields: the API refuses them, even at their defaults.
+        for field in ("origin", "owner_port", "association"):
+            if field not in kwargs:
+                view.pop(field, None)
+        return view
+
+    return factory
+
+
+@pytest.fixture
+def nf_factory():
+    def factory(
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "nf-default",
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        kind: str = "splitter",
+        config: tp.Optional[tp.Dict[str, tp.Any]] = None,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        nf = network_models.NetworkFunction(
+            uuid=uuid,
+            name=name,
+            project_id=project_id,
+            kind=kind,
+            config=config if config is not None else {},
+            **kwargs,
+        )
+        # provenance and the owner fields are read-only: they say who owns
+        # the function, which is the compiler's to write and not a caller's.
+        return nf.dump_to_simple_view(
+            skip=["provenance", "owner_subnet", "owner_network"]
+        )
+
+    return factory
+
+
+@pytest.fixture
+def port_factory():
+    def factory(
+        subnet_uuid: sys_uuid.UUID,
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "port-default",
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        mac: str = "52:54:00:aa:bb:cc",
+        config: tp.Optional[tp.Any] = None,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        extra = {"config": config} if config is not None else {}
+        port = node_models.Port(
+            uuid=uuid,
+            name=name,
+            project_id=project_id,
+            subnet=sys_uuid.UUID(str(subnet_uuid)),
+            mac=mac,
+            **extra,
+            **kwargs,
+        )
+        # status/machine/provenance are read-only (reconcile-driven,
+        # derived, and "who owns this row" respectively).
+        return port.dump_to_simple_view(skip=["status", "machine", "provenance"])
+
+    return factory
+
+
+@pytest.fixture
 def vhost_factory():
     def factory(
         lb,

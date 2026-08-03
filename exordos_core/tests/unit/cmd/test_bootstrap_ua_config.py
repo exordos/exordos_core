@@ -14,10 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import configparser
 import pathlib
 from unittest import mock
 
-from exordos_core.cmd import bootstrap
+from exordos_core.bootstrap import defaults as bootstrap
+from exordos_core.cmd import bootstrap as cmd_bootstrap
 
 # A universal agent config persisted by a pre-border core image.
 _OLD_UA_CONFIG = """\
@@ -141,15 +143,19 @@ attributes = value
 """
 
 
-def _run_ua(tmp_path):
+def _run_ua(tmp_path, sdn_agent=False, with_overlay=True):
     etc_path = tmp_path / "exordos_universal_agent.conf"
     data_path = tmp_path / "data" / "exordos_universal_agent.conf"
+    sdn_path = tmp_path / "sdn_agent.conf"
+    if sdn_agent:
+        sdn_path.write_text("[universal_agent]\n", encoding="utf-8")
     with (
         mock.patch.object(bootstrap, "UA_CONFIG_PATH", str(etc_path)),
         mock.patch.object(bootstrap, "UA_CONFIG_DATA_PATH", str(data_path)),
+        mock.patch.object(bootstrap, "SDN_AGENT_CONFIG_PATH", str(sdn_path)),
         mock.patch.object(bootstrap.subprocess, "run") as run,
     ):
-        bootstrap._ensure_ua_config_current()
+        bootstrap._ensure_ua_config_current(with_overlay)
     return etc_path, data_path, run
 
 
@@ -157,11 +163,11 @@ def _run_core_agent(tmp_path):
     etc_path = tmp_path / "core_agent.conf"
     data_path = tmp_path / "data" / "core_agent.conf"
     with (
-        mock.patch.object(bootstrap, "CORE_AGENT_CONFIG_PATH", str(etc_path)),
-        mock.patch.object(bootstrap, "CORE_AGENT_CONFIG_DATA_PATH", str(data_path)),
-        mock.patch.object(bootstrap.subprocess, "run") as run,
+        mock.patch.object(cmd_bootstrap, "CORE_AGENT_CONFIG_PATH", str(etc_path)),
+        mock.patch.object(cmd_bootstrap, "CORE_AGENT_CONFIG_DATA_PATH", str(data_path)),
+        mock.patch.object(cmd_bootstrap.subprocess, "run") as run,
     ):
-        bootstrap._ensure_core_agent_config_current()
+        cmd_bootstrap._ensure_core_agent_config_current()
     return etc_path, data_path, run
 
 
@@ -177,6 +183,13 @@ def test_upgrades_old_persisted_config(tmp_path):
     # UserCapabilityDriver is migrated to SecretCapabilityDriver
     assert "UserCapabilityDriver" not in content
     assert "SecretCapabilityDriver" in content
+    # The evpn_node capability is wired in right after border, exactly once,
+    # and its scheduler capabilities are advertised.
+    assert (
+        "    BorderAgentCapabilityDriver,\n    EvpnAgentCapabilityDriver,\n" in content
+    )
+    assert content.count("EvpnAgentCapabilityDriver") == 1
+    assert "evpn_port" in content and "evpn_host" in content and "bgp_rr" in content
     # Stand-specific values and the following section survive the rewrite
     assert "orch_endpoint = http://10.20.0.2:11013" in content
     assert "[CoreDNSCertificateCapabilityDriver]" in content
@@ -243,7 +256,7 @@ def test_upgrades_core_agent_config(tmp_path):
         "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
         "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
         "em_core_iam_tokens = exordos_core.user_api.iam.dm.models:ManagedToken\n"
-        "\n[filters]\n" in content
+        "em_core_network_networks = exordos_core.compute.dm.models:Network\n" in content
     )
     assert (
         "[resource_transformer:em_core_secret_secrets]\n"
@@ -324,7 +337,7 @@ def test_ensure_section_sets_and_removes_keys():
         "[a]\n# keep = me\nsame=1\nchanged = old\ndropped = x\n\n[b]\ndropped = x\n"
     )
 
-    result = bootstrap._ensure_section(
+    result = cmd_bootstrap._ensure_section(
         content,
         "a",
         {"same": "1", "changed": "new", "dropped": None, "added": "2"},
@@ -336,7 +349,7 @@ def test_ensure_section_sets_and_removes_keys():
 
 
 def test_ensure_section_appends_missing_section():
-    result = bootstrap._ensure_section(
+    result = cmd_bootstrap._ensure_section(
         "[a]\nkey = 1", "b", {"key": "2", "absent": None}
     )
 
@@ -344,4 +357,139 @@ def test_ensure_section_appends_missing_section():
 
 
 def test_ensure_section_skips_missing_section_with_only_removals():
-    assert bootstrap._ensure_section("[a]\n", "b", {"key": None}) == "[a]\n"
+    assert cmd_bootstrap._ensure_section("[a]\n", "b", {"key": None}) == "[a]\n"
+
+
+def test_a_node_with_its_own_sdn_agent_keeps_the_capability_released(tmp_path):
+    """A hypervisor that wires guests into another installation's overlay has
+    handed its evpn state to the dedicated SDN agent (`register-agent
+    --write-config` strips the driver). Re-inserting it here would give the
+    two agents one meta file again — silently, on the next boot."""
+    etc_path = tmp_path / "exordos_universal_agent.conf"
+    etc_path.write_text(_OLD_UA_CONFIG, encoding="utf-8")
+
+    etc_path, _data_path, _run_mock = _run_ua(tmp_path, sdn_agent=True)
+
+    content = etc_path.read_text(encoding="utf-8")
+    assert "EvpnAgentCapabilityDriver" not in content
+    # everything else this function maintains still lands
+    assert "BorderAgentCapabilityDriver" in content
+    assert "evpn_port" in content  # the scheduler section is node-independent
+
+
+def test_an_installation_without_an_overlay_is_offered_no_evpn_capability(tmp_path):
+    """A capability is an offer to be scheduled work of that kind, and an
+    installation with no `ovs_evpn` network has none to offer. Advertising
+    them anyway would mean an upgrade rewrote the agent's config and
+    restarted it, on a stand that never asked for any of this."""
+    etc_path = tmp_path / "exordos_universal_agent.conf"
+    etc_path.write_text(_OLD_UA_CONFIG, encoding="utf-8")
+
+    etc_path, _data_path, _run_mock = _run_ua(tmp_path, with_overlay=False)
+
+    content = etc_path.read_text(encoding="utf-8")
+    assert "EvpnAgentCapabilityDriver" not in content
+    for capability in ("evpn_port", "evpn_host", "evpn_nf", "bgp_rr"):
+        assert capability not in content
+    # ... and everything this function maintained before the overlay existed
+    # still lands, because that part is not conditional on anything.
+    assert "BorderAgentCapabilityDriver" in content
+    assert "border_agent" in content
+
+
+def test_the_shipped_agent_config_offers_no_overlay_capability():
+    """The image's agent config offers no overlay capability.
+
+    A freshly flashed node starts from it without `_ensure_ua_config_current`'s
+    gate, so it would advertise an overlay it may not have (an upgraded install
+    came up with no guest store and zero pool capacity). Bootstrap adds the
+    entries when an overlay was asked for.
+    """
+    import pathlib
+
+    template = (
+        pathlib.Path(__file__).parents[4]
+        / "etc/exordos_universal_agent/exordos_universal_agent.conf.j2"
+    )
+    shipped = template.read_text(encoding="utf-8")
+
+    assert "EvpnAgentCapabilityDriver" not in shipped
+    for capability in bootstrap._UA_EVPN_CAPABILITIES:
+        assert capability not in shipped, capability
+    # ... and what the image does ship is what the non-overlay rewrite
+    # produces, or an upgrade would silently take capabilities away.
+    for capability in bootstrap._UA_CAPABILITIES:
+        assert capability in shipped, capability
+
+
+_NETWORK_MODELS = {
+    "em_core_network_networks": "exordos_core.compute.dm.models:Network",
+    "em_core_network_subnets": "exordos_core.compute.dm.models:Subnet",
+    "em_core_network_catalog_addresses": (
+        "exordos_core.user_api.network.dm.models:Address"
+    ),
+}
+
+
+def _assert_network_models(content):
+    config = configparser.ConfigParser(interpolation=None)
+    config.read_string(content)
+    for name, model in _NETWORK_MODELS.items():
+        assert config["models"][name] == model
+        assert config["filters"][name] == (
+            "project_id:12345678-c625-4fee-81d5-f691897b8142"
+        )
+        assert content.count(f"{name} = ") == 2
+
+
+def test_an_upgraded_core_agent_config_gains_the_network_models(tmp_path):
+    """A manifest naming `$core.network.networks` works after an upgrade.
+
+    The config is restored from the data disk, so a line added to the
+    template reaches only fresh installations unless it is added here.
+    """
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(_OLD_CORE_AGENT_CONFIG, encoding="utf-8")
+
+    etc_path, data_path, run = _run_core_agent(tmp_path)
+
+    content = etc_path.read_text(encoding="utf-8")
+    _assert_network_models(content)
+    assert data_path.read_text(encoding="utf-8") == content
+    run.assert_called_once()
+
+
+def test_a_config_that_already_has_the_idp_still_gains_the_network_models(
+    tmp_path,
+):
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(_OLD_CORE_AGENT_CONFIG, encoding="utf-8")
+    _run_core_agent(tmp_path)
+    content = etc_path.read_text(encoding="utf-8")
+    for name in _NETWORK_MODELS:
+        content = "".join(
+            line
+            for line in content.splitlines(keepends=True)
+            if not line.startswith(f"{name} = ")
+        )
+    etc_path.write_text(content, encoding="utf-8")
+
+    etc_path, _data_path, run = _run_core_agent(tmp_path)
+
+    content = etc_path.read_text(encoding="utf-8")
+    _assert_network_models(content)
+    assert content.count("em_core_iam_idp = ") == 2
+    run.assert_called_once()
+
+
+def test_the_template_carries_the_network_models_the_upgrade_adds():
+    template = (
+        pathlib.Path(cmd_bootstrap.__file__).parents[2]
+        / "etc"
+        / "exordos_core"
+        / "core_agent.conf.j2"
+    ).read_text(encoding="utf-8")
+    for name in _NETWORK_MODELS:
+        for section in ("models", "filters"):
+            line = f"{name} = {cmd_bootstrap._CORE_AGENT_SECTIONS[section][name]}"
+            assert line in template
