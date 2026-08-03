@@ -61,74 +61,8 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## Project Overview
-
-Exordos Core is an open-source NoOps platform for managing corporate infrastructure and software ecosystems. It provides declarative, AI-ready infrastructure management with image-based provisioning and sovereign deployment capabilities.
-
-## Project Structure and Module Organization
-
-```text
-exordos_core/
-├── exordos_core/        # Main source code
-│   ├── elements/        # Software elements (databases, messengers, services)
-│   ├── iam/             # Identity and access management
-│   ├── network/         # Network configuration and load balancers
-│   ├── secret/          # Certificate and secret management
-│   └── tests/           # Unit and functional tests
-├── docs/                # Documentation (Markdown files)
-├── output/              # Build artifacts and inventory files
-└── tests/               # Additional test suites
-```
-
-## Build, Test, and Development Commands
-
-### Testing
-
-```bash
-# Run all tests (unit + functional)
-tox -e py310,py312,py314
-
-# Run unit tests only
-tox -e py310
-
-# Run functional tests
-tox -e py310-functional
-
-# Run linters
-tox -e ruff-check    # Check code style
-tox -e mypy          # Type checking
-```
-
-### Build Commands
-
-```bash
-# Build core image
-make build_core
-
-# Bootstrap deployment
-make bootstrap
-```
-
-### Development
-
-```bash
-# Start documentation server
-tox -e docs
-
-# Fix code style automatically
-tox -e ruff
-
-# Fix markdown linting
-make mdlint
-```
-
 ## Code Style and Naming Conventions
 
-- **Language**: Python 3.10+
-- **Formatter**: Ruff (format + linting)
-- **Type Checking**: MyPy
-- **Naming**: snake_case for functions/variables, PascalCase for classes
-- **Tests**: Located in `exordos_core/tests/unit` and `exordos_core/tests/functional`
 - **Comments for code**: write on english
 
 ## VCS Conventions
@@ -188,11 +122,3 @@ All source files must include Apache 2.0 license header:
 - Run `tox -e cli_docs` to regenerate CLI docs
 - Run `make mdlint` for Markdown linting
 - Keep `README.md` synchronized with new features
-
-## Important Paths
-
-- **Source**: `exordos_core/`
-- **Tests**: `exordos_core/tests/`
-- **Documentation**: `docs/` — see `docs/core-developer-guide/index.md` (architecture)
-  and `docs/usage/troubleshooting.md` (debugging) first
-- **Build output**: `output/`
