@@ -21,6 +21,7 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.clients.orch import base as orch_base
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 from restalchemy.dm import filters as dm_filters
@@ -183,7 +184,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             return False
 
         # Check if the port is already allocated
-        if ports[0].status != nc.PortStatus.ACTIVE:
+        if ports[0].status != ua_pool.PortStatus.ACTIVE:
             LOG.debug("Port %s is not active", ports[0].uuid)
             return False
 
@@ -211,7 +212,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # machine status to ERROR than to try reschedule machine. We
             # don't know the machine is stateless or stateful.
             LOG.warning("Pool %s has not enough resources", machine.pool)
-            machine.status = nc.MachineStatus.ERROR.value
+            machine.status = ua_pool.MachineStatus.ERROR.value
             machine.node.status = nc.NodeStatus.ERROR.value
             machine.save()
             machine.node.save()
@@ -283,7 +284,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
         # The new machine and the machine with changed image should be booted
         # in the private network with boot=`network`.
-        boot = nc.BootAlternative.hd0.value
+        boot = ua_pool.BootAlternative.hd0.value
         if machine_guest_pair is None:
             # Do nothing for new machines in the core set.
             # The core machines start in boot=hd0 mode and need to be
@@ -291,7 +292,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             if not self._is_core_machine(machine):
                 # It's a new machine, so it should be run in the
                 # `network` boot mode.
-                boot = nc.BootAlternative.network.value
+                boot = ua_pool.BootAlternative.network.value
                 # Any port for the boot network is fine. The port will be replaced
                 # after the machine is flashed and switched to the main network.
                 port = models.Port.from_boot_network()
@@ -303,7 +304,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
                 if guest_actual and guest_actual.image != resolved_image:
-                    boot = nc.BootAlternative.network.value
+                    boot = ua_pool.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
                     port = models.Port.from_boot_network()
@@ -361,8 +362,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # and the main network
         if (
             guest_machine is not None
-            and guest_machine.boot == nc.BootAlternative.network
-            and guest_machine.status == nc.MachineStatus.FLASHED
+            and guest_machine.boot == ua_pool.BootAlternative.network
+            and guest_machine.status == ua_pool.MachineStatus.FLASHED
         ):
             # Get the port from the main network for the machine
             port, _ = self._get_or_fetch_machine_ctx(machine)
@@ -370,7 +371,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 raise ValueError(f"Machine {machine.uuid} has no port")
 
             # FIXME(akremenetsky): Detect disk number
-            boot = nc.BootAlternative.hd0.value
+            boot = ua_pool.BootAlternative.hd0.value
 
             # Find the agent UUID for the pool
             agent_uuid = self._agent_by_pool(machine.pool.uuid)
@@ -404,22 +405,22 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             return
 
         if (
-            pool_machine.status == nc.MachineStatus.ERROR
-            or guest_machine.status == nc.MachineStatus.ERROR
+            pool_machine.status == ua_pool.MachineStatus.ERROR
+            or guest_machine.status == ua_pool.MachineStatus.ERROR
         ):
-            machine.status = nc.MachineStatus.ERROR.value
+            machine.status = ua_pool.MachineStatus.ERROR.value
             return
 
         if (
-            pool_machine.status == nc.MachineStatus.NEW
-            or guest_machine.status == nc.MachineStatus.NEW
+            pool_machine.status == ua_pool.MachineStatus.NEW
+            or guest_machine.status == ua_pool.MachineStatus.NEW
         ):
-            machine.status = nc.MachineStatus.NEW.value
+            machine.status = ua_pool.MachineStatus.NEW.value
             return
 
         if (
-            pool_machine.status == nc.MachineStatus.ACTIVE
-            and guest_machine.status == nc.MachineStatus.ACTIVE
+            pool_machine.status == ua_pool.MachineStatus.ACTIVE
+            and guest_machine.status == ua_pool.MachineStatus.ACTIVE
         ):
             # Transition to ACTIVE only when the machine images are actual.
             # Without this check the machine could be marked ACTIVE while
@@ -430,11 +431,11 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 machine.image == pool_machine.image
                 and resolved_image == guest_machine.image
             ):
-                machine.status = nc.MachineStatus.ACTIVE.value
+                machine.status = ua_pool.MachineStatus.ACTIVE.value
                 return
 
         # TODO(akremenetsky): Support more statuses
-        machine.status = nc.MachineStatus.IN_PROGRESS.value
+        machine.status = ua_pool.MachineStatus.IN_PROGRESS.value
 
     def _pre_delete_machine_resource(self, resource: ua_models.TargetResource) -> None:
         """The hook is performed before deleting machine resource."""
@@ -484,7 +485,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if not pool.storage_pools:
             return False
 
-        storage_pool: models.AbstractStoragePool = pool.storage_pools[0]
+        storage_pool: ua_pool.AbstractStoragePool = pool.storage_pools[0]
         return storage_pool.has_capacity(size)
 
     def _reschedule_volume(
@@ -515,7 +516,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool: models.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
@@ -540,13 +541,13 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
             # FIXME(akremenetsky): It's more safer do nothing and set the
             # volume status to ERROR than to try reschedule it.
-            volume.status = nc.VolumeStatus.ERROR.value
-            volume.node_volume.status = nc.VolumeStatus.ERROR.value
+            volume.status = ua_pool.VolumeStatus.ERROR.value
+            volume.node_volume.status = ua_pool.VolumeStatus.ERROR.value
             volume.save()
             volume.node_volume.save()
             return False
 
-        storage_pool: models.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?

@@ -18,11 +18,11 @@ import logging
 import typing as tp
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import relationships
 
-from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 
 LOG = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class VolumeBuilderService(sdk_builder.UniversalBuilderService):
         machine_volume.boot = target.boot
         machine_volume.index = target.index
         machine_volume.machine = machine
-        machine_volume.status = nc.VolumeStatus.IN_PROGRESS.value
+        machine_volume.status = ua_pool.VolumeStatus.IN_PROGRESS.value
         machine_volume.save()
 
     # Builder lifecycle hooks

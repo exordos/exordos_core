@@ -21,10 +21,9 @@ from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.agents.universal.api import crypto as ua_crypto
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 import pytest
 from restalchemy.dm import filters as dm_filters
-
-from exordos_core.compute import constants as nc
 
 
 class TestHypervisorUserApi:
@@ -102,7 +101,7 @@ class TestHypervisorUserApi:
 
         assert response.status_code == 201
         assert self._hypervisor_cmp_shallow(hypervisor, output)
-        assert output["status"] == nc.MachinePoolStatus.DISABLED.value
+        assert output["status"] == ua_pool.MachinePoolStatus.DISABLED.value
 
         client.delete(
             client.build_resource_uri(["compute", "hypervisors", hypervisor["uuid"]])
@@ -347,3 +346,80 @@ class TestHypervisorUserApi:
         assert key.private_key == private_key
 
         client.delete(client.build_resource_uri(["compute", "nodes", str(node_uuid)]))
+
+    def test_hypervisors_add_local_hyper_provisions_a_node_key(
+        self,
+        pool_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        node_uuid = sys_uuid.uuid4()
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["compute", "hypervisors"])
+
+        hypervisor = pool_factory(
+            driver_spec={
+                "kind": "exordos_local_hyper",
+                "connection_uri": "qemu:///system",
+                "node": str(node_uuid),
+            },
+        )
+        hypervisor.pop("status", None)
+        response = client.post(url, json=hypervisor)
+        assert response.status_code == 201
+
+        key = ua_models.NodeEncryptionKey.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_uuid)}
+        )
+        assert key.private_key
+
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", hypervisor["uuid"]])
+        )
+
+    def test_node_reuses_a_local_hyper_pools_node_key(
+        self,
+        pool_factory: tp.Callable,
+        node_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        # A machine can be both a local hypervisor's node and a plain
+        # compute Node - both provision a NodeEncryptionKey for the same
+        # uuid, so registering the Node after the hypervisor must reuse
+        # the existing key instead of conflicting on insert.
+        node_uuid = sys_uuid.uuid4()
+        client = user_api_client(auth_user_admin)
+
+        hypervisor = pool_factory(
+            driver_spec={
+                "kind": "exordos_local_hyper",
+                "connection_uri": "qemu:///system",
+                "node": str(node_uuid),
+            },
+        )
+        hypervisor.pop("status", None)
+        response = client.post(
+            client.build_collection_uri(["compute", "hypervisors"]), json=hypervisor
+        )
+        assert response.status_code == 201
+
+        key_before = ua_models.NodeEncryptionKey.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_uuid)}
+        )
+
+        node = node_factory(uuid=node_uuid)
+        response = client.post(
+            client.build_collection_uri(["compute", "nodes"]), json=node
+        )
+        assert response.status_code == 201
+
+        key_after = ua_models.NodeEncryptionKey.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_uuid)}
+        )
+        assert key_after.private_key == key_before.private_key
+
+        client.delete(client.build_resource_uri(["compute", "nodes", str(node_uuid)]))
+        client.delete(
+            client.build_resource_uri(["compute", "hypervisors", hypervisor["uuid"]])
+        )

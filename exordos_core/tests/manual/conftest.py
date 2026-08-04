@@ -22,6 +22,7 @@ import uuid as sys_uuid
 from gcl_iam import tokens
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.agents.universal.dm import models as sdk_ua_models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.events import clients as sdk_clients
 from gcl_sdk.infra.dm import models as sdk_infra_models
 import netaddr
@@ -516,8 +517,8 @@ def pool_factory():
             if driver_spec is None
             else driver_spec
         )
-        status_value = nc.MachinePoolStatus.ACTIVE.value if status is None else status
-        storage_pool = node_models.ThinStoragePool(
+        status_value = ua_pool.MachinePoolStatus.ACTIVE.value if status is None else status
+        storage_pool = ua_pool.ThinStoragePool(
             pool_type="dummy",
             capacity_usable=1000,
             capacity_provisioned=0,
@@ -555,7 +556,7 @@ def machine_factory(default_pool: tp.Dict[str, tp.Any]):
         cores: int = 1,
         ram: int = 1024,
         project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
-        status: str = nc.MachineStatus.ACTIVE.value,
+        status: str = ua_pool.MachineStatus.ACTIVE.value,
         build_status: str = nc.MachineBuildStatus.READY.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:

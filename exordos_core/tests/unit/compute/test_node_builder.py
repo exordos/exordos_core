@@ -17,6 +17,7 @@
 from unittest import mock
 import uuid as sys_uuid
 
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.storage.sql import orm
 
 from exordos_core.compute import constants as nc
@@ -70,7 +71,7 @@ class TestNodeBuilderService:
         assert machine.ram == target_node.ram
         assert machine.name == target_node.name
         assert machine.description == target_node.description
-        assert machine.status == nc.MachineStatus.IN_PROGRESS.value
+        assert machine.status == ua_pool.MachineStatus.IN_PROGRESS.value
         machine.update.assert_called_once_with(force=True)
         assert target_node.status == nc.NodeStatus.IN_PROGRESS.value
         target_node.save.assert_called_once_with()

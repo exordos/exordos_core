@@ -14,10 +14,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.api import packers
 
 from exordos_core.boot_api.dm import models
-from exordos_core.compute import constants as nc
 
 _from_net_template = """#!ipxe
 :kernel
@@ -38,9 +38,9 @@ sanboot --no-describe --drive 0x8{disk_number}
 
 class IPXEPacker(packers.JSONPacker):
     def pack(self, obj: models.MachineNetboot):
-        boot = nc.BootAlternative[obj.boot]
+        boot = ua_pool.BootAlternative[obj.boot]
 
-        if boot == nc.BootAlternative.network:
+        if boot == ua_pool.BootAlternative.network:
             return _from_net_template.format(
                 gc_boot_api=obj.gc_boot_api,
                 kernel=obj.kernel,

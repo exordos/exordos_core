@@ -20,16 +20,17 @@ import uuid as sys_uuid
 
 import pytest
 
-from exordos_core.compute.dm import models
+from gcl_sdk.agents.universal.drivers import pool as ua_pool
+
 from exordos_core.compute.scheduler import service
 
-_DEFAULT_LIBVIRT_SPEC = models.LibvirtPoolDriverSpec(
+_DEFAULT_LIBVIRT_SPEC = ua_pool.LibvirtPoolDriverSpec(
     connection_uri="qemu+tcp://127.0.0.1/system",
 )
 
 
-def _make_local_hyper_spec(node: sys_uuid.UUID) -> models.ExordosLocalHyperDriverSpec:
-    return models.ExordosLocalHyperDriverSpec(
+def _make_local_hyper_spec(node: sys_uuid.UUID) -> ua_pool.ExordosLocalHyperDriverSpec:
+    return ua_pool.ExordosLocalHyperDriverSpec(
         connection_uri="qemu+tcp://127.0.0.1/system",
         node=node,
     )
@@ -60,7 +61,7 @@ class TestSchedulePoolsLocalHyper:
 
     def _make_pool(
         self,
-        driver_spec: tp.Optional[models.AbstractPoolDriverSpec] = None,
+        driver_spec: tp.Optional[ua_pool.AbstractPoolDriverSpec] = None,
     ) -> mock.MagicMock:
         pool = mock.MagicMock()
         pool.uuid = sys_uuid.uuid4()
