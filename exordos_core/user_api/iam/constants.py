@@ -164,6 +164,9 @@ PERMISSION_PROJECT_WRITE_ALL = rules.Rule.from_raw(
 PERMISSION_PROJECT_DELETE_ALL = rules.Rule.from_raw(
     "iam.project.delete_all",
 )
+PERMISSION_PROJECT_ADD_USER = rules.Rule.from_raw(
+    "iam.project.add_user",
+)
 
 
 # Permissions

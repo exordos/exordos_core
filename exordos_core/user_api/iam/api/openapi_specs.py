@@ -324,3 +324,42 @@ OA_SPEC_GET_TOKEN_KWARGS = dict(
         },
     ),
 )
+
+OA_SPEC_ADD_USER_TO_PROJECT = dict(
+    summary="Add a user to a project",
+    parameters=[
+        oa_c.build_openapi_parameter(
+            name="ProjectUuid",
+            openapi_type="string",
+            param_type="path",
+            required=True,
+        ),
+    ],
+    request_body=oa_c.build_openapi_req_body(
+        description="User identifier and role name to assign",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["user_identifier", "role_name"],
+            "properties": {
+                "user_identifier": {
+                    "type": "string",
+                    "description": (
+                        "UUID, email, or name of the user to add. "
+                        "Emails and names are matched case-insensitively."
+                    ),
+                    "example": "550e8400-e29b-41d4-a716-446655440000",
+                },
+                "role_name": {
+                    "type": "string",
+                    "description": "Name of the role to assign (e.g. 'owner')",
+                    "example": "owner",
+                },
+            },
+        },
+    ),
+    responses=oa_c.build_openapi_object_response(
+        properties={},
+        description="User added to project successfully. Returns role binding details.",
+    ),
+)
