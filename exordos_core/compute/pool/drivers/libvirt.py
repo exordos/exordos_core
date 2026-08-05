@@ -41,6 +41,25 @@ MAX_VOLUME_INDEX = 4096
 CONSOLE_LOG_DIR = "/var/log/libvirt/qemu"
 
 
+def _interface_source(
+    iface: ET.Element, source_el: tp.Optional[ET.Element]
+) -> tp.Optional[str]:
+    """Return the logical network/bridge name this interface connects to.
+
+    A domain interface created as type='network' backed by a libvirt
+    network with <forward mode='bridge'/> gets rewritten by libvirt in
+    the live/persistent XML to type='bridge', but its <source> element
+    keeps both the original 'network' attribute (the logical name the
+    orchestrator/target state actually tracks) and the 'bridge' one
+    (the real underlying device). Prefer 'network' when present so a
+    boot port riding such a network still reports its logical name
+    instead of the bridge it happens to be implemented with.
+    """
+    if source_el is None:
+        return None
+    return source_el.get("network") or source_el.get(iface.get("type"))
+
+
 class StoragePoolType(enum.Enum):
     DIR = "dir"
     ZFS = "zfs"
@@ -621,7 +640,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            source = _interface_source(iface, source_el)
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -700,7 +719,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            source = _interface_source(iface, source_el)
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -1279,9 +1298,17 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 mac=port.mac,
                 rom=self._spec.iface_rom_file,
                 mtu=self._spec.iface_mtu,
-                # TODO(akremenetsky): This parameter should be taken from
-                # the network
-                iface_type=self._spec.network_type,
+                # The boot-network port (see Port.from_boot_network()) is
+                # always a transient libvirt-managed network, regardless of
+                # the hypervisor's own network_type - unlike the real
+                # port(s) attached once the machine is flashed
+                # (recreate_machine()), which must honor it (e.g. a raw
+                # host bridge on bridge-type hypervisors).
+                iface_type=(
+                    "network"
+                    if port.uuid == nc.BOOT_NETWORK_PORT_UUID
+                    else self._spec.network_type
+                ),
                 source=port.source,
             )
 

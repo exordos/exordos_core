@@ -769,9 +769,9 @@ class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
             }
         )
         return cls(
-            # The UUID is not important for port in boot network.
-            # It is just a placeholder.
-            uuid=sys_uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            # The pool driver relies on this specific UUID to recognize the
+            # port as the transient boot network (see LibvirtPoolDriver).
+            uuid=nc.BOOT_NETWORK_PORT_UUID,
             project_id=cc.SERVICE_PROJECT_ID,
             name="bootnet_port",
             subnet=boot_subnet.uuid,
