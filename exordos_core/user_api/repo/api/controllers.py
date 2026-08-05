@@ -21,6 +21,7 @@ from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 
+from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.dm import models
 
 
@@ -103,6 +104,36 @@ class RepoElementController(
         hidden_fields=["installation_state"],
     )
 
+    def filter(self, filters, **kwargs):
+        stable = filters.pop("stable", None)
+        latest = filters.pop("latest", None)
+        result = super().filter(filters, **kwargs)
+
+        if stable and stable.value == "true":
+            result = [e for e in result if e.is_stable]
+
+        if latest and latest.value == "true":
+            # Keep only the latest version for each unique element name
+            seen: dict[str, object] = {}
+            for elem in result:
+                prev = seen.get(elem.name)
+                if prev is None:
+                    seen[elem.name] = elem
+                else:
+                    from packaging import version as packaging_version
+
+                    try:
+                        prev_ver = packaging_version.parse(prev.version)
+                        curr_ver = packaging_version.parse(elem.version)
+                        if curr_ver > prev_ver:
+                            seen[elem.name] = elem
+                    except packaging_version.InvalidVersion:
+                        # Fallback: keep the first element on invalid version
+                        pass
+            result = list(seen.values())
+
+        return result
+
     def get(self, uuid, **kwargs):
         repo_element = super().get(uuid=uuid, **kwargs)
 
@@ -117,7 +148,7 @@ class RepoElementController(
         if repo_element.installation_state == (
             models.RepoElementInstallationState.INSTALLED.value
         ):
-            raise ValueError("Cannot delete installed element")
+            raise common_exc.ValidateException(err="Cannot delete installed element")
         return super().delete(uuid)
 
     @actions.post
