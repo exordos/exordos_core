@@ -69,6 +69,7 @@ class LB(
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
+    models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceMixin,

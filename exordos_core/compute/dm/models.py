@@ -303,6 +303,7 @@ class NodeSet(
     infra_models.NodeSet,
     ua_models.InstanceWithDerivativesMixin,
     QuotaModelMixin,
+    models.ModelWithTags,
     orm.SQLStorableMixin,
 ):
     __tablename__ = "compute_sets"
