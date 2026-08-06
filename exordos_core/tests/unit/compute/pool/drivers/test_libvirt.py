@@ -133,3 +133,46 @@ class TestDeleteMachine:
             driver.delete_machine(machine, delete_volumes=True)
 
         mock_list_volumes.assert_called_once_with(machine)
+
+    def test_removes_the_machines_volume(self):
+        # Regression: volume-to-machine attribution is read from the
+        # domain's own XML, so the volume must be looked up before the
+        # domain is undefined - otherwise cleanup silently finds nothing
+        # and the volume (and its disk) is orphaned forever.
+        spec = models.LibvirtPoolDriverSpec(
+            connection_uri="test:///default", storage_pool="default-pool"
+        )
+        pool = models.MachinePool(
+            uuid=sys_uuid.uuid4(), name="test-pool", driver_spec=spec
+        )
+        driver = LibvirtPoolDriver(pool)
+        machine = models.Machine(
+            uuid=sys_uuid.uuid4(),
+            project_id=sys_uuid.uuid4(),
+            name="vm1",
+            cores=1,
+            ram=512,
+        )
+        volume_uuid = sys_uuid.uuid4()
+        volume = models.MachineVolume(
+            uuid=volume_uuid,
+            project_id=sys_uuid.uuid4(),
+            size=1,
+            index=0,
+            machine=machine.uuid,
+            name=str(volume_uuid),
+        )
+        volume = driver.create_volume(volume)
+        port = models.Port(
+            uuid=sys_uuid.uuid4(),
+            project_id=sys_uuid.uuid4(),
+            mac="52:54:00:11:22:33",
+            source="default",
+            status="ACTIVE",
+        )
+        driver.create_machine(machine, [volume], [port])
+
+        driver.delete_machine(machine, delete_volumes=True)
+
+        storage_pool = driver._client.storagePoolLookupByName("default-pool")
+        assert list(storage_pool.listAllVolumes()) == []

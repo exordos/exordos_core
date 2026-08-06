@@ -1346,19 +1346,22 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             )
             domain = None
 
+        # Volume-to-machine attribution is derived from the domain's own
+        # XML (disk attachments), so the volumes must be listed while the
+        # domain is still defined - once undefined below, `list_volumes`
+        # can no longer find them and cleanup would silently skip them.
+        volumes = self.list_volumes(machine) if delete_volumes else ()
+
         if domain is not None:
             # Remove the libvirt domain
             try:
                 domain.destroy()
             except libvirt.libvirtError:
                 LOG.debug("The domain is not in the running state")
-            # FIXME(akremenetsky): Actully we should undefine the
-            # domain before volume deletion
             domain.undefine()
 
-        if delete_volumes:
-            for volume in self.list_volumes(machine):
-                self.delete_volume(volume)
+        for volume in volumes:
+            self.delete_volume(volume)
 
         LOG.debug("The domain %s has been destroyed", machine.uuid)
 
