@@ -40,7 +40,7 @@ class TestVSServiceBuilder:
             name="p1",
             profile_type=infra_c.ProfileType.GLOBAL.value,
             active=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         profile_1.insert()
 
@@ -48,14 +48,14 @@ class TestVSServiceBuilder:
             name="p2",
             profile_type=infra_c.ProfileType.GLOBAL.value,
             active=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         profile_2.insert()
         profile_2.activate()
 
         variable = models.Variable(
             name="var_profile",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
             setter=models.ProfileVariableSetter(
                 profiles=[
@@ -86,7 +86,7 @@ class TestVSServiceBuilder:
             name="p1",
             profile_type=infra_c.ProfileType.GLOBAL.value,
             active=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         profile_1.insert()
         profile_1.activate()
@@ -95,13 +95,13 @@ class TestVSServiceBuilder:
             name="p2",
             profile_type=infra_c.ProfileType.GLOBAL.value,
             active=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         profile_2.insert()
 
         variable = models.Variable(
             name="var_profile",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
             setter=models.ProfileVariableSetter(
                 profiles=[
@@ -137,7 +137,7 @@ class TestVSServiceBuilder:
     ):
         variable = models.Variable(
             name="var_selector",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
             setter=models.SelectorVariableSetter(
                 kind="selector",
@@ -150,7 +150,7 @@ class TestVSServiceBuilder:
             variable=variable,
             value="v1",
             manual_selected=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         value_1.insert()
 
@@ -158,7 +158,7 @@ class TestVSServiceBuilder:
             variable=variable,
             value="v2",
             manual_selected=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         value_2.insert()
 
@@ -180,7 +180,7 @@ class TestVSServiceBuilder:
     ):
         variable = models.Variable(
             name="var_selector",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
             setter=models.SelectorVariableSetter(
                 kind="selector",
@@ -193,7 +193,7 @@ class TestVSServiceBuilder:
             variable=variable,
             value="v1",
             manual_selected=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         value_1.insert()
 
@@ -201,7 +201,7 @@ class TestVSServiceBuilder:
             variable=variable,
             value="v2",
             manual_selected=False,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
         )
         value_2.insert()
 
@@ -232,7 +232,7 @@ class TestVSServiceBuilder:
     ):
         variable = models.Variable(
             name="var_selector",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
             setter=models.SelectorVariableSetter(
                 kind="selector",

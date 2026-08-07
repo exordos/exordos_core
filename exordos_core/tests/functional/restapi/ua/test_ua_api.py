@@ -21,6 +21,7 @@ from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
 import pytest
 
+from exordos_core.common import constants as c
 from exordos_core.user_api.iam import constants as iam_c
 
 
@@ -99,9 +100,7 @@ class TestUaAgentsApi:
         auth_user_admin: iam_clients.GenesisCoreAuth,
     ):
         client = user_api_client(auth_user_admin)
-        url = client.build_resource_uri(
-            ["ua", "agents", "00000000-0000-0000-0000-000000000000"]
-        )
+        url = client.build_resource_uri(["ua", "agents", str(c.ZERO_UUID)])
 
         with pytest.raises(bazooka_exc.NotFoundError):
             client.get(url)
@@ -326,9 +325,7 @@ class TestUaResourcesApi:
         auth_user_admin: iam_clients.GenesisCoreAuth,
     ):
         client = user_api_client(auth_user_admin)
-        url = client.build_resource_uri(
-            ["ua", "resources", "00000000-0000-0000-0000-000000000000"]
-        )
+        url = client.build_resource_uri(["ua", "resources", str(c.ZERO_UUID)])
 
         with pytest.raises(bazooka_exc.NotFoundError):
             client.get(url)
@@ -451,9 +448,7 @@ class TestUaTargetResourcesApi:
         auth_user_admin: iam_clients.GenesisCoreAuth,
     ):
         client = user_api_client(auth_user_admin)
-        url = client.build_resource_uri(
-            ["ua", "target_resources", "00000000-0000-0000-0000-000000000000"]
-        )
+        url = client.build_resource_uri(["ua", "target_resources", str(c.ZERO_UUID)])
 
         with pytest.raises(bazooka_exc.NotFoundError):
             client.get(url)

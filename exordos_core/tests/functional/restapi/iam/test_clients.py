@@ -84,7 +84,7 @@ class TestClients(base.BaseIamResourceTest):
 
     def test_get_iam_clients_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
-        iam_client_uuid = "00000000-0000-0000-0000-000000000000"
+        iam_client_uuid = str(common_c.ZERO_UUID)
 
         iam_client = client.get_iam_client(uuid=iam_client_uuid)
 
@@ -92,7 +92,7 @@ class TestClients(base.BaseIamResourceTest):
 
     def test_get_iam_clients_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
-        iam_client_uuid = "00000000-0000-0000-0000-000000000000"
+        iam_client_uuid = str(common_c.ZERO_UUID)
 
         iam_client = client.get_iam_client(uuid=iam_client_uuid)
 
@@ -100,7 +100,7 @@ class TestClients(base.BaseIamResourceTest):
 
     def test_update_iam_clients_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
-        iam_client_uuid = "00000000-0000-0000-0000-000000000000"
+        iam_client_uuid = str(common_c.ZERO_UUID)
         new_name = "new_name"
 
         result = client.update_iam_client(
@@ -112,7 +112,7 @@ class TestClients(base.BaseIamResourceTest):
 
     def test_update_iam_clients_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
-        iam_client_uuid = "00000000-0000-0000-0000-000000000000"
+        iam_client_uuid = str(common_c.ZERO_UUID)
         new_name = "new_name"
 
         with pytest.raises(bazooka_exc.ForbiddenError):
@@ -123,7 +123,7 @@ class TestClients(base.BaseIamResourceTest):
 
     def test_delete_iam_clients_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
-        iam_client_uuid = "00000000-0000-0000-0000-000000000000"
+        iam_client_uuid = str(common_c.ZERO_UUID)
 
         iam_client = client.delete_iam_client(uuid=iam_client_uuid)
 
@@ -131,7 +131,7 @@ class TestClients(base.BaseIamResourceTest):
 
     def test_delete_iam_clients_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
-        iam_client_uuid = "00000000-0000-0000-0000-000000000000"
+        iam_client_uuid = str(common_c.ZERO_UUID)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.delete_iam_client(uuid=iam_client_uuid)

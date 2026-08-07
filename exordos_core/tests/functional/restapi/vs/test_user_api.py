@@ -30,7 +30,7 @@ class TestVSUserApi:
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: tp.Optional[str] = None,
         description: str = "test profile",
-        project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
         profile_type: str = "GLOBAL",
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -50,7 +50,7 @@ class TestVSUserApi:
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: tp.Optional[str] = None,
         description: str = "test variable",
-        project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
         setter: tp.Optional[tp.Dict[str, tp.Any]] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -72,7 +72,7 @@ class TestVSUserApi:
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: tp.Optional[str] = None,
         description: str = "test value",
-        project_id: sys_uuid.UUID = c.SERVICE_PROJECT_ID,
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
         value: tp.Any = 1,
         variable: tp.Optional[str] = None,
         **kwargs,

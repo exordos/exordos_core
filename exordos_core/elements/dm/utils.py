@@ -25,6 +25,7 @@ from jsonschema.exceptions import ValidationError
 import openapi_schema_validator
 import yaml
 
+from exordos_core.common import constants as c
 from exordos_core.common import exceptions
 from exordos_core.common.utils import PROJECT_PATH
 from exordos_core.common.utils import get_api_client
@@ -87,9 +88,7 @@ def get_element_uuid(element_name, element_version):
 
 def get_project_id():
     # return sys_uuid.UUID(f"{UUID_PREFIX}{str(sys_uuid.uuid4())[8:]}")
-    return sys_uuid.UUID(
-        f"{UUID_PREFIX}{str('00000000-0000-0000-0000-000000000000')[8:]}"
-    )
+    return sys_uuid.UUID(f"{UUID_PREFIX}{str(c.ZERO_UUID)[8:]}")
 
 
 def get_required_field(data, field_name):

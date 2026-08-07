@@ -628,10 +628,10 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
 
             ports.append(
                 models.Port(
-                    uuid=sys_uuid.UUID("00000000-0000-0000-0000-000000000000"),
+                    uuid=c.ZERO_UUID,
                     machine=machine_uuid,
                     mac=mac,
-                    project_id=c.SERVICE_PROJECT_ID,
+                    project_id=c.ZERO_UUID,
                     source=source,
                     status=nc.PortStatus.ACTIVE.value,
                 )
@@ -648,7 +648,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             status=nc.MachineStatus.ACTIVE.value,
             # These fields don't make sense for data plane entities
             pool=self._pool.uuid,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             boot=boot,
         )
 
@@ -683,7 +683,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             uuid=volume_uuid,
             machine=machine_uuid,
             name=volume_name,
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             size=info[1] >> 30,  # in GB
             index=index,
             status=nc.VolumeStatus.ACTIVE.value,
@@ -707,10 +707,10 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
 
             ports.append(
                 models.Port(
-                    uuid=sys_uuid.UUID("00000000-0000-0000-0000-000000000000"),
+                    uuid=c.ZERO_UUID,
                     machine=machine.uuid,
                     mac=mac,
-                    project_id=c.SERVICE_PROJECT_ID,
+                    project_id=c.ZERO_UUID,
                     source=source,
                     status=nc.PortStatus.ACTIVE.value,
                 )

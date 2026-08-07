@@ -167,7 +167,7 @@ class DNSSyncService(basic.BasicService):
             )
             domain = dns_models.Domain(
                 name=realm_domain_name,
-                project_id=c.SERVICE_PROJECT_ID,
+                project_id=c.ZERO_UUID,
                 sync_to_ecosystem=True,
             )
             domain.save()

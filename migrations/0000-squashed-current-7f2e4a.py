@@ -22,6 +22,8 @@ import uuid as _uuid
 
 from restalchemy.storage.sql import migrations
 
+from exordos_core.common.constants import ZERO_UUID
+
 LOG = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -62,7 +64,7 @@ EXORDOS_CORE_ORGANIZATION_DESCRIPTION = (
     "The organization serves as the central platform for all services"
     " and elements developed by Genesis Corporation."
 )
-DEFAULT_IAM_CLIENT_UUID = "00000000-0000-0000-0000-000000000000"
+DEFAULT_IAM_CLIENT_UUID = str(ZERO_UUID)
 NEWCOMER_ROLE_UUID = "726f6c65-0000-0000-0000-000000000001"
 OWNER_ROLE_UUID = "726f6c65-0000-0000-0000-000000000002"
 NEWCOMER_ROLE_NAME = "newcomer"
@@ -802,7 +804,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 "uuid", "name", "description", "first_name", "last_name",
                 "email", "secret_hash", "salt"
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
                 'admin',
                 'System administrator',
                 'Admin',
@@ -812,49 +814,49 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 '{default_admin_salt}'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Admin organization
-            """INSERT INTO "iam_organizations" (
+            f"""INSERT INTO "iam_organizations" (
                 "uuid", "name", "description"
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
                 'admin', 'Admin Organization'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Admin project
-            """INSERT INTO "iam_projects" (
+            f"""INSERT INTO "iam_projects" (
                 "uuid", "name", description, organization
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
                 'admin', 'Admin Project',
-                '00000000-0000-0000-0000-000000000000'
+                '{ZERO_UUID}'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Admin role
-            """INSERT INTO "iam_roles" (
+            f"""INSERT INTO "iam_roles" (
                 "uuid", "name", "description"
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
                 'admin', 'Admin Role'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Wildcard permission
-            """INSERT INTO "iam_permissions" (
+            f"""INSERT INTO "iam_permissions" (
                 "uuid", "name", "description"
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
                 '*.*.*', 'Allow All'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Admin binding permission
-            """INSERT INTO "iam_binding_permissions" (
+            f"""INSERT INTO "iam_binding_permissions" (
                 "uuid", "role", "permission"
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
-                '00000000-0000-0000-0000-000000000000',
-                '00000000-0000-0000-0000-000000000000'
+                '{ZERO_UUID}',
+                '{ZERO_UUID}',
+                '{ZERO_UUID}'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Admin role binding
-            """INSERT INTO "iam_binding_roles" (
+            f"""INSERT INTO "iam_binding_roles" (
                 "uuid", "user", "role", "description"
             ) VALUES (
-                '00000000-0000-0000-0000-000000000000',
-                '00000000-0000-0000-0000-000000000000',
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
+                '{ZERO_UUID}',
+                '{ZERO_UUID}',
                 'Super Administrator'
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Default IAM client
@@ -876,17 +878,17 @@ class MigrationStep(migrations.AbstractMigrationStep):
     def _downgrade_bootstrap_admin_data(self, session):
         statements = [
             # Delete all binding permissions for bindings referencing admin
-            "DELETE FROM iam_binding_permissions WHERE role IN (SELECT uuid FROM iam_binding_roles WHERE \"user\" = '00000000-0000-0000-0000-000000000000');",
+            f"DELETE FROM iam_binding_permissions WHERE role IN (SELECT uuid FROM iam_binding_roles WHERE \"user\" = '{ZERO_UUID}');",
             # Delete ALL role bindings referencing admin user (catches test-created ones)
-            "DELETE FROM iam_binding_roles WHERE \"user\" = '00000000-0000-0000-0000-000000000000';",
+            f"DELETE FROM iam_binding_roles WHERE \"user\" = '{ZERO_UUID}';",
             # Bootstrap data cleanup
             # f"DELETE FROM iam_clients WHERE uuid = '{DEFAULT_IAM_CLIENT_UUID}';",
-            "DELETE FROM iam_binding_permissions WHERE uuid = '00000000-0000-0000-0000-000000000000';",
-            "DELETE FROM iam_permissions WHERE uuid = '00000000-0000-0000-0000-000000000000';",
-            "DELETE FROM iam_roles WHERE uuid = '00000000-0000-0000-0000-000000000000';",
-            "DELETE FROM iam_projects WHERE uuid = '00000000-0000-0000-0000-000000000000';",
-            "DELETE FROM iam_organizations WHERE uuid = '00000000-0000-0000-0000-000000000000';",
-            "DELETE FROM iam_users WHERE uuid = '00000000-0000-0000-0000-000000000000';",
+            f"DELETE FROM iam_binding_permissions WHERE uuid = '{ZERO_UUID}';",
+            f"DELETE FROM iam_permissions WHERE uuid = '{ZERO_UUID}';",
+            f"DELETE FROM iam_roles WHERE uuid = '{ZERO_UUID}';",
+            f"DELETE FROM iam_projects WHERE uuid = '{ZERO_UUID}';",
+            f"DELETE FROM iam_organizations WHERE uuid = '{ZERO_UUID}';",
+            f"DELETE FROM iam_users WHERE uuid = '{ZERO_UUID}';",
         ]
         for stmt in statements:
             session.execute(stmt)
@@ -1241,7 +1243,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
     # ------------------------------------------------------------------
 
     def _upgrade_org_members(self, session):
-        session.execute("""
+        session.execute(f"""
             INSERT INTO "iam_organization_members" (
                 "uuid",
                 "organization",
@@ -1253,7 +1255,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             SELECT
                 gen_random_uuid(),
                 o."uuid",
-                '00000000-0000-0000-0000-000000000000',
+                '{ZERO_UUID}',
                 'OWNER',
                 o."created_at",
                 o."updated_at"
@@ -1262,9 +1264,9 @@ class MigrationStep(migrations.AbstractMigrationStep):
         """)
 
     def _downgrade_org_members(self, session):
-        session.execute("""
+        session.execute(f"""
             DELETE FROM "iam_organization_members"
-            WHERE "user" = '00000000-0000-0000-0000-000000000000';
+            WHERE "user" = '{ZERO_UUID}';
         """)
 
     # ------------------------------------------------------------------
@@ -1272,7 +1274,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
     # ------------------------------------------------------------------
 
     def _upgrade_secret_password(self, session):
-        session.execute("""
+        session.execute(f"""
             INSERT INTO "secret_passwords" (
                 "uuid",
                 "name",
@@ -1286,8 +1288,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 '00000000-0000-0000-0000-000000000001',
                 'iam-client-hs256-secret',
                 'Default HS256 secret for IAM clients',
-                '00000000-0000-0000-0000-000000000000',
-                '{"kind": "plain"}'::jsonb,
+                '{ZERO_UUID}',
+                '{{"kind": "plain"}}'::jsonb,
                 'MANUAL',
                 'secret',
                 'ACTIVE'

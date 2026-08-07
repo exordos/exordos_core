@@ -17,6 +17,7 @@
 from bazooka import exceptions as bazooka_exc
 import pytest
 
+from exordos_core.common import constants as c
 from exordos_core.tests.functional.restapi.iam import base
 
 
@@ -52,32 +53,32 @@ class TestRoles(base.BaseIamResourceTest):
     def test_get_role_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 
-        role = client.get_role(uuid="00000000-0000-0000-0000-000000000000")
+        role = client.get_role(uuid=c.NEW_ADMIN_ROLE_UUID)
 
-        assert role["uuid"] == "00000000-0000-0000-0000-000000000000"
+        assert role["uuid"] == c.NEW_ADMIN_ROLE_UUID
 
     def test_get_role_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
-            client.get_role(uuid="00000000-0000-0000-0000-000000000000")
+            client.get_role(uuid=c.NEW_ADMIN_ROLE_UUID)
 
     def test_update_role_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 
         role = client.update_role(
-            uuid="00000000-0000-0000-0000-000000000000",
+            uuid=c.NEW_ADMIN_ROLE_UUID,
             name="updated_test_role",
         )
 
-        assert role["uuid"] == "00000000-0000-0000-0000-000000000000"
+        assert role["uuid"] == c.NEW_ADMIN_ROLE_UUID
 
     def test_update_role_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.update_role(
-                uuid="00000000-0000-0000-0000-000000000000",
+                uuid=c.NEW_ADMIN_ROLE_UUID,
                 name="updated_test_role",
             )
 

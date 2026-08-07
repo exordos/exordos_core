@@ -84,7 +84,7 @@ def bootstrap_repo(manifests_dir, user_api):
     repo = repo_builder.Repository(
         name="test-repo",
         description="Test repository",
-        project_id=c.SERVICE_PROJECT_ID,
+        project_id=c.ZERO_UUID,
         status=ua_c.InstanceStatus.NEW.value,
         sync_mode=repo_models.SyncMode.COPY.value,
         driver_spec=repo_models.BootstrapDriverSpec(
@@ -109,7 +109,7 @@ def bootstrap_repo_lazy(manifests_dir, user_api):
     repo = repo_builder.Repository(
         name="test-repo-lazy",
         description="Test lazy repository",
-        project_id=c.SERVICE_PROJECT_ID,
+        project_id=c.ZERO_UUID,
         status=ua_c.InstanceStatus.NEW.value,
         sync_mode=repo_models.SyncMode.LAZY.value,
         driver_spec=repo_models.BootstrapDriverSpec(
@@ -183,7 +183,7 @@ class TestRepoProxyBuilderService:
         repo = repo_builder.Repository(
             name="test-refresh-repo",
             description="Test refresh repository",
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
             sync_mode=repo_models.SyncMode.COPY.value,
             refresh_rate=60,

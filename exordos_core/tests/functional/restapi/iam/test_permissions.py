@@ -17,6 +17,7 @@
 from bazooka import exceptions as bazooka_exc
 import pytest
 
+from exordos_core.common import constants as c
 from exordos_core.tests.functional.restapi.iam import base
 
 
@@ -52,31 +53,31 @@ class TestPermissions(base.BaseIamResourceTest):
     def test_get_permission_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 
-        permission = client.get_permission(uuid="00000000-0000-0000-0000-000000000000")
+        permission = client.get_permission(uuid=c.NEW_ALLOW_ALL_PERMISSION_UUID)
 
-        assert permission["uuid"] == "00000000-0000-0000-0000-000000000000"
+        assert permission["uuid"] == c.NEW_ALLOW_ALL_PERMISSION_UUID
 
     def test_get_permission_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
-            client.get_permission(uuid="00000000-0000-0000-0000-000000000000")
+            client.get_permission(uuid=c.NEW_ALLOW_ALL_PERMISSION_UUID)
 
     def test_update_permission_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 
         permission = client.update_permission(
-            uuid="00000000-0000-0000-0000-000000000000", name="iam.test.update"
+            uuid=c.NEW_ALLOW_ALL_PERMISSION_UUID, name="iam.test.update"
         )
 
-        assert permission["uuid"] == "00000000-0000-0000-0000-000000000000"
+        assert permission["uuid"] == c.NEW_ALLOW_ALL_PERMISSION_UUID
 
     def test_update_permission_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
             client.update_permission(
-                uuid="00000000-0000-0000-0000-000000000000",
+                uuid=c.NEW_ALLOW_ALL_PERMISSION_UUID,
                 name="iam.test.update",
             )
 

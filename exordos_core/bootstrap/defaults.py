@@ -161,7 +161,7 @@ def add_core_set(
                     ipv4=port["ip"],
                     mac=port["mac"],
                     status="ACTIVE",
-                    project_id=str(c.SERVICE_PROJECT_ID),
+                    project_id=str(c.ZERO_UUID),
                 )
             )
             p.insert()
@@ -256,7 +256,7 @@ def init_secrets(
         LOG.info(
             "IAM client with default salt not found, secrets initialization skipped"
         )
-        return
+        return None
 
     if not global_salt:
         raise ValueError("Global salt is not provided")
@@ -321,7 +321,7 @@ def apply_flat_network(stand: dict[str, tp.Any]) -> None:
             "driver": "flat_bridge",
             "dhcp_cfg": "/etc/dhcp/dhcpd.conf",
         },
-        "project_id": c.SERVICE_PROJECT_ID,
+        "project_id": c.ZERO_UUID,
     }
     network = compute_models.Network.restore_from_simple_view(**network_cfg)
 
@@ -348,7 +348,7 @@ def apply_flat_network(stand: dict[str, tp.Any]) -> None:
                 }
             ],
             "next_server": None,
-            "project_id": c.SERVICE_PROJECT_ID,
+            "project_id": c.ZERO_UUID,
         },
         {
             "name": stand["boot_network"]["name"],
@@ -365,7 +365,7 @@ def apply_flat_network(stand: dict[str, tp.Any]) -> None:
                 }
             ],
             "next_server": str(boot_net.network_address + 2),
-            "project_id": c.SERVICE_PROJECT_ID,
+            "project_id": c.ZERO_UUID,
         },
     ]
 

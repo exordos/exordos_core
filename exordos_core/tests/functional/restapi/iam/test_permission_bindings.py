@@ -17,6 +17,7 @@
 from bazooka import exceptions as bazooka_exc
 import pytest
 
+from exordos_core.common import constants as c
 from exordos_core.tests.functional.restapi.iam import base
 
 
@@ -71,17 +72,15 @@ class TestPermissionBindings(base.BaseIamResourceTest):
     def test_get_permission_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
 
-        permission = client.get_permission_binding(
-            uuid="00000000-0000-0000-0000-000000000000"
-        )
+        permission = client.get_permission_binding(uuid=c.NEW_ALLOW_ALL_BINDING_UUID)
 
-        assert permission["uuid"] == "00000000-0000-0000-0000-000000000000"
+        assert permission["uuid"] == c.NEW_ALLOW_ALL_BINDING_UUID
 
     def test_get_permission_binding_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
-            client.get_permission_binding(uuid="00000000-0000-0000-0000-000000000000")
+            client.get_permission_binding(uuid=c.NEW_ALLOW_ALL_BINDING_UUID)
 
     def test_update_permission_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
@@ -131,17 +130,22 @@ class TestPermissionBindings(base.BaseIamResourceTest):
 
     def test_delete_permission_binding_by_admin(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
-
-        result = client.delete_permission_binding(
-            uuid="00000000-0000-0000-0000-000000000000"
+        permission = client.create_permission(name="iam.test.delete")
+        role = client.create_role(name="test_role_to_delete")
+        permission_binding = client.create_permission_binding(
+            permission_uuid=permission["uuid"],
+            role_uuid=role["uuid"],
         )
 
+        result = client.delete_permission_binding(uuid=permission_binding["uuid"])
+
         assert result is None
+
+        client.delete_role(uuid=role["uuid"])
+        client.delete_permission(uuid=permission["uuid"])
 
     def test_delete_permission_binding_by_user(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 
         with pytest.raises(bazooka_exc.ForbiddenError):
-            client.delete_permission_binding(
-                uuid="00000000-0000-0000-0000-000000000000"
-            )
+            client.delete_permission_binding(uuid=c.NEW_ALLOW_ALL_BINDING_UUID)

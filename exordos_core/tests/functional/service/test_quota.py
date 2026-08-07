@@ -37,7 +37,7 @@ _TABLENAME = "net_lb"
 def _quota_limit_2(user_api):
     obj = QuotaLimit(
         uuid=sys_uuid.uuid4(),
-        project_id=c.SERVICE_PROJECT_ID,
+        project_id=c.ZERO_UUID,
         resource_name=_TABLENAME,
         limit=2,
     )
@@ -70,14 +70,14 @@ class TestQuotaAggregateFieldLimit:
         limits = [
             QuotaLimit(
                 uuid=sys_uuid.uuid4(),
-                project_id=c.SERVICE_PROJECT_ID,
+                project_id=c.ZERO_UUID,
                 resource_name="nodes",
                 field_name="cores",
                 limit=4,
             ),
             QuotaLimit(
                 uuid=sys_uuid.uuid4(),
-                project_id=c.SERVICE_PROJECT_ID,
+                project_id=c.ZERO_UUID,
                 resource_name="nodes",
                 field_name="ram",
                 limit=4096,
@@ -151,17 +151,17 @@ class TestQuotaAggregateFieldLimit:
 
         # Project A: exceed cores/ram limits and ensure quota is enforced
         _, a_node1 = node_factory_with_model(
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             cores=2,
             ram=2048,
         )
         _, a_node2 = node_factory_with_model(
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             cores=2,
             ram=2048,
         )
         _, a_node3 = node_factory_with_model(
-            project_id=c.SERVICE_PROJECT_ID,
+            project_id=c.ZERO_UUID,
             cores=1,
             ram=1024,
         )
@@ -291,7 +291,7 @@ class TestQuotaWithLimit:
     ):
 
         _, lb_a = lb_factory_with_model(project_id=project_id)
-        _, lb_b = lb_factory_with_model()  # default: SERVICE_PROJECT_ID
+        _, lb_b = lb_factory_with_model()  # default: ZERO_UUID
 
         lb_a.insert()
         lb_b.insert()  # different project, should succeed even though limit=2
@@ -316,7 +316,7 @@ class TestQuotaWithLimit:
         assert exc_info.value.resource_name == _TABLENAME
         assert exc_info.value.limit == 2
         assert exc_info.value.current == 3
-        assert exc_info.value.project_id == c.SERVICE_PROJECT_ID
+        assert exc_info.value.project_id == c.ZERO_UUID
 
         lb1.delete()
         lb2.delete()

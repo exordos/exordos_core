@@ -17,6 +17,7 @@
 from unittest import mock
 import uuid as sys_uuid
 
+from exordos_core.common import constants as c
 from exordos_core.repo.agents.universal.drivers import repo_element as driver
 from exordos_core.repo.builders import element as re_builder
 from exordos_core.repo.dm import models as repo_models
@@ -35,7 +36,7 @@ class TestMakeInstalledManifest:
         em_manifest.name = name
         em_manifest.version = version
         em_manifest.description = "Test manifest"
-        em_manifest.project_id = sys_uuid.UUID("00000000-0000-0000-0000-000000000000")
+        em_manifest.project_id = c.ZERO_UUID
         em_manifest.api_version = "v1"
         em_manifest.schema_version = 1
         em_manifest.openapi_spec = None
@@ -188,7 +189,7 @@ class TestMakeEmManifest:
             name="core",
             version="1.0.0",
             description="Test",
-            project_id=sys_uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            project_id=c.ZERO_UUID,
             manifest=manifest,
         )
 
@@ -220,7 +221,7 @@ class TestMakeEmManifest:
             name="core",
             version="1.0.0",
             description="Test",
-            project_id=sys_uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            project_id=c.ZERO_UUID,
             manifest={"name": "core", "version": "1.0.0", "resources": {}},
         )
 

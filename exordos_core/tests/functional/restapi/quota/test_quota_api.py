@@ -71,7 +71,7 @@ class TestQuotaLimitsUserApi:
 
         limit_data = {
             "uuid": str(sys_uuid.uuid4()),
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
             "resource_name": "nodes",
             "field_name": "cores",
             "limit": 5,
@@ -99,7 +99,7 @@ class TestQuotaLimitsUserApi:
         ):
             limit_data = {
                 "uuid": str(sys_uuid.uuid4()),
-                "project_id": str(c.SERVICE_PROJECT_ID),
+                "project_id": str(c.ZERO_UUID),
                 "resource_name": resource_name,
                 "limit": i + 1,
             }
@@ -129,7 +129,7 @@ class TestQuotaLimitsUserApi:
 
         limit_data = {
             "uuid": str(sys_uuid.uuid4()),
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
             "resource_name": "net_lb",
             "limit": 5,
         }
@@ -154,7 +154,7 @@ class TestQuotaLimitsUserApi:
 
         limit_data = {
             "uuid": str(sys_uuid.uuid4()),
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
             "resource_name": "net_lb",
             "limit": 5,
         }
@@ -183,7 +183,7 @@ class TestQuotaLimitsUserApi:
 
         limit_data = {
             "uuid": str(sys_uuid.uuid4()),
-            "project_id": str(c.SERVICE_PROJECT_ID),
+            "project_id": str(c.ZERO_UUID),
             "resource_name": "net_lb",
             "limit": 5,
         }
