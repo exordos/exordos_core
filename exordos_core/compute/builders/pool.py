@@ -299,10 +299,21 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
             if not self._is_core_machine(machine):
-                _, guest_actual = machine_guest_pair
+                guest_target, guest_actual = machine_guest_pair
+                # A machine that is still being installed has asked for a
+                # network boot and has not reported back yet. Any update
+                # that reaches it meanwhile (an element re-rendering its
+                # node, say) must not take it out of that boot mode: it
+                # would be rebuilt off a disk Seed OS never wrote.
+                if (
+                    guest_actual is None
+                    and guest_target.boot == nc.BootAlternative.network
+                ):
+                    boot = nc.BootAlternative.network.value
+                    port = models.Port.from_boot_network()
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
-                if guest_actual and guest_actual.image != resolved_image:
+                elif guest_actual and guest_actual.image != resolved_image:
                     boot = nc.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
