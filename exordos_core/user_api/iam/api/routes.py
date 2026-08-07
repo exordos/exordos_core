@@ -111,10 +111,18 @@ class OrganizationController(routes.Route):
     members = routes.route(OrganizationMemberRoute, resource_route=True)
 
 
+class AddUserToProjectAction(routes.Action):
+    """Handler for .../<uuid>/actions/add_user/invoke endpoint"""
+
+    __controller__ = controllers.ProjectController
+
+
 class ProjectRoute(routes.Route):
     """Handler for /v1/iam/projects/ endpoint"""
 
     __controller__ = controllers.ProjectController
+
+    add_user = routes.action(AddUserToProjectAction, invoke=True)
 
 
 class RoleRoute(routes.Route):

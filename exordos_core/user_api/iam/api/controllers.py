@@ -486,16 +486,28 @@ class ProjectController(controllers.BaseResourceControllerPaginated, EnforceMixi
         return models.Project.list_my()
 
     def get(self, uuid, **kwargs):
+        # When active_method is GET, this is a direct resource GET request
+        # and we should enforce permissions. When active_method is None,
+        # get() is called from get_resource_by_uuid() for an action, so
+        # we skip the permission check — the action itself is responsible
+        # for its own permission checks.
         project = super().get(uuid, **kwargs)
-        filters = {"project": ra_filters.EQ(project)}
-        for _ in models.Project.list_my(filters=filters):
-            return project
-        if self.enforce(c.PERMISSION_PROJECT_READ_ALL):
-            return project
-        raise iam_e.CanNotReadProject(
-            uuid=project.uuid,
-            rule=c.PERMISSION_PROJECT_READ_ALL,
-        )
+        try:
+            active_method = self._req.api_context.get_active_method()
+        except ra_a_contexts.CanNotGetActiveMethod:
+            active_method = None
+
+        if active_method == ra_c.GET:
+            filters = {"project": ra_filters.EQ(project)}
+            for _ in models.Project.list_my(filters=filters):
+                return project
+            if self.enforce(c.PERMISSION_PROJECT_READ_ALL):
+                return project
+            raise iam_e.CanNotReadProject(
+                uuid=project.uuid,
+                rule=c.PERMISSION_PROJECT_READ_ALL,
+            )
+        return project
 
     def update(self, uuid, **kwargs):
         project = self.get(uuid)
@@ -520,6 +532,78 @@ class ProjectController(controllers.BaseResourceControllerPaginated, EnforceMixi
             name=project.name,
             rule=c.PERMISSION_PROJECT_WRITE_ALL,
         )
+
+    @staticmethod
+    def _resolve_user(user_identifier):
+        value = user_identifier.strip()
+        if "@" in value:
+            return models.User.objects.get_one(
+                filters={"email": ra_filters.EQ(value.lower())}
+            )
+        try:
+            user_uuid_obj = sys_uuid.UUID(value)
+        except ValueError:
+            return models.User.objects.get_one(
+                filters={"username": ra_filters.EQ(value)}
+            )
+        return models.User.objects.get_one(
+            filters={"uuid": ra_filters.EQ(user_uuid_obj)}
+        )
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_ADD_USER_TO_PROJECT)
+    @actions.post
+    def add_user(self, resource, user_identifier, role_name):
+        project = resource
+        project_uuid = str(project.uuid)
+        is_member = False
+        filters = {"project": ra_filters.EQ(project)}
+        for _ in models.Project.list_my(filters=filters):
+            is_member = True
+            break
+        if not (
+            is_member
+            or self.enforce(c.PERMISSION_PROJECT_ADD_USER)
+            or self.enforce(c.PERMISSION_PROJECT_WRITE_ALL)
+        ):
+            raise iam_e.CanNotAddUserToProject(
+                uuid=project_uuid,
+                rule=c.PERMISSION_PROJECT_ADD_USER,
+            )
+
+        # Resolve the user by UUID, email, or name
+        target_user = self._resolve_user(user_identifier)
+
+        # Look up the role by name
+        role = models.Role.objects.get_one(filters={"name": ra_filters.EQ(role_name)})
+
+        role_binding = models.RoleBinding.objects.get_one_or_none(
+            filters={
+                "project": ra_filters.EQ(project),
+                "user": ra_filters.EQ(target_user),
+                "role": ra_filters.EQ(role),
+            }
+        )
+        if not role_binding:
+            role_binding = models.RoleBinding(
+                project=project,
+                user=target_user,
+                role=role,
+            )
+            role_binding.save()
+
+        ctx = self.get_context()
+        LOG.info(
+            "IAM AUDIT: user added to project project=%s project_uuid=%s "
+            "user=%s user_uuid=%s role=%s role_uuid=%s ip=%s",
+            project.name,
+            project_uuid,
+            target_user.name,
+            target_user.uuid,
+            role.name,
+            role.uuid,
+            ctx.get_user_ip(),
+        )
+        return role_binding.get_storable_snapshot()
 
 
 class RoleController(

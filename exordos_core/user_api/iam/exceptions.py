@@ -290,3 +290,14 @@ class ProjectScopeRequiredError(exceptions.CommonValueErrorException):
     """Exception raised when project scope is required but not provided."""
 
     __template__ = "Service account tokens can only be issued with project scope"
+
+
+class CanNotAddUserToProject(
+    exceptions.CommonForbiddenException,
+    iam_exc.Forbidden,
+):
+    __template__ = (
+        "The current user is not permitted to add users to the project"
+        " `{uuid}`. This action requires the `{rule}`, which has not"
+        " been granted."
+    )
