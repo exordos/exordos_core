@@ -219,10 +219,20 @@ class PoolMachine(
             pool=machine.pool.uuid,
             agent_uuid=agent_uuid,
             port_info={
+                # The port uuid rides along so the pool agent stamps the
+                # REAL port as the OVS iface-id (the SDN agent resolves the
+                # guest by it; without it only the attached-mac fallback
+                # matches).
+                "uuid": str(port.uuid),
                 "ipv4": str(port.ipv4) if port.ipv4 else None,
                 "mask": str(port.mask) if port.mask else None,
                 "mac": port.mac,
                 "source": port.source,
+                # Where this interface is plugged. Sent rather than worked
+                # out at the far end: the agent rebuilds a port from this
+                # dict alone and has no network to look at, so a question
+                # asked there can only be guessed at.
+                "overlay": port.is_overlay(),
             },
         )
 

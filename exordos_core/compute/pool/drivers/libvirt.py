@@ -441,6 +441,9 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
         mtu: int = 1450,
         mac: tp.Optional[str] = None,
         rom: tp.Optional[str] = None,
+        interface_id: tp.Optional[str] = None,
+        port_security: bool = False,
+        ipv4: tp.Optional[str] = None,
     ) -> str:
         interface = ET.Element("interface", type=iface_type)
 
@@ -464,6 +467,41 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
         else:
             raise ValueError(f"Unsupported interface type: {iface_type}")
 
+        # An OVS-backed bridge (the SDN br-int) needs an openvswitch
+        # virtualport so libvirt plugs the tap via ovs-vsctl and stamps
+        # external_ids:iface-id=<interface_id> — the key the evpn agent's
+        # EvpnPort resolves the guest port by (attached-mac is the fallback).
+        if interface_id is not None:
+            vport = ET.SubElement(interface, "virtualport", type="openvswitch")
+            ET.SubElement(vport, "parameters", interfaceid=interface_id)
+
+        # Anti-spoofing: the port's ``port_security`` toggle.
+        # libvirt's stock `clean-traffic` nwfilter pins the guest to the MAC
+        # and IP the control plane assigned it, so a guest cannot claim a
+        # neighbour's address. Enforced at the tap, below the guest, which is
+        # where the platform — not the overlay — owns the question.
+        #
+        # Not available on an OVS port: libvirt refuses a domain that carries
+        # both a filterref and an openvswitch virtualport ("filterref is not
+        # supported for network interfaces with virtualport type
+        # openvswitch"), so emitting one would make every overlay guest
+        # undeployable. There it is enforced a layer up instead — the SDN
+        # agent installs the anti-spoof flows on br-int from the port's own
+        # `port_security` field, which is why this is a debug line and not a
+        # warning about something nobody does.
+        if port_security and interface_id is not None:
+            LOG.debug(
+                "Port security of OVS port %s is enforced by the SDN agent on "
+                "br-int, not by an nwfilter (libvirt does not allow one on an "
+                "openvswitch virtualport)",
+                interface_id,
+            )
+        elif port_security:
+            filterref = ET.SubElement(interface, "filterref", filter="clean-traffic")
+            ET.SubElement(filterref, "parameter", name="MAC", value=mac_address)
+            if ipv4 is not None:
+                ET.SubElement(filterref, "parameter", name="IP", value=ipv4)
+
         return ET.tostring(interface, encoding="unicode")
 
     @classmethod
@@ -476,6 +514,9 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
         mtu: int = 1450,
         mac: tp.Optional[str] = None,
         rom: tp.Optional[str] = None,
+        interface_id: tp.Optional[str] = None,
+        port_security: bool = False,
+        ipv4: tp.Optional[str] = None,
     ) -> None:
         interface_xml = cls.interface_xml(
             iface_type=iface_type,
@@ -484,6 +525,9 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
             mtu=mtu,
             mac=mac,
             rom=rom,
+            interface_id=interface_id,
+            port_security=port_security,
+            ipv4=ipv4,
         )
         device_element = domain.getElementsByTagName("devices")[0]
         device_element.appendChild(minidom.parseString(interface_xml).firstChild)
@@ -527,6 +571,9 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
         mtu: int = 1450,
         mac: tp.Optional[str] = None,
         rom: tp.Optional[str] = None,
+        interface_id: tp.Optional[str] = None,
+        port_security: bool = False,
+        ipv4: tp.Optional[str] = None,
     ) -> None:
         return self.domain_add_interface(
             self._domain,
@@ -536,7 +583,15 @@ class XMLLibvirtInstance(XMLLibvirtMixin):
             rom=rom,
             mtu=mtu,
             mac=mac,
+            interface_id=interface_id,
+            port_security=port_security,
+            ipv4=ipv4,
         )
+
+
+# The OVS integration bridge guests of an ovs pool are plugged into (the
+# SDN agent resolves them there by external_ids:iface-id).
+OVS_BRIDGE = "br-int"
 
 
 class LibvirtPoolDriver(base.AbstractPoolDriver):
@@ -553,6 +608,52 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
         # Check if connection string is valid and we can connect
         _ = self._client
         super().__init__(dry_run=dry_run)
+
+    @staticmethod
+    def _is_overlay_port(port: models.Port) -> bool:
+        """Does this port belong to an overlay network?
+
+        Taken from what the control plane sent, because this runs on an
+        agent: the port it is given is rebuilt from a handful of fields
+        with a placeholder subnet, so there is no network here to consult
+        and never was.
+
+        It used to be guessed — a port whose subnet no libvirt network was
+        named after was called an overlay. That conflated "overlay" with
+        "unknown to libvirt": a flat subnet without a matching libvirt
+        network, an address pool say, had its guest plugged into br-int,
+        where nothing is wired and no error is raised, and the guest was
+        simply unreachable. An answer that travels cannot drift from what
+        it describes; absent one, the classic path is the safe reading,
+        and libvirt says out loud when the network does not exist.
+        """
+        return bool(getattr(port, "overlay", False))
+
+    def _iface_args(self, port: models.Port) -> dict:
+        """Interface parameters for a port.
+
+        On an ovs pool an overlay port plugs into the OVS integration bridge
+        with an openvswitch virtualport carrying the port uuid as iface-id
+        (how the SDN agent finds it). Boot/flat ports keep the classic path
+        — a virtualport there would break them.
+        """
+        source = port.source or self._spec.network
+        if self._spec.ovs and source and self._is_overlay_port(port):
+            return {
+                "iface_type": "bridge",
+                "source": OVS_BRIDGE,
+                "interface_id": str(port.uuid),
+                # Anti-spoofing applies to overlay ports, where the control
+                # plane owns the address: a boot/flat port has no such
+                # contract, and pinning one would break PXE.
+                "port_security": bool(getattr(port, "port_security", True)),
+                "ipv4": str(port.ipv4) if port.ipv4 else None,
+            }
+        return {
+            "iface_type": self._spec.network_type,
+            "source": source,
+            "interface_id": None,
+        }
 
     @property
     def _client(self):
@@ -621,7 +722,9 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            # Overlay ports of an ovs pool are bridge interfaces (br-int),
+            # so the source lives in the "bridge" attribute.
+            source = source_el.get(self._spec.network_type) or source_el.get("bridge")
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -700,7 +803,9 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
             mac_el = iface.find("mac")
             source_el = iface.find("source")
             mac = mac_el.get("address")
-            source = source_el.get(self._spec.network_type)
+            # Overlay ports of an ovs pool are bridge interfaces (br-int),
+            # so the source lives in the "bridge" attribute.
+            source = source_el.get(self._spec.network_type) or source_el.get("bridge")
 
             if not mac or not source:
                 raise ValueError(f"Interface {iface} has no mac or source")
@@ -1180,11 +1285,10 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
 
         # Build interface XML
         interface_xml = XMLLibvirtInstance.interface_xml(
-            iface_type=self._spec.network_type,
             mac=port.mac,
             rom=self._spec.iface_rom_file,
             mtu=self._spec.iface_mtu,
-            source=port.source or self._spec.iface_source,
+            **self._iface_args(port),
         )
 
         # Attach the interface both to live domain and persistent config
@@ -1279,10 +1383,7 @@ class LibvirtPoolDriver(base.AbstractPoolDriver):
                 mac=port.mac,
                 rom=self._spec.iface_rom_file,
                 mtu=self._spec.iface_mtu,
-                # TODO(akremenetsky): This parameter should be taken from
-                # the network
-                iface_type=self._spec.network_type,
-                source=port.source,
+                **self._iface_args(port),
             )
 
         # Prepare volume paths

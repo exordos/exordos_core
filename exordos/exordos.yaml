@@ -36,6 +36,29 @@ build:
       optional: true
       path:
         env: LOCAL_GENESIS_SDK_PATH
+      # A developer checkout carries its virtualenvs; uploading them fills
+      # the build disk before the image is provisioned.
+      exclude:
+        - .git
+        - .venv
+        - .tox
+        - build
+        - dist
+
+    # evpn_connector source for the ovs_evpn fabric. Optional: only builds
+    # bringing this in get the EVPN forwarder venv (mirrors the SDK dev path).
+    # gobgpd itself is fetched at provision time in install.sh (its GitHub
+    # release URL 302-redirects, which the build's http-dep fetcher can't follow).
+    - dst: /opt/evpn_connector
+      optional: true
+      path:
+        env: LOCAL_EVPN_CONNECTOR_PATH
+      exclude:
+        - .git
+        - .venv
+        - .tox
+        - build
+        - dist
 
   # List of elements in the project
   elements:
@@ -62,6 +85,9 @@ build:
         envs:
           - ALLOW_USER_PASSWD
           - FREQUENT_LOG_VACUUM
+          # gobgp fetch source override (local mirror for offline/flaky-GitHub
+          # builds); a failed fetch fails the build.
+          - GOBGP_URL
     # eco manifest must be after core manifest!
     - manifest: manifests/ecosystem_realm.yaml.j2
     - manifest: manifests/exordos_docs.yaml.j2
@@ -72,3 +98,4 @@ build:
             - ../exordos_docs/
     - manifest: manifests/core-node-set-example.yaml.j2
     - manifest: manifests/core-service-example.yaml.j2
+    - manifest: manifests/core-sdn-example.yaml.j2

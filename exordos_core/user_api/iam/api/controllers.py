@@ -146,6 +146,7 @@ class UserController(
                 },
                 "secret_hash": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
                 "otp_secret": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "last_otp_counter": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
                 "confirmation_code": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
                 "confirmation_code_made_at": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
                 "type": {

@@ -44,6 +44,7 @@ sudo apt install \
   postgresql-common postgresql-"$PG_VERSION" \
   tftpd-hpa nginx-full isc-dhcp-server iptables-persistent \
   pdns-backend-pgsql pdns-server dnsdist \
+  openvswitch-switch \
   -y
 # Install PostgreSQL $PG_VERSION
 #sudo YES=1 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
@@ -226,6 +227,58 @@ fi
 
 # Configuration for universal agent
 sudo cp "$GC_PATH/etc/exordos_universal_agent/logging.yaml" /etc/exordos_universal_agent/
+
+# --- ovs_evpn network fabric (gobgpd + evpn_connector) -------------------
+# OVS is installed above (openvswitch-switch). The universal agent's evpn_node
+# capability renders /etc/gobgp.conf and /opt/evpn/evpn_connector.cfg at runtime
+# and (re)starts the services; here we only lay down the binaries, the venv and
+# the units. The units are intentionally left disabled — the agent enables and
+# starts them once an ovs_evpn network is actually in use.
+sudo mkdir -p /opt/evpn/vm_conf
+sudo cp "$GC_PATH/etc/evpn/gobgpd.service" /etc/systemd/system/gobgpd.service
+sudo cp "$GC_PATH/etc/evpn/evpn-connector.service" /etc/systemd/system/evpn-connector.service
+
+# gobgpd/gobgp binaries. Fetched here with curl -L rather than as a build
+# artifact because the GitHub release URL 302-redirects to a signed asset host,
+# which the build's http-dep fetcher does not follow. GOBGP_URL may point at a
+# local mirror. A fabric image without gobgpd is broken, so a failed fetch
+# fails the build (a GitHub 503 once shipped an image with no RR daemon).
+# gobgp 4: evpn_connector speaks the v4 gRPC API, so the daemon and the
+# connector move together — a v3 gobgpd will not answer it.
+GOBGP_URL="${GOBGP_URL:-https://github.com/osrg/gobgp/releases/download/v4.7.0/gobgp_4.7.0_linux_amd64.tar.gz}"
+# sha256 of the v4.7.0 linux/amd64 release tarball. Verifying it pins the
+# binary by content, so a tampered mirror or a MITM of the download cannot land
+# an arbitrary gobgpd that then runs as root. Bump alongside the version above.
+GOBGP_SHA256="05d98ca0d7bbcb2f50a6b7b6ee51c5e5b5fd64d6a310ee807040ed9d7104d5e0"
+GOBGP_TMP="$(mktemp -d)"
+curl -fsSL --retry 5 --retry-all-errors -o "$GOBGP_TMP/gobgp.tar.gz" "$GOBGP_URL"
+echo "${GOBGP_SHA256}  ${GOBGP_TMP}/gobgp.tar.gz" | sha256sum -c -
+tar -xf "$GOBGP_TMP/gobgp.tar.gz" -C "$GOBGP_TMP"
+sudo install -m 0755 "$GOBGP_TMP/gobgpd" "$GOBGP_TMP/gobgp" /usr/local/bin/
+rm -rf "$GOBGP_TMP"
+test -x /usr/local/bin/gobgpd
+
+# evpn_connector runs on the image's own Python: since it moved to the gobgp
+# v4 API it no longer pins cp38-only wheels, so it needs no interpreter of its
+# own. Only built when the source is provided at build time
+# (LOCAL_EVPN_CONNECTOR_PATH -> /opt/evpn_connector), mirroring the optional
+# SDK dev path above.
+EVPN_SRC="/opt/evpn_connector"
+if [[ -d "$EVPN_SRC" ]]; then
+    sudo chown -R ubuntu:ubuntu /opt/evpn
+    python3 -m venv /opt/evpn/venv
+    # The distro's bundled pip cannot parse some of the dependency metadata.
+    /opt/evpn/venv/bin/pip install -q --upgrade pip
+    # pbr needs a version when there is no git metadata; setuptools provides
+    # pkg_resources at runtime in the otherwise-bare venv.
+    PBR_VERSION=0.0.1 /opt/evpn/venv/bin/pip install -q \
+        setuptools "$EVPN_SRC"
+    # The venv is built as ubuntu (uv writes there), but evpn-connector.service
+    # runs it as root. Leaving /opt/evpn ubuntu-owned would let a local ubuntu
+    # user replace the binary and get root execution — hand it back to root now
+    # that the build-time writes are done.
+    sudo chown -R root:root /opt/evpn
+fi
 
 # Apply migrations
 # The migrations are applied in the bootstrap script as well.

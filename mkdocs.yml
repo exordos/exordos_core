@@ -162,6 +162,9 @@ nav:
     - Permissions: iam/permissions_overview.md
   - Network:
     - LBaaS API: network/load_balancer.md
+    - Realm Connectivity SDN: network/realm-connectivity-sdn.md
+    - Private Networks: network/private-network.md
+    - Security groups across a network: network/security-group-remote-access.md
   - Secrets:
       - Certificates: secret/certificates.md
       - Passwords: secret/passwords.md

@@ -1,0 +1,93 @@
+name: "core_sdn_example"
+description: "Exordos Core private overlay network with two nodes on it"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+# Two nodes on one private network. The network is an EVPN/VXLAN overlay
+# (`ovs_evpn`): its VNI, route target and MTU are allocated by the core, and
+# every guest of it is wired into the fabric by its hypervisor's SDN agent.
+# The nodes are placed on it by `default_network` — the only thing a node says
+# about networking; its port, address and MAC come from the subnet.
+resources:
+  # Two networks: the private overlay the guests live on, and the pool of
+  # public addresses this installation owns. A `fip` is the 1:1 NAT the
+  # hypervisor programs for whichever port claims one of those addresses.
+  $core.network.networks:
+    private_net:
+      name: "example-private"
+      description: "Example private overlay network"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      driver_spec:
+        driver: "ovs_evpn"
+      access: "private"
+
+    public_pool:
+      name: "example-public"
+      description: "Example floating-IP pool"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      driver_spec:
+        driver: "ovs_evpn"
+      access: "public"
+
+  $core.network.subnets:
+    private_subnet:
+      name: "example-private"
+      description: "Example private subnet"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      network: "$core.network.networks.$private_net:uuid"
+      cidr: "10.101.0.0/24"
+      dhcp: true
+      # Left unset on purpose: a DHCP subnet defaults its gateway route and
+      # resolver to its first host address (10.101.0.1 here) — the address
+      # the hypervisor's egress namespace takes and answers DHCP/DNS on.
+      # Spell out `routers`/`dns_servers` only to override that.
+
+    public_subnet:
+      name: "example-public"
+      description: "Example floating-IP pool"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      network: "$core.network.networks.$public_pool:uuid"
+      cidr: "203.0.113.0/24"
+      dhcp: false
+
+  # A pool of public addresses and one reserved out of it. Binding it to a
+  # guest is a property of that guest's port, which the platform creates
+  # with the node — so the last step is one command:
+  #   exordos network ports update <port> --public-address example-fip
+  $core.network.catalog.addresses:
+    fip_a:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      subnet: "$core.network.subnets.$public_subnet:uuid"
+      address: "203.0.113.7"
+
+  $core.compute.nodes:
+    node_a:
+      name: "sdn-example-a"
+      description: "First node on the private network"
+      cores: 1
+      ram: 1024
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      default_network:
+        network: "$core.network.networks.$private_net:uuid"
+      disk_spec:
+        kind: "root_disk"
+        size: 10
+        image: "{{ base_image_url | default('https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst') }}"
+
+    node_b:
+      name: "sdn-example-b"
+      description: "Second node on the private network"
+      cores: 1
+      ram: 1024
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      default_network:
+        network: "$core.network.networks.$private_net:uuid"
+      disk_spec:
+        kind: "root_disk"
+        size: 10
+        image: "{{ base_image_url | default('https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst') }}"

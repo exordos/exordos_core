@@ -16,6 +16,38 @@
 
 from restalchemy.dm import models
 
+from exordos_core.common import constants as c
+
+
+def client_tags(tags):
+    """The part of a tag list a client is allowed to decide."""
+    return [tag for tag in (tags or []) if not tag.startswith(c.TAG_RESERVED_PREFIX)]
+
+
+def reserved_tags(tags):
+    """The part of a tag list the installation owns."""
+    return [tag for tag in (tags or []) if tag.startswith(c.TAG_RESERVED_PREFIX)]
+
+
+def merge_tags(stored, incoming):
+    """The tags a row keeps when a client sends it a new list."""
+    return reserved_tags(stored) + client_tags(incoming)
+
+
+class ModelWithReservedTags(models.ModelWithTags):
+    """Tags whose reserved part survives whatever the client sends.
+
+    Ownership is decided once, when the row is created, and an update
+    keeps it: re-stamping from the caller would let an operator who
+    edits a mirrored record take it over, and letting the client's list
+    through would let anyone drop the tag and orphan the row instead.
+    """
+
+    def update_dm(self, values):
+        if "tags" in values:
+            values = dict(values, tags=merge_tags(self.tags, values["tags"]))
+        return super().update_dm(values)
+
 
 class ModelWithFullAsset(
     models.ModelWithUUID,

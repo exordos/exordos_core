@@ -32,6 +32,10 @@ from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
 
+# The network driver whose guests are installed by their own hypervisor
+# rather than on the installation's boot network.
+OVERLAY_DRIVER = "ovs_evpn"
+
 
 class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
     def __init__(
@@ -135,6 +139,37 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             machine_ctx = self._get_machine_ctx(machine)
 
         return machine_ctx
+
+    @staticmethod
+    def _netboots_on_its_own_network(port: models.Port) -> bool:
+        """Whether this port's own network can install the guest behind it.
+
+        A machine is normally flashed on the installation's boot network: it
+        is given a port there, netboots, and is moved to its real network
+        once Seed OS has written the disk. A guest of an overlay cannot be —
+        the boot network is not reachable from inside a tenant's network, and
+        handing it a port there would put a foot of every tenant's guest on a
+        shared segment for the length of an install.
+
+        It does not need one. Its own hypervisor answers its DHCP, hands it a
+        boot script and proxies the boot API, so it netboots through the
+        network it will live on and never leaves it.
+
+        Reconciliation hands these relations as objects as often as uuids, so
+        both are accepted and only a bare uuid costs a query.
+        """
+        subnet = getattr(port, "subnet", None)
+        if isinstance(subnet, (sys_uuid.UUID, str)):
+            subnet = models.Subnet.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(subnet)}
+            )
+        network = getattr(subnet, "network", None)
+        if isinstance(network, (sys_uuid.UUID, str)):
+            network = models.Network.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(network)}
+            )
+        spec = getattr(network, "driver_spec", None)
+        return isinstance(spec, dict) and spec.get("driver") == OVERLAY_DRIVER
 
     def _reschedule_machine(
         self,
@@ -294,19 +329,36 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 boot = nc.BootAlternative.network.value
                 # Any port for the boot network is fine. The port will be replaced
                 # after the machine is flashed and switched to the main network.
-                port = models.Port.from_boot_network()
+                # Unless the machine's own network installs it: then it keeps
+                # the port it will live on, and the boot network — which a
+                # tenant's guest cannot reach and has no business being on —
+                # stays out of it.
+                if not self._netboots_on_its_own_network(port):
+                    port = models.Port.from_boot_network()
         else:
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
             if not self._is_core_machine(machine):
-                _, guest_actual = machine_guest_pair
+                guest_target, guest_actual = machine_guest_pair
+                # A machine that is still being installed has asked for a
+                # network boot and has not reported back yet. Any update
+                # that reaches it meanwhile (an element re-rendering its
+                # node, say) must not take it out of that boot mode: it
+                # would be rebuilt off a disk Seed OS never wrote.
+                if (
+                    guest_actual is None
+                    and guest_target.boot == nc.BootAlternative.network
+                ):
+                    boot = nc.BootAlternative.network.value
+                    port = models.Port.from_boot_network()
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
-                if guest_actual and guest_actual.image != resolved_image:
+                elif guest_actual and guest_actual.image != resolved_image:
                     boot = nc.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
-                    port = models.Port.from_boot_network()
+                    if not self._netboots_on_its_own_network(port):
+                        port = models.Port.from_boot_network()
 
         # Set correct boot value for the machine (root model)
         machine.boot = boot

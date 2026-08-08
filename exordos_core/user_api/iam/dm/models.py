@@ -394,6 +394,13 @@ class User(
         default=False,
     )
 
+    # The last TOTP time step consumed by this user. None means no code has
+    # been used yet, which is how users predating this field start out.
+    last_otp_counter = properties.property(
+        ra_types.AllowNone(ra_types.Integer(min_value=0)),
+        default=None,
+    )
+
     custom_props = properties.property(
         ra_types.AllowNone(
             KindModelSelectorType(
@@ -471,13 +478,49 @@ class User(
             ]
         )
 
+    def _verify_totp(self, code: tp.Union[str, int]) -> tp.Optional[int]:
+        """Verify a code, returning the time step it belongs to or None.
+
+        The current time is read once and used both to verify and to derive
+        the step: reading it twice could straddle a step boundary and burn a
+        counter the code was never checked against.
+        """
+        totp = pyotp.TOTP(self.otp_secret)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if not totp.verify(str(code), for_time=now):
+            return None
+        return totp.timecode(now)
+
+    def _burn_otp_counter(self, counter: int, session: tp.Any = None) -> bool:
+        """Consume a TOTP time step, refusing one already used.
+
+        This is a conditional UPDATE rather than a read-compare-write because
+        replay is by nature concurrent: two requests carrying the same code
+        must not both observe the old counter and both pass. The row lock
+        Postgres takes here serializes them, and the loser updates no row.
+        """
+        with self._get_engine().session_manager(session=session) as s:
+            cursor = s.execute(
+                f"UPDATE {self.__tablename__} SET last_otp_counter = %s "
+                "WHERE uuid = %s "
+                "AND (last_otp_counter IS NULL OR last_otp_counter < %s);",
+                (counter, self.uuid, counter),
+            )
+            burned = cursor.rowcount == 1
+
+        if burned:
+            self.last_otp_counter = counter
+        return burned
+
     def validate_otp(self, code):
         if not self.otp_enabled:
             raise iam_e.OTPNotEnabledError()
         if not code:
             return False
-        totp = pyotp.TOTP(self.otp_secret)
-        return totp.verify(str(code))
+        counter = self._verify_totp(code)
+        if counter is None:
+            return False
+        return self._burn_otp_counter(counter)
 
     def enable_otp(self, password):
         if self.otp_enabled:
@@ -494,12 +537,16 @@ class User(
         if not self.otp_secret:
             raise iam_e.OTPNotEnabledError()
 
-        totp = pyotp.TOTP(self.otp_secret)
+        counter = self._verify_totp(code)
 
-        if not totp.verify(str(code)):
+        if counter is None:
             raise iam_e.OTPInvalidCodeError()
 
         self.otp_enabled = True
+        # Burn the activation code too, so it cannot be replayed as the
+        # first login. No conditional UPDATE is needed here: concurrent
+        # activations agree on both the counter and otp_enabled.
+        self.last_otp_counter = counter
         self.save()
 
     def disable_otp(self, password):
@@ -916,6 +963,7 @@ class MeInfo:
     def get_response_body(self):
         skip_fields = [
             "otp_secret",
+            "last_otp_counter",
             "salt",
             "secret_hash",
             "secret",

@@ -33,6 +33,12 @@ VAR_IAM_DEFAULT_CLIENT_SECRET_UUID = sys_uuid.UUID(
     "784c1f6d-f9e2-47e0-a3ba-16725854ac09"
 )
 NETWORK_UUID = "1d4f64db-817a-4862-a588-c9e950823cc1"
+# Well-known ids for the optional ovs_evpn private overlay network seeded at
+# bootstrap. A node manifest pins to PRIVATE_NETWORK_UUID via
+# ``default_network: {network: <uuid>}`` to land on the private network.
+PRIVATE_NETWORK_UUID = "2e5f75ec-928b-4973-b699-daab8c5d3ea2"
+PRIVATE_SUBNET_UUID = "3f6a86fd-a39c-4a84-c7aa-ebbc9d6e4fb3"
+PRIVATE_NETWORK_CIDR = "10.100.0.0/24"
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 DEFAULT_SQL_LIMIT = 100
 
@@ -96,6 +102,25 @@ VAR_REALM_REFRESH_TOKEN_UUID = sys_uuid.UUID("eacf0c1f-3495-4986-89a5-80139526b8
 VAR_HS256_JWKS_ENCRYPTION_KEY_UUID = sys_uuid.UUID(
     "c371a647-e1a6-4bec-bef2-a50041bc5af2"
 )
+
+# Tags whose meaning belongs to the installation rather than to whoever
+# wrote the row. The server stamps them from the caller's identity and a
+# client cannot set or clear them, because they answer the question "may I
+# clean this up?" for anything that reconciles rows it did not create --
+# the DNS mirror of a managed realm being the first such reconciler.
+#
+# Exactly one owner tag per row. An owner is a subject of this
+# installation's IAM, so a realm mirror and the ecosystem element are told
+# apart by the users they authenticate as. No owner tag means "not known
+# to be mine", which every reconciler must read as "leave it alone".
+TAG_RESERVED_PREFIX = "owner:"
+TAG_OWNER_USER_PREFIX = TAG_RESERVED_PREFIX + "user:"
+
+
+def owner_user_tag(user_uuid):
+    """The owner tag of a subject, as it is stored and searched for."""
+    return TAG_OWNER_USER_PREFIX + str(user_uuid)
+
 
 REPOSITORY_URL = "https://repo.exordos.com"
 ELEMENTS_PATH = "exordos-elements"

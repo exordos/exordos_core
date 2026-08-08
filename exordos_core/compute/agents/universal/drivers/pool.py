@@ -147,6 +147,17 @@ class MetaPool(meta.MetaCoordinatorDataPlaneModel):
         # machines and volumes as their dependencies.
         self.restore_from_dp(**kwargs)
 
+    def update_on_dp(self, **kwargs) -> None:
+        """Update the pool."""
+        # There is nothing to configure, but an update is built from the
+        # target value alone, so without this the object carries no capacity
+        # and no data plane maps. It is then reported to the control plane
+        # as a pool of zero cores, and -- because the coordinator keeps the
+        # object it was given -- every machine and volume that resolves its
+        # pool through it is reported missing from the data plane. One
+        # mismatched field would take the whole pool down.
+        self.restore_from_dp(**kwargs)
+
 
 class MetaVolume(meta.MetaCoordinatorDataPlaneModel):
     """Volume meta model."""
@@ -450,6 +461,11 @@ class MetaVolume(meta.MetaCoordinatorDataPlaneModel):
 class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
     """Machine meta model."""
 
+    #: Keys of `port_info` the data plane cannot answer for. They are
+    #: target-side identity, so refreshing from the DP must carry them over
+    #: untouched — see `_from_dp_machine`.
+    DP_OPAQUE_PORT_INFO = ("ipv4", "mask", "uuid", "overlay")
+
     name = properties.property(types.String(max_length=255), default="")
     cores = properties.property(types.Integer(min_value=0, max_value=4096), default=0)
     ram = properties.property(types.Integer(min_value=0), default=0)
@@ -496,7 +512,16 @@ class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
             else None
         )
 
-        return models.Port(
+        port = models.Port(
+            # Keep the real port uuid when the builder provided it: it is
+            # stamped as the OVS iface-id, which the SDN agent resolves
+            # the guest by (fresh uuid = only the attached-mac fallback
+            # matches).
+            uuid=(
+                sys_uuid.UUID(self.port_info["uuid"])
+                if self.port_info.get("uuid")
+                else sys_uuid.uuid4()
+            ),
             subnet=sys_uuid.uuid4(),
             ipv4=ipv4,
             mask=mask,
@@ -505,6 +530,12 @@ class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
             project_id=self.project_id,
             source=self.port_info.get("source"),
         )
+        # `subnet` above is a placeholder — the real one does not travel,
+        # so nothing here can be resolved through it. Where the interface
+        # belongs is therefore carried as an answer, not re-derived.
+        if "overlay" in self.port_info:
+            port.overlay = bool(self.port_info["overlay"])
+        return port
 
     def _create_machine(
         self,
@@ -534,10 +565,20 @@ class MetaMachine(meta.MetaCoordinatorDataPlaneModel):
         self.boot = dp_machine.boot
 
         for port in ports:
-            # Only MAC and source are available in the data plane
+            # Only MAC and source are available in the data plane; the rest of
+            # port_info is target-side identity not observable from the DP, so
+            # preserve it from the existing value. Every key dropped here left
+            # target != actual forever: update_on_dp then looped with no
+            # actionable diff ("Unknown update action") and pool machines never
+            # converged. It has already happened twice — first `uuid`, then
+            # `overlay` — so the preserved set is a list, not a spelling.
+            preserved = {
+                key: self.port_info[key]
+                for key in self.DP_OPAQUE_PORT_INFO
+                if key in self.port_info
+            }
             self.port_info = {
-                "ipv4": self.port_info.get("ipv4"),
-                "mask": self.port_info.get("mask"),
+                **preserved,
                 "mac": port.mac,
                 "source": port.source,
             }

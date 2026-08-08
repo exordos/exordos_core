@@ -26,6 +26,7 @@ from restalchemy.dm import properties
 from restalchemy.dm import relationships
 from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic
+from restalchemy.storage import exceptions as ra_storage_exc
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import utils
@@ -316,6 +317,21 @@ class Repository(
         # Check if driver supports upload
         if not driver.can_upload_element(element_name, element_version):
             raise ValueError("Upload is not supported by this repository driver")
+
+        if RepoElement.objects.get_all(
+            filters={
+                "name": ra_filters.EQ(element_name),
+                "version": ra_filters.EQ(element_version),
+                "repository": ra_filters.EQ(self.uuid),
+            }
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="RepoElement",
+                msg=(
+                    f"{element_name}:{element_version} is already in "
+                    f"repository {self.name}"
+                ),
+            )
 
         # Create element
         element = RepoElement(

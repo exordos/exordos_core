@@ -41,6 +41,18 @@ class NodeSet(compute_models.NodeSet):
         "set_agent_volume": Volume,
     }
 
+    def _node_network_pin(self) -> dict:
+        """The network pin this set hands to each of its nodes, if it has one.
+
+        `NodeSet.default_network` has been settable since the field existed
+        and reached nothing: the nodes were generated without it, so a set
+        could say where its nodes belong and be ignored. Only the pin is
+        carried — anything else in there describes a port that this set
+        does not have and each node gets its own.
+        """
+        network = (self.default_network or {}).get(nc.DEFAULT_NETWORK_KEY)
+        return {nc.DEFAULT_NETWORK_KEY: str(network)} if network else {}
+
     def gen_nodes(
         self,
         project_id: sys_uuid.UUID,
@@ -68,6 +80,17 @@ class NodeSet(compute_models.NodeSet):
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
                 disk_spec=self.disk_spec.node_spec(self, node_uuid),
+                # What the set says about where its nodes live. Only the
+                # pin travels: the rest of a node's `default_network` (its
+                # port, address and MAC) is filled in when the network
+                # service places it, and a set has none of that to give.
+                #
+                # A set that pins nothing hands over nothing, which is the
+                # empty dict a node started with anyway — so an existing
+                # set generates exactly the nodes it generated before, and
+                # the service's own rule keeps them where they were: an
+                # unpinned node never lands on an overlay subnet.
+                default_network=self._node_network_pin(),
             )
             nodes.append(node)
 

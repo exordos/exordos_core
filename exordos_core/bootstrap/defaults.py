@@ -19,6 +19,7 @@ import logging
 import os
 import pathlib
 import pwd
+import subprocess
 import typing as tp
 import uuid as sys_uuid
 
@@ -376,6 +377,174 @@ def apply_flat_network(stand: dict[str, tp.Any]) -> None:
         LOG.info("Created subnet %s", subnet.uuid)
 
 
+def overlay_is_wanted(spec: tp.Optional[dict[str, tp.Any]]) -> bool:
+    """Whether this installation has an overlay, or has asked for one.
+
+    The switch for the whole EVPN surface, and it is the presence of the
+    ``stand.private_network`` block rather than a flag inside it. An
+    installation that never mentions a private network gets no `ovs_evpn`
+    network seeded, no `[evpn]` drop-in written and restarted into, and no
+    evpn capability added to its agent -- which is what "an upgrade must not
+    change what this installation does" comes down to here. Specs written
+    before any of this existed carry no such block, so an upgrade is silent
+    without an operator having to set anything, and running the old way is
+    not a setting at all: it is not asking.
+
+    An overlay created later through the API counts too. Otherwise the
+    network would exist while the route reflector it needs was never
+    configured and its guests' agents could not carry it -- and that reads
+    as a broken fabric rather than as a bootstrap that was never asked to
+    set one up.
+    """
+    if ((spec or {}).get("stand") or {}).get("private_network") is not None:
+        return True
+    try:
+        for network in compute_models.Network.objects.get_all():
+            if (network.driver_spec or {}).get("driver") == nc.OVERLAY_DRIVER:
+                return True
+    except Exception:
+        # Not knowing is not a reason to start writing: the answer that
+        # changes nothing is the safe one, and the next pass asks again.
+        LOG.exception("Cannot tell whether this installation carries an overlay")
+    return False
+
+
+def apply_private_network(stand: dict[str, tp.Any]) -> None:
+    """Seed the ovs_evpn private overlay network idempotently.
+
+    Alongside the flat management network, a fresh install carries a private
+    EVPN/VXLAN overlay network so both network types are available out of the
+    box. Nodes join it by pinning ``default_network: {network: <uuid>}`` to
+    ``PRIVATE_NETWORK_UUID`` in their manifest. The network is inert (emits no
+    dataplane resources) until a node lands a port on it, so seeding it is safe
+    even before the EVPN fabric is configured.
+
+    Seeded only when the stand asks for it: the ``stand["private_network"]``
+    block (``name`` / ``cidr`` / ``dhcp``) is both the configuration and the
+    switch. An installation that does not mention one is not given one --
+    not on a fresh bootstrap and, which is the point, not on the upgrade of
+    an installation that has been running without any overlay at all.
+    """
+    if stand.get("private_network") is None:
+        return
+    cfg = stand["private_network"] or {}
+    try:
+        compute_models.Network.objects.get_one(
+            filters={"uuid": dm_filters.EQ(c.PRIVATE_NETWORK_UUID)}
+        )
+        LOG.info("Private network already exists")
+        return
+    except ra_exceptions.RecordNotFound:
+        pass
+
+    network = compute_models.Network.restore_from_simple_view(
+        name=cfg.get("name", "private"),
+        uuid=c.PRIVATE_NETWORK_UUID,
+        driver_spec={"driver": "ovs_evpn"},
+        project_id=c.SERVICE_PROJECT_ID,
+    )
+    network.insert()
+    LOG.info("Created private network %s", network.uuid)
+
+    cidr = ipaddress.ip_network(cfg.get("cidr", c.PRIVATE_NETWORK_CIDR))
+    # The host-local EVPN responder is the overlay's gateway and resolver.
+    gateway = str(cidr.network_address + 1)
+    subnet = compute_models.Subnet.restore_from_simple_view(
+        name=cfg.get("name", "private"),
+        uuid=c.PRIVATE_SUBNET_UUID,
+        cidr=str(cidr),
+        ip_range=_net_range(cidr, 10),
+        ip_discovery_range=None,
+        dhcp=bool(cfg.get("dhcp", True)),
+        dns_servers=[gateway],
+        routers=[{"to": "0.0.0.0/0", "via": gateway}],
+        next_server=None,
+        project_id=c.SERVICE_PROJECT_ID,
+    )
+    subnet.network = network.uuid
+    subnet.insert()
+    LOG.info("Created private subnet %s", subnet.uuid)
+
+
+EVPN_RR_CONF_PATH = "/etc/exordos_core/exordos_core.d/evpn.conf"
+
+
+def render_evpn_rr_config(spec: dict[str, tp.Any]) -> tp.Optional[str]:
+    """Render the [evpn] route-reflector config for the network service.
+
+    A single-host install makes the core node the EVPN route reflector: its
+    universal agent already advertises ``bgp_rr``. The CP driver reads these
+    ``[evpn]`` options to emit the bgp_rr resource and to tell each node's
+    gobgpd which RR to peer with, so the seeded ovs_evpn private network can
+    actually carry traffic. Returns ``None`` when the stand lacks the data —
+    and when the installation has no overlay and asked for none, because
+    then this file configures a route reflector for a fabric nobody has, at
+    the price of a `ec-gservice` restart on every bootstrap.
+    """
+    if not overlay_is_wanted(spec):
+        return None
+    stand = spec.get("stand", {})
+    bootstraps = stand.get("bootstraps") or []
+    network = stand.get("network") or {}
+    if not bootstraps or not network.get("cidr"):
+        return None
+    core = bootstraps[0]
+    core_ip = next((p["ip"] for p in core.get("ports", []) if p.get("ip")), None)
+    if not core.get("uuid") or not core_ip:
+        return None
+    # The RR runs on the core node (rr_agent == core node uuid) and its
+    # gobgpd binds core_ip. By default clients peer it directly at core_ip.
+    #
+    # In a multi-hypervisor realm the extra hypervisors live outside the
+    # nested core's network and reach the RR through the control node's
+    # flat address (Border forwards 179). ``evpn_rr_address`` overrides the
+    # address advertised to clients, and ``evpn_peer_prefixes`` widens the
+    # prefixes the RR accepts passive neighbours from to include the flat
+    # network the hypervisors peer from.
+    rr_address = stand.get("evpn_rr_address") or core_ip
+    peer_prefixes = [network["cidr"]]
+    for extra in stand.get("evpn_peer_prefixes") or []:
+        if extra not in peer_prefixes:
+            peer_prefixes.append(extra)
+    # dns_forwarders: overlay guests resolve through the host-local DNS
+    # NF, which forwards to the core's resolver (internal zones like
+    # core.local live there).
+    return (
+        "[evpn]\n"
+        "rr_agent = %(agent)s\n"
+        "rr_addresses = %(rr)s\n"
+        "rr_peer_prefixes = %(prefixes)s\n"
+        "dns_forwarders = %(ip)s\n"
+    ) % {
+        "agent": core["uuid"],
+        "rr": rr_address,
+        "prefixes": ",".join(peer_prefixes),
+        "ip": core_ip,
+    }
+
+
+def apply_evpn_rr_config(spec: dict[str, tp.Any]) -> None:
+    """Write the [evpn] RR drop-in idempotently and refresh the service."""
+    content = render_evpn_rr_config(spec)
+    if content is None:
+        return
+    try:
+        with open(EVPN_RR_CONF_PATH) as f:
+            if f.read() == content:
+                return
+    except FileNotFoundError:
+        pass
+    os.makedirs(os.path.dirname(EVPN_RR_CONF_PATH), exist_ok=True)
+    with open(EVPN_RR_CONF_PATH, "w") as f:
+        f.write(content)
+    LOG.info("Wrote evpn RR config %s", EVPN_RR_CONF_PATH)
+    # ec-gservice hosts the network service; nudge it to reread the config.
+    try:
+        subprocess.run(["systemctl", "try-restart", "ec-gservice"], check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        LOG.warning("Could not restart ec-gservice for evpn RR config: %s", e)
+
+
 def apply_startup_db(spec: dict[str, tp.Any]) -> None:
     """Idempotent startup database configuration."""
     stand = spec.get("stand", {})
@@ -385,6 +554,12 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
 
     # Apply flat network configuration
     apply_flat_network(stand)
+
+    # Apply the optional ovs_evpn private overlay network
+    apply_private_network(stand)
+
+    # Configure the EVPN route reflector (the core node) for the private net
+    apply_evpn_rr_config(spec)
 
     # Apply machine pools
     # NOTE(akremenetsky): It maybe a problem for large installations
