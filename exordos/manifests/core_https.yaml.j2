@@ -1,0 +1,142 @@
+name: "core_https"
+description: "https resources for Exordos Core element"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+imports:
+  core_lb:
+    element: "$core"
+    kind: "resource"
+    link: "$core.network.lb.$core_lb"
+  core_lb_core_backend_http:
+    element: "$core"
+    kind: "resource"
+    link: "$core.network.lb.$core_lb.backend_pools.$core_lb_core_backend_http"
+  core_lb_iam_cache_backend_http:
+    element: "$core"
+    kind: "resource"
+    link: "$core.network.lb.$core_lb.backend_pools.$core_lb_iam_cache_backend_http"
+  iam_default_client_id:
+    element: "$core"
+    kind: "resource"
+    link: "$core.vs.variables.$iam_default_client_id"
+  iam_default_client_uuid:
+    element: "$core"
+    kind: "resource"
+    link: "$core.vs.variables.$iam_default_client_uuid"
+  iam_default_client_secret:
+    element: "$core"
+    kind: "resource"
+    link: "$core.vs.variables.$iam_default_client_secret"
+
+resources:
+  $core.secret.certificates:
+    core_cert:
+      name: "wildcard-core-cert-prod"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      email: "infra@exordos.com"
+      method:
+        kind: dns_core
+      domains:
+        - "*.exordos.io"
+        - "exordos.io"
+
+  $core_https.imports.$core_lb.vhosts:
+    core_lb_core_https:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core_https.imports.$core_lb:uuid
+      domains:
+        - "_"
+      protocol: https
+      port: 443
+      cert:
+        kind: raw
+        crt: $core.secret.certificates.$core_cert:cert
+        key: $core.secret.certificates.$core_cert:key
+
+  $core_https.imports.$core_lb.vhosts.$core_lb_core_https.routes:
+    core_lb_core_https_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core_https.imports.$core_lb.vhosts.$core_lb_core_https:uuid
+      condition:
+        kind: prefix
+        value: /api/core/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core_https.imports.$core_lb.backend_pools.$core_https.imports.$core_lb_core_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: rewrite_url
+            regex: "^/api/core/(.*)"
+            replacement: "/$1"
+    core_lb_iam_clients_https:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core_https.imports.$core_lb.vhosts.$core_lb_core_https:uuid
+      condition:
+        kind: prefix
+        value: /api/core/v1/iam/clients/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core_https.imports.$core_lb.backend_pools.$core_https.imports.$core_lb_core_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: rewrite_url
+            regex: "^/api/core/(.*)"
+            replacement: "/$1"
+    core_lb_iam_default_client_https:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core_https.imports.$core_lb.vhosts.$core_lb_core_https:uuid
+      condition:
+        kind: prefix
+        value: /api/core/v1/iam/clients/default
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core_https.imports.$core_lb.backend_pools.$core_https.imports.$core_lb_iam_cache_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: set_header
+            name: X-Client-Id
+            value: $core_https.imports.$iam_default_client_id:value
+          - kind: set_header
+            name: X-Client-Secret
+            value: $core_https.imports.$iam_default_client_secret:value
+          - kind: rewrite_url
+            regex: "^/api/core/v1/iam/clients/default(.*)"
+            replacement: f"/v1/iam/clients/{$core_https.imports.$iam_default_client_uuid:value}$1"
+
+exports:
+  core_cert:
+    link: "$core.secret.certificates.$core_cert"
+  core_lb_core_https:
+    link: "$core_https.imports.$core_lb.vhosts.$core_lb_core_https"

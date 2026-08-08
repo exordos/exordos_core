@@ -318,6 +318,10 @@ exports:
     link: "$core.network.lb.$core_lb"
   core_lb_http_vhost:
     link: "$core.network.lb.$core_lb.vhosts.$core_lb_core_http"
+  core_lb_core_backend_http:
+    link: "$core.network.lb.$core_lb.backend_pools.$core_lb_core_backend_http"
+  core_lb_iam_cache_backend_http:
+    link: "$core.network.lb.$core_lb.backend_pools.$core_lb_iam_cache_backend_http"
   var_core_ip_address:
     link: "$core.vs.variables.$core_ip_address"
   var_default_cores:
@@ -330,6 +334,10 @@ exports:
     link: "$core.vs.variables.$hs256_jwks_encryption_key"
   var_iam_default_client_id:
     link: "$core.vs.variables.$iam_default_client_id"
+  var_iam_default_client_uuid:
+    link: "$core.vs.variables.$iam_default_client_uuid"
+  var_iam_default_client_secret:
+    link: "$core.vs.variables.$iam_default_client_secret"
   profile_develop:
     link: "$core.vs.profiles.$develop"
   profile_small:
