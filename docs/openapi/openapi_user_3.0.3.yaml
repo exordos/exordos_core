@@ -1,5 +1,4 @@
-openapi: 3.1.0
-jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+openapi: 3.0.3
 info:
   title: REST API Microservice
   version: latest
@@ -81,16 +80,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -131,16 +127,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -181,16 +174,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -231,16 +221,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -294,12 +281,11 @@ components:
           maxLength: 9223372036854775807
           example: any_string
         some-field5:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         name-after:
           type: string
           minLength: 0
@@ -352,12 +338,11 @@ components:
           maxLength: 9223372036854775807
           example: any_string
         some-field5:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         unique-field:
           type: string
           minLength: 0
@@ -415,12 +400,11 @@ components:
           maxLength: 9223372036854775807
           example: any_string
         some-field5:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         name-after:
           type: string
           minLength: 0
@@ -473,12 +457,11 @@ components:
           maxLength: 9223372036854775807
           example: any_string
         some-field5:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         name-after:
           type: string
           minLength: 0
@@ -660,16 +643,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -710,16 +690,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -760,16 +737,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -810,16 +784,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -860,16 +831,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -910,16 +878,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -960,16 +925,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -1010,16 +972,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -1060,16 +1019,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -1110,16 +1066,13 @@ components:
           type: string
           minLength: 0
           maxLength: 255
-          example: any_string
-          examples:
-            - testname
+          example: testname
         just-none:
-          type:
-            - string
-            - 'null'
+          type: string
           minLength: 0
           maxLength: 9223372036854775807
           example: any_string
+          nullable: true
         status:
           type: string
           enum:
@@ -1168,19 +1121,16 @@ components:
         type: string
         minLength: 0
         maxLength: 255
-        example: any_string
-        examples:
-          - testname
+        example: testname
     just-none:
       name: just-none
       in: query
       schema:
-        type:
-          - string
-          - 'null'
+        type: string
         minLength: 0
         maxLength: 9223372036854775807
         example: any_string
+        nullable: true
     status:
       name: status
       in: query
@@ -1284,12 +1234,11 @@ components:
       name: some-field5
       in: query
       schema:
-        type:
-          - string
-          - 'null'
+        type: string
         minLength: 0
         maxLength: 9223372036854775807
         example: any_string
+        nullable: true
     unique-field:
       name: unique-field
       in: query
@@ -1552,18 +1501,15 @@ paths:
             type: string
             minLength: 0
             maxLength: 255
-            example: any_string
-            examples:
-              - testname
+            example: testname
         - name: just-none
           in: query
           schema:
-            type:
-              - string
-              - 'null'
+            type: string
             minLength: 0
             maxLength: 9223372036854775807
             example: any_string
+            nullable: true
         - name: status
           in: query
           schema:
@@ -2586,18 +2532,15 @@ paths:
             type: string
             minLength: 0
             maxLength: 255
-            example: any_string
-            examples:
-              - testname
+            example: testname
         - name: just-none
           in: query
           schema:
-            type:
-              - string
-              - 'null'
+            type: string
             minLength: 0
             maxLength: 9223372036854775807
             example: any_string
+            nullable: true
         - name: status
           in: query
           schema:
@@ -2751,18 +2694,15 @@ paths:
             type: string
             minLength: 0
             maxLength: 255
-            example: any_string
-            examples:
-              - testname
+            example: testname
         - name: just-none
           in: query
           schema:
-            type:
-              - string
-              - 'null'
+            type: string
             minLength: 0
             maxLength: 9223372036854775807
             example: any_string
+            nullable: true
         - name: status
           in: query
           schema:
@@ -2845,18 +2785,15 @@ paths:
             type: string
             minLength: 0
             maxLength: 255
-            example: any_string
-            examples:
-              - testname
+            example: testname
         - name: just-none
           in: query
           schema:
-            type:
-              - string
-              - 'null'
+            type: string
             minLength: 0
             maxLength: 9223372036854775807
             example: any_string
+            nullable: true
         - name: status
           in: query
           schema:
@@ -2991,7 +2928,7 @@ paths:
           $ref: '#/components/responses/Error'
       operationId: Delete_v1_vmsnosort_VMNoSortUuid
 servers:
-  - url: http://127.0.0.1:11013
+  - url: http://127.0.0.1:11010
     description: ''
     variables:
       version:

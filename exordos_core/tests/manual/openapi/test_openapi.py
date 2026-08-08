@@ -22,7 +22,11 @@ import ruamel.yaml
 
 from exordos_core.common.utils import PROJECT_PATH
 
-SPECIFICATIONS_PATH = "specifications/3.0.3"
+
+OPENAPI_VERSION_3_0_3 = "3.0.3"
+OPENAPI_VERSION_3_1_0 = "3.1.0"
+OPENAPI_VERSIONS = [OPENAPI_VERSION_3_0_3, OPENAPI_VERSION_3_1_0]
+SPECIFICATIONS_PATH = "specifications/"
 yaml = ruamel.yaml.YAML()
 yaml.indent(sequence=4, offset=2)
 
@@ -43,19 +47,20 @@ class TestGetOpenApiSpecs:
     ):
         # User API
         client = user_api_client(auth_user_admin)
-        url = f"{user_api.get_endpoint()}{SPECIFICATIONS_PATH}"
-        response = client.get(url, timeout=30)
-        assert response.status_code == 200
+        for version in OPENAPI_VERSIONS:
+            url = f"{user_api.get_endpoint()}{SPECIFICATIONS_PATH}{version}"
+            response = client.get(url, timeout=30)
+            assert response.status_code == 200
 
-        path = os.path.join(PROJECT_PATH, "docs", "openapi", "openapi_user.yaml")
-        spec = response.json()
-        spec["servers"][0]["url"] = "http://127.0.0.1:11010"
-        spec["info"]["version"] = "latest"
-        with open(path, "w") as f:
-            yaml.dump(spec, f)
+            path = os.path.join(PROJECT_PATH, "docs", "openapi", f"openapi_user_{version}.yaml")
+            spec = response.json()
+            spec["servers"][0]["url"] = "http://127.0.0.1:11010"
+            spec["info"]["version"] = "latest"
+            with open(path, "w") as f:
+                yaml.dump(spec, f)
 
         # Boot API
-        url = f"{boot_api_service.get_endpoint()}{SPECIFICATIONS_PATH}"
+        url = f"{boot_api_service.get_endpoint()}{SPECIFICATIONS_PATH}{OPENAPI_VERSION_3_1_0}"
         response = boot_api_noauth_client.get(
             url,
         )
@@ -68,7 +73,7 @@ class TestGetOpenApiSpecs:
             yaml.dump(spec, f)
 
         # Orch API
-        url = f"{orch_api_service.get_endpoint()}{SPECIFICATIONS_PATH}"
+        url = f"{orch_api_service.get_endpoint()}{SPECIFICATIONS_PATH}{OPENAPI_VERSION_3_1_0}"
         response = orch_api_noauth_client.get(
             url,
             headers={
@@ -86,7 +91,7 @@ class TestGetOpenApiSpecs:
             yaml.dump(spec, f)
 
         # Status API
-        url = f"{status_api_service.get_endpoint()}{SPECIFICATIONS_PATH}"
+        url = f"{status_api_service.get_endpoint()}{SPECIFICATIONS_PATH}{OPENAPI_VERSION_3_1_0}"
         response = status_api_noauth_client.get(
             url,
             headers={
