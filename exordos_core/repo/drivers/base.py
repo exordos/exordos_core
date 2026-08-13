@@ -49,8 +49,8 @@ class AbstractProxyRepoDriver(abc.ABC):
     ) -> tuple[repo_models.RepoElement, tp.Collection[repo_models.RepoArtifact]]:
         """Get repository element by name and version."""
 
-    def can_upload_element(self, name: str, version: str) -> bool:
-        """Check if element can be uploaded to repository."""
+    def can_upload_element(self) -> bool:
+        """Check if this repository can be uploaded to at all."""
         return False
 
     def upload_element(self, element: repo_models.RepoElement) -> None:
