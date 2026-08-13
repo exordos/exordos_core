@@ -471,13 +471,73 @@ class User(
             ]
         )
 
+    def _verify_totp(self, code: tp.Union[str, int]) -> tp.Optional[int]:
+        """Verify a code, returning the time step it belongs to or None.
+
+        The current time is read once and used both to verify and to derive
+        the step: reading it twice could straddle a step boundary and burn a
+        counter the code was never checked against.
+        """
+        totp = pyotp.TOTP(self.otp_secret)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if not totp.verify(str(code), for_time=now):
+            return None
+        return totp.timecode(now)
+
+    def last_otp_counter(self, session: tp.Any = None) -> tp.Optional[int]:
+        """The last TOTP time step this user spent, or None if none yet."""
+        counter = UserOtpCounter.objects.get_one_or_none(
+            filters={"uuid": ra_filters.EQ(self.uuid)},
+            session=session,
+        )
+        return counter.last_counter if counter is not None else None
+
+    def _burn_otp_counter(self, counter: int) -> bool:
+        """Consume a TOTP time step, refusing one already used.
+
+        This is a single conditional statement rather than a
+        read-compare-write because replay is by nature concurrent: two
+        requests carrying the same code must not both observe the old
+        counter and both pass. Whoever arrives first writes the row; the
+        loser's ON CONFLICT clause finds the step already spent, updates
+        nothing, and reports no rows touched.
+
+        It deliberately runs in a session of its own instead of the
+        caller's. A spent code has to stay spent even when the request that
+        spent it does not: sharing the request's transaction would put the
+        burn back on any later rollback, and on a read-only context -- one
+        that rolls back by design -- it would be thrown away every time,
+        leaving the code replayable for the rest of its window.
+        """
+        session = self._get_engine().get_session()
+        try:
+            cursor = session.execute(
+                f"INSERT INTO {UserOtpCounter.__tablename__} "
+                "(uuid, last_counter) VALUES (%s, %s) "
+                "ON CONFLICT (uuid) DO UPDATE "
+                "SET last_counter = EXCLUDED.last_counter "
+                f"WHERE {UserOtpCounter.__tablename__}.last_counter "
+                "< EXCLUDED.last_counter;",
+                (self.uuid, counter),
+            )
+            burned = cursor.rowcount == 1
+            session.commit()
+            return burned
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def validate_otp(self, code):
         if not self.otp_enabled:
             raise iam_e.OTPNotEnabledError()
         if not code:
             return False
-        totp = pyotp.TOTP(self.otp_secret)
-        return totp.verify(str(code))
+        counter = self._verify_totp(code)
+        if counter is None:
+            return False
+        return self._burn_otp_counter(counter)
 
     def enable_otp(self, password):
         if self.otp_enabled:
@@ -494,10 +554,14 @@ class User(
         if not self.otp_secret:
             raise iam_e.OTPNotEnabledError()
 
-        totp = pyotp.TOTP(self.otp_secret)
+        counter = self._verify_totp(code)
 
-        if not totp.verify(str(code)):
+        if counter is None:
             raise iam_e.OTPInvalidCodeError()
+
+        # Burn the activation code too, so it cannot be replayed as the
+        # first login.
+        self._burn_otp_counter(counter)
 
         self.otp_enabled = True
         self.save()
@@ -507,10 +571,21 @@ class User(
         self.otp_secret = ""
         self.otp_enabled = False
         self.save()
+        # The counter row stays: time steps are derived from the clock, not
+        # from the secret, so keeping it means a code minted before the
+        # switch-off cannot be replayed against a freshly enabled secret.
 
     def delete(self, session=None, **kwargs):
         u.remove_nested_dm(OrganizationMember, "user", self, session=session)
         u.remove_nested_dm(RoleBinding, "user", self, session=session)
+        # Keyed by this user's own uuid; the foreign key would take it
+        # anyway, but a user's rows should not outlive the user by accident
+        # if that key is ever relaxed.
+        u.remove_all_dm(
+            UserOtpCounter,
+            filters={"uuid": ra_filters.EQ(self.uuid)},
+            session=session,
+        )
         return super().delete(session=session, **kwargs)
 
     def send_registration_event(self, app_endpoint="http://localhost/"):
@@ -602,6 +677,33 @@ class User(
 
     def process_secret(self, secret):
         self.user_source.process_secret(user=self, secret=secret)
+
+
+class UserOtpCounter(models.ModelWithRequiredUUID, orm.SQLStorableMixin):
+    """The last TOTP time step a user has spent.
+
+    It lives in its own table rather than as a column on iam_users because
+    it changes on every single login. Writing it through the user row would
+    keep moving that row's updated_at, which is meant to say when the
+    account was last changed, not when its owner last signed in.
+
+    The uuid is the user's own: a user has exactly one counter, so reusing
+    the key both expresses that and gives the burn statement something to
+    conflict on. Having no row means no code has been spent yet, which is
+    where every user starts.
+
+    Hence ModelWithRequiredUUID rather than ModelWithUUID: the plain one
+    hands out a fresh random uuid, and here a generated uuid names nobody
+    and the foreign key would reject it. Better to refuse to build the
+    object at all than to write a row keyed to no one.
+    """
+
+    __tablename__ = "iam_user_otp_counters"
+
+    last_counter = properties.property(
+        ra_types.Integer(min_value=0),
+        required=True,
+    )
 
 
 class Role(
