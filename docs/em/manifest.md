@@ -84,7 +84,7 @@ resources:
       group: "ubuntu"
       target:
         kind: "node"
-        node: "$my_app.compute.nodes.$app_node:uuid"
+        node: "$core.compute.nodes.$app_node:uuid"
       service_type:
         kind: "simple"
         count: 1
