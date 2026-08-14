@@ -38,6 +38,11 @@ class SOARecordDeleteRestricted(exceptions.RestAlchemyException):
     message = "SOA record cannot be deleted without domain deletion."
 
 
+class RealmRecordNameNotSupported(exceptions.RestAlchemyException):
+    code = 400
+    message = "Realm-scoped record name is not supported: %(reason)s"
+
+
 class CommonModel(
     models.ModelWithTimestamp,
     models.ModelWithUUID,
@@ -56,6 +61,11 @@ class Domain(
     __tablename__ = "dns_domains"
     name = properties.property(types.String(), required=True)
     sync_to_ecosystem = properties.property(types.Boolean(), default=False)
+    sync_only = properties.property(types.Boolean(), default=False)
+    realm_id = properties.property(
+        types.AllowNone(types.BaseCompiledRegExpType(re.compile(r"^[0-9a-f]{6,32}$"))),
+        default=None,
+    )
     # Used only for PDNS
     id = properties.property(types.Integer())
     # Next columns exist in DB but used only for PDNS support and have
@@ -79,12 +89,55 @@ class Domain(
     def __init__(self, session=None, **kwargs):
         super().__init__(id=self.get_next_domain_id(session=session), **kwargs)
 
+    def validate(self):
+        if self.realm_id is None and self.sync_only:
+            raise ValueError("sync-only DNS domains require realm_id")
+        if self.realm_id is not None and not (
+            self.sync_only and self.sync_to_ecosystem
+        ):
+            raise ValueError(
+                "realm-scoped DNS domains must be sync-only and sync to ecosystem"
+            )
+
+    def get_record_name(self, record_name: str) -> str:
+        if self.realm_id is None:
+            return ".".join((record_name, self.name)) if record_name else self.name
+
+        normalized_name = "" if record_name == "@" else record_name.lower()
+        if "*" in normalized_name:
+            raise RealmRecordNameNotSupported(
+                reason="wildcards cannot express a realm-specific flat suffix"
+            )
+        if "." in normalized_name:
+            raise RealmRecordNameNotSupported(
+                reason="nested owner names are not covered by the flat realm namespace"
+            )
+
+        relative_name = (
+            self.realm_id
+            if not normalized_name
+            else f"{normalized_name}-{self.realm_id}"
+        )
+        if len(relative_name) > 63:
+            raise RealmRecordNameNotSupported(
+                reason="the materialized DNS label exceeds 63 characters"
+            )
+
+        full_name = f"{relative_name}.{self.name}"
+        if len(full_name) > 253:
+            raise RealmRecordNameNotSupported(
+                reason="the materialized DNS name exceeds 253 characters"
+            )
+        return full_name
+
     def insert(self, session=None):
         # TODO: to be public autoritative DNS, we need:
         #  - make sure the SOA record is correct (serial, too, for zone transfers)
         #    (or don't update serial, it's needed only for secondary DNS replicaion,
         #     we can just don't support it, route53 doesn't support it either)
         super().insert(session=session)
+        if self.sync_only:
+            return
         # TODO: make default soa record configurable
         # TODO: set soa serial as date, see ya.ru for example
         soa = Record(
@@ -112,7 +165,7 @@ class Domain(
 
 class AbstractRecord(types_dynamic.AbstractKindModel):
     def get_name(self, domain) -> str:
-        return (".").join((self.name, domain.name)) if self.name else domain.name
+        return domain.get_record_name(self.name)
 
     def get_content(self, domain) -> str:
         return str(self.content)
@@ -151,6 +204,9 @@ class SOARecord(AbstractRecord):
     expire = properties.property(types.Integer(min_value=60), default=604800)
     ttl = properties.property(types.Integer(min_value=60), default=3600)
 
+    def get_name(self, domain) -> str:
+        return domain.name
+
     def get_content(self, domain) -> str:
         return f"{self.primary_dns} {domain.name} {self.serial} {self.refresh} {self.retry} {self.expire} {self.ttl}"
 
@@ -182,8 +238,14 @@ class NSRecord(AbstractRecord):
     )
 
 
-class Record(CommonModel, models.ModelWithProject, ua_models.TargetResourceMixin):
+class Record(
+    CommonModel,
+    models.ModelWithProject,
+    models.CustomPropertiesMixin,
+    ua_models.TargetResourceMixin,
+):
     __tablename__ = "dns_records"
+    __custom_properties__ = {"full_name": types.String()}
     domain = relationships.relationship(Domain, required=True)
     domain_id = properties.property(types.Integer())
     type = properties.property(
@@ -216,6 +278,10 @@ class Record(CommonModel, models.ModelWithProject, ua_models.TargetResourceMixin
         super().__init__(domain=domain, domain_id=domain.id, **kwargs)
 
         self._fill_n_validate_record()
+
+    @property
+    def full_name(self) -> str:
+        return self.name
 
     def _fill_n_validate_record(self) -> None:
         if self.type != self.record.kind:
