@@ -19,9 +19,11 @@ import uuid as sys_uuid
 
 import dns.resolver
 from gcl_iam.tests.functional import clients as iam_clients
+import netaddr
 import pytest
 
 from exordos_core.common import constants as c
+from exordos_core.user_api.dns.dm import models as dns_models
 
 DEF_DOMAIN = "core.internal"
 
@@ -149,6 +151,8 @@ class TestDnsApi:
 
         assert response.status_code == 201
         assert self._cmp_shallow(data, output)
+        assert output["record"]["name"] == "test"
+        assert output["full_name"] == f"test.{DEF_DOMAIN}"
 
         url = client.build_resource_uri(
             ["dns", "domains", domain1["uuid"], "records", data["uuid"]]
@@ -170,6 +174,39 @@ class TestDnsApi:
         response = client.delete(url)
 
         assert response.status_code == 204
+
+    @pytest.mark.xdist_group(name="pdns")
+    def test_sync_only_realm_domain_is_hidden_from_powerdns_views(self, user_api):
+        domain = dns_models.Domain(
+            name="example.com",
+            realm_id="a5f3957",
+            sync_only=True,
+            sync_to_ecosystem=True,
+            project_id=c.ZERO_UUID,
+        )
+        domain.insert()
+        record = dns_models.Record(
+            domain=domain,
+            type="A",
+            record=dns_models.ARecord(
+                name="workspace",
+                address=netaddr.IPAddress("192.0.2.10"),
+            ),
+            project_id=c.ZERO_UUID,
+        )
+        record.insert()
+
+        with domain._get_engine().session_manager() as session:
+            domains = session.execute(
+                "SELECT name FROM domains WHERE name = %s", (domain.name,)
+            ).fetchall()
+            records = session.execute(
+                "SELECT name FROM records WHERE domain_id = %s", (domain.id,)
+            ).fetchall()
+
+        assert domains == []
+        assert records == []
+        domain.delete()
 
     @pytest.mark.xdist_group(name="pdns")
     def test_txt_record(

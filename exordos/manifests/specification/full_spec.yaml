@@ -542,6 +542,17 @@ components:
           format: uuid
           readOnly: true
           type: string
+        realm_id:
+          example: ^[0-9a-f]{6,32}$
+          nullable: true
+          pattern: ^[0-9a-f]{6,32}$
+          readOnly: true
+          type: string
+        sync_only:
+          default: false
+          example: true
+          readOnly: true
+          type: boolean
         sync_to_ecosystem:
           default: false
           example: true
@@ -2393,6 +2404,10 @@ components:
           example: true
           type: boolean
         domain:
+          type: string
+        full_name:
+          example: any_string
+          readOnly: true
           type: string
         name:
           example: any_string
