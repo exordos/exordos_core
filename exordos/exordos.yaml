@@ -16,6 +16,11 @@ build:
         - build
         - cover
         - output
+        # Agent scaffolding, and git worktrees are kept under it -- whole
+        # checkouts with virtualenvs of their own, which the names above do
+        # not reach because they only match at the top level. A build that
+        # meets one fills the provisioning disk and dies in the upload.
+        - .claude
 
     # Binary artifacts. Kernel, initrd, boot loaders.
     - dst: /opt/exordos_core/artifacts/undionly.kpxe
