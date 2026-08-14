@@ -44,6 +44,8 @@ class DomainController(
             default=field_p.Permissions.RW,
             fields={
                 "id": {constants.ALL: field_p.Permissions.HIDDEN},
+                "realm_id": {constants.ALL: field_p.Permissions.RO},
+                "sync_only": {constants.ALL: field_p.Permissions.RO},
             },
         ),
     )
@@ -57,7 +59,7 @@ class RecordController(
     __policy_service_name__ = "dns"
     __policy_name__ = "record"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         models.Record,
         convert_underscore=False,
         # Query parameters are parsed against the model, which is also what
@@ -68,6 +70,7 @@ class RecordController(
             default=field_p.Permissions.RW,
             fields={
                 "domain_id": {constants.ALL: field_p.Permissions.HIDDEN},
+                "full_name": {constants.ALL: field_p.Permissions.RO},
                 "name": {constants.ALL: field_p.Permissions.RO},
                 "content": {constants.ALL: field_p.Permissions.HIDDEN},
             },
