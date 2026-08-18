@@ -19,6 +19,7 @@ import uuid as sys_uuid
 
 import pytest
 
+from exordos_core.common import exceptions
 from exordos_core.repo.dm import models
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,9 @@ class TestUninstallDependencyCheck:
         ) as mock_objects:
             mock_objects.get_all.return_value = [fake_binding]
 
-            with pytest.raises(ValueError, match="other elements depend on it"):
+            with pytest.raises(
+                exceptions.ValidateException, match="other elements depend on it"
+            ):
                 models.RepoElement.uninstall(elem)
 
     def test_uninstall_allowed_when_no_dependents(self):
@@ -110,5 +113,7 @@ class TestUninstallDependencyCheck:
         elem = mock.MagicMock(spec=models.RepoElement)
         elem.installation_state = models.RepoElementInstallationState.UNINSTALLED.value
 
-        with pytest.raises(ValueError, match="Element must be installed"):
+        with pytest.raises(
+            exceptions.ValidateException, match="Element must be installed"
+        ):
             models.RepoElement.uninstall(elem)

@@ -37,6 +37,7 @@ import yaml
 from exordos_core.bootstrap import defaults as bootstrap_defaults
 from exordos_core.common import config
 from exordos_core.common import constants as c
+from exordos_core.common import exceptions as core_exceptions
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
@@ -671,7 +672,7 @@ def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
 
     try:
         element.install()
-    except ValueError:
+    except core_exceptions.ValidateException:
         LOG.warning("Element %s is already installed, skipping", element_name)
 
 
