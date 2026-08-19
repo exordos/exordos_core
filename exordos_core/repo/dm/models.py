@@ -274,7 +274,11 @@ class Repository(
                 )
                 published_at = metadata.get("published")
                 if published_at:
-                    element.published_at = datetime.datetime.fromisoformat(published_at)
+                    element.published_at = datetime.datetime.fromisoformat(
+                        published_at.removesuffix("Z") + "+00:00"
+                        if published_at.endswith("Z")
+                        else published_at
+                    )
                 else:
                     element.published_at = element.created_at
                 yield element

@@ -83,7 +83,6 @@ class RepoElementRoute(routes.Route):
     __controller__ = controllers.RepoElementController
     __allow_methods__ = [routes.GET, routes.FILTER, routes.DELETE]
 
-    stable_versions = routes.action(RepoElementStableVersionsActionRoute, invoke=False)
     install = routes.action(RepoElementInstallActionRoute, invoke=True)
     uninstall = routes.action(RepoElementUninstallActionRoute, invoke=True)
     upgrade = routes.action(RepoElementUpgradeActionRoute, invoke=True)
@@ -100,8 +99,7 @@ class StoreElementRoute(routes.Route):
     """Handler for /v1/repo/store/elements/ endpoint"""
 
     __controller__ = controllers.StoreElementController
-    # Only the stable_versions action is exposed via the store
-    __allow_methods__ = []
+    __allow_methods__ = [routes.GET, routes.FILTER]
 
     stable_versions = routes.action(StoreElementStableVersionsActionRoute, invoke=False)
 
@@ -124,5 +122,4 @@ class RepoRoute(routes.Route):
 
     repositories = routes.route(RepositoryRoute)
     elements = routes.route(RepoElementRoute)
-    latest_stable_elements = routes.route(LatestStableElementsRoute)
     store = routes.route(StoreRoute)

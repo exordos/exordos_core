@@ -28,10 +28,16 @@ MIGRATION_PATH = (
 
 
 class FakeSession:
-    """Session that answers the backfill query and records the updates."""
+    """Session that answers the backfill query and records the updates.
+
+    Rows are mappings because the PostgreSQL session builds its cursor
+    with `row_factory=dict_row`.
+    """
 
     def __init__(self, rows):
-        self._rows = rows
+        self._rows = [
+            dict(zip(("uuid", "repository", "name", "version"), row)) for row in rows
+        ]
         self.updates = []
 
     def execute(self, statement, values=None):

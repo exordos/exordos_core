@@ -225,8 +225,8 @@ class TestRepoProxyBuilderService:
         published_element = next(e for e in elements if e.name == "published")
         fallback_element = next(e for e in elements if e.name == "fallback")
 
-        assert published_element.published_at == datetime.datetime.fromisoformat(
-            published
+        assert published_element.published_at == datetime.datetime(
+            2026, 8, 18, 9, 3, 11, 990399, tzinfo=datetime.timezone.utc
         )
         assert fallback_element.published_at == fallback_element.created_at
 
@@ -373,6 +373,44 @@ class TestRepoProxyBuilderService:
         # app should still be there because it's installed
         assert "app" in names
         assert "core" in names
+
+    def test_refresh_repository_retires_installed_element(
+        self, manifests_dir, bootstrap_repo
+    ):
+        """An installed element gone from inventory must leave the catalogue."""
+        self._service._iteration()
+
+        _write_manifest(manifests_dir, "core", "2.0.0")
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
+
+        installed = repo_models.RepoElement.objects.get_one(
+            filters={
+                "repository": bootstrap_repo.uuid,
+                "name": dm_filters.EQ("core"),
+                "version": dm_filters.EQ("2.0.0"),
+            },
+        )
+        assert installed.latest is True
+        installed.install()
+
+        os.remove(os.path.join(manifests_dir, "core-2.0.0.yaml"))
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
+
+        elements = repo_models.RepoElement.objects.get_all(
+            filters={"repository": bootstrap_repo.uuid, "name": dm_filters.EQ("core")},
+        )
+        by_version = {element.version: element for element in elements}
+
+        # The installed row survives, but no longer counts as catalogue entry.
+        assert set(by_version) == {"1.0.0", "2.0.0"}
+        assert by_version["2.0.0"].latest is False
+        assert by_version["2.0.0"].stable is False
+
+        # ... and the greatest version still on offer takes its place.
+        assert by_version["1.0.0"].latest is True
+        assert by_version["1.0.0"].stable is True
 
     def test_check_refresh_skips_without_refresh_rate(self, bootstrap_repo):
         """_check_refresh should skip repositories without refresh_rate."""

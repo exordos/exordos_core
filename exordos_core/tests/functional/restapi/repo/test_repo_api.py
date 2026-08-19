@@ -23,6 +23,8 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.common import constants as c
 from exordos_core.repo.dm import models as repo_models
 
+STORE_ELEMENT_READ = "repo.store_element.read"
+
 
 class TestRepoElements:
     """REST API tests for repo elements endpoints."""
@@ -102,20 +104,6 @@ class TestRepoElements:
         assert result["name"] == element["name"]
         assert result["version"] == element["version"]
 
-    def test_get_element_by_user(
-        self, user_api_client, auth_test1_user, auth_user_admin
-    ):
-        client = user_api_client(auth_test1_user)
-
-        repo = self._create_repository(user_api_client, auth_user_admin)
-        element = self._create_element(user_api_client, auth_user_admin, repo["uuid"])
-
-        element_url = client.build_resource_uri(["repo/elements", element["uuid"]])
-        result = client.get(element_url).json()
-        assert result["uuid"] == element["uuid"]
-        assert result["name"] == element["name"]
-        assert result["version"] == element["version"]
-
     def test_get_nonexistent_element(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
         fake_uuid = sys_uuid.uuid4()
@@ -162,9 +150,7 @@ class TestRepoElements:
         assert elements[0]["repository"].endswith(repo1["uuid"])
         assert not elements[0]["repository"].endswith(repo2["uuid"])
 
-    def test_latest_stable_elements_route(
-        self, user_api_client, user_api_noauth_client, auth_user_admin
-    ):
+    def test_latest_stable_elements_route(self, user_api_client, auth_user_admin):
         repo = self._create_repository(user_api_client, auth_user_admin)
         element_name = f"element-{sys_uuid.uuid4()}"
 
@@ -238,20 +224,19 @@ class TestRepoElements:
             model.stable = stable
             model.save()
 
-        elements_url = user_api_noauth_client().build_collection_uri(
-            ["repo", "latest_stable_elements"]
+        client = user_api_client(auth_user_admin)
+        elements_url = client.build_collection_uri(
+            ["repo", "store", "latest_stable_elements"]
         )
-        elements = user_api_noauth_client().get(elements_url).json()
+        elements = client.get(elements_url).json()
 
         assert {element["uuid"] for element in elements} == {
-            latest_element["uuid"],
+            newer_element["uuid"],
             other_element["uuid"],
         }
         assert len({element["name"] for element in elements}) == len(elements)
 
-    def test_latest_stable_elements_pagination(
-        self, user_api_client, user_api_noauth_client, auth_user_admin
-    ):
+    def test_latest_stable_elements_pagination(self, user_api_client, auth_user_admin):
         repo = self._create_repository(user_api_client, auth_user_admin)
         elements = [
             self._create_element(
@@ -270,8 +255,10 @@ class TestRepoElements:
             model.stable = True
             model.save()
 
-        client = user_api_noauth_client()
-        elements_url = client.build_collection_uri(["repo", "latest_stable_elements"])
+        client = user_api_client(auth_user_admin)
+        elements_url = client.build_collection_uri(
+            ["repo", "store", "latest_stable_elements"]
+        )
         catalogue = client.get(elements_url).json()
 
         assert {element["uuid"] for element in elements}.issubset(
@@ -289,6 +276,67 @@ class TestRepoElements:
         assert [element["uuid"] for element in next_page] == [
             element["uuid"] for element in catalogue[1:3]
         ]
+
+    def test_store_root_endpoint(self, user_api_client, auth_user_admin):
+        client = user_api_client(auth_user_admin)
+        store_url = client.build_collection_uri(["repo", "store"])
+
+        store_routes = client.get(store_url).json()
+
+        assert "elements" in store_routes
+        assert "latest_stable_elements" in store_routes
+
+    def test_store_elements_scoped_to_admin_and_own_project(
+        self,
+        user_api,
+        user_api_client,
+        auth_user_admin,
+        auth_test1_p1_user,
+        auth_test2_p1_user,
+    ):
+        repo = self._create_repository(user_api_client, auth_user_admin)
+        element_name = f"element-{sys_uuid.uuid4()}"
+        elements = {}
+        for label, project_id in (
+            ("admin", c.ZERO_UUID),
+            ("own", auth_test1_p1_user.project_id),
+            ("other", auth_test2_p1_user.project_id),
+        ):
+            element = self._create_element(
+                user_api_client,
+                auth_user_admin,
+                repo["uuid"],
+                name=f"{element_name}-{label}",
+                version="1.0.0",
+                unique_name=False,
+            )
+            elements[label] = element
+            # project_id is a read-only property, so place the element in
+            # its project directly.
+            with user_api.engine.session_manager() as session:
+                session.execute(
+                    "UPDATE repo_elements"
+                    " SET project_id = %s, stable = true, latest = true"
+                    " WHERE uuid = %s",
+                    (
+                        sys_uuid.UUID(str(project_id)),
+                        sys_uuid.UUID(element["uuid"]),
+                    ),
+                )
+
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=[STORE_ELEMENT_READ],
+            project_id=auth_test1_p1_user.project_id,
+        )
+        store_url = client.build_collection_uri(
+            ["repo", "store", "latest_stable_elements"]
+        )
+        visible = {element["uuid"] for element in client.get(store_url).json()}
+
+        assert elements["admin"]["uuid"] in visible
+        assert elements["own"]["uuid"] in visible
+        assert elements["other"]["uuid"] not in visible
 
     def test_element_stable_versions_action(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
@@ -347,7 +395,7 @@ class TestRepoElements:
 
         action_url = client.build_resource_uri(
             [
-                "repo/elements",
+                "repo/store/elements",
                 stable_element["uuid"],
                 "actions/stable_versions",
             ]

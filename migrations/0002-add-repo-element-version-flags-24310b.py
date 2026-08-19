@@ -40,6 +40,11 @@ class MigrationStep(migrations.AbstractMigrationStep):
             ADD COLUMN IF NOT EXISTS latest boolean NOT NULL DEFAULT false;
             """
         )
+        # The column default stamps every existing element with the
+        # migration time, which would make old elements look newly
+        # published. The runtime falls back to created_at when the
+        # inventory carries no publication metadata, so use it here too.
+        session.execute("UPDATE repo_elements SET published_at = created_at")
         session.execute(
             "CREATE INDEX IF NOT EXISTS idx_repo_elements_project_id ON repo_elements (project_id)"
         )
@@ -69,21 +74,19 @@ class MigrationStep(migrations.AbstractMigrationStep):
 
         stable_uuids = []
         latest_by_element = {}
-        for element_uuid, repository, name, version in rows:
+        for row in rows:
             try:
-                parsed_version = packaging_version.parse(version)
+                parsed_version = packaging_version.parse(row["version"])
             except packaging_version.InvalidVersion:
                 continue
             if parsed_version.is_prerelease:
                 continue
 
-            stable_uuids.append(element_uuid)
-            current = latest_by_element.get((repository, name))
+            stable_uuids.append(row["uuid"])
+            key = (row["repository"], row["name"])
+            current = latest_by_element.get(key)
             if current is None or parsed_version > current[0]:
-                latest_by_element[(repository, name)] = (
-                    parsed_version,
-                    element_uuid,
-                )
+                latest_by_element[key] = (parsed_version, row["uuid"])
 
         if not stable_uuids:
             return

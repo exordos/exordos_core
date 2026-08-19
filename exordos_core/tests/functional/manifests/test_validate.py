@@ -105,18 +105,3 @@ class TestSpec:
         with pytest.raises(exceptions.OpenApiValidateException):
             utils.validate_manifest(manifest, base_manifest_schema)
             utils.validate_manifest(manifest, full_manifest_schema)
-
-    @pytest.mark.skip(reason="for manual running")
-    def test_build_full_schema(self, base_manifest_schema, user_api_spec):
-        """Rewrite the committed manifest schema. `ec-manifest-schema` does
-        this now and is what to run.
-
-        Kept anyway, because deleting it turned the suite red: two services
-        share one process-wide engine and one database, and which worker
-        tears down first is decided by how xdist spreads the collection.
-        Removing one skipped test moved that boundary and 354 tests died at
-        setup with "Can not return default engine". Deleting it belongs
-        with the fix for that, not with this.
-        """
-        full_schema = utils.build_full_schema(base_manifest_schema, user_api_spec)
-        utils.dump_full_manifest_schema(full_schema)

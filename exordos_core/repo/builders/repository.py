@@ -161,6 +161,7 @@ class RepoProxyBuilderService(
                     element.version,
                     instance.repo_uri,
                 )
+                self._retire_element(instance, element)
                 continue
 
             was_latest_stable = element.stable and element.latest
@@ -209,6 +210,26 @@ class RepoProxyBuilderService(
         if not element.latest:
             element.latest = True
             element.update()
+
+    def _retire_element(
+        self, instance: models.Repository, element: models.RepoElement
+    ) -> None:
+        """Take an element the source no longer offers out of the catalogue.
+
+        The row itself is kept, because the element is installed and still
+        needed for its lifecycle, but the store must stop serving a version
+        the repository does not provide any more.
+        """
+        if not (element.stable or element.latest):
+            return
+
+        was_latest_stable = element.stable and element.latest
+        element.stable = False
+        element.latest = False
+        element.update()
+
+        if was_latest_stable:
+            self._set_latest_for_outdated_element(instance, element.name)
 
     def _set_latest_for_outdated_element(
         self, instance: models.Repository, name: str
