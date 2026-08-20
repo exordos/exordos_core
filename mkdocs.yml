@@ -148,6 +148,7 @@ nav:
     - App Guide: app-developer-guide/app-guide.md
     - Core Guide: core-developer-guide/core-guide.md
     - Repo Proxy: core-developer-guide/repo-proxy.md
+    - Upgrade Testing: core-developer-guide/upgrade-testing.md
   - OpenAPI:
     - User API: openapi/openapi_user.md
     - Boot API: openapi/openapi_boot.md
