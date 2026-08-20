@@ -13,7 +13,7 @@ orch_secure_communication = False
 orch_endpoint = http://{{ boot_ip }}:11013
 status_endpoint = http://{{ boot_ip }}:11013
 caps_drivers =
-    UserCapabilityDriver,
+    SecretCapabilityDriver,
     PasswordCapabilityDriver,
     CoreDNSCertificateCapabilityDriver,
     LBAgentCapabilityDriver,
@@ -39,7 +39,9 @@ password = {{ admin_password }}
 user_api_base_url = http://localhost:80/api/core
 
 
-[UserCapabilityDriver]
+[SecretCapabilityDriver]
 username = admin
 password = {{ admin_password }}
 user_api_base_url = http://localhost:80/api/core
+em_core_iam_users = /v1/iam/users/, password
+em_core_iam_clients = /v1/iam/clients/, secret, filter:project_id:12345678-c625-4fee-81d5-f691897b8142

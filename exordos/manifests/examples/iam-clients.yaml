@@ -1,0 +1,54 @@
+name: "iam-clients-example"
+uuid: "a1c2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"
+description: "Exordos IAM clients and IdP example (Grafana OIDC scenario)"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  # Password used as the HS256 signing key for the IAM client.
+  # IamClient.signature_algorithm.secret_uuid references this password.
+  $core.secret.passwords:
+    grafana_oidc_signing_key:
+      name: "grafana-oidc-signing-key"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      method: "AUTO_HEX"
+      constructor:
+        kind: plain
+      default_length: 32
+
+  # IAM client that issues tokens for Grafana via OIDC.
+  # The secret field is the client_secret presented by Grafana
+  # during the token exchange.
+  $core.iam.clients:
+    grafana_oidc_client:
+      name: "grafana-oidc-client"
+      description: "OIDC client for Grafana"
+      client_id: "grafana"
+      secret: "grafana-oidc-client-secret"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      registration_auto_provision: true
+      signature_algorithm:
+        kind: HS256
+        secret_uuid: $core.secret.passwords.$grafana_oidc_signing_key:uuid
+        previous_secret_uuid: null
+
+  # IdP bound to the client above. Grafana redirects to the
+  # authorization endpoint and back to one of the callback URIs.
+  $core.iam.idp:
+    grafana_oidc_idp:
+      name: "grafana-oidc-idp"
+      description: "OIDC IdP for Grafana"
+      iam_client: $core.iam.clients.$grafana_oidc_client:uuid
+      scope: "openid profile email"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      nonce_required: true
+      callback:
+        kind: callback_uri_list
+        callbacks:
+          - "https://grafana.example.com/login/generic_oauth"
+          - "https://grafana-internal.example.com/login/generic_oauth"

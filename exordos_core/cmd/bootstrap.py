@@ -305,9 +305,13 @@ def _ensure_bootstrap_repo(manifests_dir: str) -> repo_models.Repository:
 MIGRATION_REPO_NAME = "migration-dummy-repo"
 CORE_CONFIG_PATH = "/etc/exordos_core/exordos_core.conf"
 UA_CONFIG_PATH = "/etc/exordos_universal_agent/exordos_universal_agent.conf"
+CORE_AGENT_CONFIG_PATH = "/etc/exordos_core/core_agent.conf"
 CORE_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/exordos_core.conf"
 UA_CONFIG_DATA_PATH = (
     "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
+)
+CORE_AGENT_CONFIG_DATA_PATH = (
+    "/var/lib/exordos/data/etc/exordos_core/core_agent.conf"
 )
 
 _LAUNCHPAD_SECTION = """\
@@ -375,6 +379,56 @@ capabilities =
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
 
+# Extra lines appended to the [SecretCapabilityDriver] section when
+# migrating from [UserCapabilityDriver]. Keep in sync with
+# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
+_UA_SECRET_DRIVER_EXTRA_LINES = (
+    "em_core_iam_users = /v1/iam/users/, password\n"
+    "em_core_iam_clients = /v1/iam/clients/, secret, "
+    "filter:project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+)
+
+
+def _migrate_ua_secret_driver(content: str) -> str:
+    """Migrate UserCapabilityDriver to SecretCapabilityDriver.
+
+    Replaces the driver name in caps_drivers, renames the
+    [UserCapabilityDriver] section to [SecretCapabilityDriver], and
+    appends the IAM users/clients endpoint lines required by the
+    secret driver. Idempotent.
+    """
+    if "UserCapabilityDriver" in content:
+        content = content.replace(
+            "    UserCapabilityDriver,\n",
+            "    SecretCapabilityDriver,\n",
+            1,
+        )
+        content = content.replace(
+            "[UserCapabilityDriver]",
+            "[SecretCapabilityDriver]",
+            1,
+        )
+
+    if "em_core_iam_users" not in content:
+        match = re.search(
+            r"(\[SecretCapabilityDriver\].*?)(?=^\[|\Z)",
+            content,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if match is not None:
+            section = match.group(0)
+            if not section.endswith("\n"):
+                section += "\n"
+            section += _UA_SECRET_DRIVER_EXTRA_LINES
+            content = content[: match.start()] + section + content[match.end() :]
+        else:
+            LOG.warning(
+                "Could not find [SecretCapabilityDriver] section to append "
+                "IAM users/clients endpoints"
+            )
+
+    return content
+
 
 def _ensure_ua_config_current() -> None:
     """Bring the universal agent config up to date with this image.
@@ -389,6 +443,10 @@ def _ensure_ua_config_current() -> None:
     2. Ensure BorderAgentCapabilityDriver is present in caps_drivers
        ([universal_agent] holds stand-specific endpoints, so only this
        line is inserted, not the whole section).
+    3. Migrate UserCapabilityDriver to SecretCapabilityDriver in
+       caps_drivers and rename the [UserCapabilityDriver] section,
+       appending the IAM users/clients endpoints required by the
+       secret driver.
 
     On changes the result is synced back to the persisted copy and the
     agent services (started before ec-bootstrap runs, thus holding the
@@ -421,6 +479,8 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
+    new_content = _migrate_ua_secret_driver(new_content)
+
     if new_content == content:
         LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
         return
@@ -443,6 +503,73 @@ def _ensure_ua_config_current() -> None:
         LOG.info("Restarted universal agent services to apply the new config")
     except (OSError, subprocess.CalledProcessError) as e:
         LOG.warning("Failed to restart universal agent services: %s", e)
+
+
+# Lines to add to the core agent config for the IdP model. Keep in sync
+# with etc/exordos_core/core_agent.conf.j2.
+_CORE_AGENT_IDP_MODEL_LINE = (
+    "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
+)
+_CORE_AGENT_IDP_FILTER_LINE = (
+    "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+)
+
+
+def _ensure_core_agent_config_current() -> None:
+    """Bring the core agent config up to date with this image.
+
+    Like the UA config, the core agent config is restored from the
+    persisted copy on upgraded stands. Idempotently add the
+    em_core_iam_idp model mapping and filter so IdP resources can be
+    reconciled by the core agent.
+    """
+    try:
+        with open(CORE_AGENT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        LOG.warning("Core agent config not found: %s", CORE_AGENT_CONFIG_PATH)
+        return
+
+    if "em_core_iam_idp" in content:
+        LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
+        return
+
+    new_content = content.replace(
+        "em_core_iam_permission_bindings = "
+        "exordos_core.user_api.iam.dm.models:PermissionBinding\n",
+        "em_core_iam_permission_bindings = "
+        "exordos_core.user_api.iam.dm.models:PermissionBinding\n"
+        + _CORE_AGENT_IDP_MODEL_LINE,
+        1,
+    )
+    new_content = new_content.replace(
+        "em_core_dns_domains_records = "
+        "project_id:12345678-c625-4fee-81d5-f691897b8142\n",
+        "em_core_dns_domains_records = "
+        "project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+        + _CORE_AGENT_IDP_FILTER_LINE,
+        1,
+    )
+
+    if new_content == content:
+        LOG.warning(
+            "Could not insert em_core_iam_idp into %s", CORE_AGENT_CONFIG_PATH
+        )
+        return
+
+    with open(CORE_AGENT_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    LOG.info("Updated core agent config %s", CORE_AGENT_CONFIG_PATH)
+    _sync_config_to_data_path(new_content, CORE_AGENT_CONFIG_DATA_PATH)
+
+    try:
+        subprocess.run(
+            ["systemctl", "try-restart", "ec-core-agent"],
+            check=True,
+        )
+        LOG.info("Restarted core agent service to apply the new config")
+    except (OSError, subprocess.CalledProcessError) as e:
+        LOG.warning("Failed to restart core agent service: %s", e)
 
 
 def _migrate_installed_elements_to_repo() -> None:
@@ -738,6 +865,7 @@ def main() -> None:
     _migrate_installed_elements_to_repo()
 
     _ensure_ua_config_current()
+    _ensure_core_agent_config_current()
 
     if not os.path.exists(SPEC_PATH):
         LOG.info("No spec file found at %s", SPEC_PATH)

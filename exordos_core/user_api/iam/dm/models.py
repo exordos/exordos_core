@@ -130,8 +130,10 @@ class ModelWithSecret(models.Model, models.CustomPropertiesMixin):
 
     @secret.setter
     def secret(self, value):
-        # Prohibit password setting for service accounts
-        if self.type == iam_c.UserType.SERVICE.value:
+        # Prohibit password setting for service accounts.
+        # Only User has a ``type`` field; IamClient and other
+        # subclasses of ModelWithSecret do not.
+        if getattr(self, "type", None) == iam_c.UserType.SERVICE.value:
             raise iam_exceptions.ServiceAccountPasswordChangeError()
 
         self.salt = self._generate_salt()
@@ -1048,6 +1050,7 @@ class IamClient(
     models.ModelWithTimestamp,
     ModelWithSecret,
     ModelWithAlwaysActiveStatus,
+    ua_models.TargetResourceMixin,
     orm.SQLStorableMixin,
 ):
     __tablename__ = "iam_clients"
@@ -1819,6 +1822,7 @@ class Idp(
     models.ModelWithTimestamp,
     models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
+    ua_models.TargetResourceMixin,
     orm.SQLStorableMixin,
 ):
     __tablename__ = "iam_idp"
