@@ -26,9 +26,16 @@ from exordos_core.user_api.iam.dm import models
 class TestProvisionPersonalWorkspace:
     @pytest.fixture
     def user(self):
-        u = models.User.__new__(models.User)
+        # Not `models.User.__new__(...)`: a model built without its
+        # constructor has no properties of its own, so each assignment lands
+        # in the class's shared declaration and every other `User` in the
+        # process — in this test run — starts reading these values. The
+        # method under test is called unbound on a stand-in instead.
+        u = mock.MagicMock(name_="testuser", uuid=uuid.uuid4())
         u.name = "testuser"
-        u.uuid = uuid.uuid4()
+        u.provision_personal_workspace = lambda: (
+            models.User.provision_personal_workspace(u)
+        )
         return u
 
     @pytest.fixture

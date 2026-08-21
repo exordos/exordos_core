@@ -39,7 +39,7 @@ resources:
       group: "ubuntu"
       target:
         kind: "node"
-        node: "$core_service_example.compute.nodes.$example_node:uuid"
+        node: "$core.compute.nodes.$example_node:uuid"
       service_type:
         kind: "simple"
         count: 1
