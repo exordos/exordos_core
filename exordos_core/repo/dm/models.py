@@ -20,6 +20,7 @@ import logging
 import typing as tp
 from urllib.parse import urljoin
 
+from packaging import version as packaging_version
 from restalchemy.dm import filters as ra_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -35,6 +36,13 @@ LOG = logging.getLogger(__name__)
 
 if tp.TYPE_CHECKING:
     from exordos_core.repo.drivers.base import AbstractProxyRepoDriver
+
+
+def is_stable_version(version: str) -> bool:
+    try:
+        return not packaging_version.parse(version).is_prerelease
+    except packaging_version.InvalidVersion:
+        return False
 
 
 class SyncMode(str, enum.Enum):
@@ -251,15 +259,21 @@ class Repository(
             inventory = driver.get_inventory()
 
         for name, versions in inventory.get("elements", {}).items():
-            for version in versions:
+            for version, metadata in versions.items():
                 element = RepoElement(
                     name=name,
                     version=version,
+                    stable=is_stable_version(version),
                     description="",
                     project_id=self.project_id,
                     installation_state=RepoElementInstallationState.UNINSTALLED.value,
                     repository=self,
                 )
+                published = metadata.get("published")
+                if published:
+                    element.published = datetime.datetime.fromisoformat(published)
+                else:
+                    element.published = element.created_at
                 yield element
 
     def actualize_element(self, element: "RepoElement") -> None:
@@ -321,6 +335,7 @@ class Repository(
         element = RepoElement(
             name=element_name,
             version=element_version,
+            stable=is_stable_version(element_version),
             description=description,
             project_id=self.project_id,
             installation_state=RepoElementInstallationState.UNINSTALLED.value,
@@ -351,6 +366,7 @@ class RepoElement(
     models.ModelWithProject,
     orm.SQLStorableMixin,
     models.SimpleViewMixin,
+    models.ModelWithTags,
 ):
     """Repository Element model for individual items within repositories.
 
@@ -389,6 +405,18 @@ class RepoElement(
     version = properties.property(
         ra_types.String(max_length=255),
         required=True,
+    )
+    stable = properties.property(
+        ra_types.Boolean(),
+        default=False,
+    )
+    latest = properties.property(
+        ra_types.Boolean(),
+        default=False,
+    )
+    published = properties.property(
+        ra_types.UTCDateTimeZ(),
+        required=False,
     )
     status = properties.property(
         ra_types.Enum([s.value for s in RepoElementStatus]),

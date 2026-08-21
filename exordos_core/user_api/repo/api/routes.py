@@ -19,6 +19,13 @@ from restalchemy.api import routes
 from exordos_core.user_api.repo.api import controllers
 
 
+class LatestStableElementsRoute(routes.Route):
+    """Handler for /v1/repo/latest_stable_elements/ endpoint"""
+
+    __controller__ = controllers.LatestStableElementsController
+    __allow_methods__ = [routes.FILTER]
+
+
 class RepositoryRefreshActionRoute(routes.Action):
     """Handler for /v1/repo/repositories/<uuid>/actions/refresh/invoke endpoint"""
 
@@ -38,6 +45,12 @@ class RepositoryRoute(routes.Route):
 
     refresh = routes.action(RepositoryRefreshActionRoute, invoke=True)
     upload = routes.action(RepositoryUploadActionRoute, invoke=True)
+
+
+class RepoElementStableVersionsActionRoute(routes.Action):
+    """Handler for stable repo element versions action endpoint"""
+
+    __controller__ = controllers.RepoElementController
 
 
 class RepoElementInstallActionRoute(routes.Action):
@@ -70,6 +83,7 @@ class RepoElementRoute(routes.Route):
     __controller__ = controllers.RepoElementController
     __allow_methods__ = [routes.GET, routes.FILTER, routes.DELETE]
 
+    stable_versions = routes.action(RepoElementStableVersionsActionRoute, invoke=False)
     install = routes.action(RepoElementInstallActionRoute, invoke=True)
     uninstall = routes.action(RepoElementUninstallActionRoute, invoke=True)
     upgrade = routes.action(RepoElementUpgradeActionRoute, invoke=True)
@@ -84,3 +98,4 @@ class RepoRoute(routes.Route):
 
     repositories = routes.route(RepositoryRoute)
     elements = routes.route(RepoElementRoute)
+    latest_stable_elements = routes.route(LatestStableElementsRoute)

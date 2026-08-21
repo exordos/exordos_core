@@ -53,7 +53,7 @@ class LBBuilder(builder.CoreInfraBuilder):
 
         node_set = models.TargetNodeSet(
             uuid=instance.uuid,
-            name=f"{self._name_prefix}-{instance.name or str(instance.uuid[:4])}",
+            name=f"{self._name_prefix}-{instance.name or str(instance.uuid)[:4]}",
             cores=instance.type.cpu,
             ram=instance.type.ram,
             replicas=instance.type.nodes_number,
@@ -77,7 +77,6 @@ class LBBuilder(builder.CoreInfraBuilder):
             return tuple()
         nodeset = None
         tgt_nodeset = None
-
         for target, actual in infra.infra_objects:
             if target.get_resource_kind() == NODE_SET_KIND:
                 nodeset = actual
