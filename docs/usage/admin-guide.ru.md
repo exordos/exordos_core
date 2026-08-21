@@ -82,10 +82,10 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 exordos bootstrap -i <version> -m core
 ```
 
-Например, для установки версии `0.2.1`:
+Например, для установки версии `0.2.14`:
 
 ```bash
-exordos bootstrap -i 0.2.1 -m core
+exordos bootstrap -i 0.2.14 -m core
 ```
 
 Ключевые параметры bootstrap:
@@ -136,7 +136,7 @@ ssh ubuntu@<core-ip>
 Зарегистрируйте endpoint платформы и контекст администратора. Для параметров `<ADMIN_USERNAME>` и `<ADMIN_PASSWORD>` используйте учётные данные HTTP API, созданные командой `bootstrap`:
 
 ```bash
-exordos settings set-realm local --endpoint http://<core-ip>:11010 --current
+exordos settings set-realm local --endpoint http://<core-ip>/api/core --current
 exordos settings set-context local --name admin -u <ADMIN_USERNAME> -p <ADMIN_PASSWORD> --current
 ```
 

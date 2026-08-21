@@ -46,11 +46,11 @@ import importlib
 import json
 import typing as tp
 
-import webob
 from restalchemy.api import applications
 from restalchemy.api import constants as api_constants
 from restalchemy.api import contexts as api_contexts
 from restalchemy.common import contexts as common_contexts
+import webob
 
 OPENAPI_VERSION = "3.0.3"
 
