@@ -27,10 +27,12 @@ Key options:
 | Option | Description |
 |---|---|
 | `-c, --exordos-cfg-file TEXT` | Name of the project configuration file (default: `exordos.yaml`) |
-| `--build-dir TEXT` | Directory for temporary build artifacts |
-| `--output-dir TEXT` | Directory where final artifacts are stored |
 | `--deps-dir TEXT` | Directory where dependencies are fetched |
-| `-i, --developer-key-path TEXT` | Path to developer's public key. The key is embedded into the built images for signing and authentication |
+| `-o, --output-dir PATH` | Directory where final artifacts are stored |
+| `-i, --ssh-public-key PATH` | Path to a public SSH key file to inject into the VM. Can be specified multiple times |
+| `-e, --element TEXT` | Name of the element to build. Builds all elements when omitted |
+| `--manifest-var TEXT` | Additional variables to pass to the manifest template (`key=value`). Can be specified multiple times |
+| `--validate/--no-validate` | Validate the manifest after building (default: `validate`) |
 | `-f, --force` | Rebuild even if output already exists |
 
 ---
@@ -85,14 +87,6 @@ Pass additional variables to manifest templates:
 
 ```bash
 exordos build --manifest-var commit_hash=$(git rev-parse --short HEAD) .
-```
-
-### Build only images
-
-Build only images, skip manifests and other artifacts:
-
-```bash
-exordos build --only-images
 ```
 
 ---
@@ -213,7 +207,7 @@ For Jinja2 templates, the following variables are available by default:
 |---|---|
 | `{{ version }}` | Version of the element being built |
 | `{{ name }}` | Name of the element |
-| `{{ images }}` | List of images built for this element |
+| `{{ images }}` | Mapping of image names to their URN references, built for this element |
 | `{{ manifests }}` | List of manifest files |
 
 Additional variables can be passed using `--manifest-var key=value`:
@@ -260,7 +254,8 @@ The exact contents depend on your project type and `exordos.yaml` configuration.
 After a successful build, your elements are ready for:
 
 - [`exordos push`](push.md) — publish to the ecosystem registry
-- [`exordos deploy`](deploy.md) — deploy to a Exordos installation
+- [`exordos deploy`](deploy.md) — deploy the build to a realm in one step (no separate push needed)
+- [`exordos elements install`](deploy.md) — install an element from a repository or local manifest
 
 ---
 

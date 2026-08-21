@@ -118,7 +118,8 @@ exordos push -c exordos.push.yaml
 
 After a successful push, your element is available in the registry and ready for:
 
-- [`exordos deploy`](deploy.md) — deploy the element to a Exordos installation
+- [`exordos elements install`](deploy.md) — install the element from the repository into a realm
+- [`exordos deploy`](deploy.md) — deploy a local build to a realm in one step (build + push + install)
 - Sharing with other developers in your organization
 
 ---

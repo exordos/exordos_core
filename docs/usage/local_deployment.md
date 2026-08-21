@@ -61,7 +61,7 @@ Once the local machine is configured as a hypervisor, run the bootstrap procedur
 exordos bootstrap -i <version> -f -m core --ssh-public-key /path/to/public/key
 ```
 
-where `<version>` is the version of the platform to deploy (e.g., `0.0.6`). Available versions can be found on the [releases page](https://github.com/exordos/exordos_core/releases).
+where `<version>` is the version of the platform to deploy (e.g., `0.2.14`). Available versions can be found on the [releases page](https://github.com/exordos/exordos_core/releases).
 
 The platform can be started either from a **local build** (a locally built image) or from a **remote repository** (a prebuilt image fetched from the official repository).
 
@@ -74,7 +74,7 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 **Remote repository example (default):**
 
 ```bash
-exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.0.6/ -m core
+exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.14/ -m core
 ```
 
 ### Key parameters
@@ -120,9 +120,8 @@ curl --location 'http://10.20.0.2:80/api/core/v1/iam/clients/default/actions/get
 ```
 
 The `clients/default` path is rewritten by Core's load balancer (port 80) to the real IAM client and has
-`X-Client-Id`/`X-Client-Secret` injected automatically, so no client credentials need to be passed here —
-see the equivalent setup in `exordos_ecosystem/web/README.md`. The response contains an `access_token`
-field. Use this token as a `Bearer` token in all subsequent API requests.
+`X-Client-Id`/`X-Client-Secret` injected automatically, so no client credentials need to be passed here.
+The response contains an `access_token` field. Use this token as a `Bearer` token in all subsequent API requests.
 
 ### CLI access
 

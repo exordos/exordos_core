@@ -82,10 +82,10 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 exordos bootstrap -i <version> -m core
 ```
 
-For example, to install version `0.2.1`:
+For example, to install version `0.2.14`:
 
 ```bash
-exordos bootstrap -i 0.2.1 -m core
+exordos bootstrap -i 0.2.14 -m core
 ```
 
 Key bootstrap options:
@@ -136,7 +136,7 @@ For the default bootstrap network `10.20.0.0/22`, the primary virtual machine ad
 Register the platform endpoint and administrator context. For `<ADMIN_USERNAME>` and `<ADMIN_PASSWORD>`, use the HTTP API credentials created by `bootstrap`:
 
 ```bash
-exordos settings set-realm local --endpoint http://<core-ip>:11010 --current
+exordos settings set-realm local --endpoint http://<core-ip>/api/core --current
 exordos settings set-context local --name admin -u <ADMIN_USERNAME> -p <ADMIN_PASSWORD> --current
 ```
 

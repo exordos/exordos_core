@@ -61,7 +61,7 @@ exordos compute hypervisors init
 exordos bootstrap -i <version> -f -m core --ssh-public-key /path/to/public/key
 ```
 
-где `<version>` — версия платформы для развёртывания (например, `0.0.6`). Доступные версии можно посмотреть на [странице релизов](https://github.com/exordos/exordos_core/releases).
+где `<version>` — версия платформы для развёртывания (например, `0.2.14`). Доступные версии можно посмотреть на [странице релизов](https://github.com/exordos/exordos_core/releases).
 
 Платформу можно запустить как из **локальной сборки** (локально собранный образ), так и из **удалённого репозитория** (готовый образ, загруженный из официального репозитория).
 
@@ -74,7 +74,7 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 **Пример с удалённым репозиторием (по умолчанию):**
 
 ```bash
-exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.0.6/ -m core
+exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.14/ -m core
 ```
 
 ### Основные параметры
@@ -120,9 +120,9 @@ curl --location 'http://10.20.0.2:80/api/core/v1/iam/clients/default/actions/get
 ```
 
 Путь `clients/default` переписывается балансировщиком Core (порт 80) на реальный IAM-клиент, а
-`X-Client-Id`/`X-Client-Secret` подставляются автоматически — учётные данные клиента передавать не нужно,
-см. аналогичную настройку в `exordos_ecosystem/web/README.md`. В ответе содержится поле `access_token`.
-Используйте этот токен как `Bearer`-токен во всех последующих запросах к API.
+`X-Client-Id`/`X-Client-Secret` подставляются автоматически — учётные данные клиента передавать не нужно.
+В ответе содержится поле `access_token`. Используйте этот токен как `Bearer`-токен во всех последующих
+запросах к API.
 
 ### Доступ через CLI
 

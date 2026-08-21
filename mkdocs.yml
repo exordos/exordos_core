@@ -155,6 +155,7 @@ nav:
     - Status API: openapi/openapi_status.md
   - Element:
     - Manifest: em/manifest.md
+    - Resource Reference: em/resources.md
     - API: em/api_documentation.md
     - Service as a Service API: em/service.md
     - Example commands: em/cli.md
