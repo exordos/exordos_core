@@ -23,6 +23,7 @@ from gcl_sdk.infra import constants as infra_c
 from gcl_sdk.infra import exceptions as infra_exc
 from gcl_sdk.infra.dm import models as infra_models
 from restalchemy.dm import filters as dm_filters
+from restalchemy.dm import models
 from restalchemy.dm import properties
 from restalchemy.dm import relationships
 from restalchemy.dm import types
@@ -295,6 +296,7 @@ class Variable(
 
 class Value(
     infra_models.Value,
+    models.ModelWithTags,
     AnySimpleTypeValueFieldSQLMixin,
 ):
     __tablename__ = "vs_values"

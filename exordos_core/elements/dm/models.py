@@ -1266,6 +1266,7 @@ class ServiceTarget(srv_models.ServiceTarget):
 
 class Service(
     cm.ModelWithFullAsset,
+    models.ModelWithTags,
     orm.SQLStorableMixin,
     ua_models.TargetResourceMixin,
     ua_models.TargetResourceSQLStorableMixin,
