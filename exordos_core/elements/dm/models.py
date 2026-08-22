@@ -593,6 +593,8 @@ class Resource(
         "index",
         "join",
     ]
+    __self_link__ = "$self"
+    __allowed_self_fields__ = frozenset(("uuid", "name", "version", "status"))
 
     element = relationships.relationship(
         Element,
@@ -692,12 +694,40 @@ class Resource(
             return self.render_target_state()
         return self.actual_resource.value
 
+    # Support self references with the $self:<field> syntax
+    def _is_self_link(self, link_string):
+        return link_string.partition(":")[0] == self.__self_link__
+
+    def _render_self_value(self, link_string):
+        """Resolve `$self:<field>` to a field of the owning element.
+
+        An element gets its uuid at install time, so a manifest author has no
+        way to spell it out; `$self` lets a resource point at its own element.
+        """
+        field = link_string.partition(":")[2]
+        if not field:
+            raise exceptions.ValidateException(
+                err=f"Can't render value `{link_string}` for resource"
+                f" `{repr(self)}` by reason: no field specified. Use the"
+                f" `{self.__self_link__}:<field>` syntax, where field is one"
+                f" of: {', '.join(sorted(self.__allowed_self_fields__))}."
+            )
+        if field not in self.__allowed_self_fields__:
+            raise exceptions.ValidateException(
+                err=f"Can't render value `{link_string}` for resource"
+                f" `{repr(self)}` by reason: unsupported field `{field}`."
+                f" Allowed fields: {', '.join(sorted(self.__allowed_self_fields__))}"
+            )
+        return str(getattr(self.element, field))
+
     # Support inplace vars with f"" syntax
     def _fstring_replacement_callback(self, match, engine):
         # Just remove escape syntax
         if match.group(0).startswith("\\{") and match.group(0)[-1] == "}":
             return match.group(0)[1:]
         var = match.group(1)
+        if self._is_self_link(var):
+            return self._render_self_value(var)
         link = utils.ResourceLink(var)
         try:
             resource = engine.get_resource_by_link(
@@ -715,6 +745,8 @@ class Resource(
 
     def _render_value(self, value, engine):
         if value.startswith("$"):
+            if self._is_self_link(value):
+                return self._render_self_value(value)
             link = utils.ResourceLink(value)
             try:
                 resource = engine.get_resource_by_link(

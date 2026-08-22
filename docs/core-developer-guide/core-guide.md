@@ -59,8 +59,13 @@ subsystems can detect and report a failed apply.
 `_render_value` (`elements/dm/models.py`) turns a manifest string into a concrete value:
 
 - A string starting with `$` is resolved as a resource link.
-- A string starting with `f"` is treated as an inline template: `{$element.type.$name:field}`
-  placeholders inside it are substituted.
+- `$self:<field>` resolves to a field of the element the resource belongs to: `uuid`, `name`, `version`
+  or `status`. An element is given its uuid at install time, so a manifest author has no way to write it
+  down; `$self` is how a resource points at its own element — for example a `$core.vs.variables` profile
+  setter that has to name the element it takes the profile from. No other field is exposed, and an
+  unknown one raises rather than rendering empty.
+- A string starting with `f"` is treated as an inline template: `{$element.type.$name:field}` and
+  `{$self:field}` placeholders inside it are substituted.
 - Any other string is returned unchanged.
 
 A manifest author who forgets the `f"` prefix does not get a silently empty value — the literal `{$...}`

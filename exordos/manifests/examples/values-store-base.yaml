@@ -54,6 +54,21 @@ resources:
           - profile: $core.vs.profiles.$develop:uuid
             value: 2
     
+    var_element_profile:
+      name: "var_element_profile"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: profile
+        fallback_strategy: ignore
+        # The element owning this manifest: its uuid is only known after
+        # install, so it is referenced with `$self`.
+        element: $self:uuid
+        profiles:
+          - profile: $core.vs.profiles.$default:uuid
+            value: 1
+          - profile: $core.vs.profiles.$develop:uuid
+            value: 2
+
     var_selector:
       name: "var_selector"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
