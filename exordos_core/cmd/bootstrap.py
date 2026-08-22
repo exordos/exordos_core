@@ -122,7 +122,7 @@ def _apply_flat_network(stand: dict[str, tp.Any]) -> None:
             "driver": "flat_bridge",
             "dhcp_cfg": "/etc/dhcp/dhcpd.conf",
         },
-        "project_id": c.ZERO_UUID,
+        "project_id": c.ADMIN_PROJECT_UUID,
     }
     network = models.Network.restore_from_simple_view(**network_cfg)
 
@@ -149,7 +149,7 @@ def _apply_flat_network(stand: dict[str, tp.Any]) -> None:
                 }
             ],
             "next_server": None,
-            "project_id": c.ZERO_UUID,
+            "project_id": c.ADMIN_PROJECT_UUID,
         },
         {
             "name": stand["boot_network"]["name"],
@@ -166,7 +166,7 @@ def _apply_flat_network(stand: dict[str, tp.Any]) -> None:
                 }
             ],
             "next_server": str(boot_net.network_address + 2),
-            "project_id": c.ZERO_UUID,
+            "project_id": c.ADMIN_PROJECT_UUID,
         },
     ]
 
@@ -223,7 +223,7 @@ def _ensure_repository(
     priority: int = 2048,
     refresh_rate: int = 3600,
     sync_mode: str = repo_models.SyncMode.LAZY.value,
-    project_id: str = c.ZERO_UUID,
+    project_id: str = c.ADMIN_PROJECT_UUID,
 ) -> repo_models.Repository:
     """Ensure repository exists and is active.
 
@@ -487,7 +487,7 @@ def _migrate_installed_elements_to_repo() -> None:
         name=MIGRATION_REPO_NAME,
         description="Dummy repository for migrating old installations"
         " without repo proxy",
-        project_id=c.ZERO_UUID,
+        project_id=c.ADMIN_PROJECT_UUID,
         status=repo_models.RepositoryStatus.ACTIVE.value,
         priority=0,
         refresh_rate=0,
@@ -544,7 +544,7 @@ def _migrate_installed_elements_to_repo() -> None:
     public_repo = repo_models.Repository(
         name="repo.exordos.com",
         description="Public Exordos elements repository",
-        project_id=c.ZERO_UUID,
+        project_id=c.ADMIN_PROJECT_UUID,
         status=repo_models.RepositoryStatus.ACTIVE.value,
         priority=2048,
         refresh_rate=3600,

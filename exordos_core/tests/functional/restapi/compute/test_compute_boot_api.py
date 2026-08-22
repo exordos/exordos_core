@@ -90,7 +90,7 @@ class TestComputeBootApi:
             firmware_uuid=uuid,
             pool=pool.uuid,
             status="ACTIVE",
-            project_id=c.ZERO_UUID,
+            project_id=c.ADMIN_PROJECT_UUID,
         )
         machine.insert()
 
