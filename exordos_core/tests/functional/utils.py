@@ -22,11 +22,27 @@ import typing as tp
 from urllib import parse
 
 from gcl_sdk import migrations as sdk_migrations
+from restalchemy.api import resources
 from restalchemy.storage.sql import migrations
 from restalchemy.tests.functional import db_utils as ra_db_utils
 from restalchemy.tests.functional.restapi.ra_based.microservice import service
 
 ENDPOINT_TEMPLATE = "http://127.0.0.1:%s/"
+
+
+def build_app(builder: tp.Callable[..., tp.Any], *args: tp.Any, **kwargs: tp.Any):
+    """Build a WSGI application without dropping the other services' routes.
+
+    restalchemy keeps one process-wide resource map and every application
+    replaces it with its own routes on build. Several services share a test
+    worker, so keep the union: a service whose resources are missing from
+    the map answers 404 as soon as it has to build a Location header.
+    """
+    known = dict(resources.ResourceMap.resource_map)
+    app = builder(*args, **kwargs)
+    known.update(resources.ResourceMap.resource_map)
+    resources.ResourceMap.set_resource_map(known)
+    return app
 
 
 class RestServiceTestCase(ra_db_utils.DBEngineMixin):
@@ -48,7 +64,10 @@ class RestServiceTestCase(ra_db_utils.DBEngineMixin):
 
     @classmethod
     def setup_class(cls):
-        cls.init_engine()
+        # The engine is process-wide and shared by every service in this
+        # worker (see setup_db_for_worker in conftest), so it is not created
+        # here: doing so would replace it under the services already running.
+
         # Run service
         cls.service_port = cls.find_free_port()
         url = parse.urlparse(cls.get_endpoint())
@@ -62,6 +81,9 @@ class RestServiceTestCase(ra_db_utils.DBEngineMixin):
         cls._service.stop()
         cls.drop_all_views()
         cls.drop_all_tables(cascade=True)
+
+    @classmethod
+    def shutdown_engine(cls):
         # Hack for psycopg to finish fast, otherwise we'll need to wait for GC
         cls.engine.__del__()
         cls.destroy_engine()

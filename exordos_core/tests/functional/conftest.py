@@ -173,7 +173,8 @@ def user_api_service(context_storage):
 
     class ApiRestService(test_utils.RestServiceTestCase):
         __FIRST_MIGRATION__ = FIRST_MIGRATION
-        __APP__ = user_app.build_wsgi_application(
+        __APP__ = test_utils.build_app(
+            user_app.build_wsgi_application,
             context_storage=context_storage,
             iam_engine_driver=iam_engine_driver,
         )
@@ -1318,7 +1319,9 @@ def default_pool_builder(
 def setup_db_for_worker(worker_id):
     db_uri = consts.get_database_uri()
     if not worker_id:
+        test_utils.RestServiceTestCase.init_engine()
         yield
+        test_utils.RestServiceTestCase.shutdown_engine()
         return
 
     parsed = urlparse(db_uri)
@@ -1362,9 +1365,18 @@ def setup_db_for_worker(worker_id):
     os.environ["DATABASE_URI"] = parsed._replace(
         path=worker_db_name_with_slash
     ).geturl()
+
+    # One engine per worker process. The factory is a singleton and every
+    # service in the process talks to this worker's database, so a service
+    # that created and destroyed its own engine pulled it out from under
+    # the services that were still running.
+    test_utils.RestServiceTestCase.init_engine()
+
     yield
 
     cleanup_test_entities()
+
+    test_utils.RestServiceTestCase.shutdown_engine()
 
     if db_created:
         engines.engine_factory.configure_factory(db_url=db_uri)

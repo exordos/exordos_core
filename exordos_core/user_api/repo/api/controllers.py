@@ -15,12 +15,17 @@
 #    under the License.
 
 from gcl_iam.api import controllers as iam_controllers
+from packaging.version import InvalidVersion
+from packaging.version import parse as parse_version
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
+from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common import constants as c
+from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.dm import models
 
 
@@ -77,9 +82,127 @@ class RepositoryController(
         manifest: dict,
         description: str = "",
     ):
+        # TODO(slashburygin):upload() saves a stable element with latest=False without invoking the builder recomputation, so first/newer stable uploads can be absent from latest_stable_elements
         self._enforce("upload")
         resource.upload(element_name, element_version, manifest, description)
         return resource
+
+
+class StoreControllerMixin(iam_controllers.PolicyBasedWithoutProjectController):
+    """Policy and project scoping shared by the store endpoints."""
+
+    __policy_service_name__ = "repo"
+    __policy_name__ = "store_element"
+
+    def _project_filters(self):
+        """Restrict a read to the projects the caller may see.
+
+        A project scoped caller reads the admin project, which holds the
+        shared catalogue, and their own. A token without a project is not
+        restricted, as elsewhere in the user API.
+        """
+        if not self._ctx_project_id:
+            return {}
+
+        return {"project_id": dm_filters.In([c.ZERO_UUID, self._ctx_project_id])}
+
+
+class LatestStableElementsController(
+    StoreControllerMixin,
+    controllers.BaseResourceControllerPaginated,
+):
+    __resource__ = resources.ResourceByRAModel(
+        models.RepoElement,
+        convert_underscore=False,
+        hidden_fields=["installation_state"],
+    )
+
+    def filter(self, filters, **kwargs):
+        self._enforce("read")
+        elements_by_name = {}
+        elements = models.RepoElement.objects.get_all(
+            filters={
+                "latest": dm_filters.EQ(True),
+                "stable": dm_filters.EQ(True),
+                **self._project_filters(),
+            }
+        )
+        for element in elements:
+            try:
+                version = parse_version(element.version)
+            except InvalidVersion:
+                continue
+
+            current = elements_by_name.get(element.name)
+            candidate = (element.repository.priority, version, element)
+            if current is None or candidate[:2] > current[:2]:
+                elements_by_name[element.name] = candidate
+
+        # The per-name entries are selected here, not by storage, so the
+        # requested page has to be cut here as well. Sorted by the marker
+        # column the pagination mixin advances through.
+        catalogue = sorted(
+            (candidate[2] for candidate in elements_by_name.values()),
+            key=lambda element: element.uuid,
+        )
+        return self._paginate(catalogue)
+
+    def _paginate(self, elements):
+        """Return the page requested by `page_limit` and `page_marker`."""
+        if not self._pagination_limit:
+            return elements
+
+        if self._pagination_marker:
+            elements = [
+                element
+                for element in elements
+                if element.uuid > self._pagination_marker
+            ]
+        return elements[: self._pagination_limit]
+
+
+class StoreProxyController(StoreControllerMixin, controllers.RoutesListController):
+    __TARGET_PATH__ = "/v1/repo/store/"
+
+    def filter(self, filters, order_by=None):
+        # The policy controller's filter reaches for a resource model, and
+        # a route list has none, so list the routes explicitly.
+        self._enforce("read")
+        return controllers.RoutesListController.filter(self, filters, order_by=order_by)
+
+
+class StoreElementController(
+    StoreControllerMixin,
+    controllers.BaseResourceControllerPaginated,
+):
+    __resource__ = resources.ResourceByRAModel(
+        models.RepoElement,
+        convert_underscore=False,
+        hidden_fields=["installation_state"],
+    )
+
+    def get(self, uuid, **kwargs):
+        # Scope the lookup so an action cannot reach another project.
+        kwargs.update(self._project_filters())
+        return super().get(uuid=uuid, **kwargs)
+
+    @actions.get
+    def stable_versions(self, resource: models.RepoElement):
+        self._enforce("read")
+        elements = models.RepoElement.objects.get_all(
+            filters={
+                "name": dm_filters.EQ(resource.name),
+                "stable": dm_filters.EQ(True),
+                "uuid": dm_filters.NE(resource.uuid),
+                **self._project_filters(),
+            },
+            order_by={"version": "desc"},
+        )
+        return sorted(
+            elements,
+            key=lambda element: parse_version(element.version),
+            reverse=True,
+        )
 
 
 class RepoElementController(
@@ -113,11 +236,12 @@ class RepoElementController(
         return repo_element
 
     def delete(self, uuid):
+        # TODO(slashburygin):RepoElementController.delete() can delete the current latest without promoting a remaining stable version
         repo_element = self.get(uuid=uuid)
         if repo_element.installation_state == (
             models.RepoElementInstallationState.INSTALLED.value
         ):
-            raise ValueError("Cannot delete installed element")
+            raise common_exc.ValidateException(err="Cannot delete installed element")
         return super().delete(uuid)
 
     @actions.post

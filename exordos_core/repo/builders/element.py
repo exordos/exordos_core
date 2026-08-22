@@ -76,6 +76,7 @@ class InstalledManifest(
     version = properties.property(
         ra_types.String(min_length=5, max_length=64), required=True
     )
+
     manifest = properties.property(
         ra_types.Dict(),
         required=False,
@@ -103,7 +104,14 @@ class InstalledManifest(
         Refer to the Resource model for more details about target fields.
         """
         return frozenset(
-            ("uuid", "name", "description", "version", "manifest", "project_id")
+            (
+                "uuid",
+                "name",
+                "description",
+                "version",
+                "manifest",
+                "project_id",
+            )
         )
 
     @classmethod

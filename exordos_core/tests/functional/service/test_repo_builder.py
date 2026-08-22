@@ -203,29 +203,114 @@ class TestRepoProxyBuilderService:
         delta = updated.next_refresh - now
         assert 50 < delta.total_seconds() < 70
 
-    def test_refresh_repository_adds_new_elements(self, manifests_dir, bootstrap_repo):
-        """_refresh_repository should add new elements from inventory."""
-        # Initial sync via iteration
+    def test_inventory_elements_persist_published(self, manifests_dir, user_api):
+        """Inventory publication dates should be persisted or fall back to creation."""
+        repo = repo_models.Repository(
+            name="published-repo",
+            description="Published repository",
+            project_id=c.EM_PROJECT_ID,
+            driver_spec=repo_models.BootstrapDriverSpec(manifests_dir=manifests_dir),
+        )
+        published = "2026-08-18T09:03:11.990399Z"
+        elements = list(
+            repo.iter_elements_in_inventory(
+                {
+                    "elements": {
+                        "published": {"1.0.0": {"published": published}},
+                        "fallback": {"1.0.0": {}},
+                    }
+                }
+            )
+        )
+        published_element = next(e for e in elements if e.name == "published")
+        fallback_element = next(e for e in elements if e.name == "fallback")
+
+        assert published_element.published_at == datetime.datetime(
+            2026, 8, 18, 9, 3, 11, 990399, tzinfo=datetime.timezone.utc
+        )
+        assert fallback_element.published_at == fallback_element.created_at
+
+    def test_inventory_elements_persist_stable(self, manifests_dir, user_api):
+        """Inventory elements should persist stability based on their version."""
+        _write_manifest(manifests_dir, "element", "1.0.0")
+        _write_manifest(manifests_dir, "element", "2.0.0rc1")
+        repo = repo_builder.Repository(
+            name="stable-repo",
+            description="Stable repository",
+            project_id=c.EM_PROJECT_ID,
+            status=ua_c.InstanceStatus.NEW.value,
+            sync_mode=repo_models.SyncMode.LAZY.value,
+            driver_spec=repo_models.BootstrapDriverSpec(manifests_dir=manifests_dir),
+        )
+        repo.insert()
+
         self._service._iteration()
 
-        # Add a new manifest
-        _write_manifest(manifests_dir, "extra", "1.0.0")
-
-        # Clear driver cache so the new manifest is discovered
-        repo_models.Repository.__driver_map__.clear()
-
-        # Refresh
-        repo = repo_models.Repository.objects.get_one(
-            filters={"uuid": dm_filters.EQ(bootstrap_repo.uuid)},
+        elements = repo_models.RepoElement.objects.get_all(
+            filters={"repository": repo.uuid},
         )
-        self._service._refresh_repository(repo)
+        stable_by_version = {element.version: element.stable for element in elements}
+        assert stable_by_version == {"1.0.0": True, "2.0.0rc1": False}
+
+        # `latest` must be set on initial creation too, not only after refresh,
+        # and only the stable version may be marked latest.
+        latest_by_version = {element.version: element.latest for element in elements}
+        assert latest_by_version == {"1.0.0": True, "2.0.0rc1": False}
+
+    def test_refresh_repository_updates_latest(self, manifests_dir, bootstrap_repo):
+        """Refresh should select the greatest remaining version as latest."""
+        self._service._iteration()
+        self._service._refresh_repository(bootstrap_repo)
+        core = repo_models.RepoElement.objects.get_one(
+            filters={
+                "repository": bootstrap_repo.uuid,
+                "name": dm_filters.EQ("core"),
+            },
+        )
+        assert core.latest is True
+
+        _write_manifest(manifests_dir, "core", "2.0.0")
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
 
         elements = repo_models.RepoElement.objects.get_all(
-            filters={"repository": bootstrap_repo.uuid},
+            filters={"repository": bootstrap_repo.uuid, "name": dm_filters.EQ("core")},
         )
-        assert len(elements) == 3
-        names = {e.name for e in elements}
-        assert "extra" in names
+        assert {element.version: element.latest for element in elements} == {
+            "1.0.0": False,
+            "2.0.0": True,
+        }
+        assert {element.version: element.stable for element in elements} == {
+            "1.0.0": True,
+            "2.0.0": True,
+        }
+
+        _write_manifest(manifests_dir, "core", "3.0.0rc1")
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
+
+        elements = repo_models.RepoElement.objects.get_all(
+            filters={"repository": bootstrap_repo.uuid, "name": dm_filters.EQ("core")},
+        )
+        assert {element.version: element.latest for element in elements} == {
+            "1.0.0": False,
+            "2.0.0": True,
+            "3.0.0rc1": False,
+        }
+
+        os.remove(os.path.join(manifests_dir, "core-2.0.0.yaml"))
+        os.remove(os.path.join(manifests_dir, "core-3.0.0rc1.yaml"))
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
+
+        core = repo_models.RepoElement.objects.get_one(
+            filters={
+                "repository": bootstrap_repo.uuid,
+                "name": dm_filters.EQ("core"),
+            },
+        )
+        assert core.version == "1.0.0"
+        assert core.latest is True
 
     def test_refresh_repository_removes_old_elements(
         self, manifests_dir, bootstrap_repo
@@ -288,6 +373,44 @@ class TestRepoProxyBuilderService:
         # app should still be there because it's installed
         assert "app" in names
         assert "core" in names
+
+    def test_refresh_repository_retires_installed_element(
+        self, manifests_dir, bootstrap_repo
+    ):
+        """An installed element gone from inventory must leave the catalogue."""
+        self._service._iteration()
+
+        _write_manifest(manifests_dir, "core", "2.0.0")
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
+
+        installed = repo_models.RepoElement.objects.get_one(
+            filters={
+                "repository": bootstrap_repo.uuid,
+                "name": dm_filters.EQ("core"),
+                "version": dm_filters.EQ("2.0.0"),
+            },
+        )
+        assert installed.latest is True
+        installed.install()
+
+        os.remove(os.path.join(manifests_dir, "core-2.0.0.yaml"))
+        repo_models.Repository.__driver_map__.clear()
+        self._service._refresh_repository(bootstrap_repo)
+
+        elements = repo_models.RepoElement.objects.get_all(
+            filters={"repository": bootstrap_repo.uuid, "name": dm_filters.EQ("core")},
+        )
+        by_version = {element.version: element for element in elements}
+
+        # The installed row survives, but no longer counts as catalogue entry.
+        assert set(by_version) == {"1.0.0", "2.0.0"}
+        assert by_version["2.0.0"].latest is False
+        assert by_version["2.0.0"].stable is False
+
+        # ... and the greatest version still on offer takes its place.
+        assert by_version["1.0.0"].latest is True
+        assert by_version["1.0.0"].stable is True
 
     def test_check_refresh_skips_without_refresh_rate(self, bootstrap_repo):
         """_check_refresh should skip repositories without refresh_rate."""

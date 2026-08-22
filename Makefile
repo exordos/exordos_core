@@ -29,4 +29,4 @@ add_ssh_keys:
 	exordos secret ssh_keys add --current-realm --target_public_key $(SSH_KEY)
 
 clear_ssh_keys:
-	exordos secret ssh_keys clear
+	exordos secret ssh_keys clear -y

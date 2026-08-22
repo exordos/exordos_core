@@ -37,7 +37,7 @@ class TestComputeBootApi:
     def boot_api_service(self):
         class ApiRestService(test_utils.RestServiceTestCase):
             __FIRST_MIGRATION__ = conftest.FIRST_MIGRATION
-            __APP__ = orch_app.build_wsgi_application()
+            __APP__ = test_utils.build_app(orch_app.build_wsgi_application)
 
         rest_service = ApiRestService()
         rest_service.setup_class()

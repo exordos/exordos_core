@@ -35,6 +35,7 @@ class AgentController(
     __resource__ = resources.ResourceByRAModel(
         ua_models.UniversalAgent,
         convert_underscore=False,
+        process_filters=True,
     )
 
     @actions.post
@@ -56,6 +57,7 @@ class ResourceController(
     __resource__ = resources.ResourceByRAModel(
         ua_models.Resource,
         convert_underscore=False,
+        process_filters=True,
         hidden_fields=[
             "value",
         ],
@@ -72,6 +74,7 @@ class TargetResourceController(
     __resource__ = resources.ResourceByRAModel(
         ua_models.TargetResource,
         convert_underscore=False,
+        process_filters=True,
         hidden_fields=[
             "value",
         ],
