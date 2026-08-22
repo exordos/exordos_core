@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import hashlib
 import json
 import os
 import tempfile
@@ -64,6 +65,22 @@ from exordos_core.user_api.network.dm import models as network_models
 
 FIRST_MIGRATION = "0000-root-d34de1.py"
 TEST_UUID_PREFIX = element_utils.UUID_PREFIX[::-1]
+
+# Password hashing dominates the runtime of this suite: every login and every
+# user creation runs PBKDF2 with the production iteration count, which costs
+# ~0.14s and happens thousands of times per run. The tests only need hashes to
+# be self-consistent, so cap the iterations. The application and the migrations
+# that seed the admin credentials both call hashlib.pbkdf2_hmac, so patching it
+# here keeps the two in agreement.
+TEST_PBKDF2_ITERATIONS = 1
+_pbkdf2_hmac = hashlib.pbkdf2_hmac
+
+
+def _fast_pbkdf2_hmac(hash_name, password, salt, iterations, dklen=None):
+    return _pbkdf2_hmac(hash_name, password, salt, TEST_PBKDF2_ITERATIONS, dklen)
+
+
+hashlib.pbkdf2_hmac = _fast_pbkdf2_hmac
 
 
 def _make_uuid() -> sys_uuid.UUID:
@@ -190,7 +207,8 @@ def user_api_service(context_storage):
 
 @pytest.fixture()
 def user_api(user_api_service: test_utils.RestServiceTestCase):
-    # TODO(slashburygin): setup_method(apply_migrations) should be called once, not every test. Should be fixed after squash migrations
+    # setup_method applies the migrations once and empties the database
+    # before every later test.
     user_api_service.setup_method()
 
     # Keep the legacy baseline for tests: no implicit personal workspace
@@ -258,12 +276,6 @@ def auth_test1_user(
 
     yield auth
 
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_user(auth.uuid)
-    except Exception:
-        pass
-
 
 @pytest.fixture()
 def auth_test2_user(
@@ -298,12 +310,6 @@ def auth_test2_user(
     )
 
     yield auth
-
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_user(auth.uuid)
-    except Exception:
-        pass
 
 
 @pytest.fixture()
@@ -361,22 +367,6 @@ def auth_test1_p1_user(
 
     yield result
 
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_project(project["uuid"])
-    except Exception:
-        pass
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_organization(org["uuid"])
-    except Exception:
-        pass
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_user(user["uuid"])
-    except Exception:
-        pass
-
 
 @pytest.fixture()
 def auth_test2_p1_user(
@@ -428,25 +418,16 @@ def auth_test2_p1_user(
 
     yield result
 
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_project(project["uuid"])
-    except Exception:
-        pass
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_organization(org["uuid"])
-    except Exception:
-        pass
-    try:
-        admin_client = user_api_client(auth_user_admin)
-        admin_client.delete_user(user["uuid"])
-    except Exception:
-        pass
-
 
 @pytest.fixture()
 def user_api_client(user_api, auth_user_admin):
+    # Built once per test rather than once per build_client call: the client
+    # authenticates lazily, so every extra instance costs another token
+    # request.
+    admin_client = iam_clients.GenericAutoRefreshRESTClient(
+        f"{user_api.get_endpoint()}v1/",
+        auth_user_admin,
+    )
 
     def build_client(
         auth: iam_clients.GenesisCoreAuth,
@@ -458,14 +439,22 @@ def user_api_client(user_api, auth_user_admin):
             f"{user_api.get_endpoint()}v1/",
             auth,
         )
-        admin_client = iam_clients.GenericAutoRefreshRESTClient(
-            f"{user_api.get_endpoint()}v1/",
-            auth_user_admin,
-        )
 
-        admin_client.set_permissions_to_user(
+        # This is set_permissions_to_user without its lookups. That helper
+        # looks the role and the role binding up before creating them, but the
+        # role name is a fresh uuid, so neither lookup can ever hit.
+        role = admin_client.create_role(name=f"TestRole[{sys_uuid.uuid4()}]")
+        for permission_name in permissions:
+            permission = admin_client.create_or_get_permission(
+                name=str(permission_name),
+            )
+            admin_client.create_permission_binding(
+                permission_uuid=permission["uuid"],
+                role_uuid=role["uuid"],
+            )
+        admin_client.bind_role_to_user(
+            role_uuid=role["uuid"],
             user_uuid=auth.uuid,
-            permissions=permissions,
             project_id=project_id,
         )
 
@@ -1191,12 +1180,6 @@ def default_pool(
 
     yield default_pool
 
-    url = client.build_resource_uri(["compute", "hypervisors", str(uuid)])
-    try:
-        client.delete(url)
-    except Exception:
-        pass
-
 
 @pytest.fixture
 def default_node(
@@ -1211,9 +1194,6 @@ def default_node(
     client.post(url, json=default_node)
 
     yield default_node
-
-    url = client.build_resource_uri(["compute", "nodes", uuid])
-    client.delete(url)
 
 
 @pytest.fixture
@@ -1230,11 +1210,6 @@ def default_network(
     network.insert()
 
     yield network
-
-    try:
-        network.delete()
-    except Exception:
-        pass
 
 
 @pytest.fixture
@@ -1254,11 +1229,6 @@ def default_subnet(
 
     yield subnet
 
-    try:
-        subnet.delete()
-    except Exception:
-        pass
-
 
 @pytest.fixture
 def default_machine_agent(
@@ -1277,11 +1247,6 @@ def default_machine_agent(
     agent.insert()
 
     yield agent.dump_to_simple_view()
-
-    try:
-        agent.delete()
-    except Exception:
-        pass
 
 
 @pytest.fixture
@@ -1307,11 +1272,6 @@ def default_pool_builder(
     agent.insert()
 
     yield agent.dump_to_simple_view()
-
-    try:
-        agent.delete()
-    except Exception:
-        pass
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -27,6 +27,8 @@ from restalchemy.tests.functional import db_utils as ra_db_utils
 from restalchemy.tests.functional.restapi.ra_based.microservice import service
 
 ENDPOINT_TEMPLATE = "http://127.0.0.1:%s/"
+# Prefix of the shadow tables holding the rows the migrations seed.
+SEED_TABLE_PREFIX = "seed_snapshot_"
 
 
 class RestServiceTestCase(ra_db_utils.DBEngineMixin):
@@ -34,6 +36,8 @@ class RestServiceTestCase(ra_db_utils.DBEngineMixin):
     __FIRST_MIGRATION__ = None
     __API_VERSION__ = "v1"
     __APP__ = None
+
+    _seed_snapshot: tp.Optional[tp.Dict[str, tp.Any]] = None
 
     @classmethod
     def get_endpoint(cls, template: str = ENDPOINT_TEMPLATE) -> str:
@@ -162,8 +166,102 @@ class RestServiceTestCase(ra_db_utils.DBEngineMixin):
             s.execute(f"drop view if exists {session.engine.escape(view_name)}")
 
     def setup_method(self) -> None:
-        # Apply migrations
+        # Rebuilding the whole schema before every test costs ~0.5s. Do it
+        # once, snapshot the rows the migrations seed, and reset later tests
+        # by emptying the tables and restoring that snapshot (~0.01s). The
+        # snapshot is only usable while the schema it was taken from is still
+        # there -- another service's teardown_method/teardown_class shares the
+        # database and may have dropped it.
+        if self._seed_snapshot is not None and self._snapshot_is_usable():
+            self._restore_seed_snapshot()
+            return
+
         self.apply_all_migrations()
+        self._seed_snapshot = (
+            self._take_seed_snapshot()
+            if self.engine.dialect.name == "postgresql"
+            else None
+        )
+
+    @classmethod
+    def _base_tables(cls, session) -> tp.List[str]:
+        rows = session.execute(
+            """
+            select table_name as table_name
+            from information_schema.tables
+            where table_schema = current_schema()
+              and table_type = 'BASE TABLE';
+            """
+        ).fetchall()
+        return sorted(
+            row["table_name"]
+            for row in rows
+            if row["table_name"] != migrations.RA_MIGRATION_TABLE_NAME
+            and not row["table_name"].startswith(SEED_TABLE_PREFIX)
+        )
+
+    def _take_seed_snapshot(self) -> tp.Dict[str, tp.Any]:
+        with self.engine.session_manager() as s:
+            tables = self._base_tables(s)
+            # Copy the seeded rows into shadow tables so that resetting is a
+            # server-side INSERT ... SELECT rather than a round trip per row.
+            seeded = []
+            for table in tables:
+                s.execute(f'DROP TABLE IF EXISTS "{SEED_TABLE_PREFIX}{table}"')
+                s.execute(
+                    f'CREATE TABLE "{SEED_TABLE_PREFIX}{table}" AS TABLE "{table}"'
+                )
+                if s.execute(
+                    f'SELECT 1 FROM "{SEED_TABLE_PREFIX}{table}" LIMIT 1'
+                ).fetchall():
+                    seeded.append(table)
+                else:
+                    s.execute(f'DROP TABLE "{SEED_TABLE_PREFIX}{table}"')
+            sequences = [
+                (
+                    row["sequence_name"],
+                    s.execute(
+                        f"""select last_value, is_called
+                            from "{row["sequence_name"]}";"""
+                    ).fetchall()[0],
+                )
+                for row in s.execute(
+                    """
+                    select sequence_name as sequence_name
+                    from information_schema.sequences
+                    where sequence_schema = current_schema();
+                    """
+                ).fetchall()
+            ]
+
+        # The whole reset is one multi-statement round trip. SET LOCAL keeps
+        # the constraint triggers disabled for this transaction only, so a
+        # failed reset cannot hand a pooled connection back with foreign keys
+        # still off; they have to be off because the seeded rows reference
+        # each other and cannot be restored in any FK-satisfying order.
+        # DELETE rather than TRUNCATE: almost every table is empty by the end
+        # of a test, and DELETE barely touches those, while TRUNCATE rewrites
+        # each of them regardless (0.008s against 0.12s for the whole schema).
+        # The sequences are restored below, so RESTART IDENTITY is not needed.
+        statements = ["SET LOCAL session_replication_role = replica"]
+        statements += [f'DELETE FROM "{table}"' for table in tables]
+        statements += [
+            f'INSERT INTO "{table}" SELECT * FROM "{SEED_TABLE_PREFIX}{table}"'
+            for table in seeded
+        ]
+        statements += [
+            f"SELECT setval('{name}', {state['last_value']}, {state['is_called']})"
+            for name, state in sequences
+        ]
+        return {"tables": set(tables), "reset": ";\n".join(statements)}
+
+    def _snapshot_is_usable(self) -> bool:
+        with self.engine.session_manager() as s:
+            return set(self._base_tables(s)) == self._seed_snapshot["tables"]
+
+    def _restore_seed_snapshot(self) -> None:
+        with self.engine.session_manager() as s:
+            s.execute(self._seed_snapshot["reset"])
 
     def rollback_migrations(self) -> None:
         # Rollback migrations
