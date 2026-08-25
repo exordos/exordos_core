@@ -94,8 +94,10 @@ Key methods:
 - **`uninstall()`** — marks the element as `UNINSTALLED`. Rejects if other
   installed elements depend on it (checked via `RepoElementDepsBinding`).
 - **`upgrade(target)`** — swaps installation state from the current element to a
-  target element (same name, different version). The runtime EM Element UUID is
-  transferred.
+  target element (same name, different version). The runtime EM Element UUID and
+  the `RepoElementDepsBinding` records are transferred to the target element,
+  which is also the return value: after the upgrade the installed element is the
+  target one, so `uninstall()` must be invoked on its UUID.
 - **`edit(manifest)`** — replaces the manifest dict. Validates that `name` and
   `version` in the new manifest match the element's fields.
 - **`from_inventory(repository, inventory)`** (classmethod) — creates a
