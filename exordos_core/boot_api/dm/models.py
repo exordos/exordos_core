@@ -45,16 +45,26 @@ class MachineNetboot(models.Machine):
         self.set_netboot_params(gc_host, gc_boot_api, kernel, initrd)
 
     @classmethod
-    def restore_from_storage(
+    def restore_row(
         cls,
-        gc_host: str = LOCAL_GC_HOST,
-        gc_boot_api: str = LOCAL_GC_BOOT_API,
-        kernel: tp.Optional[str] = None,
-        initrd: tp.Optional[str] = None,
-        **kwargs,
-    ):
-        obj = super().restore_from_storage(**kwargs)
-        obj.set_netboot_params(gc_host, gc_boot_api, kernel, initrd)
+        row: tp.Mapping[str, tp.Any],
+        pour: tp.Any = None,
+    ) -> "MachineNetboot":
+        # Every read arrives here -- one model, and a page of them alike;
+        # `restore_from_storage`, which this class used to override, is
+        # only one of the two, and a collection does not go by it.
+        #
+        # The netboot parameters are not columns of the machine table, so
+        # they are never in a row: a restored machine gets the defaults
+        # here, and the controller overwrites them with what the
+        # installation is configured with.
+        obj = super().restore_row(row, pour)
+        obj.set_netboot_params(
+            LOCAL_GC_HOST,
+            LOCAL_GC_BOOT_API,
+            None,
+            None,
+        )
         return obj
 
     def set_netboot_params(
