@@ -143,15 +143,10 @@ class TestUpgradeHandover:
         target.element = None
         return installed, target
 
-    def _upgrade(self, installed, target, bindings=None):
-        own_bindings, dependents = bindings or ([], [])
+    def _upgrade(self, installed, target):
         with mock.patch.object(models.RepoElement, "objects") as element_objects:
             element_objects.get_one.return_value = target
-            with mock.patch.object(
-                models.RepoElementDepsBinding, "objects"
-            ) as binding_objects:
-                binding_objects.get_all.side_effect = [own_bindings, dependents]
-                return models.RepoElement.upgrade(installed, target=str(target.uuid))
+            return models.RepoElement.upgrade(installed, target=str(target.uuid))
 
     def test_upgrade_returns_target_element(self):
         installed, target = self._make_pair()
@@ -163,7 +158,7 @@ class TestUpgradeHandover:
             models.RepoElementInstallationState.INSTALLED.value
         )
 
-    def test_upgrade_clears_runtime_element_of_old_element(self):
+    def test_upgrade_moves_runtime_element_to_target(self):
         installed, target = self._make_pair()
         runtime_element = installed.element
 
@@ -172,20 +167,10 @@ class TestUpgradeHandover:
         assert installed.installation_state == (
             models.RepoElementInstallationState.UNINSTALLED.value
         )
-        assert installed.element is None
+        # The runtime element reference stays until the builder releases the
+        # old element, otherwise the live EM manifest is deleted too early.
+        assert installed.element == runtime_element
         assert target.element == runtime_element
-
-    def test_upgrade_moves_dependency_bindings_to_target(self):
-        installed, target = self._make_pair()
-        own_binding = mock.MagicMock()
-        dependent_binding = mock.MagicMock()
-
-        self._upgrade(installed, target, ([own_binding], [dependent_binding]))
-
-        assert own_binding.element is target
-        own_binding.update.assert_called_once()
-        assert dependent_binding.depends_on is target
-        dependent_binding.update.assert_called_once()
 
     def test_upgrade_not_installed_raises(self):
         elem = mock.MagicMock(spec=models.RepoElement)

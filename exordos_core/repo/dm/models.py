@@ -559,8 +559,9 @@ class RepoElement(
         """Move the installation to another version of the same element.
 
         The target element becomes INSTALLED and takes over the runtime
-        element UUID and the dependency bindings, while this element becomes
-        UNINSTALLED.
+        element UUID, while this element becomes UNINSTALLED. The builder
+        releases this element and hands the dependency bindings over once the
+        target is actually installed.
 
         Args:
             target: UUID of the uninstalled element with the same name
@@ -590,30 +591,11 @@ class RepoElement(
             raise common_exc.ValidateException(err="Target element must be uninstalled")
         runtime_element = self.element
         self.installation_state = RepoElementInstallationState.UNINSTALLED.value
-        self.element = None
         self.update()
 
         target_element.installation_state = RepoElementInstallationState.INSTALLED.value
         target_element.element = runtime_element
         target_element.update()
-
-        # The installation moved to the target version, so the dependency
-        # bindings must follow it: both the bindings of this element and the
-        # ones pointing to it now belong to the target element.
-        own_bindings = RepoElementDepsBinding.objects.get_all(
-            filters={"element": ra_filters.EQ(self.uuid)}
-        )
-        for binding in own_bindings:
-            binding.element = target_element
-            binding.update()
-
-        dependents = RepoElementDepsBinding.objects.get_all(
-            filters={"depends_on": ra_filters.EQ(self.uuid)}
-        )
-        for binding in dependents:
-            binding.depends_on = target_element
-            binding.update()
-
         return target_element
 
     def edit(self, manifest: dict) -> "RepoElement":
