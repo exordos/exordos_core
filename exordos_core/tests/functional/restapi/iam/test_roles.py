@@ -101,3 +101,48 @@ class TestRoles(base.BaseIamResourceTest):
             client.delete_role(uuid=role["uuid"])
 
         admin_client.delete_role(uuid=role["uuid"])
+
+    def test_get_role_permissions_by_admin(self, user_api_client, auth_user_admin):
+        client = user_api_client(auth_user_admin)
+        role = client.create_role(name="test_role_with_permissions")
+        permission = client.create_permission(name="iam.test.get_permissions")
+        client.create_permission_binding(
+            permission_uuid=permission["uuid"],
+            role_uuid=role["uuid"],
+        )
+
+        permissions = client.get(
+            client.build_resource_uri(
+                ["iam/roles", role["uuid"], "actions/get_permissions"]
+            ),
+        ).json()
+
+        assert [p["uuid"] for p in permissions] == [permission["uuid"]]
+
+    def test_get_role_permissions_of_role_without_permissions(
+        self, user_api_client, auth_user_admin
+    ):
+        client = user_api_client(auth_user_admin)
+        role = client.create_role(name="test_role_without_permissions")
+
+        permissions = client.get(
+            client.build_resource_uri(
+                ["iam/roles", role["uuid"], "actions/get_permissions"]
+            ),
+        ).json()
+
+        assert permissions == []
+
+    def test_get_role_permissions_by_user(
+        self, user_api_client, auth_user_admin, auth_test1_user
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        role = admin_client.create_role(name="test_role_permissions_forbidden")
+        client = user_api_client(auth_test1_user)
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.get(
+                client.build_resource_uri(
+                    ["iam/roles", role["uuid"], "actions/get_permissions"]
+                ),
+            )
