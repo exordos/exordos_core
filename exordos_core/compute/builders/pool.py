@@ -471,6 +471,33 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
     # Volume
 
+    def _find_storage_pool(
+        self,
+        pool: pool_models.Pool,
+        volume: pool_models.MachineVolume,
+        size: int,
+    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+        """Find the storage pool to use for `volume`.
+
+        If the volume has already been scheduled onto a storage pool
+        (volume.storage_pool is set), only that pool is considered - the
+        check here is purely about whether it still has room. Otherwise
+        every pool matching the volume's speed/ephemeral request (exact
+        match) is a candidate.
+        """
+        if volume.storage_pool:
+            candidates = (
+                sp for sp in pool.storage_pools if sp.name == volume.storage_pool
+            )
+        else:
+            candidates = (
+                sp
+                for sp in pool.storage_pools
+                if sp.speed == volume.speed and sp.ephemeral == volume.ephemeral
+            )
+
+        return next((sp for sp in candidates if sp.has_capacity(size)), None)
+
     def _has_enough_space_in_pool(
         self,
         pool: pool_models.Pool,
@@ -485,8 +512,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if not pool.storage_pools:
             return False
 
-        storage_pool: ua_pool.AbstractStoragePool = pool.storage_pools[0]
-        return storage_pool.has_capacity(size)
+        return self._find_storage_pool(pool, target_volume, size) is not None
 
     def _reschedule_volume(
         self,
@@ -516,11 +542,13 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool = self._find_storage_pool(volume.pool, volume, volume.size)
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(volume.size)
+        if not volume.storage_pool:
+            volume.storage_pool = storage_pool.name
 
         return True
 
@@ -547,7 +575,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool = self._find_storage_pool(
+            volume.pool, target_volume, target_volume.size - actual_volume.size
+        )
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
