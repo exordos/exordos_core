@@ -89,20 +89,17 @@ class RepositoryController(
 
 
 class StoreControllerMixin(iam_controllers.PolicyBasedWithoutProjectController):
-    """Policy and project scoping shared by the store endpoints."""
-
-    __policy_service_name__ = "repo"
-    __policy_name__ = "store_element"
+    """project scoping shared by the store endpoints."""
 
     def _project_filters(self):
         """Restrict a read to the projects the caller may see.
 
         A project scoped caller reads the admin project, which holds the
-        shared catalogue, and their own. A token without a project is not
-        restricted, as elsewhere in the user API.
+        shared catalogue, and their own. A caller without a project, an
+        anonymous request included, reads the shared catalogue only.
         """
         if not self._ctx_project_id:
-            return {}
+            return {"project_id": dm_filters.EQ(c.ZERO_UUID)}
 
         return {"project_id": dm_filters.In([c.ZERO_UUID, self._ctx_project_id])}
 
@@ -118,7 +115,6 @@ class LatestStableElementsController(
     )
 
     def filter(self, filters, **kwargs):
-        self._enforce("read")
         elements_by_name = {}
         elements = models.RepoElement.objects.get_all(
             filters={
@@ -165,9 +161,6 @@ class StoreProxyController(StoreControllerMixin, controllers.RoutesListControlle
     __TARGET_PATH__ = "/v1/repo/store/"
 
     def filter(self, filters, order_by=None):
-        # The policy controller's filter reaches for a resource model, and
-        # a route list has none, so list the routes explicitly.
-        self._enforce("read")
         return controllers.RoutesListController.filter(self, filters, order_by=order_by)
 
 
@@ -183,13 +176,19 @@ class StoreElementController(
     )
 
     def get(self, uuid, **kwargs):
-        # Scope the lookup so an action cannot reach another project.
         kwargs.update(self._project_filters())
-        return super().get(uuid=uuid, **kwargs)
+        return controllers.BaseResourceControllerPaginated.get(
+            self, uuid=uuid, **kwargs
+        )
+
+    def filter(self, filters, order_by=None):
+        filters.update(self._project_filters())
+        return controllers.BaseResourceControllerPaginated.filter(
+            self, filters, order_by=order_by
+        )
 
     @actions.get
     def stable_versions(self, resource: models.RepoElement):
-        self._enforce("read")
         elements = models.RepoElement.objects.get_all(
             filters={
                 "name": dm_filters.EQ(resource.name),

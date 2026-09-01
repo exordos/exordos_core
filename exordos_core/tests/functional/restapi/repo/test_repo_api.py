@@ -23,8 +23,6 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.common import constants as c
 from exordos_core.repo.dm import models as repo_models
 
-STORE_ELEMENT_READ = "repo.store_element.read"
-
 
 class TestRepoElements:
     """REST API tests for repo elements endpoints."""
@@ -33,7 +31,12 @@ class TestRepoElements:
     REPO_REPOSITORIES_PATH = ["repo", "repositories"]
 
     def _create_repository(
-        self, user_api_client, auth, name="test-repo", driver_spec=None
+        self,
+        user_api_client,
+        auth,
+        name="test-repo",
+        driver_spec=None,
+        project_id=c.EM_PROJECT_ID,
     ):
         """Helper to create a repository with a simple driver spec."""
         client = user_api_client(auth)
@@ -44,7 +47,7 @@ class TestRepoElements:
             json={
                 "name": name,
                 "description": "Test repository",
-                "project_id": str(c.EM_PROJECT_ID),
+                "project_id": str(project_id),
                 "sync_mode": "lazy",
                 "driver_spec": driver_spec or {"kind": "database"},
             },
@@ -151,7 +154,9 @@ class TestRepoElements:
         assert not elements[0]["repository"].endswith(repo2["uuid"])
 
     def test_latest_stable_elements_route(self, user_api_client, auth_user_admin):
-        repo = self._create_repository(user_api_client, auth_user_admin)
+        repo = self._create_repository(
+            user_api_client, auth_user_admin, project_id=c.ZERO_UUID
+        )
         element_name = f"element-{sys_uuid.uuid4()}"
 
         old_element = self._create_element(
@@ -237,7 +242,9 @@ class TestRepoElements:
         assert len({element["name"] for element in elements}) == len(elements)
 
     def test_latest_stable_elements_pagination(self, user_api_client, auth_user_admin):
-        repo = self._create_repository(user_api_client, auth_user_admin)
+        repo = self._create_repository(
+            user_api_client, auth_user_admin, project_id=c.ZERO_UUID
+        )
         elements = [
             self._create_element(
                 user_api_client,
@@ -293,6 +300,7 @@ class TestRepoElements:
         auth_user_admin,
         auth_test1_p1_user,
         auth_test2_p1_user,
+        user_api_noauth_client,
     ):
         repo = self._create_repository(user_api_client, auth_user_admin)
         element_name = f"element-{sys_uuid.uuid4()}"
@@ -324,11 +332,7 @@ class TestRepoElements:
                     ),
                 )
 
-        client = user_api_client(
-            auth_test1_p1_user,
-            permissions=[STORE_ELEMENT_READ],
-            project_id=auth_test1_p1_user.project_id,
-        )
+        client = user_api_client(auth_test1_p1_user)
         store_url = client.build_collection_uri(
             ["repo", "store", "latest_stable_elements"]
         )
@@ -338,9 +342,24 @@ class TestRepoElements:
         assert elements["own"]["uuid"] in visible
         assert elements["other"]["uuid"] not in visible
 
+        # A caller without a project, an anonymous request included, reads
+        # the shared catalogue only.
+        admin_client = user_api_client(auth_user_admin)
+        elements_url = admin_client.build_collection_uri(["repo", "store", "elements"])
+        for unscoped_client in (admin_client, user_api_noauth_client()):
+            visible = {
+                element["uuid"] for element in unscoped_client.get(elements_url).json()
+            }
+
+            assert elements["admin"]["uuid"] in visible
+            assert elements["own"]["uuid"] not in visible
+            assert elements["other"]["uuid"] not in visible
+
     def test_element_stable_versions_action(self, user_api_client, auth_user_admin):
         client = user_api_client(auth_user_admin)
-        repo = self._create_repository(user_api_client, auth_user_admin)
+        repo = self._create_repository(
+            user_api_client, auth_user_admin, project_id=c.ZERO_UUID
+        )
         other_repo = self._create_repository(
             user_api_client,
             auth_user_admin,

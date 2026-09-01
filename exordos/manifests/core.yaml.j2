@@ -510,10 +510,6 @@ resources:
       uuid: "37ee8a65-ca05-54b2-a603-831511c01b3c"
       name: "repo.artifact.read"
       description: "List and read repository artifacts"
-    repo_store_element_read:
-      uuid: "f2be8c62-6675-4a3a-a24a-508ec976e97d"
-      name: "repo.store_element.read"
-      description: "List and read store elements"
 
   $core.iam.rolebinding:
     admin_role:
@@ -752,9 +748,7 @@ resources:
     binding_owner_repo_artifact_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$repo_artifact_read:uuid"
-    binding_newcomer_repo_store_element_read:
-      role: "$core.iam.roles.$newcomer:uuid"
-      permission: "$core.iam.permissions.$repo_store_element_read:uuid"
+
   $core.vs.profiles:
     develop:
       name: "develop"
