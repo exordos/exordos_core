@@ -179,15 +179,40 @@ class SchedulerService(basic.BasicService):
             for p in pools
         )
 
+    def _find_storage_pool(
+        self, pool: base.MachinePoolBundle, speed: str, ephemeral: bool, size: int
+    ) -> ua_pool.AbstractStoragePool:
+        """Find a storage pool matching the requested speed/ephemeral tags
+        with enough free capacity for `size` GiB.
+        """
+        for storage_pool in pool.pool.storage_pools:
+            if (
+                storage_pool.speed == speed
+                and storage_pool.ephemeral == ephemeral
+                and storage_pool.has_capacity(size)
+            ):
+                return storage_pool
+
+        raise ValueError(
+            f"No storage pool with speed={speed!r}, ephemeral={ephemeral} "
+            f"and {size}GiB free capacity in pool {pool.pool.uuid}"
+        )
+
+    def _find_storage_pool_by_name(
+        self, pool: base.MachinePoolBundle, name: str
+    ) -> ua_pool.AbstractStoragePool:
+        for storage_pool in pool.pool.storage_pools:
+            if storage_pool.name == name:
+                return storage_pool
+
+        raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
+
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        # TODO(akremenetsky): Rework this simple implementation.
-        # At the moment we just take the first storage pool
-        # and allocate additional space for the volume.
-        # But we need to figure out which storage pool is
-        # the owner of the volume.
-        storage_pool = pool.pool.storage_pools[0]
+        storage_pool = self._find_storage_pool(
+            pool, volume.speed, volume.ephemeral, volume.size
+        )
         storage_pool.allocate_capacity(volume.size)
 
         pool_volume = models.MachineVolume(
@@ -199,6 +224,9 @@ class SchedulerService(basic.BasicService):
             boot=volume.boot,
             label=volume.label,
             device_type=volume.device_type,
+            speed=volume.speed,
+            ephemeral=volume.ephemeral,
+            storage_pool=storage_pool.name,
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
@@ -225,7 +253,15 @@ class SchedulerService(basic.BasicService):
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
             # volumes. Is the size is a target or actual field?
-            if pool_volume.image == volume.image and pool_volume.size <= volume.size:
+            # Only adopt a volume already on the requested speed/ephemeral
+            # tier - reusing one from a different tier would silently
+            # place the disk somewhere it didn't ask to be.
+            if (
+                pool_volume.image == volume.image
+                and pool_volume.size <= volume.size
+                and pool_volume.speed == volume.speed
+                and pool_volume.ephemeral == volume.ephemeral
+            ):
                 volumes.append(pool_volume)
 
         # No volumes found, just create a new volume later
@@ -237,12 +273,7 @@ class SchedulerService(basic.BasicService):
         pool_volume = volumes[0]
         need_size = volume.size - pool_volume.size
 
-        # TODO(akremenetsky): Rework this simple implementation.
-        # At the moment we just take the first storage pool
-        # and allocate additional space for the volume.
-        # But we need to figure out which storage pool is
-        # the owner of the volume.
-        storage_pool = pool.pool.storage_pools[0]
+        storage_pool = self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
 
         # Check if the storage pool has enough space
         if need_size and storage_pool.available < need_size:

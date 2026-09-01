@@ -86,6 +86,8 @@ class VolumeBuilderService(sdk_builder.UniversalBuilderService):
             and target.image == actual.image
             and target.label == actual.label
             and target.device_type == actual.device_type
+            and target.speed == actual.speed
+            and target.ephemeral == actual.ephemeral
             and target.boot == actual.boot
             and target.index == actual.index
             and target.node == actual.node
@@ -111,6 +113,8 @@ class VolumeBuilderService(sdk_builder.UniversalBuilderService):
         machine_volume.image = target.image
         machine_volume.label = target.label
         machine_volume.device_type = target.device_type
+        machine_volume.speed = target.speed
+        machine_volume.ephemeral = target.ephemeral
         machine_volume.boot = target.boot
         machine_volume.index = target.index
         machine_volume.machine = machine
