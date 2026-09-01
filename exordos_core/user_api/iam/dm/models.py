@@ -166,12 +166,21 @@ class ModelWithAlwaysActiveStatus(models.Model):
 
 
 class RolesInfo:
-    def __init__(self, roles):
+    def __init__(self, role_bindings):
         super().__init__()
-        self._roles = roles
+        self._role_bindings = role_bindings
 
     def get_response_body(self):
-        return [role.get_storable_snapshot() for role in self._roles]
+        result = []
+        for role_binding in self._role_bindings:
+            role = role_binding.role.get_storable_snapshot()
+            # "project_id" is the scope of the role itself, while "project"
+            # is the project the role is granted in by this binding.
+            role["project"] = (
+                str(role_binding.project.uuid) if role_binding.project else None
+            )
+            result.append(role)
+        return result
 
 
 class IdpResponseType(str, enum.Enum):
@@ -463,12 +472,7 @@ class User(
 
     def get_my_roles(self):
         return RolesInfo(
-            [
-                role_binding.role
-                for role_binding in RoleBinding.objects.get_all(
-                    filters={"user": ra_filters.EQ(self)}
-                )
-            ]
+            RoleBinding.objects.get_all(filters={"user": ra_filters.EQ(self)})
         )
 
     def validate_otp(self, code):

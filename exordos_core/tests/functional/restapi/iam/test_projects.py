@@ -43,6 +43,37 @@ class TestProjects(base.BaseIamResourceTest):
         client.delete_project(project["uuid"])
         client.delete_organization(org["uuid"])
 
+    def test_owner_role_reports_the_project_it_is_granted_in(
+        self, user_api_client, auth_test1_user
+    ):
+        client = user_api_client(auth_test1_user)
+        org = client.create_organization(name="TestRoleProjectOrganization")
+        project = client.create_project(
+            name="TestRoleProjectProject",
+            organization_uuid=org["uuid"],
+        )
+
+        roles = client.get_user_roles(auth_test1_user.uuid)
+
+        owner_roles = [r for r in roles if r["uuid"] == common_c.OWNER_ROLE_UUID]
+        assert [r["project"] for r in owner_roles] == [project["uuid"]]
+        # The owner role is global, so its own scope stays empty.
+        assert owner_roles[0]["project_id"] is None
+
+        # cleanup
+        client.delete_project(project["uuid"])
+        client.delete_organization(org["uuid"])
+
+    def test_role_granted_without_project_reports_no_project(
+        self, user_api_client, auth_test1_user
+    ):
+        client = user_api_client(auth_test1_user)
+
+        roles = client.get_user_roles(auth_test1_user.uuid)
+
+        newcomer = [r for r in roles if r["uuid"] == common_c.NEWCOMER_ROLE_UUID]
+        assert newcomer and newcomer[0]["project"] is None
+
     def test_list_projects_wo_user_projects(self, user_api_client, auth_test1_user):
         client = user_api_client(auth_test1_user)
 

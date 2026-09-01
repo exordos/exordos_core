@@ -196,6 +196,26 @@ GET /v1/iam/users/7c3d4e5f-6789-89ab-cdef-123456789012/actions/get_my_roles
 Authorization: Bearer <token>
 ```
 
+The response carries one entry per role binding. Two distinct fields describe
+the project:
+
+* `project_id` — the scope of the role itself. Set only for roles that exist
+  inside a single project; `null` for global roles such as `owner` or `admin`.
+* `project` — the project the role is granted in by this binding. `null` for a
+  binding made without a project.
+
+```json
+[
+  {
+    "uuid": "726f6c65-0000-0000-0000-000000000002",
+    "name": "owner",
+    "status": "ACTIVE",
+    "project_id": null,
+    "project": "8d4e5f67-789a-9abc-def1-234567890123"
+  }
+]
+```
+
 ### 2.5. Projects and Role/Permission Scope
 
 In IAM, roles can be assigned as:
