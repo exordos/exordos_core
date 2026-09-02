@@ -17,6 +17,8 @@
 from unittest import mock
 import uuid as sys_uuid
 
+import pytest
+
 from exordos_core.common import constants as c
 from exordos_core.repo.agents.universal.drivers import repo_element as driver
 from exordos_core.repo.builders import element as re_builder
@@ -232,6 +234,97 @@ class TestMakeEmManifest:
         assert result.exports == {}
         assert result.imports == {}
         assert result.openapi_spec is None
+
+
+class TestList:
+    """Tests for RepoEmBackendClient._list."""
+
+    def _make_client(self):
+        storage = mock.MagicMock()
+        return driver.RepoEmBackendClient(tf_storage=storage)
+
+    def _make_em_manifest(self, name="core", version="1.0.0", project_id=c.ZERO_UUID):
+        em_manifest = mock.MagicMock()
+        em_manifest.uuid = sys_uuid.uuid4()
+        em_manifest.name = name
+        em_manifest.version = version
+        em_manifest.description = "Test manifest"
+        em_manifest.project_id = project_id
+        em_manifest.api_version = "v1"
+        em_manifest.schema_version = 1
+        em_manifest.openapi_spec = None
+        em_manifest.exports = {}
+        em_manifest.imports = {}
+        em_manifest.requirements = {}
+        em_manifest.resources = {}
+        return em_manifest
+
+    def _make_em_element(self, em_manifest):
+        em_element = mock.MagicMock()
+        em_element.uuid = sys_uuid.uuid4()
+        em_element.name = em_manifest.name
+        em_element.version = em_manifest.version
+        em_element.manifest = em_manifest
+        return em_element
+
+    def _list(self, client, em_manifests, em_elements):
+        with (
+            mock.patch.object(
+                driver.em_models.Manifest, "objects", new=mock.MagicMock()
+            ) as manifest_objects,
+            mock.patch.object(
+                driver.em_models.Element, "objects", new=mock.MagicMock()
+            ) as element_objects,
+        ):
+            manifest_objects.get_all.return_value = em_manifests
+            element_objects.get_all.return_value = em_elements
+            return client._list(None, driver.KIND)
+
+    def test_unsupported_kind(self):
+        """Should reject a kind the driver does not serve."""
+        client = self._make_client()
+
+        with pytest.raises(ValueError):
+            client._list(None, "some_other_kind")
+
+    def test_same_name_and_version_in_several_projects(self):
+        """Should return every manifest sharing a name and version."""
+        client = self._make_client()
+        first = self._make_em_manifest(
+            name="dbaas", version="2.4.0", project_id=c.ZERO_UUID
+        )
+        second = self._make_em_manifest(
+            name="dbaas",
+            version="2.4.0",
+            project_id=sys_uuid.uuid4(),
+        )
+
+        result = self._list(client, [first, second], [])
+
+        assert {i.uuid for i in result} == {first.uuid, second.uuid}
+
+    def test_element_matched_by_manifest_link(self):
+        """Should attach the element to the manifest it was installed from."""
+        client = self._make_client()
+        installed = self._make_em_manifest(name="dbaas", version="2.4.0")
+        other = self._make_em_manifest(name="dbaas", version="2.4.0")
+        em_element = self._make_em_element(installed)
+
+        result = self._list(client, [installed, other], [em_element])
+
+        by_uuid = {i.uuid: i for i in result}
+        assert by_uuid[installed.uuid].element == em_element.uuid
+        assert by_uuid[other.uuid].element is None
+
+    def test_manifest_without_element(self):
+        """Should return manifests that have no installed element."""
+        client = self._make_client()
+        em_manifest = self._make_em_manifest()
+
+        result = self._list(client, [em_manifest], [])
+
+        assert len(result) == 1
+        assert result[0].element is None
 
 
 class TestRepoElementCapabilityDriver:
