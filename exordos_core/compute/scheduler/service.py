@@ -182,20 +182,35 @@ class SchedulerService(basic.BasicService):
     def _find_storage_pool(
         self, pool: base.MachinePoolBundle, speed: str, ephemeral: bool, size: int
     ) -> ua_pool.AbstractStoragePool:
-        """Find a storage pool matching the requested speed/ephemeral tags
-        with enough free capacity for `size` GiB.
+        """Find a storage pool for a volume.
+
+        Soft (best-effort) match, the same way DummySoftAntiAffinityFilter
+        treats affinity: prefer a pool with an exact speed/ephemeral
+        match, but if the requested tier doesn't exist or is full, place
+        the disk on any pool with room rather than failing the whole
+        placement.
         """
-        for storage_pool in pool.pool.storage_pools:
-            if (
-                storage_pool.speed == speed
-                and storage_pool.ephemeral == ephemeral
-                and storage_pool.has_capacity(size)
-            ):
-                return storage_pool
+        exact_match = next(
+            (
+                sp
+                for sp in pool.pool.storage_pools
+                if sp.speed == speed
+                and sp.ephemeral == ephemeral
+                and sp.has_capacity(size)
+            ),
+            None,
+        )
+        if exact_match is not None:
+            return exact_match
+
+        any_match = next(
+            (sp for sp in pool.pool.storage_pools if sp.has_capacity(size)), None
+        )
+        if any_match is not None:
+            return any_match
 
         raise ValueError(
-            f"No storage pool with speed={speed!r}, ephemeral={ephemeral} "
-            f"and {size}GiB free capacity in pool {pool.pool.uuid}"
+            f"No storage pool with {size}GiB free capacity in pool {pool.pool.uuid}"
         )
 
     def _find_storage_pool_by_name(
@@ -249,28 +264,32 @@ class SchedulerService(basic.BasicService):
             return self._build_machine_volume(pool, volume)
 
         volumes = []
+        exact_volumes = []
         for pool_volume in pool.volumes:
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
             # volumes. Is the size is a target or actual field?
-            # Only adopt a volume already on the requested speed/ephemeral
-            # tier - reusing one from a different tier would silently
-            # place the disk somewhere it didn't ask to be.
-            if (
-                pool_volume.image == volume.image
-                and pool_volume.size <= volume.size
-                and pool_volume.speed == volume.speed
-                and pool_volume.ephemeral == volume.ephemeral
-            ):
+            if pool_volume.image == volume.image and pool_volume.size <= volume.size:
                 volumes.append(pool_volume)
+                # Prefer a volume already on the requested speed/ephemeral
+                # tier, but reusing one from a different tier (soft match,
+                # like storage pool placement above) beats downloading the
+                # image again onto a brand new volume.
+                if (
+                    pool_volume.speed == volume.speed
+                    and pool_volume.ephemeral == volume.ephemeral
+                ):
+                    exact_volumes.append(pool_volume)
+
+        candidates = exact_volumes or volumes
 
         # No volumes found, just create a new volume later
-        if not volumes:
+        if not candidates:
             return self._build_machine_volume(pool, volume)
 
         # Figure out the best volume
-        volumes.sort(key=lambda v: volume.size - v.size)
-        pool_volume = volumes[0]
+        candidates.sort(key=lambda v: volume.size - v.size)
+        pool_volume = candidates[0]
         need_size = volume.size - pool_volume.size
 
         storage_pool = self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
