@@ -629,6 +629,7 @@ class Permission(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
+    models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
     orm.SQLStorableMixin,
@@ -1816,6 +1817,7 @@ class Idp(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
+    models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
     orm.SQLStorableMixin,
 ):

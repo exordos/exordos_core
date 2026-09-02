@@ -47,7 +47,12 @@ class CommonModel(
     pass
 
 
-class Domain(CommonModel, models.ModelWithProject, ua_models.TargetResourceMixin):
+class Domain(
+    CommonModel,
+    models.ModelWithTags,
+    models.ModelWithProject,
+    ua_models.TargetResourceMixin,
+):
     __tablename__ = "dns_domains"
     name = properties.property(types.String(), required=True)
     sync_to_ecosystem = properties.property(types.Boolean(), default=False)

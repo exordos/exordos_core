@@ -26,6 +26,8 @@ from restalchemy.dm import properties
 from restalchemy.dm import types
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import constants
+
 LOG = logging.getLogger(__name__)
 
 
@@ -60,20 +62,11 @@ DEFAULT_QUOTA_LIMITS: tp.Dict[str, int] = {
 DEFAULT_QUOTA_FIELD_LIMITS: tp.Dict[str, tp.Dict[str, int]] = {
     "nodes": {"cores": 10000},
 }
-QUOTA_RESOURCE_MODELS = {
-    "net_lb": "exordos_core.user_api.network.dm.models:LB",
-    "compute_sets": "exordos_core.compute.dm.models:NodeSet",
-    "nodes": "exordos_core.compute.dm.models:Node",
-    "secret_passwords": "exordos_core.secret.dm.models:Password",
-    "secret_certificates": "exordos_core.secret.dm.models:Certificate",
-    "secret_rsa_keys": "exordos_core.secret.dm.models:RSAKey",
-    "secret_ssh_keys": "exordos_core.secret.dm.models:SSHKey",
-}
 
 
 def get_quota_resource_model(resource_name: str) -> type:
     try:
-        module_name, class_name = QUOTA_RESOURCE_MODELS[resource_name].split(":")
+        module_name, class_name = constants.TABLES_TO_MODELS[resource_name].split(":")
     except KeyError:
         raise ValueError(f"Unknown quota resource: {resource_name}")
 

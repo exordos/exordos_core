@@ -105,3 +105,32 @@ VAR_HS256_JWKS_ENCRYPTION_KEY_UUID = sys_uuid.UUID(
 REPOSITORY_URL = "https://repo.exordos.com"
 ELEMENTS_PATH = "exordos-elements"
 INVENTORY_URL = f"{REPOSITORY_URL}/{ELEMENTS_PATH}/inventory.json"
+
+
+TABLES_TO_MODELS = {
+    "em_services": "exordos_core.elements.dm.models:Service",
+    "nodes": "exordos_core.compute.dm.models:Node",
+    "compute_sets": "exordos_core.compute.dm.models:NodeSet",
+    "config_configs": "exordos_core.config.dm.models:Config",
+    "net_lb": "exordos_core.user_api.network.dm.models:LB",
+    "net_lb_vhosts": "exordos_core.user_api.network.dm.models:Vhost",
+    "net_lb_vhosts_routes": "exordos_core.user_api.network.dm.models:Route",
+    "net_lb_backendpools": "exordos_core.user_api.network.dm.models:BackendPool",
+    "secret_passwords": "exordos_core.secret.dm.models:Password",
+    "secret_certificates": "exordos_core.secret.dm.models:Certificate",
+    "secret_rsa_keys": "exordos_core.secret.dm.models:RSAKey",
+    "secret_ssh_keys": "exordos_core.secret.dm.models:SSHKey",
+    "dns_domains": "exordos_core.user_api.dns.dm.models:Domain",
+    "dns_records": "exordos_core.user_api.dns.dm.models:Record",
+    "iam_organizations": "exordos_core.user_api.iam.dm.models:Organization",
+    "iam_organization_members": "exordos_core.user_api.iam.dm.models:OrganizationMember",
+    "iam_roles": "exordos_core.user_api.iam.dm.models:Role",
+    "iam_binding_roles": "exordos_core.user_api.iam.dm.models:RoleBinding",
+    "iam_projects": "exordos_core.user_api.iam.dm.models:Project",
+    "iam_permissions": "exordos_core.user_api.iam.dm.models:Permission",
+    "iam_binding_permissions": "exordos_core.user_api.iam.dm.models:PermissionBinding",
+    "iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
+    "vs_profiles": "exordos_core.vs.dm.models:Profile",
+    "vs_variables": "exordos_core.vs.dm.models:Variable",
+    "vs_values": "exordos_core.vs.dm.models:Value",
+}

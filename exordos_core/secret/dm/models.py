@@ -66,6 +66,7 @@ class Secret(
 
 class Password(
     Secret,
+    ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
@@ -138,6 +139,7 @@ class DNSCoreCertificateMethod(AbstractCertificateMethod):
 
 class Certificate(
     Secret,
+    ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
     ua_models.TargetResourceSQLStorableMixin,
@@ -220,6 +222,7 @@ class Certificate(
 
 class RSAKey(
     Secret,
+    ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
@@ -297,6 +300,7 @@ class RSAKey(
 
 class SSHKey(
     Secret,
+    ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,

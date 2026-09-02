@@ -317,6 +317,14 @@ components:
           example: NEW
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -459,6 +467,14 @@ components:
           - NEW
           example: NEW
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         target:
           example:
             key: value
@@ -530,6 +546,14 @@ components:
           default: false
           example: true
           type: boolean
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -874,6 +898,14 @@ components:
           - ACTIVE
           example: ACTIVE
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -990,6 +1022,14 @@ components:
           example: NEW
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         type:
           default:
             cpu: 1
@@ -1672,6 +1712,14 @@ components:
           example: NEW
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -2049,6 +2097,14 @@ components:
           example: NEW
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -2135,6 +2191,14 @@ components:
           - ACTIVE
           example: ACTIVE
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -2374,6 +2438,14 @@ components:
           example: NEW
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -3780,6 +3852,14 @@ components:
           example: NEW
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         target:
           example:
             key: value
@@ -4001,6 +4081,14 @@ components:
           - NEW
           example: NEW
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         target:
           example:
             key: value
@@ -4368,6 +4456,14 @@ components:
           example: ACTIVE
           readOnly: true
           type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'

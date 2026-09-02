@@ -77,6 +77,7 @@ class OnChangeShell(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
 
 class Config(
     cm.ModelWithFullAsset,
+    models.ModelWithTags,
     orm.SQLStorableMixin,
     ua_models.TargetResourceMixin,
     ua_models.TargetResourceSQLStorableMixin,
