@@ -477,43 +477,19 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         volume: pool_models.MachineVolume,
         size: int,
     ) -> tp.Optional[ua_pool.AbstractStoragePool]:
-        """Find the storage pool to use for `volume`.
+        """Select the storage pool to use for `volume`.
 
-        If the volume has already been scheduled onto a storage pool
-        (volume.storage_pool is set), only that pool is considered - the
-        check here is purely about whether it still has room, e.g. for a
-        resize.
-
-        Otherwise this is a soft (best-effort) match, the same way
-        DummySoftAntiAffinityFilter treats affinity: prefer a pool with
-        an exact speed/ephemeral match, but if the requested tier
-        doesn't exist or is full, use any pool with room rather than
-        failing outright.
+        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
+        rules (soft speed/ephemeral match with a capacity fallback; a
+        volume already scheduled onto a pool only considers that one).
         """
-        if volume.storage_pool:
-            return next(
-                (
-                    sp
-                    for sp in pool.storage_pools
-                    if sp.name == volume.storage_pool and sp.has_capacity(size)
-                ),
-                None,
-            )
-
-        exact_match = next(
-            (
-                sp
-                for sp in pool.storage_pools
-                if sp.speed == volume.speed
-                and sp.ephemeral == volume.ephemeral
-                and sp.has_capacity(size)
-            ),
-            None,
+        return ua_pool.select_storage_pool(
+            pool.storage_pools,
+            volume.speed,
+            volume.ephemeral,
+            size,
+            volume.storage_pool or None,
         )
-        if exact_match is not None:
-            return exact_match
-
-        return next((sp for sp in pool.storage_pools if sp.has_capacity(size)), None)
 
     def _has_enough_space_in_pool(
         self,
