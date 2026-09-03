@@ -1230,10 +1230,33 @@ components:
                 format: uuid
                 type: string
               storage_pool:
-                example: any_string
-                maxLength: 255
-                nullable: true
-                type: string
+                default: []
+                example:
+                - ephemeral: true
+                  name: any_string
+                  speed: cold
+                items:
+                  example:
+                    ephemeral: true
+                    name: any_string
+                    speed: cold
+                  properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
+                    name:
+                      example: any_string
+                      maxLength: 255
+                      type: string
+                    speed:
+                      enum:
+                      - cold
+                      - hot
+                      - warm
+                      example: cold
+                      type: string
+                  type: object
+                type: array
             type: object
           - example:
               key: value
@@ -1303,6 +1326,10 @@ components:
                   example: any_string
                   maxLength: 255
                   type: string
+                ephemeral:
+                  default: false
+                  example: true
+                  type: boolean
                 kind:
                   enum:
                   - thin_storage_pool
@@ -1320,6 +1347,14 @@ components:
                   type: number
                 pool_type:
                   example: any_string
+                  type: string
+                speed:
+                  default: warm
+                  enum:
+                  - cold
+                  - hot
+                  - warm
+                  example: cold
                   type: string
                 uuid:
                   example: 00000000-0000-0000-0000-000000000000
@@ -1506,6 +1541,10 @@ components:
           - example:
               key: value
             properties:
+              ephemeral:
+                default: false
+                example: true
+                type: boolean
               image:
                 example: any_string
                 maxLength: 255
@@ -1520,6 +1559,14 @@ components:
                 maximum: 1000000
                 minimum: 1
                 type: integer
+              speed:
+                default: warm
+                enum:
+                - cold
+                - hot
+                - warm
+                example: cold
+                type: string
             type: object
           - example:
               key: value
@@ -1527,19 +1574,26 @@ components:
               disks:
                 default: []
                 example:
-                - fs: any_string
+                - ephemeral: true
+                  fs: any_string
                   image: any_string
                   label: any_string
                   mount_point: any_string
                   size: 500000
+                  speed: cold
                 items:
                   example:
+                    ephemeral: true
                     fs: any_string
                     image: any_string
                     label: any_string
                     mount_point: any_string
                     size: 500000
+                    speed: cold
                   properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
                     fs:
                       example: any_string
                       maxLength: 256
@@ -1561,6 +1615,13 @@ components:
                       maximum: 1000000
                       minimum: 1
                       type: integer
+                    speed:
+                      enum:
+                      - cold
+                      - hot
+                      - warm
+                      example: cold
+                      type: string
                   type: object
                 type: array
               kind:
@@ -1693,6 +1754,10 @@ components:
           - example:
               key: value
             properties:
+              ephemeral:
+                default: false
+                example: true
+                type: boolean
               image:
                 example: any_string
                 maxLength: 255
@@ -1707,6 +1772,14 @@ components:
                 maximum: 1000000
                 minimum: 1
                 type: integer
+              speed:
+                default: warm
+                enum:
+                - cold
+                - hot
+                - warm
+                example: cold
+                type: string
             type: object
           - example:
               key: value
@@ -1714,19 +1787,26 @@ components:
               disks:
                 default: []
                 example:
-                - fs: any_string
+                - ephemeral: true
+                  fs: any_string
                   image: any_string
                   label: any_string
                   mount_point: any_string
                   size: 500000
+                  speed: cold
                 items:
                   example:
+                    ephemeral: true
                     fs: any_string
                     image: any_string
                     label: any_string
                     mount_point: any_string
                     size: 500000
+                    speed: cold
                   properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
                     fs:
                       example: any_string
                       maxLength: 256
@@ -1748,6 +1828,13 @@ components:
                       maximum: 1000000
                       minimum: 1
                       type: integer
+                    speed:
+                      enum:
+                      - cold
+                      - hot
+                      - warm
+                      example: cold
+                      type: string
                   type: object
                 type: array
               kind:
@@ -4718,6 +4805,10 @@ components:
           example: any_string
           maxLength: 64
           type: string
+        ephemeral:
+          default: false
+          example: true
+          type: boolean
         image:
           example: any_string
           maxLength: 255
@@ -4744,6 +4835,14 @@ components:
           maximum: 1000000
           minimum: 1
           type: integer
+        speed:
+          default: warm
+          enum:
+          - cold
+          - hot
+          - warm
+          example: cold
+          type: string
         status:
           default: NEW
           enum:
