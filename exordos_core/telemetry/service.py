@@ -101,10 +101,18 @@ class TelemetryService(basic.BasicService):
 
     @staticmethod
     def _collect_compute_nodes(data):
-        nodes = compute_models.Node.objects.get_all()
-        data["nodes_count"] = len(nodes)
-        data["nodes_total_cores"] = sum(n.cores for n in nodes)
-        data["nodes_total_ram"] = sum(n.ram for n in nodes)
+        # `nodes` is the largest table on a stand, so aggregate in SQL instead
+        # of materializing every row just to sum two columns.
+        session = contexts.Context().get_session()
+        row = session.execute(
+            "SELECT COUNT(uuid) AS nodes_count,"
+            " COALESCE(SUM(cores), 0) AS nodes_total_cores,"
+            " COALESCE(SUM(ram), 0) AS nodes_total_ram"
+            f" FROM {compute_models.Node.__tablename__}",
+        ).fetchone()
+        data["nodes_count"] = row["nodes_count"]
+        data["nodes_total_cores"] = row["nodes_total_cores"]
+        data["nodes_total_ram"] = row["nodes_total_ram"]
 
     @staticmethod
     def _collect_machine_pools(data):
