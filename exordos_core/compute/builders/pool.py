@@ -471,7 +471,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
     # Volume
 
-    def _find_storage_pool(
+    def _select_storage_pool(
         self,
         pool: pool_models.Pool,
         volume: pool_models.MachineVolume,
@@ -505,7 +505,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if not pool.storage_pools:
             return False
 
-        return self._find_storage_pool(pool, target_volume, size) is not None
+        return self._select_storage_pool(pool, target_volume, size) is not None
 
     def _reschedule_volume(
         self,
@@ -535,7 +535,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool = self._find_storage_pool(volume.pool, volume, volume.size)
+        storage_pool = self._select_storage_pool(volume.pool, volume, volume.size)
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
@@ -568,7 +568,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool = self._find_storage_pool(
+        storage_pool = self._select_storage_pool(
             volume.pool, target_volume, target_volume.size - actual_volume.size
         )
 

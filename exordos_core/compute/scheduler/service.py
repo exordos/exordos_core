@@ -179,7 +179,7 @@ class SchedulerService(basic.BasicService):
             for p in pools
         )
 
-    def _find_storage_pool(
+    def _select_storage_pool(
         self, pool: base.MachinePoolBundle, speed: str, ephemeral: bool, size: int
     ) -> ua_pool.AbstractStoragePool:
         """Select a storage pool for a volume.
@@ -209,7 +209,7 @@ class SchedulerService(basic.BasicService):
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        storage_pool = self._find_storage_pool(
+        storage_pool = self._select_storage_pool(
             pool, volume.speed, volume.ephemeral, volume.size
         )
         storage_pool.allocate_capacity(volume.size)
