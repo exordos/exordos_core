@@ -72,7 +72,7 @@ class TestMakeInstalledManifest:
         em_manifest = self._make_em_manifest()
         em_element = self._make_em_element()
 
-        result = client._make_installed_manifest(em_manifest, em_element)
+        result = client._make_installed_manifest(em_manifest, em_element.uuid)
 
         assert result.uuid == em_manifest.uuid
         assert result.name == em_manifest.name
@@ -116,7 +116,7 @@ class TestMakeInstalledManifest:
         em_manifest = self._make_em_manifest()
         em_element = self._make_em_element()
 
-        result = client._make_installed_manifest(em_manifest, em_element)
+        result = client._make_installed_manifest(em_manifest, em_element.uuid)
 
         assert result.uuid == em_manifest.uuid
         assert result.element == em_element.uuid
@@ -160,7 +160,7 @@ class TestMakeInstalledManifest:
         em_manifest.openapi_spec = {"paths": {}}
         em_element = self._make_em_element()
 
-        result = client._make_installed_manifest(em_manifest, em_element)
+        result = client._make_installed_manifest(em_manifest, em_element.uuid)
 
         assert result.manifest["exports"] == {"exp1": {}}
         assert result.manifest["imports"] == {"imp1": {}}
