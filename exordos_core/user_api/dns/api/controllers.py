@@ -21,6 +21,7 @@ from restalchemy.api import controllers as ra_controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 
+from exordos_core.common.api import controllers as common_controllers
 from exordos_core.user_api.dns.dm import models
 
 CONF = cfg.CONF
@@ -50,6 +51,7 @@ class DomainController(
 
 
 class RecordController(
+    common_controllers.OwnedTagsControllerMixin,
     iam_controllers.NestedPolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
 ):
@@ -60,6 +62,19 @@ class RecordController(
     __resource__ = resources.ResourceByRAModel(
         models.Record,
         convert_underscore=False,
+        # Query parameters are parsed against the model, which is also what
+        # the filter expression (`?q=`) needs: it is how a caller asks for
+        # the records of one owner instead of reading the zone.
+        #
+        # COMPATIBILITY: this changes how the collection reads its query
+        # parameters. A parameter naming no field of the resource used to
+        # be passed to `filter()` untouched; it is now answered with a 400.
+        # A value is now parsed into the type of the field it names, so one
+        # that does not parse is a 400 too where it used to reach storage.
+        # Both were reported as filters that quietly matched nothing or
+        # failed inside the database, so no caller was relying on an
+        # answer -- but a caller sending a stray parameter now sees it.
+        process_filters=True,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={

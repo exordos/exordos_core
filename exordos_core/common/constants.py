@@ -102,6 +102,25 @@ VAR_HS256_JWKS_ENCRYPTION_KEY_UUID = sys_uuid.UUID(
     "c371a647-e1a6-4bec-bef2-a50041bc5af2"
 )
 
+# Tags whose meaning belongs to the installation rather than to whoever
+# wrote the row. The server stamps them from the caller's identity and a
+# client cannot set or clear them, because they answer the question "may I
+# clean this up?" for anything that reconciles rows it did not create --
+# the DNS mirror of a managed realm being the first such reconciler.
+#
+# Exactly one owner tag per row. An owner is a subject of this
+# installation's IAM, so a realm mirror and the ecosystem element are told
+# apart by the users they authenticate as. No owner tag means "not known
+# to be mine", which every reconciler must read as "leave it alone".
+TAG_RESERVED_PREFIX = "owner:"
+TAG_OWNER_USER_PREFIX = TAG_RESERVED_PREFIX + "user:"
+
+
+def owner_user_tag(user_uuid):
+    """The owner tag of a subject, as it is stored and searched for."""
+    return TAG_OWNER_USER_PREFIX + str(user_uuid)
+
+
 REPOSITORY_URL = "https://repo.exordos.com"
 ELEMENTS_PATH = "exordos-elements"
 INVENTORY_URL = f"{REPOSITORY_URL}/{ELEMENTS_PATH}/inventory.json"

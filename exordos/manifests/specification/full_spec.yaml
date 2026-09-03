@@ -2425,7 +2425,7 @@ components:
                 type: string
               name:
                 example: '*.restalchemy.com'
-                pattern: ^(@|(\*\.){0,1}([a-zA-Z0-9-_]{1,61}\.{0,1}){0,30})$
+                pattern: ^(@|\*|(\*\.){0,1}([a-zA-Z0-9_-]{1,61}\.{0,1}){0,30})$
                 type: string
             type: object
           - example:
@@ -2442,7 +2442,7 @@ components:
                 type: string
               name:
                 example: '*.restalchemy.com'
-                pattern: ^(@|(\*\.){0,1}([a-zA-Z0-9-_]{1,61}\.{0,1}){0,30})$
+                pattern: ^(@|\*|(\*\.){0,1}([a-zA-Z0-9_-]{1,61}\.{0,1}){0,30})$
                 type: string
               primary_dns:
                 default: a.misconfigured.dns.server.invalid
@@ -2483,7 +2483,7 @@ components:
                 type: string
               name:
                 example: '*.restalchemy.com'
-                pattern: ^(@|(\*\.){0,1}([a-zA-Z0-9-_]{1,61}\.{0,1}){0,30})$
+                pattern: ^(@|\*|(\*\.){0,1}([a-zA-Z0-9_-]{1,61}\.{0,1}){0,30})$
                 type: string
             type: object
           - example:
@@ -2499,10 +2499,18 @@ components:
                 type: string
               name:
                 example: '*.restalchemy.com'
-                pattern: ^(@|(\*\.){0,1}([a-zA-Z0-9-_]{1,61}\.{0,1}){0,30})$
+                pattern: ^(@|\*|(\*\.){0,1}([a-zA-Z0-9_-]{1,61}\.{0,1}){0,30})$
                 type: string
             type: object
           type: object
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
         ttl:
           default: 3600
           example: 0
