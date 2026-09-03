@@ -20,6 +20,7 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.infra import constants as ic
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
 from restalchemy.dm import filters as dm_filters
@@ -359,6 +360,18 @@ class MachineVolume(
     )
     # TODO(g.melikov): DON'T USE! Should be dropped.
     device_type = properties.property(types.String(max_length=64), default="")
+    speed = properties.property(
+        types.Enum([s.value for s in ic.DiskSpeed]),
+        default=ic.DiskSpeed.WARM.value,
+    )
+    ephemeral = properties.property(types.Boolean(), default=False)
+    # Name of the storage pool (within this compute pool) the scheduler
+    # placed the volume on - needed to re-locate it by name (rather than
+    # by speed/ephemeral, which several pools could match) when
+    # allocating extra capacity for a resize or a reused volume.
+    storage_pool = properties.property(
+        types.AllowNone(types.String(max_length=255)), default=None
+    )
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,

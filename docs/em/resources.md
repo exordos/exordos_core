@@ -65,6 +65,8 @@ disk_spec:
   kind: "root_disk"
   size: 10
   image: "https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst"
+  speed: "hot"      # optional: cold | warm (default) | hot
+  ephemeral: true   # optional: default false
 ```
 
 **`disks`** — multiple disks, each with its own size and optional image/label:
@@ -77,10 +79,23 @@ disk_spec:
       image: "https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst"
     - size: 10
       label: data
+      speed: "cold"
+      ephemeral: false
 ```
 
 The first disk is the root disk; subsequent disks are data disks. A `label` is optional and used to
 identify the disk within the node.
+
+### Disk placement
+
+Each disk (root or additional) accepts two optional properties used to pick a storage pool:
+
+- `speed` — `cold`, `warm` (default), or `hot`.
+- `ephemeral` — `true` or `false` (default `false`).
+
+The scheduler prefers a storage pool with an exact `speed`/`ephemeral` match and enough free capacity.
+If no pool matches exactly, or the matching pool is full, placement falls back to any pool with room
+rather than failing outright.
 
 ### Example
 

@@ -179,15 +179,47 @@ class SchedulerService(basic.BasicService):
             for p in pools
         )
 
+    def _select_storage_pool(
+        self, pool: base.MachinePoolBundle, speed: str, ephemeral: bool, size: int
+    ) -> ua_pool.AbstractStoragePool:
+        """Select a storage pool for a volume.
+
+        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
+        rules (soft speed/ephemeral match with a capacity fallback).
+        """
+        storage_pool = ua_pool.select_storage_pool(
+            pool.pool.storage_pools, speed, ephemeral, size
+        )
+        if storage_pool is not None:
+            return storage_pool
+
+        raise ValueError(
+            f"No storage pool with {size}GiB free capacity in pool {pool.pool.uuid}"
+        )
+
+    def _find_storage_pool_by_name(
+        self, pool: base.MachinePoolBundle, name: str
+    ) -> ua_pool.AbstractStoragePool:
+        matches = [sp for sp in pool.pool.storage_pools if sp.name == name]
+
+        if not matches:
+            raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
+
+        if len(matches) > 1:
+            # Ambiguous: silently picking one could account capacity
+            # against the wrong physical pool.
+            raise ValueError(
+                f"Storage pool name {name!r} is not unique in pool {pool.pool.uuid}"
+            )
+
+        return matches[0]
+
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        # TODO(akremenetsky): Rework this simple implementation.
-        # At the moment we just take the first storage pool
-        # and allocate additional space for the volume.
-        # But we need to figure out which storage pool is
-        # the owner of the volume.
-        storage_pool = pool.pool.storage_pools[0]
+        storage_pool = self._select_storage_pool(
+            pool, volume.speed, volume.ephemeral, volume.size
+        )
         storage_pool.allocate_capacity(volume.size)
 
         pool_volume = models.MachineVolume(
@@ -199,11 +231,26 @@ class SchedulerService(basic.BasicService):
             boot=volume.boot,
             label=volume.label,
             device_type=volume.device_type,
+            speed=volume.speed,
+            ephemeral=volume.ephemeral,
+            storage_pool=storage_pool.name,
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
 
         return pool_volume
+
+    def _existing_storage_pool(
+        self, pool: base.MachinePoolBundle, pool_volume: models.MachineVolume
+    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+        """The storage pool `pool_volume` actually lives on, if known."""
+        if not pool_volume.storage_pool:
+            return None
+
+        try:
+            return self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
+        except ValueError:
+            return None
 
     def _place_volume_into_pool(
         self, volume: models.Volume, pool: base.MachinePoolBundle
@@ -221,46 +268,78 @@ class SchedulerService(basic.BasicService):
             return self._build_machine_volume(pool, volume)
 
         volumes = []
+        exact_volumes = []
         for pool_volume in pool.volumes:
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
             # volumes. Is the size is a target or actual field?
-            if pool_volume.image == volume.image and pool_volume.size <= volume.size:
-                volumes.append(pool_volume)
+            if pool_volume.image != volume.image or pool_volume.size > volume.size:
+                continue
 
-        # No volumes found, just create a new volume later
-        if not volumes:
-            return self._build_machine_volume(pool, volume)
+            volumes.append(pool_volume)
 
-        # Figure out the best volume
-        volumes.sort(key=lambda v: volume.size - v.size)
-        pool_volume = volumes[0]
-        need_size = volume.size - pool_volume.size
+            # Classify by the tier of the pool the volume is actually on,
+            # not the tier it was originally requested with: a soft-match
+            # fallback (see _select_storage_pool) can place a volume on a
+            # pool with different speed/ephemeral than pool_volume.speed/
+            # .ephemeral, which only ever record the original request.
+            actual_pool = self._existing_storage_pool(pool, pool_volume)
+            speed = actual_pool.speed if actual_pool else pool_volume.speed
+            ephemeral = (
+                actual_pool.ephemeral if actual_pool else pool_volume.ephemeral
+            )
+            if speed == volume.speed and ephemeral == volume.ephemeral:
+                exact_volumes.append(pool_volume)
 
-        # TODO(akremenetsky): Rework this simple implementation.
-        # At the moment we just take the first storage pool
-        # and allocate additional space for the volume.
-        # But we need to figure out which storage pool is
-        # the owner of the volume.
-        storage_pool = pool.pool.storage_pools[0]
-
-        # Check if the storage pool has enough space
-        if need_size and storage_pool.available < need_size:
-            return self._build_machine_volume(pool, volume)
-
-        # Allocate additional space for the volume
-        storage_pool.allocate_capacity(need_size)
-
-        # Remove the volume from the pool
-        pool.volumes.remove(pool_volume)
-        LOG.debug(
-            "Found machine volume %s for node volume %s",
-            pool_volume,
-            volume,
+        # Prefer a volume already on the requested speed/ephemeral tier,
+        # but reusing one from a different tier (soft match, like storage
+        # pool placement above) beats downloading the image again onto a
+        # brand new volume - try exact matches first, then anything else,
+        # and only give up on every candidate before creating a new one.
+        exact_volumes.sort(key=lambda v: volume.size - v.size)
+        other_volumes = sorted(
+            (v for v in volumes if v not in exact_volumes),
+            key=lambda v: volume.size - v.size,
         )
 
-        pool_volume.node_volume = volume.uuid
-        return pool_volume
+        for pool_volume in exact_volumes + other_volumes:
+            need_size = volume.size - pool_volume.size
+
+            if pool_volume.storage_pool:
+                storage_pool = self._find_storage_pool_by_name(
+                    pool, pool_volume.storage_pool
+                )
+            else:
+                # Volume predates storage_pool tracking (created before
+                # the migration that added the column) - there's no
+                # record of which pool it actually lives on, so fall
+                # back to a soft match and pin it going forward.
+                storage_pool = self._select_storage_pool(
+                    pool, pool_volume.speed, pool_volume.ephemeral, need_size
+                )
+                pool_volume.storage_pool = storage_pool.name
+
+            # Not enough space for the resize - try the next candidate
+            # instead of giving up on reuse altogether.
+            if need_size and storage_pool.available < need_size:
+                continue
+
+            # Allocate additional space for the volume
+            storage_pool.allocate_capacity(need_size)
+
+            # Remove the volume from the pool
+            pool.volumes.remove(pool_volume)
+            LOG.debug(
+                "Found machine volume %s for node volume %s",
+                pool_volume,
+                volume,
+            )
+
+            pool_volume.node_volume = volume.uuid
+            return pool_volume
+
+        # No idle volume could be reused - create a new one.
+        return self._build_machine_volume(pool, volume)
 
     def _place_node_into_pool(
         self, node: base.NodeBundle, pool: base.MachinePoolBundle
