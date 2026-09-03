@@ -182,32 +182,16 @@ class SchedulerService(basic.BasicService):
     def _find_storage_pool(
         self, pool: base.MachinePoolBundle, speed: str, ephemeral: bool, size: int
     ) -> ua_pool.AbstractStoragePool:
-        """Find a storage pool for a volume.
+        """Select a storage pool for a volume.
 
-        Soft (best-effort) match, the same way DummySoftAntiAffinityFilter
-        treats affinity: prefer a pool with an exact speed/ephemeral
-        match, but if the requested tier doesn't exist or is full, place
-        the disk on any pool with room rather than failing the whole
-        placement.
+        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
+        rules (soft speed/ephemeral match with a capacity fallback).
         """
-        exact_match = next(
-            (
-                sp
-                for sp in pool.pool.storage_pools
-                if sp.speed == speed
-                and sp.ephemeral == ephemeral
-                and sp.has_capacity(size)
-            ),
-            None,
+        storage_pool = ua_pool.select_storage_pool(
+            pool.pool.storage_pools, speed, ephemeral, size
         )
-        if exact_match is not None:
-            return exact_match
-
-        any_match = next(
-            (sp for sp in pool.pool.storage_pools if sp.has_capacity(size)), None
-        )
-        if any_match is not None:
-            return any_match
+        if storage_pool is not None:
+            return storage_pool
 
         raise ValueError(
             f"No storage pool with {size}GiB free capacity in pool {pool.pool.uuid}"
