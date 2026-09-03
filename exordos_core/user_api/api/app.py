@@ -24,7 +24,6 @@ from restalchemy.openapi import structures as openapi_structures
 
 from exordos_core import version
 from exordos_core.common import contexts as common_contexts
-from exordos_core.common.api.middlewares import cors as cors_mw
 from exordos_core.common.api.middlewares import errors as errors_mw
 from exordos_core.user_api.api import middlewares as user_api_mw
 from exordos_core.user_api.api import routes as app_routes
@@ -61,29 +60,42 @@ def get_openapi_engine():
     return openapi_engine
 
 
-def build_wsgi_application(context_storage, iam_engine_driver, allowed_origins=None):
+def build_wsgi_application(
+    context_storage,
+    iam_engine_driver,
+    cors_allowed_origins=None,
+):
+    middlewares_list = [
+        user_api_mw.SecurityRulesMiddleware,
+        middlewares.configure_middleware(
+            iam_mw.GenesisCoreAuthMiddleware,
+            # service_name="iam",
+            context_kwargs={
+                "context_storage": context_storage,
+            },
+            context_class=common_contexts.GenesisCoreAuthContext,
+            iam_engine_driver=iam_engine_driver,
+            skip_auth_endpoints=skip_auth_endpoints,
+        ),
+        errors_mw.ErrorsHandlerMiddleware,
+    ]
+
+    # CORS is optional: it wraps the authentication middleware to answer
+    # preflights and to keep the headers on error responses.
+    if cors_allowed_origins:
+        middlewares_list.append(
+            middlewares.configure_middleware(
+                user_api_mw.CorsMiddleware,
+                allowed_origins=cors_allowed_origins,
+            )
+        )
+
+    middlewares_list.append(logging_mw.LoggingMiddleware)
+
     return middlewares.attach_middlewares(
         applications.OpenApiApplication(
             route_class=get_api_application(),
             openapi_engine=get_openapi_engine(),
         ),
-        [
-            user_api_mw.SecurityRulesMiddleware,
-            middlewares.configure_middleware(
-                iam_mw.GenesisCoreAuthMiddleware,
-                # service_name="iam",
-                context_kwargs={
-                    "context_storage": context_storage,
-                },
-                context_class=common_contexts.GenesisCoreAuthContext,
-                iam_engine_driver=iam_engine_driver,
-                skip_auth_endpoints=skip_auth_endpoints,
-            ),
-            errors_mw.ErrorsHandlerMiddleware,
-            middlewares.configure_middleware(
-                cors_mw.CORSMiddleware,
-                allowed_origins=allowed_origins or [],
-            ),
-            logging_mw.LoggingMiddleware,
-        ],
+        middlewares_list,
     )

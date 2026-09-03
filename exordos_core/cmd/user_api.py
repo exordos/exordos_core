@@ -31,7 +31,6 @@ from exordos_core.common import config
 from exordos_core.common import constants as c
 from exordos_core.common import log as infra_log
 from exordos_core.common import utils
-from exordos_core.common.api.middlewares import cors as cors_mw
 from exordos_core.user_api.api import app
 from exordos_core.user_api.iam import drivers as iam_drivers
 
@@ -50,6 +49,15 @@ api_cli_opts = [
         "workers",
         default=2,
         help="How many http servers should be started",
+    ),
+    cfg.ListOpt(
+        "cors-allowed-origins",
+        default=[],
+        help=(
+            "Origins allowed to call the API from a browser, for example "
+            "https://example.com. Use * to allow any origin. CORS handling "
+            "is disabled while the list is empty."
+        ),
     ),
 ]
 
@@ -76,7 +84,6 @@ CONF.register_cli_opts(api_cli_opts, DOMAIN)
 CONF.register_cli_opts(iam_cli_opts, DOMAIN_IAM)
 ra_config_opts.register_posgresql_db_opts(CONF)
 sdk_opts.register_event_opts(CONF)
-cors_mw.register_cors_opts(CONF)
 
 
 def main():
@@ -121,7 +128,7 @@ def main():
             wsgi_app=app.build_wsgi_application(
                 context_storage=context_storage,
                 iam_engine_driver=iam_engine_driver,
-                allowed_origins=CONF["cors"].allowed_origins,
+                cors_allowed_origins=CONF[DOMAIN].cors_allowed_origins,
             ),
             host=CONF[DOMAIN].bind_host,
             port=CONF[DOMAIN].bind_port,
