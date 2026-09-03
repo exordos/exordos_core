@@ -575,6 +575,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(target_volume.size - actual_volume.size)
+        if not volume.storage_pool:
+            volume.storage_pool = storage_pool.name
 
         return True
 
