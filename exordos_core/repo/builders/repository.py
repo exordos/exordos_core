@@ -22,6 +22,7 @@ from gcl_looper.services.oslo import base as oslo_base
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from packaging import version as packaging_version
+from restalchemy.dm import filters as ra_filters
 
 from exordos_core.repo.dm import models
 
@@ -113,9 +114,11 @@ class RepoProxyBuilderService(
 
     def _refresh_repository(self, instance: models.Repository) -> None:
         """Actualize elements in the repository."""
-        # Get existing elements for this repository
-        existing_elements = {
-            (elem.name, elem.version): elem
+        # Get existing elements for this repository. Only the UUIDs are kept:
+        # the full records carry the manifest, specification and inventory
+        # dicts, and are needed only for the few elements to be deleted below.
+        existing_uuids = {
+            (elem.name, elem.version): elem.uuid
             for elem in models.RepoElement.objects.get_all(
                 filters={"repository": instance.uuid},
             )
@@ -125,9 +128,12 @@ class RepoProxyBuilderService(
         inventory_elements = {
             (e.name, e.version): e for e in instance.iter_elements_in_inventory()
         }
+        inventory_keys = frozenset(inventory_elements)
         new_elements_count = 0
-        for key in inventory_elements.keys() - existing_elements.keys():
-            element = inventory_elements[key]
+        for key in inventory_keys - existing_uuids.keys():
+            # Drop the element from the mapping once handled: in COPY mode it
+            # holds the full downloaded manifest, specification and inventory.
+            element = inventory_elements.pop(key)
 
             # In COPY mode, actualize element to download full data
             if instance.sync_mode == models.SyncMode.COPY:
@@ -147,8 +153,10 @@ class RepoProxyBuilderService(
         # Remove old elements that are no longer in inventory,
         # but keep installed ones
         deleted_elements_count = 0
-        for key in existing_elements.keys() - inventory_elements.keys():
-            element = existing_elements[key]
+        for key in existing_uuids.keys() - inventory_keys:
+            element = models.RepoElement.objects.get_one(
+                filters={"uuid": ra_filters.EQ(existing_uuids[key])},
+            )
 
             # Skip deletion if element is installed
             if (
