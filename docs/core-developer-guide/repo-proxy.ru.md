@@ -48,7 +48,7 @@ PostgreSQL через ORM restalchemy.
 | `priority` | Integer (0–16384) | Выше = предпочтительнее при разрешении зависимостей. По умолчанию: 8192 |
 | `refresh_rate` | Integer (секунды) | Периодичность обновления инвентаря. 0 = отключено. По умолчанию: 3600 |
 | `sync_mode` | Enum | `copy` — полная загрузка данных элемента сразу; `lazy` — сохраняется только имя/версия, манифест загружается по запросу |
-| `driver_spec` | KindModel (JSONB) | Конфигурация драйвера: `NginxDriverSpec`, `BootstrapDriverSpec` или `DummyMigrationDriverSpec` |
+| `driver_spec` | KindModel (JSONB) | Конфигурация драйвера: `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec` или `DatabaseDriverSpec` |
 | `next_refresh` | DateTime | Время следующего планового обновления |
 
 Ключевые методы:
@@ -178,6 +178,14 @@ JSONB-колонке `driver_spec`. Каждая спецификация име
 функциональности репозитория — `get_inventory()` возвращает пустой словарь
 элементов, а `get_element()` читает данные напрямую из базы.
 
+### DatabaseDriverSpec (`kind: "database"`)
+
+Для репозиториев на основе базы данных с поддержкой загрузки (upload). Спека
+не имеет полей. Загруженные элементы хранятся непосредственно в базе данных;
+`get_inventory()` строит инвентарь динамически из записей `RepoElement`,
+привязанных к репозиторию, а `get_element()` читает элементы и артефакты из
+базы данных.
+
 ## Драйверы
 
 Все драйверы наследуются от `AbstractProxyRepoDriver`
@@ -189,6 +197,7 @@ points `exordos.repo_proxy.drivers` в `pyproject.toml`:
 NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
+DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
 ```
 
 ### Абстрактный интерфейс

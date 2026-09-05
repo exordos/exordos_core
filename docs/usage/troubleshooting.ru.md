@@ -26,16 +26,6 @@ exordos compute nodes list
 exordos compute hypervisors list
 ```
 
-Чтобы узнать, на какой гипервизор размещена нода, вызовите действие `details`:
-
-```bash
-curl -H "Authorization: Bearer $TOKEN" \
-  http://<api>/v1/compute/nodes/<uuid>/actions/details
-```
-
-Ответ — `{"hypervisor": "<uuid>"}` с UUID гипервизора или `{"hypervisor": null}`, если нода ещё
-не запланирована.
-
 См. [Локальное развёртывание](local_deployment.md) — требования к настройке гипервизора.
 
 ## `$core.config.configs` падает вместо рендеринга

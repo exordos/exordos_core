@@ -416,8 +416,8 @@ resources:
 
 - Variables are the primary mechanism for making elements configurable without changing the manifest.
 - Use `:value` to reference a variable's current value: `$core.vs.variables.$default_cores:value`.
-- The `fallback_strategy: ignore` means the variable has no value if no profile matches. Use
-  `fallback_strategy: default` with a `default` field to provide a fallback.
+- The `fallback_strategy: ignore` means the variable has no value if no profile matches. Currently only
+  `ignore` is supported.
 - Profile-based variables are resolved at install time based on the realm's active profile.
 - Selector-based variables can be changed at runtime by creating/modifying `$core.vs.values` entries.
 
@@ -467,7 +467,7 @@ resources:
 - A value without a `variable` field is a standalone value — it can be referenced directly but does not
   feed into any variable's selector.
 - When multiple values are bound to the same variable, `selector_strategy: latest` picks the most recently
-  created one; `selector_strategy: manual` requires an administrator to explicitly select one.
+  created one. Currently only `latest` is supported.
 
 ---
 
@@ -514,7 +514,7 @@ A DNS record within a domain. The kind path includes the parent domain's key nam
 | `type` | string | Record type: `A`, `NS`, `SOA`, `TXT`. |
 | `record` | object | Type-specific record data (see below). |
 | `ttl` | integer | TTL in seconds (default: 3600). |
-| `prio` | integer | Priority (for MX records). |
+| `prio` | integer | Priority. |
 | `disabled` | boolean | If true, the record is not served. |
 | `project_id` | uuid | Project UUID. |
 
@@ -827,7 +827,6 @@ DNS-01 challenge using the platform's CoreDNS). Only the `dns_core` method is cu
 | `email` | string | Email for ACME registration. |
 | `method` | object | Provisioning method (see below). |
 | `domains` | array | List of domains (supports wildcards like `*.example.com`). |
-| `expiration_threshold` | integer | Days before expiration to trigger renewal. |
 | `overcome_threshold` | boolean | Internal field populated from agent state; not settable via the user API. |
 | `constructor` | object | How the cert/key are stored (default: `{"kind": "plain"}`). |
 | `project_id` | uuid | Project UUID. |
@@ -853,7 +852,6 @@ resources:
       domains:
         - "*.example.com"
         - "example.com"
-      expiration_threshold: 30
 ```
 
 ### Notes
@@ -861,8 +859,7 @@ resources:
 - The `dns_core` method uses the platform's built-in CoreDNS to fulfill ACME DNS-01 challenges
   automatically. The domain must be managed by the platform's DNS.
 - After provisioning, the certificate and key are stored on the target node's agent.
-- Use `expiration_threshold` to control automatic renewal. The platform renews certificates before they
-  expire.
+- The platform renews certificates automatically before they expire.
 
 ---
 

@@ -47,7 +47,7 @@ Table: `repo_repositories`
 | `priority` | Integer (0–16384) | Higher = preferred for dependency resolution. Default: 8192 |
 | `refresh_rate` | Integer (seconds) | How often to re-fetch inventory. 0 = disabled. Default: 3600 |
 | `sync_mode` | Enum | `copy` — download full element data immediately; `lazy` — download only name/version, fetch manifest on demand |
-| `driver_spec` | KindModel (JSONB) | Driver configuration. One of `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec` |
+| `driver_spec` | KindModel (JSONB) | Driver configuration. One of `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec`, `DatabaseDriverSpec` |
 | `next_refresh` | DateTime | When the next periodic refresh should occur |
 
 Key methods:
@@ -174,6 +174,13 @@ have the repo proxy subsystem. It does not provide any real repository
 functionality — `get_inventory()` returns an empty elements dict, and
 `get_element()` reads from the database directly.
 
+### DatabaseDriverSpec (`kind: "database"`)
+
+For database-backed repositories with upload support. The spec has no fields.
+Uploaded elements are stored directly in the database; `get_inventory()` builds
+the inventory dynamically from the `RepoElement` records attached to the
+repository, and `get_element()` reads elements and artifacts from the database.
+
 ## Drivers
 
 All drivers extend `AbstractProxyRepoDriver`
@@ -185,6 +192,7 @@ All drivers extend `AbstractProxyRepoDriver`
 NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
+DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
 ```
 
 ### Abstract interface

@@ -9,7 +9,7 @@ import links to exported resources at manifest install/upgrade time.
 
 ## Data Models
 
-### Export (`exordos_core/elements/dm/models.py:925`)
+### Export (`exordos_core/elements/dm/models.py:949`)
 
 | Field     | Type           | Description                            |
 |-----------|----------------|----------------------------------------|
@@ -21,7 +21,7 @@ import links to exported resources at manifest install/upgrade time.
 The `full_link` property returns `{element.link}.{link}` — the canonical
 identifier used for matching imports.
 
-### Import (`exordos_core/elements/dm/models.py:958`)
+### Import (`exordos_core/elements/dm/models.py:982`)
 
 | Field            | Type             | Description                                         |
 |------------------|------------------|-----------------------------------------------------|
@@ -34,7 +34,7 @@ identifier used for matching imports.
 The `link` property returns `{element.link}.imports.${name}` — how the
 imported resource is addressed inside the importing element.
 
-### ImportedResource (`exordos_core/elements/dm/models.py:996`)
+### ImportedResource (`exordos_core/elements/dm/models.py:1020`)
 
 A lightweight proxy that delegates attribute access to the underlying
 `Resource`. Used by the element engine to represent imported resources in
@@ -260,5 +260,5 @@ imports/exports.
 
 ## See also
 
-- [Core Developer Guide](index.md) — architecture overview
+- [Core Developer Guide](core-guide.md) — architecture overview
 - [Manifest reference](../em/manifest.md) — manifest YAML specification

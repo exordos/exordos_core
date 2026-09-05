@@ -25,16 +25,6 @@ exordos compute nodes list
 exordos compute hypervisors list
 ```
 
-To see which hypervisor a node was placed on, call the node's `details` action:
-
-```bash
-curl -H "Authorization: Bearer $TOKEN" \
-  http://<api>/v1/compute/nodes/<uuid>/actions/details
-```
-
-It answers `{"hypervisor": "<uuid>"}` with a string UUID, or `{"hypervisor": null}` while the
-node hasn't been scheduled yet.
-
 See [Local Deployment](local_deployment.md) for hypervisor setup requirements.
 
 ## `$core.config.configs` fails instead of rendering
