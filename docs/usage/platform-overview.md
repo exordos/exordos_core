@@ -63,7 +63,7 @@ The platform provides additional resource types; the following are its core reso
 | Resource | Purpose |
 | --- | --- |
 | Node | A virtual machine or physical server. A Node is not a container. |
-| Set | A group of homogeneous Nodes with a specified replica count and update strategy. |
+| Set | A group of homogeneous Nodes with a specified replica count. |
 | Volume | An attachable disk volume for persistent data. |
 | Network | A network resource connecting compute nodes and services. |
 | Config | Configuration data delivered to components. |
@@ -77,7 +77,6 @@ Exordos Core provides:
 
 - creation, configuration, and deletion of virtual machines and physical servers;
 - Node Set creation for workload scaling;
-- `in-place`, `replace`, and `rolling` Set update strategies with rollback;
 - management of volumes, network resources, DNS, and load balancers;
 - element installation, update, removal, and dependency resolution;
 - centralized management of configuration, secrets, values, variables, and profiles;

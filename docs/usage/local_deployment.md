@@ -17,14 +17,18 @@ Install the Exordos CLI:
 curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
+The installer puts the `exordos` binary into `~/.local/bin`. Restart the shell or run `export PATH="$HOME/.local/bin:$PATH"` before using the CLI.
+
 ### Packages
 
 Install necessary packages:
 
 ```bash
 sudo apt update
-sudo apt install qemu-kvm qemu-utils libvirt-daemon-system libvirt-dev mkisofs -y
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev genisoimage -y
 ```
+
+On Ubuntu 24.04 the same tools are provided by the `qemu-kvm` and `mkisofs` packages; on Ubuntu 26.04 `qemu-kvm` has no installation candidate and `mkisofs` is replaced by `genisoimage`.
 
 Add the current user to the required groups:
 
@@ -40,8 +44,10 @@ The local host must be configured as a hypervisor so that the platform can sched
 Initialize the current host as a hypervisor:
 
 ```bash
-exordos compute hypervisors init
+sudo "$(command -v exordos)" compute hypervisors init --user "$USER"
 ```
+
+The command needs root privileges to install the network interface ROM file into `/usr/share` and to configure libvirt. The `--user` option adds the current unprivileged user to the `libvirt` and `kvm` groups; the explicit path is required because the CLI lives in `~/.local/bin`, which is not part of the root `PATH`.
 
 ### Key parameters
 
@@ -50,6 +56,7 @@ Run `exordos compute hypervisors init --help` to see all available options. The 
 | Option | Description |
 |---|---|
 | `--pool-name TEXT` | Name of the libvirt storage pool to use for VM disk images. Defaults to `default`. |
+| `--user TEXT` | Unprivileged user to add to the `libvirt` and `kvm` groups. |
 | `--packer` / `-p` | Install HashiCorp Packer alongside the hypervisor setup. |
 | `--romfile-version TEXT` | Version of the network interface ROM file to install. Defaults to `latest`. |
 
@@ -61,7 +68,7 @@ Once the local machine is configured as a hypervisor, run the bootstrap procedur
 exordos bootstrap -i <version> -f -m core --ssh-public-key /path/to/public/key
 ```
 
-where `<version>` is the version of the platform to deploy (e.g., `0.2.14`). Available versions can be found on the [releases page](https://github.com/exordos/exordos_core/releases).
+where `<version>` is the version of the platform to deploy (e.g., `0.2.22`). Available versions can be found on the [releases page](https://github.com/exordos/exordos_core/releases).
 
 The platform can be started either from a **local build** (a locally built image) or from a **remote repository** (a prebuilt image fetched from the official repository).
 
@@ -74,7 +81,7 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 **Remote repository example (default):**
 
 ```bash
-exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.14/ -m core
+exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.22/ -m core
 ```
 
 ### Key parameters
@@ -104,6 +111,8 @@ If a public SSH key was provided during bootstrap via `--ssh-public-key`, you ca
 ```bash
 ssh ubuntu@10.20.0.2
 ```
+
+If the private key is not one of the default SSH identities, pass it explicitly: `ssh -i /path/to/private/key ubuntu@10.20.0.2`.
 
 ### API access
 
@@ -139,6 +148,8 @@ with `Can't parse value: uuid=default.`
 
 - `set-realm` registers the platform endpoint under the name `local` and marks it as the active realm.
 - `set-context` creates a named context with the admin credentials and marks it as the active context.
+
+Note that `bootstrap` itself has already recorded the installation in the CLI configuration as a realm named after the installation (by default `exordos-core`) with an `admin` context; the commands above add a separate `local` realm pointing at the same endpoint.
 
 After configuration, you can manage the platform using `exordos` commands, for example:
 

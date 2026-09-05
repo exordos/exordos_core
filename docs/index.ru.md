@@ -50,8 +50,6 @@ curl -fsSL https://repo.exordos.com/install.sh | sh
 
 [Перейти к руководству →](./usage/security.md)
 
-## Экосистема
-
 ## Прочее
 
 Дополнительные справочные материалы по платформе.

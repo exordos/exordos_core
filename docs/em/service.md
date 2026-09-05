@@ -255,10 +255,10 @@ Services can define dependencies that run before or after the main service:
 
 ### Dependency Validation
 
-- `before` and `after` are required arrays (can be empty)
+- `before` and `after` are optional arrays; they default to empty
 - Each dependency must have a valid `kind`: `shell` or `service`
 - Shell dependencies require a `command` field
-- Service dependencies require `service` (UUID) and `service_name` fields
+- Service dependencies require a `service` (UUID) field
 
 ## Dataplane Behavior
 

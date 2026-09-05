@@ -44,7 +44,7 @@ When the wizard asks **"Choose project type"**, pick the one that matches your s
 
 | Type | Description |
 |---|---|
-| **Python** | Python application. Supports `pip` and `uv` package managers. Optionally installs PostgreSQL, Redis, and systemd services. |
+| **Python** | Python application. Supports `pip` and `uv` package managers. Optionally manages systemd services; PostgreSQL is enabled with `--enable-pgsql`. |
 | **Node.js** | Node.js application. Optionally installs Nginx, PM2, and Redis. |
 | **Generic** | Any other runtime or language. Use this when none of the above fit — you'll configure build and deploy steps manually. |
 
@@ -73,7 +73,7 @@ The generated manifest is a starting point. You can edit it by hand at any time.
 `exordos init` can generate a ready-to-use CI/CD pipeline configuration (`--ci-cd`). Currently supported:
 
 - **GitLab CI** — produces a `.gitlab-ci.yml` that runs `exordos build`, `exordos push`, and `exordos deploy` on every relevant event.
-- **GitHub Actions** — produces a `.github/workflows/` directory with workflows for build, push, and deploy.
+- **GitHub Actions** — not implemented yet: the option is accepted, but no files are generated.
 
 ---
 
