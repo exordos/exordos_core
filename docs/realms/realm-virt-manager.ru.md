@@ -11,13 +11,15 @@
 
 ```bash
 sudo apt update
-sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients virt-manager zstd
+sudo apt install -y qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virt-manager zstd
 sudo usermod -aG libvirt,kvm "$USER"
 # Выйдите из системы и зайдите снова, чтобы применить новую группу.
 
 cd /var/lib/libvirt/images/
+# Dev-образ публикуется для каждой версии realm; выберите последнюю на
+# https://repo.exordos.com/exordos-elements/exordos-realm/
 sudo wget -O exordos-realm-dev.raw.zst \
-  https://repo.exordos.com/exordos-elements/exordos-realm/latest/images/exordos-realm-dev.raw.zst
+  https://repo.exordos.com/exordos-elements/exordos-realm/0.1.6/images/exordos-realm-dev.raw.zst
 sudo zstd --decompress --keep exordos-realm-dev.raw.zst
 sudo chown libvirt-qemu:kvm exordos-realm-dev.raw
 sudo qemu-img info exordos-realm-dev.raw

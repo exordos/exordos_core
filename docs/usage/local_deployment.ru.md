@@ -17,14 +17,18 @@ icon: lucide/hard-drive-download
 curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
+Установщик помещает бинарный файл `exordos` в `~/.local/bin`. Перезапустите оболочку или выполните `export PATH="$HOME/.local/bin:$PATH"` перед использованием CLI.
+
 ### Пакеты
 
 Установите необходимые пакеты:
 
 ```bash
 sudo apt update
-sudo apt install qemu-kvm qemu-utils libvirt-daemon-system libvirt-dev mkisofs -y
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev genisoimage -y
 ```
+
+В Ubuntu 24.04 те же инструменты предоставляют пакеты `qemu-kvm` и `mkisofs`; в Ubuntu 26.04 пакет `qemu-kvm` не имеет кандидата на установку, а `mkisofs` заменён на `genisoimage`.
 
 Добавьте текущего пользователя в необходимые группы:
 
@@ -40,8 +44,10 @@ sudo adduser $USER kvm
 Инициализируйте текущую машину как гипервизор:
 
 ```bash
-exordos compute hypervisors init
+sudo "$(command -v exordos)" compute hypervisors init --user "$USER"
 ```
+
+Команде нужны права root для установки ROM-файла сетевого интерфейса в `/usr/share` и настройки libvirt. Параметр `--user` добавляет текущего непривилегированного пользователя в группы `libvirt` и `kvm`; явный путь обязателен, так как CLI установлен в `~/.local/bin`, которого нет в `PATH` суперпользователя.
 
 ### Основные параметры
 
@@ -50,6 +56,7 @@ exordos compute hypervisors init
 | Параметр | Описание |
 |---|---|
 | `--pool-name TEXT` | Имя пула хранилища libvirt для образов дисков виртуальных машин. По умолчанию: `default`. |
+| `--user TEXT` | Непривилегированный пользователь, которого нужно добавить в группы `libvirt` и `kvm`. |
 | `--packer` / `-p` | Установить HashiCorp Packer вместе с настройкой гипервизора. |
 | `--romfile-version TEXT` | Версия ROM-файла сетевого интерфейса для установки. По умолчанию: `latest`. |
 
@@ -61,7 +68,7 @@ exordos compute hypervisors init
 exordos bootstrap -i <version> -f -m core --ssh-public-key /path/to/public/key
 ```
 
-где `<version>` — версия платформы для развёртывания (например, `0.2.14`). Доступные версии можно посмотреть на [странице релизов](https://gitverse.ru/exordos/exordos_core/releases).
+где `<version>` — версия платформы для развёртывания (например, `0.2.22`). Доступные версии можно посмотреть на [странице релизов](https://gitverse.ru/exordos/exordos_core/releases).
 
 Платформу можно запустить как из **локальной сборки** (локально собранный образ), так и из **удалённого репозитория** (готовый образ, загруженный из официального репозитория).
 
@@ -74,7 +81,7 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 **Пример с удалённым репозиторием (по умолчанию):**
 
 ```bash
-exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.14/ -m core
+exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.22/ -m core
 ```
 
 ### Основные параметры
@@ -104,6 +111,8 @@ exordos bootstrap -i https://repo.exordos.com/exordos-elements/core/0.2.14/ -m c
 ```bash
 ssh ubuntu@10.20.0.2
 ```
+
+Если закрытый ключ не входит в состав стандартных SSH-идентификаторов, укажите его явно: `ssh -i /path/to/private/key ubuntu@10.20.0.2`.
 
 ### Доступ через API
 
@@ -140,6 +149,8 @@ CLI аутентифицируется через алиас клиента `def
 
 - `set-realm` — регистрирует endpoint платформы под именем `local` и устанавливает его как активный realm.
 - `set-context` — создаёт именованный контекст с учётными данными администратора и устанавливает его как активный.
+
+Обратите внимание: сам `bootstrap` уже записал инсталляцию в конфигурацию CLI как realm с именем инсталляции (по умолчанию `exordos-core`) с контекстом `admin`; приведённые команды добавляют отдельный realm `local`, указывающий на тот же endpoint.
 
 После настройки можно управлять платформой с помощью команд `exordos`, например:
 

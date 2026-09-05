@@ -122,7 +122,7 @@ api_version: "v1"
 | `name` | string | Name of the element. Must be unique within a realm. |
 | `description` | string | Human-readable description. |
 | `schema_version` | integer | Manifest schema version. Currently `1`. |
-| `version` | string | Element version, see [exordos_devtools](https://infraguys.github.io/exordos_devtools/). |
+| `version` | string | Element version. |
 | `api_version` | string | API version the manifest targets. Currently `v1`. |
 | `uuid` | uuid | Optional. A fixed UUID for the element. Auto-generated if omitted. |
 
@@ -395,6 +395,7 @@ The following variables are available in manifest templates:
 | `{{ name }}` | Name of the element |
 | `{{ images }}` | Mapping of image names to their URN references, built for this element |
 | `{{ manifests }}` | List of manifest files |
+| `{{ artifacts }}` | Mapping of artifact names to their URN references |
 
 Additional variables can be passed with `exordos build --manifest-var key=value`.
 

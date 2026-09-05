@@ -27,6 +27,12 @@ Install Exordos CLI:
 curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
+The installer puts the `exordos` binary into `~/.local/bin`. Restart the shell or extend `PATH` before running any `exordos` command:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 Review available commands and bootstrap options:
 
 ```bash
@@ -40,8 +46,10 @@ Install QEMU/KVM version 8.2 or later, libvirt version 10.0 or later, and image 
 
 ```bash
 sudo apt update
-sudo apt install qemu-kvm qemu-utils libvirt-daemon-system libvirt-dev mkisofs -y
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev genisoimage -y
 ```
+
+On Ubuntu 24.04 the same tools are provided by the `qemu-kvm` and `mkisofs` packages. On Ubuntu 26.04, `qemu-kvm` is a virtual package without an installation candidate and `mkisofs` is replaced by `genisoimage`, so the command above is the one that installs successfully on both releases.
 
 Add the user that runs the CLI to the `libvirt` and `kvm` groups:
 
@@ -55,8 +63,10 @@ Log out and log in again after changing group membership.
 Initialize the host as a hypervisor with superuser privileges:
 
 ```bash
-sudo exordos compute hypervisors init
+sudo "$(command -v exordos)" compute hypervisors init --user "$USER"
 ```
+
+The command needs root privileges to install the network interface ROM file into `/usr/share` and to configure libvirt. The `--user` option adds the specified unprivileged user to the `libvirt` and `kvm` groups; without it (or with a plain `sudo exordos ...`) only root is configured. Note the explicit path: the CLI is installed into `~/.local/bin`, which is not part of the root `PATH`, so `sudo exordos ...` fails with `command not found`.
 
 Review initialization options:
 
@@ -82,10 +92,10 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 exordos bootstrap -i <version> -m core
 ```
 
-For example, to install version `0.2.14`:
+For example, to install version `0.2.22`:
 
 ```bash
-exordos bootstrap -i 0.2.14 -m core
+exordos bootstrap -i 0.2.22 -m core
 ```
 
 Key bootstrap options:
@@ -102,6 +112,8 @@ Key bootstrap options:
 | `--hyper-storage-pool` | libvirt storage pool for virtual machine disks. |
 
 After `bootstrap` completes successfully, the platform creates and starts the primary virtual machine, and the command prints the administrator login and password for the HTTP API. When `--save-admin-password-file` is set, the API password is saved to the specified file. On an error, the command prints an error message and exits with a non-zero status.
+
+By default, `bootstrap` also registers the installation in the Exordos ecosystem and sends anonymous usage telemetry; pass `--no-registration` and `--disable-telemetry` to opt out. It also records the installation in the CLI configuration (`~/.exordos/exordosctl.yaml`) as a realm named after the installation (by default `exordos-core`) with an `admin` context, and makes it the current realm if no current realm is configured yet.
 
 Store generated API administrator credentials in a secure location. Do not expose passwords in logs, manifests, or source-control systems.
 
@@ -129,6 +141,8 @@ Connect to the primary virtual machine. Use the private part of the SSH key whos
 ssh ubuntu@<core-ip>
 ```
 
+If the private key is not one of the default SSH identities, pass it explicitly: `ssh -i /path/to/private/key ubuntu@<core-ip>`.
+
 For the default bootstrap network `10.20.0.0/22`, the primary virtual machine address is `10.20.0.2`. The HTTP API administrator login and password are not used for SSH.
 
 ### Configure CLI
@@ -139,6 +153,8 @@ Register the platform endpoint and administrator context. For `<ADMIN_USERNAME>`
 exordos settings set-realm local --endpoint http://<core-ip>/api/core --current
 exordos settings set-context local --name admin -u <ADMIN_USERNAME> -p <ADMIN_PASSWORD> --current
 ```
+
+These commands register an additional realm named `local` and make it the current one; `bootstrap` has already created its own realm named after the installation (for example `exordos-core`).
 
 Verify the connection:
 
@@ -157,7 +173,7 @@ After configuring the CLI, perform the following checks in order:
 
 | Command | Purpose and expected result |
 | --- | --- |
-| `exordos realms list` | Lists local realms. The `local` realm must be present. |
+| `exordos realms list` | Lists realms known to the CLI. After configuring the CLI, the `local` realm must be present. |
 | `exordos compute hypervisors list` | Lists registered hypervisors. The prepared hypervisor must be present. |
 | `exordos compute nodes list` | Lists Nodes. After bootstrap, the platform primary Node is available. |
 | `exordos elements list` | Lists installed elements. |

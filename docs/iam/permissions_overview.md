@@ -255,7 +255,7 @@ Below is a recommended integration model for a business service with IAM.
 ```python
 class IamClient:
     def introspect(self, token: str) -> dict:
-        # HTTP GET /v1/iam/clients/<client_uuid>/actions/introspect/invoke
+        # HTTP GET /v1/iam/clients/<client_uuid>/actions/introspect
         # with Authorization: Bearer <token>
         ...
 
@@ -357,12 +357,9 @@ The following errors may occur when working with the IAM API:
 
 ```json
 {
-  "status": 403,
-  "json": {
-    "code": 403,
-    "type": "PermissionDeniedException",
-    "message": "User does not have required permission: compute.vm.create"
-  }
+  "type": "PolicyNotAuthorized",
+  "code": 10000001,
+  "message": "Policy rule compute.vm.create is disallowed."
 }
 ```
 
@@ -370,12 +367,9 @@ The following errors may occur when working with the IAM API:
 
 ```json
 {
-  "status": 404,
-  "json": {
-    "code": 404,
-    "type": "NotFoundException",
-    "message": "Role with uuid 6b2c3d4e-5f67-789a-bcde-f01234567890 not found"
-  }
+  "type": "RecordNotFound",
+  "code": 404,
+  "message": "Can't found record in storage for model (<class 'exordos_core.user_api.iam.dm.models.Role'>) and filters ({'uuid': <EQ (UUID('6b2c3d4e-5f67-789a-bcde-f01234567890'))>})."
 }
 ```
 
@@ -383,12 +377,9 @@ The following errors may occur when working with the IAM API:
 
 ```json
 {
-  "status": 400,
-  "json": {
-    "code": 400,
-    "type": "ValidationErrorException",
-    "message": "Field 'name' must be between 0 and 255 characters"
-  }
+  "type": "PropertyRequired",
+  "code": 400,
+  "message": "Value for property 'name' for model <class 'exordos_core.user_api.iam.dm.models.Role'> is required! Property should not be None value."
 }
 ```
 

@@ -27,6 +27,12 @@ icon: lucide/settings
 curl -fsSL https://repo.exordos.com/install.sh | sh
 ```
 
+Установщик помещает бинарный файл `exordos` в `~/.local/bin`. Перезапустите оболочку или добавьте этот каталог в `PATH` перед выполнением команд `exordos`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 Проверьте доступные команды и параметры:
 
 ```bash
@@ -40,8 +46,10 @@ exordos bootstrap --help
 
 ```bash
 sudo apt update
-sudo apt install qemu-kvm qemu-utils libvirt-daemon-system libvirt-dev mkisofs -y
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev genisoimage -y
 ```
+
+В Ubuntu 24.04 те же инструменты предоставляют пакеты `qemu-kvm` и `mkisofs`. В Ubuntu 26.04 пакет `qemu-kvm` является виртуальным и не имеет кандидата на установку, а `mkisofs` заменён на `genisoimage`, поэтому приведённая выше команда успешно устанавливается в обеих версиях.
 
 Добавьте пользователя, от имени которого будет выполняться CLI, в группы `libvirt` и `kvm`:
 
@@ -55,8 +63,10 @@ sudo adduser $USER kvm
 Инициализируйте хост-машину как гипервизор от имени суперпользователя:
 
 ```bash
-sudo exordos compute hypervisors init
+sudo "$(command -v exordos)" compute hypervisors init --user "$USER"
 ```
+
+Команде нужны права root для установки ROM-файла сетевого интерфейса в `/usr/share` и настройки libvirt. Параметр `--user` добавляет указанного непривилегированного пользователя в группы `libvirt` и `kvm`; без него (как и при простом `sudo exordos ...`) настраивается только root. Обратите внимание на явный путь: CLI установлен в `~/.local/bin`, которого нет в `PATH` суперпользователя, поэтому `sudo exordos ...` завершается с ошибкой `command not found`.
 
 Просмотрите параметры инициализации:
 
@@ -82,10 +92,10 @@ exordos bootstrap -i /path/to/exordos-core.raw -m core
 exordos bootstrap -i <version> -m core
 ```
 
-Например, для установки версии `0.2.14`:
+Например, для установки версии `0.2.22`:
 
 ```bash
-exordos bootstrap -i 0.2.14 -m core
+exordos bootstrap -i 0.2.22 -m core
 ```
 
 Ключевые параметры bootstrap:
@@ -102,6 +112,8 @@ exordos bootstrap -i 0.2.14 -m core
 | `--hyper-storage-pool` | Пул libvirt для дисков виртуальных машин. |
 
 После успешного завершения `bootstrap` платформа создаёт и запускает основную виртуальную машину, а команда выводит логин и пароль администратора для HTTP API. Если указан `--save-admin-password-file`, пароль API сохраняется в заданный файл. При ошибке команда выводит сообщение об ошибке и завершается с ненулевым кодом.
+
+По умолчанию `bootstrap` также регистрирует инсталляцию в экосистеме Exordos и отправляет анонимную телеметрию использования; для отказа передайте `--no-registration` и `--disable-telemetry`. Кроме того, инсталляция записывается в конфигурацию CLI (`~/.exordos/exordosctl.yaml`) как realm с именем инсталляции (по умолчанию `exordos-core`) с контекстом `admin`, который становится текущим, если текущий realm ещё не настроен.
 
 Сохраните сгенерированные учётные данные API администратора в защищённом хранилище. Не передавайте пароль в журналах, манифестах или системах контроля версий.
 
@@ -129,6 +141,8 @@ exordos bootstrap -i <version> -m core --admin-password <admin-password>
 ssh ubuntu@<core-ip>
 ```
 
+Если закрытый ключ не входит в состав стандартных SSH-идентификаторов, укажите его явно: `ssh -i /path/to/private/key ubuntu@<core-ip>`.
+
 Для стандартной сети bootstrap `10.20.0.0/22` адрес основной виртуальной машины — `10.20.0.2`. Логин и пароль администратора для HTTP API не используются для SSH.
 
 ### Настройка CLI
@@ -139,6 +153,8 @@ ssh ubuntu@<core-ip>
 exordos settings set-realm local --endpoint http://<core-ip>/api/core --current
 exordos settings set-context local --name admin -u <ADMIN_USERNAME> -p <ADMIN_PASSWORD> --current
 ```
+
+Эти команды регистрируют дополнительный realm с именем `local` и делают его текущим; собственный realm с именем инсталляции (например `exordos-core`) уже создан командой `bootstrap`.
 
 После настройки CLI проверьте подключение:
 
@@ -157,7 +173,7 @@ exordos elements list
 
 | Команда | Назначение и ожидаемый результат |
 | --- | --- |
-| `exordos realms list` | Выводит список локальных realm. В списке должен присутствовать realm `local`. |
+| `exordos realms list` | Выводит realm, известные CLI. После настройки CLI в списке должен присутствовать realm `local`. |
 | `exordos compute hypervisors list` | Выводит зарегистрированные гипервизоры. В списке должен присутствовать подготовленный гипервизор. |
 | `exordos compute nodes list` | Выводит список Node. После bootstrap в списке доступна основная Node платформы. |
 | `exordos elements list` | Выводит список установленных элементов. |

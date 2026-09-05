@@ -248,11 +248,7 @@ sysctl --system
 
 ## Element manifest example
 
-Examples:
-
-- [Jitsi element](https://github.com/infraguys/exordos_basic/blob/master/exordos/manifests/basic.yaml.j2)
-
- Basic manifest for https site (let's imagine that some nodes are already exist):
+Basic manifest for https site (let's imagine that some nodes are already exist):
 
 ```yaml
 ...
@@ -321,7 +317,7 @@ imports:
         value: /
         actions:
           - kind: backend
-            pool: $core.network.lb.$basic_lb.backend_pools.$basic_backend_https:uuid
+            pool: $core.network.lb.$basic_lb.backend_pools.$basic_backend_http:uuid
   $basic.imports.$core_public_domain.records:
     basic_a_record:
       domain: "$basic.imports.$core_public_domain:uuid"
@@ -337,6 +333,6 @@ imports:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       email: user@exordos.com
       domains:
-        f"example.{$basic.imports.$core_public_domain:name}"
-        f"*.example.{$basic.imports.$core_public_domain:name}"
+        - f"example.{$basic.imports.$core_public_domain:name}"
+        - f"*.example.{$basic.imports.$core_public_domain:name}"
 ```

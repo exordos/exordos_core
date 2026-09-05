@@ -50,8 +50,6 @@ Documentation for security engineers. Special focus on IAM and user management, 
 
 [Go to the guide →](./usage/security.md)
 
-## Ecosystem
-
 ## Miscellaneous
 
 Additional reference materials for the platform:

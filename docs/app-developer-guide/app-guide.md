@@ -9,7 +9,7 @@ This guide walks you through everything you need to build, publish, and deploy *
 
 ### 1. Initialize your element
 
-Set up an existing project as a Exordos Core element. The `exordos init` command launches an interactive wizard that generates all required configuration files — including manifests, and a `exordos.yaml` file that describes the build, publish, and deploy procedures.
+Set up an existing project as a Exordos Core element. The `exordos init` command launches an interactive wizard that generates all required configuration files — including manifests, and a `exordos/exordos.yaml` file that describes the build, publish, and deploy procedures.
 
 ```bash
 exordos init
@@ -92,7 +92,7 @@ The Qemu:
 
 ```bash
 sudo apt update
-sudo apt install qemu-kvm mkisofs
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev genisoimage -y
 sudo adduser $USER kvm
 ```
 

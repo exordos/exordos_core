@@ -12,12 +12,15 @@ icon: lucide/terminal
 - {{ name }}: name of the element
 - {{ images }}: list of images
 - {{ manifests }}: list of manifests
+- {{ artifacts }}: mapping of artifact names to their URN references
 
 Go to project directory and run the following command:
 
 ```bash
-exordos build <element_name>
+exordos build
 ```
+
+By default all elements defined in the project are built; to build a single element, pass `-e <element_name>`.
 
 ## Install element from repository
 

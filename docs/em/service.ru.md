@@ -220,8 +220,7 @@ graph TD
   "before": [
     {
       "kind": "service",
-      "service": "abcdef12-3456-7890-abcd-ef1234567890",
-      "service_name": "base-service"
+      "service": "abcdef12-3456-7890-abcd-ef1234567890"
     }
   ],
   "after": []
@@ -255,10 +254,10 @@ graph TD
 
 ### Валидация зависимостей
 
-- `before` и `after` — обязательные массивы (могут быть пустыми)
+- `before` и `after` — необязательные массивы; по умолчанию пустые
 - Каждая зависимость должна иметь корректный `kind`: `shell` или `service`
 - Shell-зависимости требуют поля `command`
-- Зависимости от сервисов требуют полей `service` (UUID) и `service_name`
+- Зависимости от сервисов требуют поля `service` (UUID)
 
 ## Поведение Dataplane
 

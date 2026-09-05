@@ -9,7 +9,7 @@ title: Руководство для разработчиков приложен
 
 ### 1. Инициализация вашего элемента
 
-Настройте существующий проект как элемент Exordos Core. Команда `exordos init` запускает интерактивный мастер, который генерирует все необходимые конфигурационные файлы — включая манифесты и файл `exordos.yaml`, который описывает процедуры сборки, публикации и развёртывания.
+Настройте существующий проект как элемент Exordos Core. Команда `exordos init` запускает интерактивный мастер, который генерирует все необходимые конфигурационные файлы — включая манифесты и файл `exordos/exordos.yaml`, который описывает процедуры сборки, публикации и развёртывания.
 
 ```bash
 exordos init
@@ -92,7 +92,7 @@ Qemu:
 
 ```bash
 sudo apt update
-sudo apt install qemu-kvm mkisofs
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-dev genisoimage -y
 sudo adduser $USER kvm
 ```
 

@@ -122,7 +122,7 @@ api_version: "v1"
 | `name` | string | Имя элемента. Должно быть уникальным в пределах realm. |
 | `description` | string | Человекочитаемое описание. |
 | `schema_version` | integer | Версия схемы манифеста. Сейчас `1`. |
-| `version` | string | Версия элемента, см. [exordos_devtools](https://infraguys.github.io/exordos_devtools/). |
+| `version` | string | Версия элемента. |
 | `api_version` | string | Версия API, на которую рассчитан манифест. Сейчас `v1`. |
 | `uuid` | uuid | Необязательно. Фиксированный UUID элемента. Авто-генерируется, если опущен. |
 
@@ -393,6 +393,7 @@ image: "{{ base_image_url | default('https://repo.exordos.com/exordos-base/1.1.0
 | `{{ name }}` | Имя элемента |
 | `{{ images }}` | Соответствие имён образов и их URN-ссылок, собранных для этого элемента |
 | `{{ manifests }}` | Список файлов манифестов |
+| `{{ artifacts }}` | Соответствие имён артефактов и их URN-ссылок |
 
 Дополнительные переменные можно передать через `exordos build --manifest-var key=value`.
 

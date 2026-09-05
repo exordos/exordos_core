@@ -11,13 +11,15 @@ importable disk. Run them on an Ubuntu/Debian KVM host:
 
 ```bash
 sudo apt update
-sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients virt-manager zstd
+sudo apt install -y qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virt-manager zstd
 sudo usermod -aG libvirt,kvm "$USER"
 # Log out and back in once for the new group membership to take effect.
 
 cd /var/lib/libvirt/images/
+# The dev image is published per realm version; pick the latest from
+# https://repo.exordos.com/exordos-elements/exordos-realm/
 sudo wget -O exordos-realm-dev.raw.zst \
-  https://repo.exordos.com/exordos-elements/exordos-realm/latest/images/exordos-realm-dev.raw.zst
+  https://repo.exordos.com/exordos-elements/exordos-realm/0.1.6/images/exordos-realm-dev.raw.zst
 sudo zstd --decompress --keep exordos-realm-dev.raw.zst
 sudo chown libvirt-qemu:kvm exordos-realm-dev.raw
 sudo qemu-img info exordos-realm-dev.raw
