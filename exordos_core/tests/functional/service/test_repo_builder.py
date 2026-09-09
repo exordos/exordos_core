@@ -621,6 +621,48 @@ class TestRepoElementBuilderService:
         )
         assert app_updated.status == repo_models.RepoElementStatus.IN_PROGRESS.value
 
+    def test_install_element_installed_before_first_iteration(self, bootstrap_repo):
+        """An element installed before it is registered must be installed too.
+
+        The installation request may arrive between the repository sync and
+        the first element builder iteration. Such an element goes through the
+        create path, not the update one, and is never revisited afterwards.
+        """
+        from gcl_sdk.agents.universal.dm import models as ua_models
+
+        # Run repo builder to create elements
+        repo_service = repo_builder.RepoProxyBuilderService()
+        repo_service._iteration()
+
+        # Mark core as installed before the builder registers the element
+        core = repo_models.RepoElement.objects.get_one(
+            filters={
+                "repository": bootstrap_repo.uuid,
+                "name": dm_filters.EQ("core"),
+            },
+        )
+        core.installation_state = (
+            repo_models.RepoElementInstallationState.INSTALLED.value
+        )
+        core.update()
+
+        # The only iteration for the element: it takes the create path
+        self._service._iteration()
+
+        updated = repo_models.RepoElement.objects.get_one(
+            filters={"uuid": dm_filters.EQ(core.uuid)},
+        )
+        assert updated.status == repo_models.RepoElementStatus.IN_PROGRESS.value
+
+        derivatives = ua_models.TargetResource.objects.get_all(
+            filters={
+                "kind": dm_filters.EQ(
+                    element_builder.InstalledManifest.get_resource_kind()
+                ),
+            },
+        )
+        assert len(derivatives) == 1
+
     def test_release_element_via_iteration(self, bootstrap_repo):
         """Releasing an installed element should clear element link.
 

@@ -462,6 +462,103 @@ class TestRequireMethods:
 
 
 # ---------------------------------------------------------------------------
+# RepoElementBuilderService creation hooks
+# ---------------------------------------------------------------------------
+
+
+class TestCreateInstanceHooks:
+    def setup_method(self) -> None:
+        self._service = builder_element.RepoElementBuilderService()
+
+    def test_create_derivatives_installs_pending_element(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+        manifest = object()
+        monkeypatch.setattr(self._service, "_install_manifest", lambda i: manifest)
+
+        result = self._service.create_instance_derivatives(element)
+
+        assert list(result) == [manifest]
+
+    def test_create_derivatives_empty_for_uninstalled_element(self):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.UNINSTALLED.value,
+            element=None,
+        )
+
+        assert self._service.create_instance_derivatives(element) == ()
+
+    def test_can_create_uninstalled_element(self):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.UNINSTALLED.value,
+            element=None,
+        )
+
+        assert self._service.can_create_instance_resource(element) is True
+
+    def test_can_create_validates_dependencies(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+        monkeypatch.setattr(self._service, "_collect_dependencies", lambda i: [i])
+
+        assert self._service.can_create_instance_resource(element) is True
+
+    def test_can_create_rejects_unresolvable_dependencies(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+
+        def _raise(instance):
+            raise repo_exceptions.DependencyNotFoundError(
+                name="dep",
+                element=instance.name,
+            )
+
+        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+
+        assert self._service.can_create_instance_resource(element) is False
+        assert element.status == models.RepoElementStatus.ERROR.value
+
+    def test_can_create_rejects_malformed_dependency_constraint(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+
+        def _raise(instance):
+            raise repo_exceptions.DependencyConstraintFormatError(
+                name="dep",
+                constraint={"~=": "1.0.0"},
+            )
+
+        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+
+        assert self._service.can_create_instance_resource(element) is False
+        assert element.status == models.RepoElementStatus.ERROR.value
+
+    def test_post_create_keeps_status_of_installed_element(self):
+        element = FakeElement()
+        element.status = models.RepoElementStatus.IN_PROGRESS.value
+
+        self._service.post_create_instance_resource(element, None, [object()])
+
+        assert element.status == models.RepoElementStatus.IN_PROGRESS.value
+
+    def test_post_create_marks_element_available(self):
+        element = FakeElement()
+        element.status = models.RepoElementStatus.NEW.value
+
+        self._service.post_create_instance_resource(element, None)
+
+        assert element.status == models.RepoElementStatus.AVAILABLE.value
+
+
+# ---------------------------------------------------------------------------
 # InstalledManifest
 # ---------------------------------------------------------------------------
 
