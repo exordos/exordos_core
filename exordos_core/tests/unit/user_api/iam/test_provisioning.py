@@ -97,7 +97,7 @@ class TestProvisionPersonalWorkspace:
             user.provision_personal_workspace()
 
             MockProject.assert_called_once_with(
-                name="default",
+                name=f"{user.name}'s project",
                 description="Default project",
                 organization=org,
             )
