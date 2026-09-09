@@ -176,3 +176,68 @@ class TestPlaceVolumeIntoPoolActualTier:
         result = scheduler._place_volume_into_pool(requested, pool)
 
         assert result.uuid == genuine.uuid
+
+
+class TestPlaceVolumeIntoPoolBrokenCandidates:
+    """Review feedback on PR #623 (Sourcery/Codex + akremenetsky): a
+    single candidate whose storage pool can't be resolved must not
+    abort the whole placement, and a legacy (pre-migration) volume must
+    be reused from the pool it actually lives on.
+    """
+
+    def test_skips_a_candidate_whose_pool_no_longer_exists(self, scheduler):
+        # "ghost-pool" was renamed/removed after this volume was pinned
+        # to it - _find_storage_pool_by_name can no longer resolve it.
+        good_pool = _storage_pool(
+            "good-pool", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+        )
+        stale_volume = _machine_volume(
+            "img1", 10, ic.DiskSpeed.WARM.value, False, "ghost-pool"
+        )
+        good_volume = _machine_volume(
+            "img1", 10, ic.DiskSpeed.WARM.value, False, "good-pool"
+        )
+
+        pool = _machine_pool_bundle([good_pool], [stale_volume, good_volume])
+        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+
+        # Must not raise despite the first candidate's pool being
+        # unresolvable - it must be skipped in favor of the next one.
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.uuid == good_volume.uuid
+        assert result.storage_pool == "good-pool"
+
+    def test_legacy_volume_reuses_the_pools_first_entry_not_a_soft_match(
+        self, scheduler
+    ):
+        # Before storage_pool tracking existed, every volume was always
+        # placed on the pool's first storage pool - a legacy volume
+        # (storage_pool unset) must be reused from there, not from
+        # whatever a fresh soft match on speed/ephemeral would pick.
+        first_pool = _storage_pool(
+            "first-pool", ic.DiskSpeed.COLD.value, False, capacity_usable=100
+        )
+        best_match_pool = _storage_pool(
+            "best-match-pool", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+        )
+
+        legacy_volume = models.MachineVolume(
+            uuid=sys_uuid.uuid4(),
+            project_id=sys_uuid.uuid4(),
+            size=10,
+            image="img1",
+            speed=ic.DiskSpeed.WARM.value,
+            ephemeral=False,
+            storage_pool=None,
+        )
+
+        pool = _machine_pool_bundle(
+            [first_pool, best_match_pool], [legacy_volume]
+        )
+        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.uuid == legacy_volume.uuid
+        assert result.storage_pool == "first-pool"

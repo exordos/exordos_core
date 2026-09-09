@@ -306,18 +306,28 @@ class SchedulerService(basic.BasicService):
             need_size = volume.size - pool_volume.size
 
             if pool_volume.storage_pool:
-                storage_pool = self._find_storage_pool_by_name(
-                    pool, pool_volume.storage_pool
-                )
-            else:
+                try:
+                    storage_pool = self._find_storage_pool_by_name(
+                        pool, pool_volume.storage_pool
+                    )
+                except ValueError:
+                    # The pool this volume was placed on no longer
+                    # exists (renamed/removed) - can't tell where it
+                    # actually lives, so this candidate is unusable.
+                    # Try the next one instead of aborting the whole
+                    # node's placement.
+                    continue
+            elif pool.pool.storage_pools:
                 # Volume predates storage_pool tracking (created before
-                # the migration that added the column) - there's no
-                # record of which pool it actually lives on, so fall
-                # back to a soft match and pin it going forward.
-                storage_pool = self._select_storage_pool(
-                    pool, pool_volume.speed, pool_volume.ephemeral, need_size
-                )
+                # the migration that added the column). Before this
+                # column existed, every volume was always placed on the
+                # pool's first storage pool - use that historical
+                # location rather than guessing a possibly different
+                # one via a fresh soft match.
+                storage_pool = pool.pool.storage_pools[0]
                 pool_volume.storage_pool = storage_pool.name
+            else:
+                continue
 
             # Not enough space for the resize - try the next candidate
             # instead of giving up on reuse altogether.
