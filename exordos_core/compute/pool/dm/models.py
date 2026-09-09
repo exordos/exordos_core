@@ -140,6 +140,7 @@ class MachineVolume(
                 "device_type",
                 "speed",
                 "ephemeral",
+                "storage_pool",
                 "project_id",
             )
         )
