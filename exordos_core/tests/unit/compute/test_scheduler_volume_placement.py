@@ -180,9 +180,11 @@ class TestPlaceVolumeIntoPoolActualTier:
 
 class TestPlaceVolumeIntoPoolBrokenCandidates:
     """Review feedback on PR #623 (Sourcery/Codex + akremenetsky): a
-    single candidate whose storage pool can't be resolved must not
-    abort the whole placement, and a legacy (pre-migration) volume must
-    be reused from the pool it actually lives on.
+    reuse candidate whose actual storage pool can't be determined
+    (predates storage_pool tracking, or was pinned to a pool that no
+    longer exists) is skipped rather than guessed at - a scheduled
+    volume always knows where it lives, so this should be rare, and
+    reusing the wrong one would silently misaccount capacity.
     """
 
     def test_skips_a_candidate_whose_pool_no_longer_exists(self, scheduler):
@@ -208,20 +210,13 @@ class TestPlaceVolumeIntoPoolBrokenCandidates:
         assert result.uuid == good_volume.uuid
         assert result.storage_pool == "good-pool"
 
-    def test_legacy_volume_reuses_the_pools_first_entry_not_a_soft_match(
-        self, scheduler
-    ):
-        # Before storage_pool tracking existed, every volume was always
-        # placed on the pool's first storage pool - a legacy volume
-        # (storage_pool unset) must be reused from there, not from
-        # whatever a fresh soft match on speed/ephemeral would pick.
-        first_pool = _storage_pool(
-            "first-pool", ic.DiskSpeed.COLD.value, False, capacity_usable=100
+    def test_legacy_volume_with_no_pinned_pool_is_not_reused(self, scheduler):
+        # Can't tell which pool a legacy (pre-migration) volume with
+        # storage_pool unset actually lives on - rather than guessing
+        # via a fresh soft match, skip it and create a new volume.
+        only_pool = _storage_pool(
+            "only-pool", ic.DiskSpeed.WARM.value, False, capacity_usable=100
         )
-        best_match_pool = _storage_pool(
-            "best-match-pool", ic.DiskSpeed.WARM.value, False, capacity_usable=100
-        )
-
         legacy_volume = models.MachineVolume(
             uuid=sys_uuid.uuid4(),
             project_id=sys_uuid.uuid4(),
@@ -232,12 +227,12 @@ class TestPlaceVolumeIntoPoolBrokenCandidates:
             storage_pool=None,
         )
 
-        pool = _machine_pool_bundle(
-            [first_pool, best_match_pool], [legacy_volume]
-        )
+        pool = _machine_pool_bundle([only_pool], [legacy_volume])
         requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
-        assert result.uuid == legacy_volume.uuid
-        assert result.storage_pool == "first-pool"
+        assert result.uuid != legacy_volume.uuid
+        assert result.storage_pool == "only-pool"
+        # The legacy volume is left alone, not consumed.
+        assert legacy_volume in pool.volumes
