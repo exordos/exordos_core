@@ -123,6 +123,19 @@ class Volume(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
     )
+    # Changing a disk's speed/ephemeral tier after creation would mean
+    # migrating it to a different storage pool, which isn't implemented -
+    # read-only makes that unsupported change fail loudly instead of
+    # being silently accepted with no actual effect on where the disk
+    # lives.
+    speed = properties.property(
+        types.Enum([s.value for s in ic.DiskSpeed]),
+        default=ic.DiskSpeed.WARM.value,
+        read_only=True,
+    )
+    ephemeral = properties.property(
+        types.Boolean(), default=False, read_only=True
+    )
 
     # Internal field for scheduling purposes
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
