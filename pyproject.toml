@@ -25,7 +25,7 @@ dependencies = [
     # The floor is the version the committed OpenAPI specs are generated
     # with, so a lower floor means whoever regenerates decides what the
     # spec looks like, and the diff is tens of thousands of lines either way.
-    "restalchemy>=16.0.1,<17.0.0",  # Apache-2.0
+    "restalchemy>=16.0.4,<17.0.0",  # Apache-2.0
     "Authlib>=1.3.2,<2.0.0",  # BSD License (BSD-3-Clause)
     "bazooka>=1.3.0,<2.0.0",  # Apache-2.0
     "Jinja2>=3.1.5,<4.0.0",  # BSD License (BSD-3-Clause)
