@@ -1246,12 +1246,12 @@ components:
                 example:
                 - ephemeral: true
                   name: any_string
-                  speed: cold
+                  speed: COLD
                 items:
                   example:
                     ephemeral: true
                     name: any_string
-                    speed: cold
+                    speed: COLD
                   properties:
                     ephemeral:
                       example: true
@@ -1262,10 +1262,10 @@ components:
                       type: string
                     speed:
                       enum:
-                      - cold
-                      - hot
-                      - warm
-                      example: cold
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
                       type: string
                   type: object
                 type: array
@@ -1361,12 +1361,12 @@ components:
                   example: any_string
                   type: string
                 speed:
-                  default: warm
+                  default: WARM
                   enum:
-                  - cold
-                  - hot
-                  - warm
-                  example: cold
+                  - COLD
+                  - HOT
+                  - WARM
+                  example: COLD
                   type: string
                 uuid:
                   example: 00000000-0000-0000-0000-000000000000
@@ -1572,12 +1572,12 @@ components:
                 minimum: 1
                 type: integer
               speed:
-                default: warm
+                default: WARM
                 enum:
-                - cold
-                - hot
-                - warm
-                example: cold
+                - COLD
+                - HOT
+                - WARM
+                example: COLD
                 type: string
             type: object
           - example:
@@ -1592,7 +1592,7 @@ components:
                   label: any_string
                   mount_point: any_string
                   size: 500000
-                  speed: cold
+                  speed: COLD
                 items:
                   example:
                     ephemeral: true
@@ -1601,7 +1601,7 @@ components:
                     label: any_string
                     mount_point: any_string
                     size: 500000
-                    speed: cold
+                    speed: COLD
                   properties:
                     ephemeral:
                       example: true
@@ -1629,10 +1629,10 @@ components:
                       type: integer
                     speed:
                       enum:
-                      - cold
-                      - hot
-                      - warm
-                      example: cold
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
                       type: string
                   type: object
                 type: array
@@ -1785,12 +1785,12 @@ components:
                 minimum: 1
                 type: integer
               speed:
-                default: warm
+                default: WARM
                 enum:
-                - cold
-                - hot
-                - warm
-                example: cold
+                - COLD
+                - HOT
+                - WARM
+                example: COLD
                 type: string
             type: object
           - example:
@@ -1805,7 +1805,7 @@ components:
                   label: any_string
                   mount_point: any_string
                   size: 500000
-                  speed: cold
+                  speed: COLD
                 items:
                   example:
                     ephemeral: true
@@ -1814,7 +1814,7 @@ components:
                     label: any_string
                     mount_point: any_string
                     size: 500000
-                    speed: cold
+                    speed: COLD
                   properties:
                     ephemeral:
                       example: true
@@ -1842,10 +1842,10 @@ components:
                       type: integer
                     speed:
                       enum:
-                      - cold
-                      - hot
-                      - warm
-                      example: cold
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
                       type: string
                   type: object
                 type: array
@@ -4917,12 +4917,12 @@ components:
           minimum: 1
           type: integer
         speed:
-          default: warm
+          default: WARM
           enum:
-          - cold
-          - hot
-          - warm
-          example: cold
+          - COLD
+          - HOT
+          - WARM
+          example: COLD
           type: string
         status:
           default: NEW
