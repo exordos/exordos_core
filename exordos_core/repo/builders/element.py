@@ -414,7 +414,10 @@ class RepoElementBuilderService(
                 instance.version,
             )
             return True
-        except repo_exceptions.DependencyConstraintError:
+        except (
+            repo_exceptions.DependencyConstraintError,
+            repo_exceptions.DependencyConstraintFormatError,
+        ):
             instance.status = models.RepoElementStatus.ERROR.value
             LOG.error("Inappropriate dependencies for element %s", instance.name)
             return False
