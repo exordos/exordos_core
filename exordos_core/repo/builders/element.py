@@ -235,7 +235,7 @@ class RepoElementBuilderService(
 ):
     def __init__(
         self,
-        iter_min_period: int = 3,
+        iter_min_period: int = 1,
         iter_pause: float = 0.1,
     ) -> None:
         super().__init__(
@@ -273,6 +273,47 @@ class RepoElementBuilderService(
             == models.RepoElementInstallationState.UNINSTALLED
             and instance.element is None
         )
+
+    def _get_pending_element(self, instance: RepoElement) -> RepoElement | None:
+        """Return the element that is taking the installation over.
+
+        During an upgrade the target version is already marked as installed
+        while the old one waits to be released. Returns `None` if there is no
+        such element, which means an ordinary deletion.
+        """
+        pending = models.RepoElement.objects.get_all(
+            filters={
+                "name": ra_filters.EQ(instance.name),
+                "installation_state": ra_filters.EQ(
+                    models.RepoElementInstallationState.INSTALLED.value
+                ),
+            }
+        )
+        return pending[0] if pending else None
+
+    def _hand_over_deps_bindings(
+        self, instance: RepoElement, pending: RepoElement
+    ) -> None:
+        """Move the dependency bindings to the element being installed.
+
+        The bindings of the released element are dropped: `_install_manifest`
+        has already recorded the bindings the pending element really requires,
+        which may differ from the ones the released version declared. The
+        bindings pointing to the released element are repointed to the pending
+        one, because its dependents now rely on the installed version.
+        """
+        own_bindings = models.RepoElementDepsBinding.objects.get_all(
+            filters={"element": ra_filters.EQ(instance.uuid)}
+        )
+        for binding in own_bindings:
+            binding.delete()
+
+        dependents = models.RepoElementDepsBinding.objects.get_all(
+            filters={"depends_on": ra_filters.EQ(instance.uuid)}
+        )
+        for binding in dependents:
+            binding.depends_on = pending
+            binding.update()
 
     def _collect_dependencies(
         self,
@@ -458,14 +499,7 @@ class RepoElementBuilderService(
         # in place.
         if self._require_release(instance):
             # Check if there is a pending repo element with the same name.
-            pending = models.RepoElement.objects.get_all(
-                filters={
-                    "name": ra_filters.EQ(instance.name),
-                    "installation_state": ra_filters.EQ(
-                        models.RepoElementInstallationState.INSTALLED.value
-                    ),
-                }
-            )
+            pending = self._get_pending_element(instance)
 
             # There is no pending element, it means an ordinary deletion
             if not pending:
@@ -479,7 +513,7 @@ class RepoElementBuilderService(
             # Check there is an `InstalledManifest` record for the pending element.
             pending_resource = ua_models.Resource.objects.get_one_or_none(
                 filters={
-                    "uuid": ra_filters.EQ(pending[0].uuid),
+                    "uuid": ra_filters.EQ(pending.uuid),
                     "kind": ra_filters.EQ(InstalledManifest.get_resource_kind()),
                 }
             )
@@ -489,7 +523,7 @@ class RepoElementBuilderService(
             if not pending_resource or pending_resource.value.get("element") is None:
                 LOG.debug(
                     "No InstalledManifest record found for pending element %s",
-                    pending[0].uuid,
+                    pending.uuid,
                 )
                 return False
 
@@ -513,7 +547,8 @@ class RepoElementBuilderService(
         - If the element needs installation or upgrade, triggers the install
           and returns the resulting derivative.
         - If the element is pending deletion (UNINSTALLED with a linked EM
-          element), clears the link and returns an empty collection so the
+          element), hands the dependency bindings over to the element that
+          replaces it, clears the link and returns an empty collection so the
           existing derivative is removed.
         - Otherwise returns the existing target derivatives unchanged.
         """
@@ -529,6 +564,8 @@ class RepoElementBuilderService(
         # Release elements after upgrade
         if self._require_release(instance):
             LOG.info("Deleting element %s:%s", instance.name, instance.version)
+            if pending := self._get_pending_element(instance):
+                self._hand_over_deps_bindings(instance, pending)
             instance.element = None
             instance.status = models.RepoElementStatus.AVAILABLE.value
             return []

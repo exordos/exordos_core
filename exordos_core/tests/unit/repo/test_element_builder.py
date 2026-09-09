@@ -16,6 +16,7 @@
 
 import typing as tp
 import uuid as sys_uuid
+from unittest import mock
 
 import pytest
 
@@ -459,6 +460,80 @@ class TestRequireMethods:
             element=None,
         )
         assert self._service._require_deletion(element) is False
+
+
+# ---------------------------------------------------------------------------
+# Dependency bindings handover
+# ---------------------------------------------------------------------------
+
+
+class TestDepsBindingsHandover:
+    def setup_method(self) -> None:
+        self._service = builder_element.RepoElementBuilderService()
+
+    def _released(self) -> FakeElement:
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.UNINSTALLED.value,
+            element=sys_uuid.uuid4(),
+        )
+        element.uuid = sys_uuid.uuid4()
+        element.status = models.RepoElementStatus.IN_PROGRESS.value
+        return element
+
+    def test_hand_over_drops_own_bindings_and_repoints_dependents(self):
+        released = self._released()
+        pending = FakeElement()
+        own_binding = mock.MagicMock()
+        dependent_binding = mock.MagicMock()
+
+        with mock.patch.object(
+            models.RepoElementDepsBinding, "objects"
+        ) as binding_objects:
+            binding_objects.get_all.side_effect = [
+                [own_binding],
+                [dependent_binding],
+            ]
+            self._service._hand_over_deps_bindings(released, pending)
+
+        own_binding.delete.assert_called_once()
+        assert dependent_binding.depends_on is pending
+        dependent_binding.update.assert_called_once()
+
+    def test_release_hands_the_bindings_over(self):
+        released = self._released()
+        pending = FakeElement()
+
+        with mock.patch.object(
+            self._service, "_get_pending_element", return_value=pending
+        ):
+            with mock.patch.object(
+                self._service, "_hand_over_deps_bindings"
+            ) as hand_over:
+                result = self._service.update_instance_derivatives(
+                    released, mock.MagicMock(), []
+                )
+
+        hand_over.assert_called_once_with(released, pending)
+        assert result == []
+        assert released.element is None
+        assert released.status == models.RepoElementStatus.AVAILABLE.value
+
+    def test_ordinary_release_does_not_hand_the_bindings_over(self):
+        released = self._released()
+
+        with mock.patch.object(
+            self._service, "_get_pending_element", return_value=None
+        ):
+            with mock.patch.object(
+                self._service, "_hand_over_deps_bindings"
+            ) as hand_over:
+                result = self._service.update_instance_derivatives(
+                    released, mock.MagicMock(), []
+                )
+
+        hand_over.assert_not_called()
+        assert result == []
+        assert released.element is None
 
 
 # ---------------------------------------------------------------------------

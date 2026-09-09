@@ -117,3 +117,78 @@ class TestUninstallDependencyCheck:
             common_exc.ValidateException, match="Element must be installed"
         ):
             models.RepoElement.uninstall(elem)
+
+
+# ---------------------------------------------------------------------------
+# RepoElement.upgrade — installation handover
+# ---------------------------------------------------------------------------
+
+
+class TestUpgradeHandover:
+    def _make_pair(self):
+        installed = mock.MagicMock(spec=models.RepoElement)
+        installed.uuid = sys_uuid.uuid4()
+        installed.name = "empty"
+        installed.installation_state = (
+            models.RepoElementInstallationState.INSTALLED.value
+        )
+        installed.element = sys_uuid.uuid4()
+
+        target = mock.MagicMock(spec=models.RepoElement)
+        target.uuid = sys_uuid.uuid4()
+        target.name = "empty"
+        target.installation_state = (
+            models.RepoElementInstallationState.UNINSTALLED.value
+        )
+        target.element = None
+        return installed, target
+
+    def _upgrade(self, installed, target):
+        with mock.patch.object(models.RepoElement, "objects") as element_objects:
+            element_objects.get_one.return_value = target
+            return models.RepoElement.upgrade(installed, target=str(target.uuid))
+
+    def test_upgrade_returns_target_element(self):
+        installed, target = self._make_pair()
+
+        result = self._upgrade(installed, target)
+
+        assert result is target
+        assert target.installation_state == (
+            models.RepoElementInstallationState.INSTALLED.value
+        )
+
+    def test_upgrade_moves_runtime_element_to_target(self):
+        installed, target = self._make_pair()
+        runtime_element = installed.element
+
+        self._upgrade(installed, target)
+
+        assert installed.installation_state == (
+            models.RepoElementInstallationState.UNINSTALLED.value
+        )
+        # The runtime element reference stays until the builder releases the
+        # old element, otherwise the live EM manifest is deleted too early.
+        assert installed.element == runtime_element
+        assert target.element == runtime_element
+
+    def test_upgrade_not_installed_raises(self):
+        elem = mock.MagicMock(spec=models.RepoElement)
+        elem.element = None
+
+        with pytest.raises(
+            common_exc.ValidateException, match="Element must be installed to upgrade"
+        ):
+            models.RepoElement.upgrade(elem, target=str(sys_uuid.uuid4()))
+
+    def test_upgrade_target_installed_raises(self):
+        installed, target = self._make_pair()
+        target.installation_state = models.RepoElementInstallationState.INSTALLED.value
+
+        with mock.patch.object(models.RepoElement, "objects") as element_objects:
+            element_objects.get_one.return_value = target
+
+            with pytest.raises(
+                common_exc.ValidateException, match="Target element must be uninstalled"
+            ):
+                models.RepoElement.upgrade(installed, target=str(target.uuid))
