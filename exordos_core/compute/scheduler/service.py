@@ -180,15 +180,18 @@ class SchedulerService(basic.BasicService):
         )
 
     def _select_storage_pool(
-        self, pool: base.MachinePoolBundle, speed: str, ephemeral: bool, size: int
+        self, pool: base.MachinePoolBundle, volume: models.Volume, size: int
     ) -> ua_pool.AbstractStoragePool:
-        """Select a storage pool for a volume.
+        """Select a storage pool for `volume`.
+
+        `size` is passed separately (rather than using `volume.size`)
+        since callers also use this for a resize's capacity delta.
 
         See gcl_sdk's `ua_pool.select_storage_pool` for the matching
         rules (soft speed/ephemeral match with a capacity fallback).
         """
         storage_pool = ua_pool.select_storage_pool(
-            pool.pool.storage_pools, speed, ephemeral, size
+            pool.pool.storage_pools, volume.speed, volume.ephemeral, size
         )
         if storage_pool is not None:
             return storage_pool
@@ -217,9 +220,7 @@ class SchedulerService(basic.BasicService):
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        storage_pool = self._select_storage_pool(
-            pool, volume.speed, volume.ephemeral, volume.size
-        )
+        storage_pool = self._select_storage_pool(pool, volume, volume.size)
         storage_pool.allocate_capacity(volume.size)
 
         pool_volume = models.MachineVolume(
@@ -276,6 +277,16 @@ class SchedulerService(basic.BasicService):
             if pool_volume.image != volume.image or pool_volume.size > volume.size:
                 continue
 
+            # A volume that's actually been scheduled always knows which
+            # storage pool it lives on. If it doesn't (predates
+            # storage_pool tracking) or that pool no longer exists
+            # (renamed/removed), there's no way to tell where its data
+            # actually is - skip it rather than guessing, and let a
+            # fresh volume be created instead.
+            actual_pool = self._existing_storage_pool(pool, pool_volume)
+            if actual_pool is None:
+                continue
+
             volumes.append(pool_volume)
 
             # Classify by the tier of the pool the volume is actually on,
@@ -283,12 +294,10 @@ class SchedulerService(basic.BasicService):
             # fallback (see _select_storage_pool) can place a volume on a
             # pool with different speed/ephemeral than pool_volume.speed/
             # .ephemeral, which only ever record the original request.
-            actual_pool = self._existing_storage_pool(pool, pool_volume)
-            speed = actual_pool.speed if actual_pool else pool_volume.speed
-            ephemeral = (
-                actual_pool.ephemeral if actual_pool else pool_volume.ephemeral
-            )
-            if speed == volume.speed and ephemeral == volume.ephemeral:
+            if (
+                actual_pool.speed == volume.speed
+                and actual_pool.ephemeral == volume.ephemeral
+            ):
                 exact_volumes.append(pool_volume)
 
         # Prefer a volume already on the requested speed/ephemeral tier,
@@ -304,30 +313,11 @@ class SchedulerService(basic.BasicService):
 
         for pool_volume in exact_volumes + other_volumes:
             need_size = volume.size - pool_volume.size
-
-            if pool_volume.storage_pool:
-                try:
-                    storage_pool = self._find_storage_pool_by_name(
-                        pool, pool_volume.storage_pool
-                    )
-                except ValueError:
-                    # The pool this volume was placed on no longer
-                    # exists (renamed/removed) - can't tell where it
-                    # actually lives, so this candidate is unusable.
-                    # Try the next one instead of aborting the whole
-                    # node's placement.
-                    continue
-            elif pool.pool.storage_pools:
-                # Volume predates storage_pool tracking (created before
-                # the migration that added the column). Before this
-                # column existed, every volume was always placed on the
-                # pool's first storage pool - use that historical
-                # location rather than guessing a possibly different
-                # one via a fresh soft match.
-                storage_pool = pool.pool.storage_pools[0]
-                pool_volume.storage_pool = storage_pool.name
-            else:
-                continue
+            # Already resolvable, or classification above would have
+            # skipped this candidate.
+            storage_pool = self._find_storage_pool_by_name(
+                pool, pool_volume.storage_pool
+            )
 
             # Not enough space for the resize - try the next candidate
             # instead of giving up on reuse altogether.
