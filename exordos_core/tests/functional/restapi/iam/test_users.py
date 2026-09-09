@@ -512,7 +512,7 @@ class TestUsers(base.BaseIamResourceTest):
 
         project = iam_models.Project.get_default(user=user, organization=org)
         assert project is not None
-        assert project.name == "default"
+        assert project.name == f"{user.name}'s project"
 
     def test_confirm_email_no_provisioning_without_registration_client(
         self,

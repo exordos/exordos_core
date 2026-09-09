@@ -465,7 +465,7 @@ class User(
             role=iam_c.OrganizationRole.OWNER.value,
         ).insert()
         project = Project(
-            name="default",
+            name=f"{self.name}'s project",
             description="Default project",
             organization=org,
         )
