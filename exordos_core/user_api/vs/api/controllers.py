@@ -41,7 +41,7 @@ class ValuesStoreController(controllers.RoutesListController):
 
 
 class ProfilesController(
-    iam_controllers.PolicyBasedController,
+    iam_controllers.PolicyBasedWithoutProjectController,
     controllers.BaseResourceControllerPaginated,
 ):
     """Controller for /v1/vs/profiles/ endpoint"""
@@ -69,7 +69,7 @@ class ProfilesController(
 
 
 class VariablesController(
-    iam_controllers.PolicyBasedController,
+    iam_controllers.PolicyBasedWithoutProjectController,
     controllers.BaseResourceControllerPaginated,
 ):
     """Controller for /v1/vs/variables/ endpoint"""
