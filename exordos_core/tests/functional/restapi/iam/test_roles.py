@@ -119,6 +119,26 @@ class TestRoles(base.BaseIamResourceTest):
 
         assert [p["uuid"] for p in permissions] == [permission["uuid"]]
 
+    def test_get_role_permissions_deduplicates_bindings(
+        self, user_api_client, auth_user_admin
+    ):
+        client = user_api_client(auth_user_admin)
+        role = client.create_role(name="test_role_with_duplicate_bindings")
+        permission = client.create_permission(name="iam.test.duplicate_binding")
+        for _ in range(2):
+            client.create_permission_binding(
+                permission_uuid=permission["uuid"],
+                role_uuid=role["uuid"],
+            )
+
+        permissions = client.get(
+            client.build_resource_uri(
+                ["iam/roles", role["uuid"], "actions/get_permissions"]
+            ),
+        ).json()
+
+        assert [p["uuid"] for p in permissions] == [permission["uuid"]]
+
     def test_get_role_permissions_of_role_without_permissions(
         self, user_api_client, auth_user_admin
     ):

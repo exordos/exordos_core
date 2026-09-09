@@ -636,14 +636,14 @@ class Role(
     )
 
     def get_permissions(self):
-        return PermissionsInfo(
-            [
-                binding.permission
-                for binding in PermissionBinding.objects.get_all(
-                    filters={"role": ra_filters.EQ(self)}
-                )
-            ]
-        )
+        # Nothing stops the same permission from being bound to the role
+        # twice, and the role grants it once either way.
+        permissions = {}
+        for binding in PermissionBinding.objects.get_all(
+            filters={"role": ra_filters.EQ(self)}
+        ):
+            permissions.setdefault(binding.permission.uuid, binding.permission)
+        return PermissionsInfo(list(permissions.values()))
 
 
 class Permission(
