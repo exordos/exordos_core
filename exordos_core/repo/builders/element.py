@@ -401,6 +401,61 @@ class RepoElementBuilderService(
         )
         return InstalledManifest.from_repo_element(instance)
 
+    def _dependencies_available(self, instance: RepoElement) -> bool:
+        """Check the dependency closure of the element can be resolved.
+
+        Marks the element as ERROR if the closure cannot be built.
+        """
+        try:
+            self._collect_dependencies(instance)
+            LOG.debug(
+                "Dependencies validated for element %s:%s",
+                instance.name,
+                instance.version,
+            )
+            return True
+        except (
+            repo_exceptions.DependencyConstraintError,
+            repo_exceptions.DependencyConstraintFormatError,
+        ):
+            instance.status = models.RepoElementStatus.ERROR.value
+            LOG.error("Inappropriate dependencies for element %s", instance.name)
+            return False
+        except repo_exceptions.DependencyNotFoundError:
+            instance.status = models.RepoElementStatus.ERROR.value
+            LOG.error("Failed to resolve dependencies for element %s", instance.name)
+            return False
+
+    def can_create_instance_resource(self, instance: RepoElement) -> bool:
+        """The hook to check if the instance resource can be created.
+
+        If the hook returns `False`, the instance stays new and the hook is
+        called again on the next iteration.
+        """
+        # An element may already be marked as installed by the time the
+        # builder registers it: the installation request arrives between the
+        # repository sync and this iteration. Such an element is installed
+        # right away, so its dependencies must be resolvable first.
+        if self._require_installation(instance):
+            return self._dependencies_available(instance)
+
+        return True
+
+    def create_instance_derivatives(
+        self, instance: RepoElement
+    ) -> tp.Collection[InstalledManifest]:
+        """Compute the derivative resources for a new instance.
+
+        The hook is called only for new instances. An element that is already
+        installed when the builder registers it must be installed here: the
+        update path is never taken for it, because the instance is marked as
+        tracked right after the resource creation.
+        """
+        if self._require_installation(instance):
+            return [self._install_manifest(instance)]
+
+        return ()
+
     def post_create_instance_resource(
         self,
         instance: RepoElement,
@@ -411,6 +466,11 @@ class RepoElementBuilderService(
 
         The hook is called only for new instances.
         """
+        # The installation has already been triggered by
+        # `create_instance_derivatives` and the status is set accordingly.
+        if derivatives:
+            return
+
         instance.status = models.RepoElementStatus.AVAILABLE.value
 
     def can_update_instance_resource(
@@ -427,28 +487,11 @@ class RepoElementBuilderService(
         """
         # Check dependencies are available
         if self._require_installation(instance) or self._require_upgrade(instance):
-            try:
-                # NOTE: dependency collection may be performed again in
-                # post_update_instance_resource. This is acceptable for now
-                # as it is not a performance bottleneck and can be optimized
-                # in the future.
-                self._collect_dependencies(instance)
-                LOG.debug(
-                    "Dependencies validated for element %s:%s",
-                    instance.name,
-                    instance.version,
-                )
-                return True
-            except repo_exceptions.DependencyConstraintError:
-                instance.status = models.RepoElementStatus.ERROR.value
-                LOG.error("Inappropriate dependencies for element %s", instance.name)
-                return False
-            except repo_exceptions.DependencyNotFoundError:
-                instance.status = models.RepoElementStatus.ERROR.value
-                LOG.error(
-                    "Failed to resolve dependencies for element %s", instance.name
-                )
-                return False
+            # NOTE: dependency collection may be performed again in
+            # post_update_instance_resource. This is acceptable for now
+            # as it is not a performance bottleneck and can be optimized
+            # in the future.
+            return self._dependencies_available(instance)
 
         # NOTE(akremenetsky): During upgrade, the old InstalledManifest must
         # not be deleted before the new one is created. Deleting it first
