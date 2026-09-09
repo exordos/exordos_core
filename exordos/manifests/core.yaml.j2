@@ -510,6 +510,66 @@ resources:
       uuid: "37ee8a65-ca05-54b2-a603-831511c01b3c"
       name: "repo.artifact.read"
       description: "List and read repository artifacts"
+    vs_profile_activate:
+      uuid: "019108e8-9b47-410a-8114-74a55d75b722"
+      name: "vs.profile.activate"
+      description: "Activate value store profiles"
+    vs_profile_create:
+      uuid: "98fc4753-4b7c-4cec-984b-3c6a72b58552"
+      name: "vs.profile.create"
+      description: "Create value store profiles"
+    vs_profile_delete:
+      uuid: "bb58d8e0-ba55-4d94-b675-3052388bc17d"
+      name: "vs.profile.delete"
+      description: "Delete value store profiles"
+    vs_profile_read:
+      uuid: "a63f8d40-33c7-4cfe-be85-ab56b7066f10"
+      name: "vs.profile.read"
+      description: "List and read value store profiles"
+    vs_profile_update:
+      uuid: "bee0ccab-c775-4db5-9162-599f5dcdd5c3"
+      name: "vs.profile.update"
+      description: "Update value store profiles"
+    vs_value_create:
+      uuid: "5a242b13-3e32-47fd-bf40-02e88c7223aa"
+      name: "vs.value.create"
+      description: "Create value store values"
+    vs_value_delete:
+      uuid: "35ce11fd-d165-457a-89c7-ec8095399a5d"
+      name: "vs.value.delete"
+      description: "Delete value store values"
+    vs_value_read:
+      uuid: "25c622e8-7bad-4cb5-87c7-dcaa332b0ebc"
+      name: "vs.value.read"
+      description: "List and read value store values"
+    vs_value_update:
+      uuid: "824d38dd-b936-46c0-a451-6476c1745373"
+      name: "vs.value.update"
+      description: "Update value store values"
+    vs_variable_create:
+      uuid: "126a2ad2-ed32-44ca-a81c-c5942b4cd041"
+      name: "vs.variable.create"
+      description: "Create value store variables"
+    vs_variable_delete:
+      uuid: "5b5d0ec6-6de5-4744-8961-bc57cf8101a6"
+      name: "vs.variable.delete"
+      description: "Delete value store variables"
+    vs_variable_read:
+      uuid: "f3c11f09-233a-4242-bf25-0d7c9fa8d35d"
+      name: "vs.variable.read"
+      description: "List and read value store variables"
+    vs_variable_release_value:
+      uuid: "e27e7f79-2aa9-4825-8cb6-694dcc9ac35b"
+      name: "vs.variable.release_value"
+      description: "Release the selected value of value store variables"
+    vs_variable_select_value:
+      uuid: "fa16fabf-20e4-4c7b-a4cc-3cc1689eb7c1"
+      name: "vs.variable.select_value"
+      description: "Select a value for value store variables"
+    vs_variable_update:
+      uuid: "176241b7-0919-4663-85b5-ab47c4bad351"
+      name: "vs.variable.update"
+      description: "Update value store variables"
 
   $core.iam.rolebinding:
     admin_role:
@@ -748,6 +808,24 @@ resources:
     binding_owner_repo_artifact_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$repo_artifact_read:uuid"
+    binding_owner_vs_profile_activate:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$vs_profile_activate:uuid"
+    binding_owner_vs_profile_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$vs_profile_read:uuid"
+    binding_owner_vs_value_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$vs_value_read:uuid"
+    binding_owner_vs_variable_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$vs_variable_read:uuid"
+    binding_owner_vs_variable_release_value:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$vs_variable_release_value:uuid"
+    binding_owner_vs_variable_select_value:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$vs_variable_select_value:uuid"
 
   $core.vs.profiles:
     develop:

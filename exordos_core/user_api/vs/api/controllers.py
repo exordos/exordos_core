@@ -63,6 +63,7 @@ class ProfilesController(
 
     @actions.post
     def activate(self, resource: models.Profile):
+        self._enforce("activate")
         resource.activate()
         return resource
 
@@ -96,6 +97,7 @@ class VariablesController(
 
     @actions.post
     def select_value(self, resource: models.Variable, value: str):
+        self._enforce("select_value")
         value = models.Value.objects.get_one(
             filters={"uuid": dm_filters.EQ(value)},
         )
@@ -110,6 +112,7 @@ class VariablesController(
 
     @actions.post
     def release_value(self, resource: models.Variable):
+        self._enforce("release_value")
         if resource.selected_value is None:
             raise NoValueSelectedError()
         resource.release_value()
