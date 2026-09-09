@@ -4889,6 +4889,7 @@ components:
         ephemeral:
           default: false
           example: true
+          readOnly: true
           type: boolean
         image:
           example: any_string
@@ -4923,6 +4924,7 @@ components:
           - HOT
           - WARM
           example: COLD
+          readOnly: true
           type: string
         status:
           default: NEW
