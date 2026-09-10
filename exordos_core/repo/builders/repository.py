@@ -43,7 +43,7 @@ class RepoProxyBuilderService(
 ):
     def __init__(
         self,
-        iter_min_period: int = 3,
+        iter_min_period: int = 1,
         iter_pause: float = 0.1,
     ) -> None:
         super().__init__(
