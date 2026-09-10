@@ -19,6 +19,7 @@ import uuid as sys_uuid
 from bazooka import exceptions as bazooka_exc
 import pytest
 from restalchemy.dm import filters as dm_filters
+import yaml
 
 from exordos_core.common import constants as c
 from exordos_core.repo.dm import models as repo_models
@@ -424,6 +425,28 @@ class TestRepoElements:
         assert [element["uuid"] for element in elements] == [
             other_stable_element["uuid"],
         ]
+
+    def test_store_element_download_action(self, user_api_client, auth_user_admin):
+        client = user_api_client(auth_user_admin)
+        repo = self._create_repository(user_api_client, auth_user_admin)
+        element = self._create_element(user_api_client, auth_user_admin, repo["uuid"])
+
+        action_url = client.build_resource_uri(
+            ["repo/store/elements", element["uuid"], "actions/download"]
+        )
+        response = client.get(action_url)
+
+        filename = f"{element['name']}-{element['version']}.yaml"
+        assert response.headers["Content-Type"].startswith("application/yaml")
+        assert (
+            response.headers["Content-Disposition"]
+            == f'attachment; filename="{filename}"'
+        )
+        assert yaml.safe_load(response.text) == {
+            "name": element["name"],
+            "version": element["version"],
+            "resources": {},
+        }
 
     # ------------------------------------------------------------------
     # DELETE tests

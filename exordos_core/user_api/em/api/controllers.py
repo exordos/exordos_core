@@ -21,6 +21,7 @@ from gcl_iam.api import controllers as iam_controllers
 from restalchemy.api import actions
 from restalchemy.api import constants
 from restalchemy.api import controllers
+from restalchemy.api import packers
 from restalchemy.api import resources
 from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
@@ -28,8 +29,20 @@ from restalchemy.openapi import constants as oa_c
 from restalchemy.openapi import utils
 import webob
 
+from exordos_core.common.api import manifests
 from exordos_core.elements.dm import models
 from exordos_core.vs.dm import models as vs_models
+
+
+# Fields the API keeps around the manifest document. The downloaded file is
+# the manifest as it was uploaded, so they are left out of it.
+MANIFEST_SERVICE_FIELDS = (
+    "uuid",
+    "status",
+    "project_id",
+    "created_at",
+    "updated_at",
+)
 
 
 class ElementHasNoProfileError(ra_e.ValidationErrorException):
@@ -75,6 +88,9 @@ class ManifestController(
 ):
     __policy_service_name__ = "em"
     __policy_name__ = "manifest"
+    # The download action returns an already encoded YAML body, everything
+    # else is packed as JSON.
+    __packer__ = packers.JSONPackerPreEncoded
     __resource__ = resources.ResourceByRAModel(
         model_class=models.Manifest,
         convert_underscore=False,
@@ -100,6 +116,14 @@ class ManifestController(
     @actions.get
     def validate(self, resource):
         return resource.validate_schema_base()
+
+    @actions.get
+    def download(self, resource):
+        return manifests.download_response(
+            resource.dump_to_simple_view(skip=MANIFEST_SERVICE_FIELDS),
+            resource.name,
+            resource.version,
+        )
 
 
 class ElementController(

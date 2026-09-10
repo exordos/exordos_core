@@ -21,9 +21,11 @@ from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
+from restalchemy.api import packers
 from restalchemy.api import resources
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common.api import manifests
 from exordos_core.common import constants as c
 from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.dm import models
@@ -168,6 +170,9 @@ class StoreElementController(
     StoreControllerMixin,
     controllers.BaseResourceControllerPaginated,
 ):
+    # The download action returns an already encoded YAML body, everything
+    # else is packed as JSON.
+    __packer__ = packers.JSONPackerPreEncoded
     __resource__ = resources.ResourceByRAModel(
         models.RepoElement,
         convert_underscore=False,
@@ -202,6 +207,19 @@ class StoreElementController(
             elements,
             key=lambda element: parse_version(element.version),
             reverse=True,
+        )
+
+    @actions.get
+    def download(self, resource: models.RepoElement):
+        self._enforce("read")
+
+        # A lazy repository keeps the manifest out of the catalogue until
+        # it is asked for.
+        if not resource.manifest:
+            resource.repository.actualize_element(resource)
+
+        return manifests.download_response(
+            resource.manifest, resource.name, resource.version
         )
 
 

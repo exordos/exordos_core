@@ -71,6 +71,21 @@ class TestEmUserApi:
         assert response.status_code == 200
 
         url = client.build_resource_uri(
+            ["em", "manifests", manifest_uuid, "actions", "download"]
+        )
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.headers["Content-Type"].startswith("application/yaml")
+        assert (
+            response.headers["Content-Disposition"]
+            == 'attachment; filename="core-0.0.1.yaml"'
+        )
+        downloaded = yaml.safe_load(response.text)
+        for key, value in manifest.items():
+            assert downloaded[key] == value
+        assert not {"uuid", "status", "project_id"} & set(downloaded)
+
+        url = client.build_resource_uri(
             ["em", "manifests", manifest_uuid, "actions", "install", "invoke"]
         )
         response = client.post(url)

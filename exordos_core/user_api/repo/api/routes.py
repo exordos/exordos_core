@@ -95,6 +95,12 @@ class StoreElementStableVersionsActionRoute(routes.Action):
     __controller__ = controllers.StoreElementController
 
 
+class StoreElementDownloadActionRoute(routes.Action):
+    """Handler for /v1/repo/store/elements/<uuid>/actions/download endpoint"""
+
+    __controller__ = controllers.StoreElementController
+
+
 class StoreElementRoute(routes.Route):
     """Handler for /v1/repo/store/elements/ endpoint"""
 
@@ -102,6 +108,7 @@ class StoreElementRoute(routes.Route):
     __allow_methods__ = [routes.GET, routes.FILTER]
 
     stable_versions = routes.action(StoreElementStableVersionsActionRoute, invoke=False)
+    download = routes.action(StoreElementDownloadActionRoute, invoke=False)
 
 
 class StoreRoute(routes.Route):

@@ -43,6 +43,12 @@ class ManifestValidateActionRoute(routes.Action):
     __controller__ = controllers.ManifestController
 
 
+class ManifestDownloadActionRoute(routes.Action):
+    """Handler for /v1/em/manifests/<uuid>/actions/download endpoint"""
+
+    __controller__ = controllers.ManifestController
+
+
 class SchemaRoute(routes.Route):
     """Handler for /v1/em/manifests/schema/ endpoint"""
 
@@ -61,6 +67,7 @@ class ManifestRoute(routes.Route):
     upgrade = routes.action(ManifestUpgradeActionRoute, invoke=True)
     uninstall = routes.action(ManifestUninstallActionRoute, invoke=True)
     validate = routes.action(ManifestValidateActionRoute, invoke=False)
+    download = routes.action(ManifestDownloadActionRoute, invoke=False)
     schema = routes.route(SchemaRoute)
 
 
