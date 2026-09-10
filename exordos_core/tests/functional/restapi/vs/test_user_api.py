@@ -471,3 +471,246 @@ class TestVSUserApi:
 
         with pytest.raises(bazooka_exc.NotFoundError):
             client.get(url)
+
+    @staticmethod
+    def _export_variable(user_api, variable: tp.Dict[str, tp.Any]) -> None:
+        """Publish a variable through an element export, as a manifest does."""
+        element = sys_uuid.uuid4()
+        link_prefix = "$core.vs.variables"
+        with user_api.engine.session_manager() as session:
+            session.execute(
+                "INSERT INTO em_elements (uuid, name, version) VALUES (%s, %s, %s)",
+                (element, f"element-{element}", "0.0.1"),
+            )
+            session.execute(
+                "INSERT INTO em_resources"
+                " (uuid, name, element, resource_link_prefix)"
+                " VALUES (%s, %s, %s, %s)",
+                (
+                    sys_uuid.UUID(variable["uuid"]),
+                    variable["name"],
+                    element,
+                    link_prefix,
+                ),
+            )
+            session.execute(
+                "INSERT INTO em_exports (uuid, element, name, link)"
+                " VALUES (%s, %s, %s, %s)",
+                (
+                    sys_uuid.uuid4(),
+                    element,
+                    variable["name"],
+                    f"{link_prefix}.${variable['name']}",
+                ),
+            )
+
+    def test_profiles_read_only_global_and_own(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        auth_test1_p1_user: iam_clients.GenesisCoreAuth,
+        auth_test2_p1_user: iam_clients.GenesisCoreAuth,
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        url = admin_client.build_collection_uri(["vs", "profiles"])
+        profiles = {}
+        for label, payload in (
+            ("global", self._profile_factory(profile_type="GLOBAL")),
+            (
+                "own",
+                self._profile_factory(
+                    profile_type="ELEMENT",
+                    project_id=auth_test1_p1_user.project_id,
+                ),
+            ),
+            (
+                "other",
+                self._profile_factory(
+                    profile_type="ELEMENT",
+                    project_id=auth_test2_p1_user.project_id,
+                ),
+            ),
+        ):
+            response = admin_client.post(url, json=payload)
+            assert response.status_code == 201
+            profiles[label] = payload
+
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=["vs.profile.read"],
+            project_id=auth_test1_p1_user.project_id,
+        )
+        visible = {profile["uuid"] for profile in client.get(url).json()}
+
+        assert profiles["global"]["uuid"] in visible
+        assert profiles["own"]["uuid"] in visible
+        assert profiles["other"]["uuid"] not in visible
+
+        with pytest.raises(bazooka_exc.NotFoundError):
+            client.get(
+                client.build_resource_uri(["vs", "profiles", profiles["other"]["uuid"]])
+            )
+
+    def test_profiles_write_only_own(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        auth_test1_p1_user: iam_clients.GenesisCoreAuth,
+        auth_test2_p1_user: iam_clients.GenesisCoreAuth,
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        url = admin_client.build_collection_uri(["vs", "profiles"])
+        global_profile = self._profile_factory(profile_type="GLOBAL")
+        other_profile = self._profile_factory(
+            profile_type="ELEMENT",
+            project_id=auth_test2_p1_user.project_id,
+        )
+        for payload in (global_profile, other_profile):
+            assert admin_client.post(url, json=payload).status_code == 201
+
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=[
+                "vs.profile.create",
+                "vs.profile.read",
+                "vs.profile.update",
+                "vs.profile.delete",
+            ],
+            project_id=auth_test1_p1_user.project_id,
+        )
+
+        # A profile is created in the caller's own project, whatever the
+        # body asks for.
+        own_profile = self._profile_factory(
+            profile_type="ELEMENT",
+            project_id=auth_test1_p1_user.project_id,
+        )
+        response = client.post(url, json=own_profile)
+        assert response.status_code == 201
+        assert response.json()["project_id"] == str(auth_test1_p1_user.project_id)
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(url, json=self._profile_factory(profile_type="ELEMENT"))
+
+        own_url = client.build_resource_uri(["vs", "profiles", own_profile["uuid"]])
+        response = client.put(own_url, json={"description": "mine"})
+        assert response.status_code == 200
+
+        # A profile another project owns is not writable, the global one
+        # the caller reads included.
+        for profile in (global_profile, other_profile):
+            profile_url = client.build_resource_uri(["vs", "profiles", profile["uuid"]])
+            with pytest.raises(bazooka_exc.NotFoundError):
+                client.put(profile_url, json={"description": "theirs"})
+            with pytest.raises(bazooka_exc.NotFoundError):
+                client.delete(profile_url)
+
+        assert client.delete(own_url).status_code == 204
+
+    def test_variables_read_only_exported_and_own(
+        self,
+        user_api,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        auth_test1_p1_user: iam_clients.GenesisCoreAuth,
+        auth_test2_p1_user: iam_clients.GenesisCoreAuth,
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        url = admin_client.build_collection_uri(["vs", "variables"])
+        variables = {}
+        for label, project_id in (
+            ("exported", c.EM_PROJECT_ID),
+            ("own", auth_test1_p1_user.project_id),
+            ("other", auth_test2_p1_user.project_id),
+        ):
+            payload = self._variable_factory(project_id=project_id)
+            response = admin_client.post(url, json=payload)
+            assert response.status_code == 201
+            variables[label] = payload
+
+        self._export_variable(user_api, variables["exported"])
+
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=["vs.variable.read"],
+            project_id=auth_test1_p1_user.project_id,
+        )
+        visible = {variable["uuid"] for variable in client.get(url).json()}
+
+        assert variables["exported"]["uuid"] in visible
+        assert variables["own"]["uuid"] in visible
+        assert variables["other"]["uuid"] not in visible
+
+        with pytest.raises(bazooka_exc.NotFoundError):
+            client.get(
+                client.build_resource_uri(
+                    ["vs", "variables", variables["other"]["uuid"]]
+                )
+            )
+
+    def test_variables_write_only_own(
+        self,
+        user_api,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        auth_test1_p1_user: iam_clients.GenesisCoreAuth,
+        auth_test2_p1_user: iam_clients.GenesisCoreAuth,
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        url = admin_client.build_collection_uri(["vs", "variables"])
+        exported = self._variable_factory(project_id=c.EM_PROJECT_ID)
+        other = self._variable_factory(project_id=auth_test2_p1_user.project_id)
+        for payload in (exported, other):
+            assert admin_client.post(url, json=payload).status_code == 201
+        self._export_variable(user_api, exported)
+
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=[
+                "vs.variable.create",
+                "vs.variable.read",
+                "vs.variable.update",
+                "vs.variable.delete",
+                "vs.variable.release_value",
+            ],
+            project_id=auth_test1_p1_user.project_id,
+        )
+
+        own = self._variable_factory(project_id=auth_test1_p1_user.project_id)
+        response = client.post(url, json=own)
+        assert response.status_code == 201
+        assert response.json()["project_id"] == str(auth_test1_p1_user.project_id)
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(
+                url,
+                json=self._variable_factory(project_id=auth_test2_p1_user.project_id),
+            )
+
+        own_url = client.build_resource_uri(["vs", "variables", own["uuid"]])
+        assert client.put(own_url, json={"description": "mine"}).status_code == 200
+
+        # A variable another project owns is not writable, the exported one
+        # the caller reads included.
+        for variable in (exported, other):
+            variable_url = client.build_resource_uri(
+                ["vs", "variables", variable["uuid"]]
+            )
+            release_url = client.build_resource_uri(
+                [
+                    "vs",
+                    "variables",
+                    variable["uuid"],
+                    "actions",
+                    "release_value",
+                    "invoke",
+                ]
+            )
+            with pytest.raises(bazooka_exc.NotFoundError):
+                client.put(variable_url, json={"description": "theirs"})
+            with pytest.raises(bazooka_exc.NotFoundError):
+                client.post(release_url, json={})
+            with pytest.raises(bazooka_exc.NotFoundError):
+                client.delete(variable_url)
+
+        assert client.delete(own_url).status_code == 204
