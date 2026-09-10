@@ -31,6 +31,7 @@ from restalchemy.dm import properties
 from restalchemy.dm import relationships
 from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic as ra_types_dyn
+from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import exceptions
@@ -973,6 +974,30 @@ class Export(
     @property
     def full_link(self) -> str:
         return f"${self.element.name}.{self.link}"
+
+    @classmethod
+    def exported_resource_uuids(cls, session: tp.Any = None) -> tp.Set[sys_uuid.UUID]:
+        """Return the uuids of the resources published through exports.
+
+        An export names its resource by link and a resource builds that
+        link from its prefix and its name, so the two are joined on it.
+        The uuid of a resource is the uuid of the entity it manages, which
+        is what callers outside the element model look the export up by.
+        """
+        expression = (
+            f"SELECT res.uuid FROM {Resource.__tablename__} res"
+            f" JOIN {cls.__tablename__} exp ON exp.element = res.element"
+            " AND exp.link = res.resource_link_prefix || '.$' || res.name;"
+        )
+
+        if session:
+            curs = session.execute(expression, tuple())
+            return {row["uuid"] for row in curs.fetchall()}
+
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            curs = session.execute(expression, tuple())
+            return {row["uuid"] for row in curs.fetchall()}
 
 
 class ImportEnum(str, enum.Enum):
