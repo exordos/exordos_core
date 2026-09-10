@@ -714,3 +714,66 @@ class TestVSUserApi:
                 client.delete(variable_url)
 
         assert client.delete(own_url).status_code == 204
+
+    def test_actions_require_their_own_permission(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        auth_test1_p1_user: iam_clients.GenesisCoreAuth,
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        profile = self._profile_factory(profile_type="GLOBAL")
+        profiles_url = admin_client.build_collection_uri(["vs", "profiles"])
+        assert admin_client.post(profiles_url, json=profile).status_code == 201
+
+        variable = self._variable_factory(project_id=auth_test1_p1_user.project_id)
+        variables_url = admin_client.build_collection_uri(["vs", "variables"])
+        assert admin_client.post(variables_url, json=variable).status_code == 201
+
+        # Read alone reaches both resources, so the lookup each action does
+        # succeeds and only the action's own permission is missing.
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=["vs.profile.read", "vs.variable.read"],
+            project_id=auth_test1_p1_user.project_id,
+        )
+
+        for path, payload in (
+            (["vs", "profiles", profile["uuid"], "actions", "activate"], {}),
+            (
+                ["vs", "variables", variable["uuid"], "actions", "select_value"],
+                {"value": str(sys_uuid.uuid4())},
+            ),
+            (["vs", "variables", variable["uuid"], "actions", "release_value"], {}),
+        ):
+            url = client.build_resource_uri(path + ["invoke"])
+            with pytest.raises(bazooka_exc.ForbiddenError):
+                client.post(url, json=payload)
+
+    def test_variables_sorted_pagination_is_scoped(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_test1_p1_user: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(
+            auth_test1_p1_user,
+            permissions=["vs.variable.create", "vs.variable.read"],
+            project_id=auth_test1_p1_user.project_id,
+        )
+        url = client.build_collection_uri(["vs", "variables"])
+        for name in ("paginated_a", "paginated_b"):
+            payload = self._variable_factory(
+                name=name,
+                project_id=auth_test1_p1_user.project_id,
+            )
+            assert client.post(url, json=payload).status_code == 201
+
+        # The marker row is looked up by the field filters alone, so the
+        # scope expression has to join the query after the cursor.
+        params = {"sort_key": "name", "page_limit": 1}
+        first = client.get(url, params=params)
+        assert first.status_code == 200
+
+        marker = first.headers["X-Pagination-Marker"]
+        second = client.get(url, params=dict(params, page_marker=marker))
+        assert second.status_code == 200

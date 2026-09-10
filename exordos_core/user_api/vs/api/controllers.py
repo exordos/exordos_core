@@ -90,11 +90,15 @@ class ProjectScopedController(
         filters = dict(kwargs, uuid=dm_filters.EQ(uuid))
         return self.model.objects.get_one(filters=self._readable(filters))
 
-    def filter(self, filters, order_by=None):
-        return super().filter(self._readable(filters), order_by=order_by)
+    def _apply_query_filter(self, filters):
+        # ANDed last, once the pagination cursor has had the mapping it
+        # looks the marker row up by.
+        return super()._apply_query_filter(self._readable(filters))
 
     def update(self, uuid, **kwargs):
         self._enforce_own(uuid)
+        if self._ctx_project_id and "project_id" in kwargs:
+            self._force_project_id(kwargs["project_id"])
         return super().update(uuid, **kwargs)
 
     def delete(self, uuid):

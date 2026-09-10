@@ -976,7 +976,7 @@ class Export(
         return f"${self.element.name}.{self.link}"
 
     @classmethod
-    def exported_resource_uuids(cls, session: tp.Any = None) -> tp.Set[sys_uuid.UUID]:
+    def exported_resource_uuids(cls) -> tp.Set[sys_uuid.UUID]:
         """Return the uuids of the resources published through exports.
 
         An export names its resource by link and a resource builds that
@@ -989,10 +989,6 @@ class Export(
             f" JOIN {cls.__tablename__} exp ON exp.element = res.element"
             " AND exp.link = res.resource_link_prefix || '.$' || res.name;"
         )
-
-        if session:
-            curs = session.execute(expression, tuple())
-            return {row["uuid"] for row in curs.fetchall()}
 
         engine = engines.engine_factory.get_engine()
         with engine.session_manager() as session:
