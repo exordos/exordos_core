@@ -650,6 +650,11 @@ class RoleController(
     __policy_service_name__ = "iam"
     __policy_name__ = "role"
 
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_GET_ROLE_PERMISSIONS)
+    @actions.get
+    def get_permissions(self, resource):
+        return resource.get_permissions().get_response_body()
+
 
 class RoleBindingController(
     iam_controllers.PolicyBasedWithoutProjectController,

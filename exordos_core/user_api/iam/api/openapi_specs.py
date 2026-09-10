@@ -363,3 +363,16 @@ OA_SPEC_ADD_USER_TO_PROJECT = dict(
         description="User added to project successfully. Returns role binding details.",
     ),
 )
+
+OA_SPEC_GET_ROLE_PERMISSIONS = dict(
+    summary="List permissions granted by a role",
+    parameters=[
+        oa_c.build_openapi_parameter(
+            name="RoleUuid",
+            openapi_type="string",
+            param_type="path",
+            required=True,
+        ),
+    ],
+    responses=oa_c.build_openapi_list_model_response("Permission_Get"),
+)
