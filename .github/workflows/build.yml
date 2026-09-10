@@ -85,7 +85,7 @@ jobs:
           PREFETCH_PID=$!
 
           EXORDOS_BIN=$(which exordos)
-          sudo $EXORDOS_BIN compute hypervisors init
+          sudo $EXORDOS_BIN compute hypervisors init --connection-uri qemu+tcp://10.20.0.1/system
 
           wait $PREFETCH_PID || { cat prefetch.log; exit 1; }
           cat prefetch.log
