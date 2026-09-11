@@ -28,6 +28,7 @@ from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_exc
 
 from exordos_core.agent.universal.drivers.secret.dm import models as driver_dm
+from exordos_core.secret import constants as sc
 from exordos_core.secret.dm import models as secret_dm
 
 LOG = logging.getLogger(__name__)
@@ -139,6 +140,16 @@ class CertBotBackendClient(base.AbstractBackendClient):
 
         # Should the cert be renewed?
         if not cert.is_under_threshold():
+            # The certificate itself is untouched, but the other target
+            # fields live in meta and the agent compares the hash of what
+            # is returned here against the target resource, so a stale
+            # field never converges.
+            meta = resource.value.copy()
+            meta["status"] = sc.SecretStatus.ACTIVE.value
+            if meta != cert.meta:
+                cert.meta = meta
+                cert.save()
+
             return cert.to_resource_value()
 
         pkey_pem, csr_pem, fullchain_pem = acme.renew_cert(

@@ -108,10 +108,19 @@ class DatabasePasswordBackendClient(base.AbstractBackendClient):
         if target.default_length != actual.meta.get("default_length", 32) or (
             target.method == "MANUAL" and target.value != actual.value
         ):
-            actual.meta["default_length"] = target.default_length
             plain_password = self._gen_password(target)
             pass_value = target.constructor.build(plain_password)
-            actual.meta["value"] = actual.value = pass_value
+        else:
+            pass_value = actual.value
+
+        # Rebuild the whole meta, not just the value: every target field
+        # lives in it and the agent compares its hash against the target
+        # resource, so a stale field never converges.
+        new = driver_dm.Password.from_password_resource(resource, pass_value)
+
+        if new.value != actual.value or new.meta != actual.meta:
+            actual.value = new.value
+            actual.meta = new.meta
             actual.save()
 
         return actual.meta
