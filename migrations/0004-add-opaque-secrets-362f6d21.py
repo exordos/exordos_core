@@ -26,7 +26,8 @@ UPGRADE = [
         status public.enum_secret_status
             DEFAULT 'NEW'::public.enum_secret_status NOT NULL,
         constructor jsonb NOT NULL,
-        value character varying(10240) NOT NULL,
+        value character varying(10240),
+        default_value character varying(10240),
         tags TEXT[] NOT NULL DEFAULT '{}',
         created_at timestamp without time zone
             DEFAULT CURRENT_TIMESTAMP NOT NULL,

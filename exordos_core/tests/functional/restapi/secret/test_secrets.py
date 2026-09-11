@@ -73,7 +73,7 @@ class TestSecretsUserApi:
         assert output["status"] == "NEW"
         client.delete(client.build_resource_uri(["secret/secrets", output["uuid"]]))
 
-    def test_secrets_add_requires_value(
+    def test_secrets_add_without_value(
         self,
         secret_factory: tp.Callable,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
@@ -81,12 +81,77 @@ class TestSecretsUserApi:
     ):
         client = user_api_client(auth_user_admin)
 
-        secret = secret_factory()
-        secret.pop("value")
+        secret = secret_factory(value=None)
         url = client.build_collection_uri(["secret/secrets"])
+        response = client.post(url, json=secret)
+        output = response.json()
 
-        with pytest.raises(bazooka_exc.BadRequestError):
-            client.post(url, json=secret)
+        assert response.status_code == 201
+
+        # Neither a value nor a default: there is nothing to deliver.
+        stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
+        assert stored.value is None
+        assert stored.default_value is None
+        assert stored.effective_value is None
+        # cleanup
+        client.delete(client.build_resource_uri(["secret/secrets", output["uuid"]]))
+
+    def test_secrets_default_value_backs_the_value(
+        self,
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        secret = secret_factory(value=None, default_value="default-token")
+        url = client.build_collection_uri(["secret/secrets"])
+        response = client.post(url, json=secret)
+        output = response.json()
+        assert response.status_code == 201
+
+        resource_url = client.build_resource_uri(["secret/secrets", output["uuid"]])
+
+        # The default stands in for the value until one is set.
+        stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
+        assert stored.value is None
+        assert stored.effective_value == "default-token"
+
+        # An explicit value wins over the default.
+        response = client.put(resource_url, json={"value": "real-token"})
+        assert response.status_code == 200
+        stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
+        assert stored.effective_value == "real-token"
+
+        # Clearing the value falls back to the default again.
+        response = client.put(resource_url, json={"value": None})
+        assert response.status_code == 200
+        stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
+        assert stored.value is None
+        assert stored.effective_value == "default-token"
+        # cleanup
+        client.delete(resource_url)
+
+    def test_secrets_default_value_is_not_readable(
+        self,
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        secret = secret_factory(value=None, default_value="default-token")
+        url = client.build_collection_uri(["secret/secrets"])
+        response = client.post(url, json=secret)
+        output = response.json()
+        assert response.status_code == 201
+
+        url = client.build_resource_uri(["secret/secrets", output["uuid"]])
+        response = client.get(url)
+        assert response.status_code == 200
+        assert "default_value" not in response.json()
+        # cleanup
+        client.delete(url)
 
     def test_secrets_value_is_not_readable(
         self,

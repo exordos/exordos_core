@@ -539,6 +539,15 @@ _CORE_AGENT_SECRET_MODEL_LINE = (
 _CORE_AGENT_SECRET_FILTER_LINE = (
     "em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
 )
+_CORE_AGENT_PASSWORD_TRANSFORMER_SECTION = (
+    "[resource_transformer:em_core_secret_passwords]\n"
+)
+_CORE_AGENT_SECRET_TRANSFORMER_SECTION = (
+    "[resource_transformer:em_core_secret_secrets]\n"
+    "ignore_null_attributes = True\n"
+    "attributes = value\n"
+    "\n"
+)
 
 
 def _ensure_core_agent_config_current() -> None:
@@ -548,7 +557,7 @@ def _ensure_core_agent_config_current() -> None:
     persisted copy on upgraded stands. Idempotently add the
     em_core_iam_idp and em_core_secret_secrets model mappings and
     filters so IdP and opaque secret resources can be reconciled by the
-    core agent.
+    core agent, and the secret value transformer.
     """
     try:
         with open(CORE_AGENT_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -594,6 +603,22 @@ def _ensure_core_agent_config_current() -> None:
         if "em_core_secret_secrets" not in new_content:
             LOG.warning(
                 "Could not insert em_core_secret_secrets into %s",
+                CORE_AGENT_CONFIG_PATH,
+            )
+
+    if _CORE_AGENT_SECRET_TRANSFORMER_SECTION not in new_content:
+        # Without the transformer a secret with no value yet reports
+        # `value: null` instead of dropping the field, and an element
+        # consuming it renders a null secret instead of waiting.
+        new_content = new_content.replace(
+            _CORE_AGENT_PASSWORD_TRANSFORMER_SECTION,
+            _CORE_AGENT_SECRET_TRANSFORMER_SECTION
+            + _CORE_AGENT_PASSWORD_TRANSFORMER_SECTION,
+            1,
+        )
+        if _CORE_AGENT_SECRET_TRANSFORMER_SECTION not in new_content:
+            LOG.warning(
+                "Could not insert the em_core_secret_secrets transformer into %s",
                 CORE_AGENT_CONFIG_PATH,
             )
 

@@ -874,7 +874,8 @@ interpret it.
 |---|---|---|
 | `name` | string | Secret name. |
 | `description` | string | Human-readable description. |
-| `value` | string | The opaque value. Required, up to 10240 characters. |
+| `value` | string | The opaque value. Optional, up to 10240 characters. |
+| `default_value` | string | The value to fall back on while `value` is unset. Optional, up to 10240 characters. |
 | `constructor` | object | How the secret is stored (default: `{"kind": "plain"}`). |
 | `project_id` | uuid | Project UUID. |
 
@@ -888,14 +889,19 @@ resources:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       constructor:
         kind: plain
-      value: "glsa_XXXXXXXXXXXXXXXX"
+      default_value: "glsa_XXXXXXXXXXXXXXXX"
 ```
 
 ### Notes
 
 - The value is write only in the user API: it can be set and replaced, but it is never returned by a
-  read. Reference it from a manifest with the `:value` link parameter, which reads the value delivered
-  to the data plane, or reference the secret itself with `:uuid`.
+  read. `default_value` is hidden the same way. Reference the value from a manifest with the `:value`
+  link parameter, which reads the value delivered to the data plane, or reference the secret itself
+  with `:uuid`.
+- `default_value` is what a manifest declares when it knows a workable value; the operator overrides it
+  through the API. `value` wins whenever it is set, and clearing it falls back to the default again.
+- A secret with neither a value nor a default has nothing to deliver: it stays in `NEW`, and an element
+  that renders `:value` from it waits until one is set.
 - Updating the value moves the secret back to the `NEW` status and redelivers it.
 
 ---

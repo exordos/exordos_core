@@ -45,8 +45,13 @@ class SecretsController(iam_controllers.PolicyBasedController):
                 "status": {ra_c.ALL: field_p.Permissions.RO},
                 # The value is write only: it may be set and rotated but
                 # it is never read back. It is only echoed to the request
-                # that supplied it.
+                # that supplied it. The default behind it is a secret
+                # value too, so it is hidden the same way.
                 "value": {
+                    ra_c.GET: field_p.Permissions.HIDDEN,
+                    ra_c.FILTER: field_p.Permissions.HIDDEN,
+                },
+                "default_value": {
                     ra_c.GET: field_p.Permissions.HIDDEN,
                     ra_c.FILTER: field_p.Permissions.HIDDEN,
                 },

@@ -136,6 +136,133 @@ class TestSecretServiceBuilder:
         response = client.delete(url)
         assert response.status_code == 204
 
+    def test_secret_without_value_is_not_delivered(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        url = client.build_collection_uri(["secret/secrets"])
+        secret = secret_factory(value=None)
+
+        response = client.post(url, json=secret)
+        assert response.status_code == 201
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        # Nothing to deliver, so the secret waits in NEW and the data
+        # plane never hears about it.
+        assert len(stubs.TargetResource.objects.get_all()) == 0
+        assert len(stubs.StorageSecret.objects.get_all()) == 0
+        assert stubs.Secret.objects.get_one().status == "NEW"
+
+        # Setting a value releases it.
+        secret_obj = stubs.Secret.objects.get_one()
+        resource_url = client.build_resource_uri(
+            ["secret/secrets", str(secret_obj.uuid)]
+        )
+        response = client.put(resource_url, json={"value": "late-value"})
+        assert response.status_code == 200
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        assert stubs.StorageSecret.objects.get_one().value == "late-value"
+
+    def test_delete_secret_without_value(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        url = client.build_collection_uri(["secret/secrets"])
+        secret = secret_factory(value=None)
+
+        response = client.post(url, json=secret)
+        assert response.status_code == 201
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+
+        # A secret that never reached the data plane is still deletable.
+        secret_obj = stubs.Secret.objects.get_one()
+        resource_url = client.build_resource_uri(
+            ["secret/secrets", str(secret_obj.uuid)]
+        )
+        response = client.delete(resource_url)
+        assert response.status_code == 204
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert len(stubs.Secret.objects.get_all()) == 0
+        assert len(stubs.TargetResource.objects.get_all()) == 0
+
+    def test_create_secret_with_default_value(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        url = client.build_collection_uri(["secret/secrets"])
+        secret = secret_factory(value=None, default_value="default-value")
+
+        response = client.post(url, json=secret)
+        assert response.status_code == 201
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        # The default is what the data plane gets while no value is set.
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        assert stubs.StorageSecret.objects.get_one().value == "default-value"
+
+        # An explicit value takes over from the default.
+        secret_obj = stubs.Secret.objects.get_one()
+        resource_url = client.build_resource_uri(
+            ["secret/secrets", str(secret_obj.uuid)]
+        )
+        response = client.put(resource_url, json={"value": "own-value"})
+        assert response.status_code == 200
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        assert stubs.StorageSecret.objects.get_one().value == "own-value"
+
     def test_update_secret_value(
         self,
         default_node: tp.Dict[str, tp.Any],

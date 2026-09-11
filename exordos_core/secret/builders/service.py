@@ -28,10 +28,17 @@ LOG = logging.getLogger(__name__)
 class Secret(
     models.Secret,
     ua_models.InstanceMixin,
+    ua_models.ReadinessMixin,
 ):
     @classmethod
     def get_resource_kind(cls) -> str:
         return sc.SECRET_KIND
+
+    def is_ready_to_actualize(self) -> bool:
+        # A secret with neither a value nor a default has nothing to
+        # deliver. Hold it in NEW instead of pushing an empty secret to
+        # the data plane: an element consuming it waits for the value.
+        return self.effective_value is not None
 
 
 class Password(

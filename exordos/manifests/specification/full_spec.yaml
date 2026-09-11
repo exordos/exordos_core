@@ -3853,6 +3853,12 @@ components:
           readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        default_value:
+          example: any_string
+          maxLength: 10240
+          minLength: 1
+          nullable: true
+          type: string
         description:
           default: ''
           example: any_string
@@ -3902,10 +3908,10 @@ components:
           example: any_string
           maxLength: 10240
           minLength: 1
+          nullable: true
           type: string
       required:
       - project_id
-      - value
       type: object
     Service_Create:
       $ref: '#/components/schemas/Service_Get'

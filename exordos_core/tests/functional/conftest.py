@@ -729,7 +729,7 @@ def secret_factory():
     def factory(
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "secret",
-        value: str = "opaque-secret-value",
+        value: tp.Optional[str] = "opaque-secret-value",
         constructor: tp.Optional[secret_models.AbstractSecretConstructor] = None,
         project_id: sys_uuid.UUID = c.ZERO_UUID,
         status: tp.Optional[cc.ConfigStatus] = None,
@@ -754,6 +754,10 @@ def secret_factory():
         view = obj.dump_to_simple_view()
         if status is None:
             view.pop("status")
+        if value is None:
+            # The view reports the default as the value of the secret,
+            # so drop it: this request sets no value of its own.
+            view.pop("value")
         return view
 
     return factory

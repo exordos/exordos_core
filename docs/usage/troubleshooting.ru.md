@@ -80,6 +80,36 @@ body:
     f"MY_PASS={$core.secret.passwords.$my_password:value}"
 ```
 
+## Элемент бесконечно ждёт секрет
+
+У ресурса `$core.secret.secrets`, у которого не заданы ни `value`, ни `default_value`, нечего
+доставлять. Он остаётся в статусе `NEW`, а каждый ресурс, который рендерит из него `:value`, сохраняет
+прежнее целевое состояние и пишет в лог:
+
+```text
+Target state is not available for resource <resource> by reason: 'value'
+```
+
+Проверьте, есть ли у секрета значение вообще — API его никогда не возвращает, поэтому спросите базу:
+
+```bash
+psql exordos_core -c \
+  "SELECT name, status, value IS NOT NULL AS has_value,
+          default_value IS NOT NULL AS has_default
+   FROM secret_secrets;"
+```
+
+Задайте значение — следующий цикл реконсиляции разблокирует элемент:
+
+```bash
+curl --request PUT --location 'http://<api>/v1/secret/secrets/<uuid>' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer $TOKEN' \
+--data-raw '{"value": "the-real-value"}'
+```
+
+О том, как манифест задаёт значение по умолчанию, см. [Секреты](../secret/secrets.md).
+
 ## Bootstrap-скрипт читает пустой файл конфига
 
 Содержимое, доставляемое через `$core.config.configs`, записывается на целевую ноду обычной записью в

@@ -76,9 +76,31 @@ class Secret(
     __tablename__ = "secret_secrets"
 
     value = properties.property(
-        types.String(min_length=1, max_length=10240),
-        required=True,
+        types.AllowNone(types.String(min_length=1, max_length=10240)),
+        default=None,
     )
+    default_value = properties.property(
+        types.AllowNone(types.String(min_length=1, max_length=10240)),
+        default=None,
+    )
+
+    @property
+    def effective_value(self) -> tp.Optional[str]:
+        """The value in effect: the explicit one, or the default behind it."""
+        return self.value if self.value is not None else self.default_value
+
+    def dump_to_simple_view(self, *args, **kwargs) -> tp.Dict[str, tp.Any]:
+        """Report the effective value as the value of the secret.
+
+        Every consumer reads the secret through this view: the agent
+        reports it as the actual state an element renders `:value` from,
+        and the builder cuts the data plane target out of it. Resolving
+        the default here is what makes a manifest default reach them all.
+        """
+        view = super().dump_to_simple_view(*args, **kwargs)
+        if "value" in view and view["value"] is None:
+            view["value"] = self.default_value
+        return view
 
     def get_resource_target_fields(self) -> tp.Set[str]:
         """Return the collection of target fields.
