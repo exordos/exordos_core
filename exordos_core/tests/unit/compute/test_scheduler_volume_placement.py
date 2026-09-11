@@ -23,6 +23,8 @@ import pytest
 from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler import service
 from exordos_core.compute.scheduler.driver import base
+from exordos_core.storage.dm import models as storage_models
+from exordos_core.storage.scheduler import select as storage_select
 
 
 def _storage_pool(name, speed, ephemeral, capacity_usable, capacity_provisioned=0):
@@ -69,6 +71,36 @@ def _requested_volume(image, size, speed, ephemeral):
     )
 
 
+def _storage_cluster(name, speed, ephemeral, capacity_usable, endpoint="ost://cl:7777"):
+    from gcl_sdk.agents.universal.drivers import pool as pool_base
+
+    cluster = storage_models.StorageCluster(
+        uuid=sys_uuid.uuid4(),
+        name=name,
+        driver_spec=pool_base.RawstorStorageClusterDriverSpec(
+            location="file:///var/lib/rawstor",
+            endpoint=endpoint,
+            speed=speed,
+            ephemeral=ephemeral,
+        ),
+        status=ua_pool.MachinePoolStatus.ACTIVE.value,
+        agent=sys_uuid.uuid4(),
+        storage_pools=[_storage_pool(name, speed, ephemeral, capacity_usable)],
+    )
+    cluster.save = lambda: None
+    return cluster
+
+
+@pytest.fixture(autouse=True)
+def no_storage_clusters(monkeypatch):
+    """By default there are no StorageClusters - placement only ever
+    considers the pool's own local storage_pools, same as before
+    two-tier scheduling was introduced. Tests that care about clusters
+    override this explicitly.
+    """
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [])
+
+
 @pytest.fixture
 def scheduler():
     return service.SchedulerService(
@@ -109,9 +141,7 @@ class TestPlaceVolumeIntoPoolFallback:
             "img1", 19, ic.DiskSpeed.COLD.value, False, "cold-pool"
         )
 
-        pool = _machine_pool_bundle(
-            [warm_pool, cold_pool], [warm_volume, cold_volume]
-        )
+        pool = _machine_pool_bundle([warm_pool, cold_pool], [warm_volume, cold_volume])
         requested = _requested_volume("img1", 20, ic.DiskSpeed.WARM.value, False)
 
         # The exact (warm) match has no room for the resize and no pool
@@ -168,9 +198,7 @@ class TestPlaceVolumeIntoPoolActualTier:
             "img1", 10, ic.DiskSpeed.COLD.value, False, "hot-pool"
         )
 
-        pool = _machine_pool_bundle(
-            [hot_pool, cold_pool], [misplaced, genuine]
-        )
+        pool = _machine_pool_bundle([hot_pool, cold_pool], [misplaced, genuine])
         requested = _requested_volume("img1", 10, ic.DiskSpeed.HOT.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
@@ -236,3 +264,61 @@ class TestPlaceVolumeIntoPoolBrokenCandidates:
         assert result.storage_pool == "only-pool"
         # The legacy volume is left alone, not consumed.
         assert legacy_volume in pool.volumes
+
+
+class TestPlaceVolumeIntoPoolWithClusters:
+    """Local pools and active StorageClusters are equal candidates - the
+    winner is whichever has more free capacity, not whichever is local.
+    """
+
+    def test_a_cluster_pool_wins_when_it_has_more_free_space(
+        self, scheduler, monkeypatch
+    ):
+        small_local = _storage_pool(
+            "small-local", ic.DiskSpeed.WARM.value, False, capacity_usable=20
+        )
+        big_cluster = _storage_cluster(
+            "big-cluster", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+        )
+        monkeypatch.setattr(storage_select, "_active_clusters", lambda: [big_cluster])
+
+        pool = _machine_pool_bundle([small_local], [])
+        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.storage_pool == "big-cluster"
+        assert result.storage_location == "ost://cl:7777"
+
+    def test_a_local_pool_is_used_when_no_cluster_fits(self, scheduler, monkeypatch):
+        local_pool = _storage_pool(
+            "local", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+        )
+        small_cluster = _storage_cluster(
+            "small-cluster", ic.DiskSpeed.WARM.value, False, capacity_usable=5
+        )
+        monkeypatch.setattr(storage_select, "_active_clusters", lambda: [small_cluster])
+
+        pool = _machine_pool_bundle([local_pool], [])
+        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.storage_pool == "local"
+        assert result.storage_location is None
+
+    def test_only_a_cluster_is_available_and_no_local_pools_configured(
+        self, scheduler, monkeypatch
+    ):
+        cluster = _storage_cluster(
+            "only-cluster", ic.DiskSpeed.HOT.value, False, capacity_usable=50
+        )
+        monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+
+        pool = _machine_pool_bundle([], [])
+        requested = _requested_volume("img1", 10, ic.DiskSpeed.HOT.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.storage_pool == "only-cluster"
+        assert result.storage_location == "ost://cl:7777"
