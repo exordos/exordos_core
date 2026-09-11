@@ -412,6 +412,13 @@ class MachineVolume(
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
     )
+    # Network address (ost://host:port) of the StorageCluster this
+    # volume was scheduled onto, set by the scheduler - unset for a
+    # volume on a local pool, where the agent resolves the address from
+    # its own driver_spec.rawstor_pools by `storage_pool` name instead.
+    storage_location = properties.property(
+        types.AllowNone(types.String(max_length=2048)), default=None
+    )
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
