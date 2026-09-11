@@ -133,9 +133,7 @@ class Volume(
         default=ic.DiskSpeed.WARM.value,
         read_only=True,
     )
-    ephemeral = properties.property(
-        types.Boolean(), default=False, read_only=True
-    )
+    ephemeral = properties.property(types.Boolean(), default=False, read_only=True)
 
     # Internal field for scheduling purposes
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
@@ -383,6 +381,13 @@ class MachineVolume(
     # allocating extra capacity for a resize or a reused volume.
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
+    )
+    # Network address (ost://host:port) of the StorageCluster this
+    # volume was scheduled onto, set by the scheduler - unset for a
+    # volume on a local pool, where the agent resolves the address from
+    # its own driver_spec.rawstor_pools by `storage_pool` name instead.
+    storage_location = properties.property(
+        types.AllowNone(types.String(max_length=2048)), default=None
     )
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),

@@ -1207,6 +1207,40 @@ components:
                 example: 00000000-0000-0000-0000-000000000000
                 format: uuid
                 type: string
+              rawstor_pools:
+                default: []
+                example:
+                - ephemeral: true
+                  location: any_string
+                  name: any_string
+                  speed: COLD
+                items:
+                  example:
+                    ephemeral: true
+                    location: any_string
+                    name: any_string
+                    speed: COLD
+                  properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
+                    location:
+                      example: any_string
+                      maxLength: 2048
+                      type: string
+                    name:
+                      example: any_string
+                      maxLength: 255
+                      type: string
+                    speed:
+                      enum:
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
+                      type: string
+                  type: object
+                type: array
               storage_pool:
                 default: []
                 example:
@@ -4061,6 +4095,165 @@ components:
       - target
       - service_type
       type: object
+    StorageCluster_Create:
+      $ref: '#/components/schemas/StorageCluster_Get'
+      path: /v1/storage/clusters/
+    StorageCluster_Get:
+      properties:
+        agent:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        builder:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        driver_spec:
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              endpoint:
+                example: any_string
+                maxLength: 2048
+                type: string
+              ephemeral:
+                default: false
+                example: true
+                type: boolean
+              kind:
+                enum:
+                - rawstor
+                type: string
+              location:
+                example: any_string
+                maxLength: 2048
+                type: string
+              speed:
+                default: HOT
+                enum:
+                - COLD
+                - HOT
+                - WARM
+                example: COLD
+                type: string
+            type: object
+          type: object
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        status:
+          default: DISABLED
+          enum:
+          - ACTIVE
+          - DISABLED
+          - IN_PROGRESS
+          - MAINTENANCE
+          example: ACTIVE
+          readOnly: true
+          type: string
+        storage_pools:
+          default: []
+          example:
+          - key: value
+          items:
+            example:
+              key: value
+            oneOf:
+            - example:
+                key: value
+              properties:
+                available_actual:
+                  default: 0
+                  example: 0
+                  minimum: 0
+                  type: integer
+                capacity_provisioned:
+                  default: 0
+                  example: 0
+                  minimum: 0
+                  type: integer
+                capacity_usable:
+                  default: 0
+                  example: 0
+                  minimum: 0
+                  type: integer
+                description:
+                  default: ''
+                  example: any_string
+                  maxLength: 255
+                  type: string
+                ephemeral:
+                  default: false
+                  example: true
+                  type: boolean
+                kind:
+                  enum:
+                  - thin_storage_pool
+                  type: string
+                name:
+                  default: ''
+                  example: any_string
+                  maxLength: 255
+                  type: string
+                oversubscription_ratio:
+                  default: 1.0
+                  example: 0.0
+                  format: float
+                  minimum: 0.0
+                  type: number
+                pool_type:
+                  example: any_string
+                  type: string
+                speed:
+                  default: WARM
+                  enum:
+                  - COLD
+                  - HOT
+                  - WARM
+                  example: COLD
+                  type: string
+                uuid:
+                  example: 00000000-0000-0000-0000-000000000000
+                  format: uuid
+                  readOnly: true
+                  type: string
+              type: object
+            type: object
+          type: array
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - driver_spec
+      type: object
     UniversalAgent_Create:
       $ref: '#/components/schemas/UniversalAgent_Get'
       path: /v1/ua/agents/
@@ -4955,6 +5148,10 @@ properties:
       $core.security.rules:
         additionalProperties:
           $ref: '#/components/schemas/Rule_Create'
+        type: object
+      $core.storage.clusters:
+        additionalProperties:
+          $ref: '#/components/schemas/StorageCluster_Create'
         type: object
       $core.ua.agents:
         additionalProperties:

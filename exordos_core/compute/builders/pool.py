@@ -30,6 +30,7 @@ from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.pool.dm import models as pool_models
 from exordos_core.repo.dm import models as repo_models
+from exordos_core.storage.scheduler import select as storage_select
 
 LOG = logging.getLogger(__name__)
 
@@ -476,14 +477,16 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         pool: pool_models.Pool,
         volume: pool_models.MachineVolume,
         size: int,
-    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+    ) -> tp.Optional[storage_select.PoolCandidate]:
         """Select the storage pool to use for `volume`.
 
-        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
-        rules (soft speed/ephemeral match with a capacity fallback; a
-        volume already scheduled onto a pool only considers that one).
+        The pool's own local pools and every active StorageCluster's
+        pools are equal candidates - see `storage_select.
+        select_storage_pool_with_clusters` for the matching rules (soft
+        speed/ephemeral match with a capacity fallback; a volume already
+        scheduled onto a pool only considers that one).
         """
-        return ua_pool.select_storage_pool(
+        return storage_select.select_storage_pool_with_clusters(
             pool.storage_pools,
             volume.speed,
             volume.ephemeral,
@@ -501,9 +504,6 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # Calculate how many resources we need to create the machine
         size = actual_volume.size if actual_volume is not None else 0
         size = target_volume.size - size
-
-        if not pool.storage_pools:
-            return False
 
         return self._select_storage_pool(pool, target_volume, size) is not None
 
@@ -535,13 +535,19 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool = self._select_storage_pool(volume.pool, volume, volume.size)
+        storage_pool, cluster = self._select_storage_pool(
+            volume.pool, volume, volume.size
+        )
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(volume.size)
+        if cluster is not None:
+            cluster.save()
         if not volume.storage_pool:
             volume.storage_pool = storage_pool.name
+        if not volume.storage_location and cluster is not None:
+            volume.storage_location = cluster.driver_spec.endpoint
 
         return True
 
@@ -568,15 +574,19 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool = self._select_storage_pool(
+        storage_pool, cluster = self._select_storage_pool(
             volume.pool, target_volume, target_volume.size - actual_volume.size
         )
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(target_volume.size - actual_volume.size)
+        if cluster is not None:
+            cluster.save()
         if not volume.storage_pool:
             volume.storage_pool = storage_pool.name
+        if not volume.storage_location and cluster is not None:
+            volume.storage_location = cluster.driver_spec.endpoint
 
         return True
 
