@@ -27,6 +27,7 @@ is defined in `exordos/manifests/specification/full_spec.yaml`.
 | [`$core.network.lb.$name.vhosts.$name.routes`](#corenetworklbnamevhostsnameroutes) | Load balancer routes within a vhost |
 | [`$core.secret.certificates`](#coresecretcertificates) | TLS certificates (ACME via DNS-01) |
 | [`$core.secret.passwords`](#coresecretpasswords) | Passwords (auto-generated or manual) |
+| [`$core.secret.secrets`](#coresecretsecrets) | Opaque secrets (user supplied values) |
 | [`$core.iam.organizations`](#coreiamorganizations) | IAM organizations |
 | [`$core.iam.organizations.$name.members`](#coreiamorganizationsnamemembers) | Organization members |
 | [`$core.iam.projects`](#coreiamprojects) | IAM projects |
@@ -859,6 +860,43 @@ resources:
   automatically. The domain must be managed by the platform's DNS.
 - After provisioning, the certificate and key are stored on the target node's agent.
 - The platform renews certificates automatically before they expire.
+
+---
+
+## $core.secret.secrets
+
+An opaque secret managed by the platform. The value is supplied by the user and the platform does not
+interpret it.
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Secret name. |
+| `description` | string | Human-readable description. |
+| `value` | string | The opaque value. Required, up to 10240 characters. |
+| `constructor` | object | How the secret is stored (default: `{"kind": "plain"}`). |
+| `project_id` | uuid | Project UUID. |
+
+### Example
+
+```yaml
+resources:
+  $core.secret.secrets:
+    grafana_api_token:
+      name: "grafana-api-token"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      constructor:
+        kind: plain
+      value: "glsa_XXXXXXXXXXXXXXXX"
+```
+
+### Notes
+
+- The value is write only in the user API: it can be set and replaced, but it is never returned by a
+  read. Reference it from a manifest with the `:value` link parameter, which reads the value delivered
+  to the data plane, or reference the secret itself with `:uuid`.
+- Updating the value moves the secret back to the `NEW` status and redelivers it.
 
 ---
 

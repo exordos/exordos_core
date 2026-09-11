@@ -77,6 +77,147 @@ class FakeCertBackendClient:
         return dict(self._certs[resource.uuid])
 
 
+class TestSecretServiceBuilder:
+    def test_no_secrets(
+        self,
+        secret_agent_service,
+        secret_builder,
+    ):
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+    def test_create_secret(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        url = client.build_collection_uri(["secret/secrets"])
+        secret = secret_factory(value="my-opaque-value")
+
+        response = client.post(url, json=secret)
+        output = response.json()
+
+        assert response.status_code == 201
+        assert output["status"] == "NEW"
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        assert len(stubs.TargetResource.objects.get_all()) == 1
+        secrets = stubs.Secret.objects.get_all()
+        assert len(secrets) == 1
+        assert secrets[0].status == "IN_PROGRESS"
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        secrets = stubs.Secret.objects.get_all()
+        assert len(secrets) == 1
+        assert secrets[0].status == "ACTIVE"
+
+        # The value the user supplied reached the data plane.
+        stored = stubs.StorageSecret.objects.get_all()
+        assert len(stored) == 1
+        assert stored[0].value == "my-opaque-value"
+
+        url = client.build_resource_uri(["secret/secrets", str(secrets[0].uuid)])
+        response = client.delete(url)
+        assert response.status_code == 204
+
+    def test_update_secret_value(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        secret = secret_factory(value="old-value")
+        url = client.build_collection_uri(["secret/secrets"])
+        client.post(url, json=secret)
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        stored = stubs.StorageSecret.objects.get_one()
+        assert stored.value == "old-value"
+
+        secret_obj = stubs.Secret.objects.get_one()
+        url = client.build_resource_uri(["secret/secrets", str(secret_obj.uuid)])
+        response = client.put(url, json={"value": "new-value"})
+        assert response.status_code == 200
+
+        assert stubs.Secret.objects.get_one().status == "NEW"
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        assert stubs.StorageSecret.objects.get_one().value == "new-value"
+
+    def test_rename_secret(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        secret = secret_factory(name="before", value="same-value")
+        url = client.build_collection_uri(["secret/secrets"])
+        client.post(url, json=secret)
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        secret_obj = stubs.Secret.objects.get_one()
+        assert secret_obj.status == "ACTIVE"
+
+        # Renaming leaves the value alone, but the name is a target
+        # field too, so the data plane still has to catch up.
+        url = client.build_resource_uri(["secret/secrets", str(secret_obj.uuid)])
+        response = client.put(url, json={"name": "after"})
+        assert response.status_code == 200
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        stored = stubs.StorageSecret.objects.get_one()
+        assert stored.meta["name"] == "after"
+        assert stored.value == "same-value"
+
+
 class TestPasswordServiceBuilder:
     def test_no_passwords(
         self,

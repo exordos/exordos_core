@@ -27,6 +27,7 @@ icon: lucide/layers
 | [`$core.network.lb.$name.vhosts.$name.routes`](#corenetworklbnamevhostsnameroutes) | Маршруты балансировщика внутри vhost |
 | [`$core.secret.certificates`](#coresecretcertificates) | TLS-сертификаты (ACME через DNS-01) |
 | [`$core.secret.passwords`](#coresecretpasswords) | Пароли (авто-генерация или вручную) |
+| [`$core.secret.secrets`](#coresecretsecrets) | Непрозрачные секреты (значения задаёт пользователь) |
 | [`$core.iam.organizations`](#coreiamorganizations) | IAM-организации |
 | [`$core.iam.organizations.$name.members`](#coreiamorganizationsnamemembers) | Члены организации |
 | [`$core.iam.projects`](#coreiamprojects) | IAM-проекты |
@@ -863,6 +864,43 @@ resources:
   DNS-01 challenge. Домен должен управляться DNS платформы.
 - После получения сертификат и ключ сохраняются на агенте целевого узла.
 - Платформа автоматически обновляет сертификаты до истечения срока действия.
+
+---
+
+## $core.secret.secrets
+
+Непрозрачный секрет, управляемый платформой. Значение задаётся пользователем, платформа его никак не
+интерпретирует.
+
+### Поля
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `name` | string | Имя секрета. |
+| `description` | string | Человекочитаемое описание. |
+| `value` | string | Непрозрачное значение. Обязательно, до 10240 символов. |
+| `constructor` | object | Как хранится секрет (по умолчанию: `{"kind": "plain"}`). |
+| `project_id` | uuid | UUID проекта. |
+
+### Пример
+
+```yaml
+resources:
+  $core.secret.secrets:
+    grafana_api_token:
+      name: "grafana-api-token"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      constructor:
+        kind: plain
+      value: "glsa_XXXXXXXXXXXXXXXX"
+```
+
+### Замечания
+
+- Значение доступно только на запись: его можно задать и заменить, но оно никогда не возвращается при
+  чтении. Из манифеста обращайтесь к нему через параметр ссылки `:value`, который читает значение,
+  доставленное на data plane, либо ссылайтесь на сам секрет через `:uuid`.
+- Обновление значения возвращает секрет в статус `NEW` и переотправляет его.
 
 ---
 

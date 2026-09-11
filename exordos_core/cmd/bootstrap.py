@@ -371,6 +371,7 @@ _UA_SCHEDULER_SECTION = """\
 [universal_agent_scheduler]
 capabilities =
     em_*,
+    secret,
     password,
     certificate,
     paas_lb_agent,
@@ -378,6 +379,7 @@ capabilities =
     border_agent
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
+_UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
 
 # Extra lines appended to the [SecretCapabilityDriver] section when
 # migrating from [UserCapabilityDriver]. Keep in sync with
@@ -479,6 +481,18 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
+    if "OpaqueSecretCapabilityDriver" not in new_content:
+        new_content = new_content.replace(
+            "    PasswordCapabilityDriver,\n",
+            _UA_OPAQUE_SECRET_DRIVER_LINE + "    PasswordCapabilityDriver,\n",
+            1,
+        )
+        if "OpaqueSecretCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert OpaqueSecretCapabilityDriver into caps_drivers in %s",
+                UA_CONFIG_PATH,
+            )
+
     new_content = _migrate_ua_secret_driver(new_content)
 
     if new_content == content:
@@ -513,6 +527,18 @@ _CORE_AGENT_IDP_MODEL_LINE = (
 _CORE_AGENT_IDP_FILTER_LINE = (
     "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
 )
+_CORE_AGENT_PASSWORD_MODEL_LINE = (
+    "em_core_secret_passwords = exordos_core.secret.dm.models:Password\n"
+)
+_CORE_AGENT_PASSWORD_FILTER_LINE = (
+    "em_core_secret_passwords = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+)
+_CORE_AGENT_SECRET_MODEL_LINE = (
+    "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
+)
+_CORE_AGENT_SECRET_FILTER_LINE = (
+    "em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+)
 
 
 def _ensure_core_agent_config_current() -> None:
@@ -520,8 +546,9 @@ def _ensure_core_agent_config_current() -> None:
 
     Like the UA config, the core agent config is restored from the
     persisted copy on upgraded stands. Idempotently add the
-    em_core_iam_idp model mapping and filter so IdP resources can be
-    reconciled by the core agent.
+    em_core_iam_idp and em_core_secret_secrets model mappings and
+    filters so IdP and opaque secret resources can be reconciled by the
+    core agent.
     """
     try:
         with open(CORE_AGENT_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -530,31 +557,48 @@ def _ensure_core_agent_config_current() -> None:
         LOG.warning("Core agent config not found: %s", CORE_AGENT_CONFIG_PATH)
         return
 
-    if "em_core_iam_idp" in content:
-        LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
-        return
+    new_content = content
+    if "em_core_iam_idp" not in new_content:
+        new_content = new_content.replace(
+            "em_core_iam_permission_bindings = "
+            "exordos_core.user_api.iam.dm.models:PermissionBinding\n",
+            "em_core_iam_permission_bindings = "
+            "exordos_core.user_api.iam.dm.models:PermissionBinding\n"
+            + _CORE_AGENT_IDP_MODEL_LINE,
+            1,
+        )
+        new_content = new_content.replace(
+            "em_core_dns_domains_records = "
+            "project_id:12345678-c625-4fee-81d5-f691897b8142\n",
+            "em_core_dns_domains_records = "
+            "project_id:12345678-c625-4fee-81d5-f691897b8142\n"
+            + _CORE_AGENT_IDP_FILTER_LINE,
+            1,
+        )
+        if "em_core_iam_idp" not in new_content:
+            LOG.warning(
+                "Could not insert em_core_iam_idp into %s", CORE_AGENT_CONFIG_PATH
+            )
 
-    new_content = content.replace(
-        "em_core_iam_permission_bindings = "
-        "exordos_core.user_api.iam.dm.models:PermissionBinding\n",
-        "em_core_iam_permission_bindings = "
-        "exordos_core.user_api.iam.dm.models:PermissionBinding\n"
-        + _CORE_AGENT_IDP_MODEL_LINE,
-        1,
-    )
-    new_content = new_content.replace(
-        "em_core_dns_domains_records = "
-        "project_id:12345678-c625-4fee-81d5-f691897b8142\n",
-        "em_core_dns_domains_records = "
-        "project_id:12345678-c625-4fee-81d5-f691897b8142\n"
-        + _CORE_AGENT_IDP_FILTER_LINE,
-        1,
-    )
+    if "em_core_secret_secrets" not in new_content:
+        new_content = new_content.replace(
+            _CORE_AGENT_PASSWORD_MODEL_LINE,
+            _CORE_AGENT_SECRET_MODEL_LINE + _CORE_AGENT_PASSWORD_MODEL_LINE,
+            1,
+        )
+        new_content = new_content.replace(
+            _CORE_AGENT_PASSWORD_FILTER_LINE,
+            _CORE_AGENT_SECRET_FILTER_LINE + _CORE_AGENT_PASSWORD_FILTER_LINE,
+            1,
+        )
+        if "em_core_secret_secrets" not in new_content:
+            LOG.warning(
+                "Could not insert em_core_secret_secrets into %s",
+                CORE_AGENT_CONFIG_PATH,
+            )
 
     if new_content == content:
-        LOG.warning(
-            "Could not insert em_core_iam_idp into %s", CORE_AGENT_CONFIG_PATH
-        )
+        LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
         return
 
     with open(CORE_AGENT_CONFIG_PATH, "w", encoding="utf-8") as f:

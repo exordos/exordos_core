@@ -25,6 +25,15 @@ from exordos_core.secret.dm import models
 LOG = logging.getLogger(__name__)
 
 
+class Secret(
+    models.Secret,
+    ua_models.InstanceMixin,
+):
+    @classmethod
+    def get_resource_kind(cls) -> str:
+        return sc.SECRET_KIND
+
+
 class Password(
     models.Password,
     ua_models.InstanceMixin,
@@ -67,6 +76,30 @@ class SSHKey(
     @classmethod
     def get_resource_kind(cls) -> str:
         return sc.SSH_KEY_KIND
+
+
+class SecretBuilder(sdk_builder.UniversalBuilderService):
+    def __init__(
+        self,
+        iter_min_period: int = 1,
+        iter_pause: float = 0.1,
+    ) -> None:
+        super().__init__(
+            instance_model=Secret,
+            iter_min_period=iter_min_period,
+            iter_pause=iter_pause,
+        )
+
+    def actualize_outdated_instance(
+        self,
+        current_instance: Secret,
+        actual_instance: Secret,
+    ) -> None:
+        # The value only travels from the control plane to the data
+        # plane, so the status is all there is to bring back.
+        if current_instance.status != actual_instance.status:
+            current_instance.status = actual_instance.status
+            current_instance.save()
 
 
 class PasswordBuilder(sdk_builder.UniversalBuilderService):

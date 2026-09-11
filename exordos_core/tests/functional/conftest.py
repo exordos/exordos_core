@@ -41,6 +41,7 @@ from restalchemy.storage.sql import engines
 
 from exordos_core.agent.universal.drivers.secret import cert as cert_driver
 from exordos_core.agent.universal.drivers.secret import password as password_driver
+from exordos_core.agent.universal.drivers.secret import secret as secret_driver
 from exordos_core.common import constants as c
 from exordos_core.common import utils
 from exordos_core.common.dm import targets as ct
@@ -718,6 +719,41 @@ def config_factory():
             **kwargs,
         )
         view = config.dump_to_simple_view()
+        return view
+
+    return factory
+
+
+@pytest.fixture
+def secret_factory():
+    def factory(
+        uuid: tp.Optional[sys_uuid.UUID] = None,
+        name: str = "secret",
+        value: str = "opaque-secret-value",
+        constructor: tp.Optional[secret_models.AbstractSecretConstructor] = None,
+        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        status: tp.Optional[cc.ConfigStatus] = None,
+        **kwargs,
+    ) -> tp.Dict[str, tp.Any]:
+        uuid = uuid or _make_uuid()
+        constructor = (
+            secret_models.PlainSecretConstructor()
+            if constructor is None
+            else constructor
+        )
+        status_value = cc.ConfigStatus.NEW.value if status is None else status.value
+        obj = secret_models.Secret(
+            uuid=uuid,
+            name=name,
+            project_id=project_id,
+            status=status_value,
+            constructor=constructor,
+            value=value,
+            **kwargs,
+        )
+        view = obj.dump_to_simple_view()
+        if status is None:
+            view.pop("status")
         return view
 
     return factory
@@ -1473,6 +1509,37 @@ def password_agent_service(
 
 
 @pytest.fixture()
+def secret_agent_service(
+    default_node: tp.Dict[str, tp.Any],
+    user_api_client: iam_clients.GenesisCoreTestRESTClient,
+):
+    agent_uuid = sys_uuid.UUID(default_node["uuid"])
+    orch_client = orch_db.DatabaseOrchClient()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        secrets_temp_file_path = os.path.join(temp_dir, "secret_target_fields.json")
+        with open(secrets_temp_file_path, "w", encoding="utf-8") as f:
+            json.dump({}, f, indent=4)
+
+        s_d = secret_driver.OpaqueSecretCapabilityDriver(secrets_temp_file_path)
+        caps_drivers = [
+            s_d,
+        ]
+        agent = ua_agent_service.UniversalAgentService(
+            system_uuid=agent_uuid,
+            agent_uuid=agent_uuid,
+            orch_client=orch_client,
+            caps_drivers=caps_drivers,
+            facts_drivers=[],
+            iter_min_period=3,
+            payload_path=None,
+            verify_node_on_register=False,
+        )
+        agent._setup()
+        agent._register_agent()
+        yield agent
+
+
+@pytest.fixture()
 def cert_agent_service(
     default_node: tp.Dict[str, tp.Any],
     user_api_client: iam_clients.GenesisCoreTestRESTClient,
@@ -1507,6 +1574,11 @@ def cert_agent_service(
         agent._setup()
         agent._register_agent()
         yield agent
+
+
+@pytest.fixture()
+def secret_builder():
+    yield secret_service.SecretBuilder()
 
 
 @pytest.fixture()

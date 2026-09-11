@@ -47,7 +47,7 @@ class PlainSecretConstructor(AbstractSecretConstructor):
         return plain_secret
 
 
-class Secret(
+class AbstractSecret(
     cm.ModelWithFullAsset,
     ua_models.TargetResourceMixin,
 ):
@@ -64,8 +64,39 @@ class Secret(
     )
 
 
+class Secret(
+    AbstractSecret,
+    ra_models.ModelWithTags,
+    QuotaModelMixin,
+    orm.SQLStorableMixin,
+    ua_models.TargetResourceSQLStorableMixin,
+):
+    """An opaque secret whose value the platform does not interpret."""
+
+    __tablename__ = "secret_secrets"
+
+    value = properties.property(
+        types.String(min_length=1, max_length=10240),
+        required=True,
+    )
+
+    def get_resource_target_fields(self) -> tp.Set[str]:
+        """Return the collection of target fields.
+
+        Refer to the Resource model for more details about target fields.
+        """
+        return {
+            "uuid",
+            "name",
+            "description",
+            "project_id",
+            "constructor",
+            "value",
+        }
+
+
 class Password(
-    Secret,
+    AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
@@ -138,7 +169,7 @@ class DNSCoreCertificateMethod(AbstractCertificateMethod):
 
 
 class Certificate(
-    Secret,
+    AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
@@ -221,7 +252,7 @@ class Certificate(
 
 
 class RSAKey(
-    Secret,
+    AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
@@ -299,7 +330,7 @@ class RSAKey(
 
 
 class SSHKey(
-    Secret,
+    AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
     orm.SQLStorableMixin,
