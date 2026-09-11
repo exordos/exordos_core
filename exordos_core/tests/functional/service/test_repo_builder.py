@@ -96,6 +96,26 @@ def bootstrap_repo(manifests_dir, user_api):
 
 
 @pytest.fixture
+def bootstrap_repo_upgrade(manifests_dir, user_api):
+    """Create a Repository with two versions of the same element."""
+    _write_manifest(manifests_dir, "core", "1.0.0")
+    _write_manifest(manifests_dir, "core", "1.1.0")
+
+    repo = repo_builder.Repository(
+        name="test-repo-upgrade",
+        description="Test upgrade repository",
+        project_id=c.ZERO_UUID,
+        status=ua_c.InstanceStatus.NEW.value,
+        sync_mode=repo_models.SyncMode.COPY.value,
+        driver_spec=repo_models.BootstrapDriverSpec(
+            manifests_dir=manifests_dir,
+        ),
+    )
+    repo.insert()
+    return repo
+
+
+@pytest.fixture
 def bootstrap_repo_lazy(manifests_dir, user_api):
     """Create a Repository (builder version) in LAZY sync mode."""
     _write_manifest(manifests_dir, "core", "1.0.0")
@@ -729,3 +749,121 @@ class TestRepoElementBuilderService:
 
         assert len(result) == 0
         assert core.status == repo_models.RepoElementStatus.AVAILABLE.value
+
+    def _make_element_link(self, repo_element, tmp_path):
+        """Create a real EM element for the repo element and link it."""
+        from unittest import mock
+
+        from gcl_sdk.agents.universal.dm import models as ua_models
+        from gcl_sdk.agents.universal.storage import fs
+
+        from exordos_core.repo.agents.universal.drivers import (
+            repo_element as repo_element_driver,
+        )
+
+        storage = fs.TargetFieldsFileStorage(
+            os.path.join(str(tmp_path), "target_fields.json")
+        )
+        backend_client = repo_element_driver.RepoEmBackendClient(tf_storage=storage)
+
+        installed = element_builder.InstalledManifest.from_repo_element(repo_element)
+        resource = ua_models.Resource.from_value(
+            installed.dump_to_simple_view(),
+            kind=repo_element_driver.KIND,
+        )
+        with mock.patch(
+            "exordos_core.elements.dm.models.element_engine"
+        ) as mock_engine:
+            mock_engine.load_from_database.return_value = None
+            mock_engine.add_element.return_value = None
+            result = backend_client.create(resource)
+
+        repo_element.element = result.element
+        repo_element.update()
+        return repo_element
+
+    def _get_core(self, repo, version):
+        return repo_models.RepoElement.objects.get_one(
+            filters={
+                "repository": repo.uuid,
+                "name": dm_filters.EQ("core"),
+                "version": dm_filters.EQ(version),
+            },
+        )
+
+    def _installed_derivatives(self, uuid):
+        from gcl_sdk.agents.universal.dm import models as ua_models
+
+        return ua_models.TargetResource.objects.get_all(
+            filters={
+                "uuid": dm_filters.EQ(uuid),
+                "kind": dm_filters.EQ(
+                    element_builder.InstalledManifest.get_resource_kind()
+                ),
+            },
+        )
+
+    def test_upgrade_element_via_iteration(self, bootstrap_repo_upgrade, tmp_path):
+        """Upgrading a registered element should install the target version."""
+        repo_service = repo_builder.RepoProxyBuilderService()
+        repo_service._iteration()
+
+        # First iteration: registers the elements, sets AVAILABLE
+        self._service._iteration()
+
+        v1 = self._get_core(bootstrap_repo_upgrade, "1.0.0")
+        v2 = self._get_core(bootstrap_repo_upgrade, "1.1.0")
+
+        v1.installation_state = repo_models.RepoElementInstallationState.INSTALLED.value
+        v1.update()
+
+        # Second iteration: installs v1
+        self._service._iteration()
+        self._make_element_link(
+            self._get_core(bootstrap_repo_upgrade, "1.0.0"), tmp_path
+        )
+
+        self._get_core(bootstrap_repo_upgrade, "1.0.0").upgrade(target=str(v2.uuid))
+
+        # The iteration that must install the target version
+        self._service._iteration()
+
+        updated = self._get_core(bootstrap_repo_upgrade, "1.1.0")
+        assert updated.status == repo_models.RepoElementStatus.IN_PROGRESS.value
+        assert len(self._installed_derivatives(v2.uuid)) == 1
+
+    def test_upgrade_element_before_first_iteration(
+        self, manifests_dir, bootstrap_repo, tmp_path
+    ):
+        """An upgrade target marked installed before registration must install.
+
+        The upgrade request may arrive between the repository sync that
+        discovers the new version and the first element builder iteration for
+        it. Such an element goes through the create path, not the update one.
+        """
+        repo_service = repo_builder.RepoProxyBuilderService()
+        repo_service._iteration()
+
+        # Register the known elements and install core 1.0.0
+        self._service._iteration()
+        v1 = self._get_core(bootstrap_repo, "1.0.0")
+        v1.installation_state = repo_models.RepoElementInstallationState.INSTALLED.value
+        v1.update()
+        self._service._iteration()
+        self._make_element_link(self._get_core(bootstrap_repo, "1.0.0"), tmp_path)
+
+        # A new version appears in the repository
+        _write_manifest(manifests_dir, "core", "2.0.0")
+        repo_models.Repository.__driver_map__.clear()
+        repo_service._refresh_repository(bootstrap_repo)
+        v2 = self._get_core(bootstrap_repo, "2.0.0")
+
+        # The upgrade request arrives before the builder registers v2
+        self._get_core(bootstrap_repo, "1.0.0").upgrade(target=str(v2.uuid))
+
+        # The only iteration for v2: it takes the create path
+        self._service._iteration()
+
+        updated = self._get_core(bootstrap_repo, "2.0.0")
+        assert updated.status == repo_models.RepoElementStatus.IN_PROGRESS.value
+        assert len(self._installed_derivatives(v2.uuid)) == 1
