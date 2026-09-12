@@ -27,6 +27,7 @@ is defined in `exordos/manifests/specification/full_spec.yaml`.
 | [`$core.network.lb.$name.vhosts.$name.routes`](#corenetworklbnamevhostsnameroutes) | Load balancer routes within a vhost |
 | [`$core.secret.certificates`](#coresecretcertificates) | TLS certificates (ACME via DNS-01) |
 | [`$core.secret.passwords`](#coresecretpasswords) | Passwords (auto-generated or manual) |
+| [`$core.secret.secrets`](#coresecretsecrets) | Opaque secrets (user supplied values) |
 | [`$core.iam.organizations`](#coreiamorganizations) | IAM organizations |
 | [`$core.iam.organizations.$name.members`](#coreiamorganizationsnamemembers) | Organization members |
 | [`$core.iam.projects`](#coreiamprojects) | IAM projects |
@@ -859,6 +860,49 @@ resources:
   automatically. The domain must be managed by the platform's DNS.
 - After provisioning, the certificate and key are stored on the target node's agent.
 - The platform renews certificates automatically before they expire.
+
+---
+
+## $core.secret.secrets
+
+An opaque secret managed by the platform. The value is supplied by the user and the platform does not
+interpret it.
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Secret name. |
+| `description` | string | Human-readable description. |
+| `value` | string | The opaque value. Optional, up to 10240 characters. |
+| `default_value` | string | The value to fall back on while `value` is unset. Optional, up to 10240 characters. |
+| `constructor` | object | How the secret is stored (default: `{"kind": "plain"}`). |
+| `project_id` | uuid | Project UUID. |
+
+### Example
+
+```yaml
+resources:
+  $core.secret.secrets:
+    grafana_api_token:
+      name: "grafana-api-token"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      constructor:
+        kind: plain
+      default_value: "glsa_XXXXXXXXXXXXXXXX"
+```
+
+### Notes
+
+- The value is write only in the user API: it can be set and replaced, but it is never returned by a
+  read. `default_value` is hidden the same way. Reference the value from a manifest with the `:value`
+  link parameter, which reads the value delivered to the data plane, or reference the secret itself
+  with `:uuid`.
+- `default_value` is what a manifest declares when it knows a workable value; the operator overrides it
+  through the API. `value` wins whenever it is set, and clearing it falls back to the default again.
+- A secret with neither a value nor a default has nothing to deliver: it stays in `NEW`, and an element
+  that renders `:value` from it waits until one is set.
+- Updating the value moves the secret back to the `NEW` status and redelivers it.
 
 ---
 

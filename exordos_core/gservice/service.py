@@ -195,6 +195,9 @@ class GeneralService(basic.BasicService):
         secret_svc = secret_service.SecretServiceBuilder(
             iter_min_period=iter_min_period,
         )
+        secret_builder = secret_builder_svc.SecretBuilder(
+            iter_min_period=iter_min_period
+        )
         password_builder = secret_builder_svc.PasswordBuilder(
             iter_min_period=iter_min_period
         )
@@ -242,6 +245,7 @@ class GeneralService(basic.BasicService):
             net_border_iaas_builder,
             net_border_paas_builder,
             secret_svc,
+            secret_builder,
             password_builder,
             cert_builder,
             em_builder,

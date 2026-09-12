@@ -1,4 +1,4 @@
-#    Copyright 2025 Genesis Corporation.
+#    Copyright 2026 Genesis Corporation.
 #
 #    All Rights Reserved.
 #
@@ -15,7 +15,6 @@
 #    under the License.
 
 import logging
-import secrets
 import typing as tp
 
 from gcl_sdk.agents.universal.clients.backend import base
@@ -25,19 +24,18 @@ from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_exc
 
 from exordos_core.agent.universal.drivers.secret.dm import models as driver_dm
-from exordos_core.secret import constants as sc
 from exordos_core.secret.dm import models as secret_dm
 
 LOG = logging.getLogger(__name__)
 
 
-class DatabasePasswordBackendClient(base.AbstractBackendClient):
-    """Secret Backend client based on SQL database."""
+class DatabaseSecretBackendClient(base.AbstractBackendClient):
+    """Opaque secret backend client based on SQL database."""
 
     def get(self, resource: models.Resource) -> tp.Dict[str, tp.Any]:
         """Get the resource value in dictionary format."""
         try:
-            driver_password = driver_dm.Password.objects.get_one(
+            driver_secret = driver_dm.Secret.objects.get_one(
                 filters={
                     "uuid": dm_filters.EQ(resource.uuid),
                 },
@@ -45,21 +43,7 @@ class DatabasePasswordBackendClient(base.AbstractBackendClient):
         except ra_exc.RecordNotFound:
             raise exceptions.ResourceNotFound(resource=resource)
 
-        return driver_password.meta
-
-    def _gen_password(self, password: secret_dm.Password) -> str:
-        """Generate a password based on the password model."""
-        if sc.SecretMethod[password.method].is_auto:
-            if password.method == sc.SecretMethod.AUTO_HEX:
-                return secrets.token_hex(password.default_length // 2)
-            elif password.method == sc.SecretMethod.AUTO_URL_SAFE:
-                return secrets.token_urlsafe(password.default_length)[
-                    : password.default_length
-                ]
-            else:
-                raise ValueError("Unknown auto-generated password method")
-        else:
-            return password.value
+        return driver_secret.meta
 
     def create(self, resource: models.Resource) -> tp.Dict[str, tp.Any]:
         """Creates the resource. Returns the created resource."""
@@ -70,53 +54,30 @@ class DatabasePasswordBackendClient(base.AbstractBackendClient):
         else:
             raise exceptions.ResourceAlreadyExists(resource=resource)
 
-        password = secret_dm.Password.from_ua_resource(resource)
+        secret = secret_dm.Secret.from_ua_resource(resource)
 
-        # Validate structure of password model
-        if sc.SecretMethod[password.method].is_auto and password.value is not None:
-            raise ValueError(
-                f"Cannot create auto-generated password for resource {password.uuid}."
-            )
+        # Build the secret from the plain view
+        value = secret.constructor.build(secret.value)
 
-        if not sc.SecretMethod[password.method].is_auto and password.value is None:
-            raise ValueError(
-                f"Cannot create non-auto-generated password for resource {password.uuid}."
-            )
-
-        plain_password = self._gen_password(password)
-
-        # Build password from the plain view
-        pass_value = password.constructor.build(plain_password)
-
-        # Build storagable password and save
-        driver_password = driver_dm.Password.from_password_resource(
-            resource, pass_value
-        )
-        driver_password.save()
-        return driver_password.meta
+        driver_secret = driver_dm.Secret.from_secret_resource(resource, value)
+        driver_secret.save()
+        return driver_secret.meta
 
     def update(self, resource: models.Resource) -> tp.Dict[str, tp.Any]:
         """Update the resource. Returns the updated resource."""
-
-        target = secret_dm.Password.from_ua_resource(resource)
-        actual = driver_dm.Password.objects.get_one(
+        target = secret_dm.Secret.from_ua_resource(resource)
+        actual = driver_dm.Secret.objects.get_one(
             filters={
                 "uuid": dm_filters.EQ(resource.uuid),
             }
         )
 
-        if target.default_length != actual.meta.get("default_length", 32) or (
-            target.method == "MANUAL" and target.value != actual.value
-        ):
-            plain_password = self._gen_password(target)
-            pass_value = target.constructor.build(plain_password)
-        else:
-            pass_value = actual.value
+        value = target.constructor.build(target.value)
 
         # Rebuild the whole meta, not just the value: every target field
         # lives in it and the agent compares its hash against the target
         # resource, so a stale field never converges.
-        new = driver_dm.Password.from_password_resource(resource, pass_value)
+        new = driver_dm.Secret.from_secret_resource(resource, value)
 
         if new.value != actual.value or new.meta != actual.meta:
             actual.value = new.value
@@ -127,7 +88,7 @@ class DatabasePasswordBackendClient(base.AbstractBackendClient):
 
     def list(self, kind: str, **kwargs) -> tp.List[tp.Dict[str, tp.Any]]:
         """Lists all resources by kind."""
-        secrets = driver_dm.Password.objects.get_all()
+        secrets = driver_dm.Secret.objects.get_all()
         return [s.meta for s in secrets]
 
     def delete(self, resource: models.Resource) -> None:
@@ -137,9 +98,9 @@ class DatabasePasswordBackendClient(base.AbstractBackendClient):
         except exceptions.ResourceNotFound:
             raise exceptions.ResourceNotFound(resource=resource)
 
-        password = driver_dm.Password.objects.get_one(
+        secret = driver_dm.Secret.objects.get_one(
             filters={
                 "uuid": dm_filters.EQ(resource.uuid),
             }
         )
-        password.delete()
+        secret.delete()

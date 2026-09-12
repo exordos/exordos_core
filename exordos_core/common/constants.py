@@ -116,6 +116,7 @@ TABLES_TO_MODELS = {
     "net_lb_vhosts": "exordos_core.user_api.network.dm.models:Vhost",
     "net_lb_vhosts_routes": "exordos_core.user_api.network.dm.models:Route",
     "net_lb_backendpools": "exordos_core.user_api.network.dm.models:BackendPool",
+    "secret_secrets": "exordos_core.secret.dm.models:Secret",
     "secret_passwords": "exordos_core.secret.dm.models:Password",
     "secret_certificates": "exordos_core.secret.dm.models:Certificate",
     "secret_rsa_keys": "exordos_core.secret.dm.models:RSAKey",
