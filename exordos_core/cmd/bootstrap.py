@@ -530,13 +530,11 @@ _CORE_AGENT_IDP_FILTER_LINE = (
 _CORE_AGENT_PASSWORD_MODEL_LINE = (
     "em_core_secret_passwords = exordos_core.secret.dm.models:Password\n"
 )
-_CORE_AGENT_PASSWORD_FILTER_LINE = (
-    "em_core_secret_passwords = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
-)
 _CORE_AGENT_SECRET_MODEL_LINE = (
     "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
 )
-_CORE_AGENT_SECRET_FILTER_LINE = (
+# Written by earlier images. Kept here only to strip it back out.
+_CORE_AGENT_STALE_SECRET_FILTER_LINE = (
     "em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
 )
 _CORE_AGENT_PASSWORD_TRANSFORMER_SECTION = (
@@ -555,9 +553,10 @@ def _ensure_core_agent_config_current() -> None:
 
     Like the UA config, the core agent config is restored from the
     persisted copy on upgraded stands. Idempotently add the
-    em_core_iam_idp and em_core_secret_secrets model mappings and
-    filters so IdP and opaque secret resources can be reconciled by the
-    core agent, and the secret value transformer.
+    em_core_iam_idp and em_core_secret_secrets model mappings so IdP and
+    opaque secret resources can be reconciled by the core agent, add the
+    IdP filter and the secret value transformer, and drop the secret
+    project filter written by earlier images.
     """
     try:
         with open(CORE_AGENT_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -589,22 +588,24 @@ def _ensure_core_agent_config_current() -> None:
                 "Could not insert em_core_iam_idp into %s", CORE_AGENT_CONFIG_PATH
             )
 
-    if "em_core_secret_secrets" not in new_content:
+    if _CORE_AGENT_SECRET_MODEL_LINE not in new_content:
         new_content = new_content.replace(
             _CORE_AGENT_PASSWORD_MODEL_LINE,
             _CORE_AGENT_SECRET_MODEL_LINE + _CORE_AGENT_PASSWORD_MODEL_LINE,
             1,
         )
-        new_content = new_content.replace(
-            _CORE_AGENT_PASSWORD_FILTER_LINE,
-            _CORE_AGENT_SECRET_FILTER_LINE + _CORE_AGENT_PASSWORD_FILTER_LINE,
-            1,
-        )
-        if "em_core_secret_secrets" not in new_content:
+        if _CORE_AGENT_SECRET_MODEL_LINE not in new_content:
             LOG.warning(
                 "Could not insert em_core_secret_secrets into %s",
                 CORE_AGENT_CONFIG_PATH,
             )
+
+    if _CORE_AGENT_STALE_SECRET_FILTER_LINE in new_content:
+        # A manifest declares the project its secret belongs to, and it is
+        # not the service project. Scoping the capability to one project
+        # hides every other secret from the agent: it keeps creating a row
+        # it cannot see and the insert conflicts on the primary key forever.
+        new_content = new_content.replace(_CORE_AGENT_STALE_SECRET_FILTER_LINE, "", 1)
 
     if _CORE_AGENT_SECRET_TRANSFORMER_SECTION not in new_content:
         # Without the transformer a secret with no value yet reports

@@ -112,6 +112,34 @@ em_core_vs_profiles = project_id:12345678-c625-4fee-81d5-f691897b8142
 """
 
 
+# A core agent config persisted by an image that scoped the opaque secret
+# capability to the service project.
+_FILTERED_SECRET_CORE_AGENT_CONFIG = """\
+[DEFAULT]
+verbose = True
+
+[agent]
+uuid5_name = core_agent
+
+[models]
+em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp
+em_core_secret_secrets = exordos_core.secret.dm.models:Secret
+em_core_secret_passwords = exordos_core.secret.dm.models:Password
+
+[filters]
+em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142
+em_core_secret_passwords = project_id:12345678-c625-4fee-81d5-f691897b8142
+
+[resource_transformer:em_core_secret_secrets]
+ignore_null_attributes = True
+attributes = value
+
+[resource_transformer:em_core_secret_passwords]
+ignore_null_attributes = True
+attributes = value
+"""
+
+
 def _run_ua(tmp_path):
     etc_path = tmp_path / "exordos_universal_agent.conf"
     data_path = tmp_path / "data" / "exordos_universal_agent.conf"
@@ -236,4 +264,37 @@ def test_missing_core_agent_config_is_skipped(tmp_path):
 
     assert not etc_path.exists()
     assert not data_path.exists()
+    run.assert_not_called()
+
+
+def test_drops_secret_project_filter(tmp_path):
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(_FILTERED_SECRET_CORE_AGENT_CONFIG, encoding="utf-8")
+
+    etc_path, data_path, run = _run_core_agent(tmp_path)
+
+    content = etc_path.read_text(encoding="utf-8")
+    assert (
+        "em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142"
+        not in content
+    )
+    # The password filter and the secret model mapping are left alone
+    assert (
+        "em_core_secret_passwords = project_id:12345678-c625-4fee-81d5-f691897b8142"
+        in content
+    )
+    assert "em_core_secret_secrets = exordos_core.secret.dm.models:Secret" in content
+    assert data_path.read_text(encoding="utf-8") == content
+    run.assert_called_once()
+
+
+def test_noop_on_unfiltered_secret_core_agent_config(tmp_path):
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(_FILTERED_SECRET_CORE_AGENT_CONFIG, encoding="utf-8")
+    _run_core_agent(tmp_path)
+    content = etc_path.read_text(encoding="utf-8")
+
+    etc_path, data_path, run = _run_core_agent(tmp_path)
+
+    assert etc_path.read_text(encoding="utf-8") == content
     run.assert_not_called()
