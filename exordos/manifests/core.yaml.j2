@@ -767,19 +767,15 @@ resources:
     binding_owner_secret_secret_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$secret_secret_read:uuid"
-      project_id: "$core.iam.projects.$compute_core:uuid"
     binding_owner_secret_secret_create:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$secret_secret_create:uuid"
-      project_id: "$core.iam.projects.$compute_core:uuid"
     binding_owner_secret_secret_update:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$secret_secret_update:uuid"
-      project_id: "$core.iam.projects.$compute_core:uuid"
     binding_owner_secret_secret_delete:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$secret_secret_delete:uuid"
-      project_id: "$core.iam.projects.$compute_core:uuid"
 
   $core.vs.profiles:
     develop:
