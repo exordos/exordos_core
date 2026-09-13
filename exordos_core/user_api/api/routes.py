@@ -27,6 +27,7 @@ from exordos_core.user_api.quota.api import routes as quota_routes
 from exordos_core.user_api.repo.api import routes as repo_routes
 from exordos_core.user_api.secret.api import routes as secret_routes
 from exordos_core.user_api.security.api import routes as security_routes
+from exordos_core.user_api.storage.api import routes as storage_routes
 from exordos_core.user_api.ua import routes as ua_routes
 from exordos_core.user_api.vs.api import routes as vs_routers
 
@@ -55,6 +56,7 @@ class ApiEndpointRoute(routes.Route):
     quota = routes.route(quota_routes.QuotaRoute)
     secret = routes.route(secret_routes.SecretRoute)
     security = routes.route(security_routes.SecurityRoute)
+    storage = routes.route(storage_routes.StorageRoute)
     ua = routes.route(ua_routes.UaRoute)
     vs = routes.route(vs_routers.VSRoute)
     repo = routes.route(repo_routes.RepoRoute)
