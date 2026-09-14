@@ -3828,6 +3828,91 @@ components:
       - project_id
       - target
       type: object
+    Secret_Create:
+      path: /v1/secret/secrets/
+      properties:
+        constructor:
+          default:
+            kind: plain
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - plain
+                type: string
+            type: object
+          type: object
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        default_value:
+          example: any_string
+          maxLength: 10240
+          minLength: 1
+          nullable: true
+          type: string
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+        status:
+          default: NEW
+          enum:
+          - ACTIVE
+          - ERROR
+          - IN_PROGRESS
+          - NEW
+          example: NEW
+          readOnly: true
+          type: string
+        tags:
+          default: []
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          type: array
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+        value:
+          example: any_string
+          maxLength: 10240
+          minLength: 1
+          nullable: true
+          type: string
+      required:
+      - project_id
+      type: object
     Service_Create:
       $ref: '#/components/schemas/Service_Get'
       path: /v1/em/services/
@@ -4942,6 +5027,10 @@ properties:
       $core.secret.rsa_keys:
         additionalProperties:
           $ref: '#/components/schemas/RSAKey_Create'
+        type: object
+      $core.secret.secrets:
+        additionalProperties:
+          $ref: '#/components/schemas/Secret_Create'
         type: object
       $core.secret.ssh_keys:
         additionalProperties:

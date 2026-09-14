@@ -215,6 +215,7 @@ class TelemetryService(basic.BasicService):
         self._count_entities(
             data,
             [
+                ("secrets_count", secret_models.Secret),
                 ("secrets_passwords_count", secret_models.Password),
                 ("secrets_certificates_count", secret_models.Certificate),
                 ("secrets_ssh_keys_count", secret_models.SSHKey),

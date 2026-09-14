@@ -19,6 +19,7 @@ em_core_network_lb = exordos_core.user_api.network.dm.models:LB
 em_core_network_lb_vhosts = exordos_core.user_api.network.dm.models:Vhost
 em_core_network_lb_vhosts_routes = exordos_core.user_api.network.dm.models:Route
 em_core_network_lb_backend_pools = exordos_core.user_api.network.dm.models:BackendPool
+em_core_secret_secrets = exordos_core.secret.dm.models:Secret
 em_core_secret_passwords = exordos_core.secret.dm.models:Password
 em_core_secret_certificates = exordos_core.secret.dm.models:Certificate
 em_core_dns_domains = exordos_core.user_api.dns.dm.models:Domain
@@ -62,6 +63,10 @@ em_core_vs_values = project_id:12345678-c625-4fee-81d5-f691897b8142
 
 
 [resource_transformer:em_core_vs_variables]
+ignore_null_attributes = True
+attributes = value
+
+[resource_transformer:em_core_secret_secrets]
 ignore_null_attributes = True
 attributes = value
 

@@ -29,6 +29,57 @@ class SecretController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/secret/"
 
 
+class SecretsController(iam_controllers.PolicyBasedController):
+    """Controller for /v1/secret/secrets/ endpoint"""
+
+    __policy_name__ = "secret"
+    __policy_service_name__ = "secret"
+
+    __resource__ = resources.ResourceByRAModel(
+        model_class=models.Secret,
+        process_filters=True,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "status": {ra_c.ALL: field_p.Permissions.RO},
+                # The value is write only: it may be set and rotated but
+                # it is never read back. The default behind it is a
+                # secret value too, so it is hidden the same way. Create
+                # and update responses drop both in `_hide_values`.
+                "value": {
+                    ra_c.GET: field_p.Permissions.HIDDEN,
+                    ra_c.FILTER: field_p.Permissions.HIDDEN,
+                },
+                "default_value": {
+                    ra_c.GET: field_p.Permissions.HIDDEN,
+                    ra_c.FILTER: field_p.Permissions.HIDDEN,
+                },
+            },
+        ),
+    )
+
+    @staticmethod
+    def _hide_values(secret: models.Secret) -> models.Secret:
+        # The response is packed from the saved model and the permissions
+        # of a write keep both fields writable, hence visible. Blank them
+        # on the returned copy so the packer skips them; nothing saves it
+        # again.
+        secret.value = None
+        secret.default_value = None
+        return secret
+
+    def create(self, **kwargs):
+        return self._hide_values(super().create(**kwargs))
+
+    def update(self, uuid, **kwargs):
+        # Force config to be NEW
+        # In order to regenerate renders
+        kwargs["status"] = sc.SecretStatus.NEW.value
+
+        return self._hide_values(super().update(uuid, **kwargs))
+
+
 class PasswordsController(iam_controllers.PolicyBasedController):
     """Controller for /v1/secret/passwords/ endpoint"""
 
