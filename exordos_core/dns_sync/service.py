@@ -21,6 +21,7 @@ import time
 
 import bazooka
 from bazooka import exceptions as bazooka_exc
+from gcl_iam import tokens as iam_tokens
 from gcl_looper.services import basic
 from requests import auth as requests_auth
 from restalchemy.common import contexts
@@ -36,6 +37,14 @@ DNS_SYNC_TIMEOUT = 30
 DNS_SYNC_POOL_SIZE = 1
 FULL_SYNC_INTERVAL = 60
 
+# What an ecosystem that cannot read the filter expression answers with.
+# The current one rejects it as a bad request; one that predates the
+# expression takes `q` for an ordinary field filter, fails to find a field
+# by that name and answers 500. Any other status -- a gateway that is
+# briefly down, a token that stopped working -- says nothing about the
+# filter, so it is not remembered as a refusal and not retried without one.
+FILTER_UNSUPPORTED_STATUSES = frozenset((400, 500))
+
 
 class DNSSyncService(basic.BasicService):
     """Periodically syncs local DNS records to the ecosystem."""
@@ -48,6 +57,18 @@ class DNSSyncService(basic.BasicService):
         self._initialized = False
         self._last_full_sync_at = FULL_SYNC_INTERVAL + 1  # sync immediately on start
         self._last_fast_sync_dt = None
+        self._owner_tag = None
+        # The token the cached owner was read out of. A token that
+        # changes is a different subject to be, and the tag decides what
+        # gets removed, so it is re-read rather than carried over. The
+        # cache is not there to save the reading, which is local and
+        # cheap, but to keep the log to one line per token.
+        self._owner_token = None
+        # The endpoints that refused the filter expression, so a mirror
+        # talking to an older one asks for it only the first time -- and
+        # one that moves to a newer one is not stuck with the answer the
+        # old one gave.
+        self._filter_lang_refused = set()
 
     def _get_variable_value(self, var_uuid):
         """Read variable value from ValuesStore by UUID."""
@@ -88,6 +109,44 @@ class DNSSyncService(basic.BasicService):
         resp = self._client.get(url, auth=auth)
         return resp.json()
 
+    def _realm_owner_tag(self, access_token):
+        """The tag the ecosystem stamps on the records this mirror writes.
+
+        Read out of the token this mirror writes with. The ecosystem
+        stamps the subject of the request it is serving, and `sub` is
+        that subject -- the same uuid its introspection would report,
+        for the price of a base64 decode instead of a round trip. The
+        signature is the ecosystem's to check; here the token is only
+        being read, and one this service could not read is one it could
+        not have used either.
+
+        None when the token does not parse or carries no subject, and
+        remembered as None so a broken token is reported once rather
+        than every minute. Without a tag the mirror still creates and
+        updates -- it only stops removing, which is the safe half to
+        lose.
+        """
+        if self._owner_token == access_token:
+            return self._owner_tag
+        tag = None
+        try:
+            token_info = iam_tokens.UnverifiedToken(access_token).token_info
+        except Exception:
+            LOG.exception("The realm access token does not parse")
+        else:
+            user_uuid = token_info.get("sub")
+            if user_uuid:
+                tag = c.owner_user_tag(user_uuid)
+            else:
+                LOG.warning("The realm access token names no subject")
+        self._owner_tag = tag
+        self._owner_token = access_token
+        if tag:
+            LOG.info("Records of this realm are owned by %s", tag)
+        else:
+            LOG.warning("This realm has no owner tag; nothing will be removed")
+        return tag
+
     def _eco_list_domains(self, endpoint, headers):
         """GET /api/core/v1/dns/domains/ -> list of domains."""
         url = f"{endpoint}/api/core/v1/dns/domains/"
@@ -104,20 +163,65 @@ class DNSSyncService(basic.BasicService):
         )
         return resp.json()
 
-    def _eco_list_records(self, endpoint, headers, eco_domain_uuid):
-        """GET /api/core/v1/dns/domains/{uuid}/records/"""
+    def _eco_list_records(self, endpoint, headers, eco_domain_uuid, owner_tag=None):
+        """GET /api/core/v1/dns/domains/{uuid}/records/
+
+        Asks for this mirror's own records when it knows which those are:
+        the rest of the zone is not its business, and a zone is read on
+        every reconciliation. An ecosystem that cannot read the filter
+        refuses it -- see `FILTER_UNSUPPORTED_STATUSES` for the two ways
+        it does -- and then the whole zone comes back and the owner is
+        checked here instead: the same answer, read further from the
+        index. Any other failure is the caller's to see, and is raised
+        rather than turned into a second request that would fail too.
+        """
         url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
+        if owner_tag and endpoint not in self._filter_lang_refused:
+            try:
+                resp = self._client.get(
+                    url,
+                    headers=headers,
+                    params={"q": 'tags:"%s"' % owner_tag},
+                )
+                return resp.json()
+            except bazooka_exc.BaseHTTPException as e:
+                if e.code not in FILTER_UNSUPPORTED_STATUSES:
+                    raise
+                LOG.info(
+                    "The ecosystem refused the tag filter with %s; "
+                    "reading whole zones from %s",
+                    e.code,
+                    endpoint,
+                )
+                self._filter_lang_refused.add(endpoint)
         resp = self._client.get(url, headers=headers)
         return resp.json()
 
     def _eco_create_record(self, endpoint, headers, eco_domain_uuid, record_data):
-        """POST /api/core/v1/dns/domains/{uuid}/records/"""
+        """POST /api/core/v1/dns/domains/{uuid}/records/
+
+        A record can be there without this mirror having seen it: asking
+        for its own records hides anything written before records carried
+        an owner. Creating what is already there is then an update, not a
+        conflict to report every minute -- and the update claims a record
+        nobody owns, so the next pass finds it among this mirror's own
+        instead of coming back here forever.
+        """
         url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
-        self._client.post(
-            url,
-            json=record_data,
-            headers=headers,
-        )
+        try:
+            self._client.post(
+                url,
+                json=record_data,
+                headers=headers,
+            )
+        except bazooka_exc.ConflictError:
+            self._eco_update_record(
+                endpoint,
+                headers,
+                eco_domain_uuid,
+                record_data["uuid"],
+                record_data,
+            )
 
     def _eco_update_record(
         self, endpoint, headers, eco_domain_uuid, record_uuid, record_data
@@ -284,8 +388,12 @@ class DNSSyncService(basic.BasicService):
     # Full reconciliation: build diff, create / delete
     # ------------------------------------------------------------------
 
-    def _full_sync_domain(self, domain, endpoint, headers, eco_domain_uuid):
-        """Full diff-based sync for a single domain."""
+    def _full_sync_domain(self, domain, endpoint, headers, eco_domain_uuid, owner_tag):
+        """Full diff-based sync for a single domain.
+
+        `owner_tag` is which of the zone's records are this mirror's own,
+        settled once for the whole pass by `_realm_owner_tag`.
+        """
         domain_name = domain.name
 
         # Get local records (skip SOA)
@@ -296,8 +404,9 @@ class DNSSyncService(basic.BasicService):
             }
         )
 
-        # Get ecosystem records
-        eco_records = self._eco_list_records(endpoint, headers, eco_domain_uuid)
+        eco_records = self._eco_list_records(
+            endpoint, headers, eco_domain_uuid, owner_tag
+        )
         eco_records = [r for r in eco_records if r.get("type") != "SOA"]
 
         # Build UUID-keyed maps
@@ -353,9 +462,21 @@ class DNSSyncService(basic.BasicService):
                     rec.name,
                 )
 
-        # Delete extra
+        # Delete extra -- but only what this mirror put there. A zone in
+        # the ecosystem is not this realm's alone: the ecosystem publishes
+        # the realm's own ingress records into it, and an operator may add
+        # more. Anything not carrying this mirror's owner tag, including
+        # anything created before tags existed, is somebody else's row.
         for uid in eco_uuids - local_uuids:
             eco_rec = eco_map[uid]
+            if not owner_tag or owner_tag not in (eco_rec.get("tags") or []):
+                LOG.debug(
+                    "Keeping %s %s in ecosystem domain %s: not this realm's row",
+                    eco_rec.get("type"),
+                    eco_rec.get("name"),
+                    domain_name,
+                )
+                continue
             LOG.info(
                 "Deleting record %s %s from ecosystem domain %s",
                 eco_rec.get("type"),
@@ -414,6 +535,10 @@ class DNSSyncService(basic.BasicService):
                 return
 
             LOG.debug("Running full DNS reconciliation")
+            # Which records are this mirror's own does not vary by domain:
+            # settled once here, so a token that cannot be read is reported
+            # once a pass rather than once a zone.
+            owner_tag = self._realm_owner_tag(access_token)
             eco_domains = self._eco_list_domains(endpoint, headers)
             eco_domain_map = {ed.get("name"): ed["uuid"] for ed in eco_domains}
 
@@ -435,6 +560,7 @@ class DNSSyncService(basic.BasicService):
                         endpoint,
                         headers,
                         eco_domain_uuid,
+                        owner_tag,
                     )
                 except Exception:
                     LOG.exception("Full sync failed for domain %s", domain.name)
