@@ -25,6 +25,7 @@ from restalchemy.api import resources
 from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.elements.dm import models as em_models
 from exordos_core.vs.dm import models as models
 
 
@@ -40,10 +41,68 @@ class ValuesStoreController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/vs/"
 
 
-class ProfilesController(
-    iam_controllers.PolicyBasedController,
+class ProjectScopedController(
+    iam_controllers.PolicyBasedWithoutProjectController,
     controllers.BaseResourceControllerPaginated,
 ):
+    """A controller over entities a project shares with the others.
+
+    A read reaches the shared entities and the caller's own ones, a write
+    only the caller's own: an entity is shared because the project holding
+    it publishes it, and publishing something is not handing it over. A
+    caller without a project, an admin token included, is not narrowed.
+    """
+
+    def _shared(self):
+        """Return the clause selecting the entities every project reads."""
+        raise NotImplementedError()
+
+    def _readable(self, filters):
+        if not self._ctx_project_id:
+            return filters
+
+        return dm_filters.AND(
+            filters,
+            dm_filters.OR(
+                self._shared(),
+                {"project_id": dm_filters.EQ(self._ctx_project_id)},
+            ),
+        )
+
+    def _enforce_own(self, uuid):
+        """Refuse a write to an entity another project owns."""
+        if not self._ctx_project_id:
+            return
+
+        self.model.objects.get_one(
+            filters={
+                "uuid": dm_filters.EQ(uuid),
+                "project_id": dm_filters.EQ(self._ctx_project_id),
+            },
+        )
+
+    def create(self, **kwargs):
+        self._enforce_and_override_project_id_in_kwargs("create", kwargs)
+        return super().create(**kwargs)
+
+    def get(self, uuid, **kwargs):
+        self._enforce("read")
+        filters = dict(kwargs, uuid=dm_filters.EQ(uuid))
+        return self.model.objects.get_one(filters=self._readable(filters))
+
+    def filter(self, filters, order_by=None):
+        return super().filter(self._readable(filters), order_by=order_by)
+
+    def update(self, uuid, **kwargs):
+        self._enforce_own(uuid)
+        return super().update(uuid, **kwargs)
+
+    def delete(self, uuid):
+        self._enforce_own(uuid)
+        return super().delete(uuid)
+
+
+class ProfilesController(ProjectScopedController):
     """Controller for /v1/vs/profiles/ endpoint"""
 
     __policy_name__ = "profile"
@@ -61,16 +120,18 @@ class ProfilesController(
         ),
     )
 
+    def _shared(self):
+        """A global profile is read by every project."""
+        return {"profile_type": dm_filters.EQ(infra_c.ProfileType.GLOBAL.value)}
+
     @actions.post
     def activate(self, resource: models.Profile):
+        self._enforce("activate")
         resource.activate()
         return resource
 
 
-class VariablesController(
-    iam_controllers.PolicyBasedController,
-    controllers.BaseResourceControllerPaginated,
-):
+class VariablesController(ProjectScopedController):
     """Controller for /v1/vs/variables/ endpoint"""
 
     __policy_name__ = "variable"
@@ -90,12 +151,19 @@ class VariablesController(
         ),
     )
 
+    def _shared(self):
+        """A variable an element publishes through its manifest exports."""
+        exported = em_models.Export.exported_resource_uuids()
+        return {"uuid": dm_filters.In(list(exported))}
+
     def update(self, uuid, **kwargs):
         kwargs["status"] = infra_c.VariableStatus.IN_PROGRESS.value
         return super().update(uuid, **kwargs)
 
     @actions.post
     def select_value(self, resource: models.Variable, value: str):
+        self._enforce("select_value")
+        self._enforce_own(resource.uuid)
         value = models.Value.objects.get_one(
             filters={"uuid": dm_filters.EQ(value)},
         )
@@ -110,6 +178,8 @@ class VariablesController(
 
     @actions.post
     def release_value(self, resource: models.Variable):
+        self._enforce("release_value")
+        self._enforce_own(resource.uuid)
         if resource.selected_value is None:
             raise NoValueSelectedError()
         resource.release_value()
