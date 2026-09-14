@@ -44,9 +44,9 @@ class SecretsController(iam_controllers.PolicyBasedController):
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
                 # The value is write only: it may be set and rotated but
-                # it is never read back. It is only echoed to the request
-                # that supplied it. The default behind it is a secret
-                # value too, so it is hidden the same way.
+                # it is never read back. The default behind it is a
+                # secret value too, so it is hidden the same way. Create
+                # and update responses drop both in `_hide_values`.
                 "value": {
                     ra_c.GET: field_p.Permissions.HIDDEN,
                     ra_c.FILTER: field_p.Permissions.HIDDEN,
@@ -59,12 +59,25 @@ class SecretsController(iam_controllers.PolicyBasedController):
         ),
     )
 
+    @staticmethod
+    def _hide_values(secret: models.Secret) -> models.Secret:
+        # The response is packed from the saved model and the permissions
+        # of a write keep both fields writable, hence visible. Blank them
+        # on the returned copy so the packer skips them; nothing saves it
+        # again.
+        secret.value = None
+        secret.default_value = None
+        return secret
+
+    def create(self, **kwargs):
+        return self._hide_values(super().create(**kwargs))
+
     def update(self, uuid, **kwargs):
         # Force config to be NEW
         # In order to regenerate renders
         kwargs["status"] = sc.SecretStatus.NEW.value
 
-        return super().update(uuid, **kwargs)
+        return self._hide_values(super().update(uuid, **kwargs))
 
 
 class PasswordsController(iam_controllers.PolicyBasedController):

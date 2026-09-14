@@ -97,6 +97,20 @@ class SecretBuilder(sdk_builder.UniversalBuilderService):
             iter_pause=iter_pause,
         )
 
+    def can_update_instance_resource(
+        self, instance: Secret, resource: ua_models.TargetResource
+    ) -> bool:
+        if instance.is_ready_to_update():
+            return True
+
+        # The value was cleared and no default stands behind it. Holding
+        # the update would leave the old value on the data plane, so
+        # withdraw it: without a target resource the agent drops the
+        # stored secret, and the instance waits in NEW like one that
+        # never had a value.
+        resource.delete()
+        return False
+
     def actualize_outdated_instance(
         self,
         current_instance: Secret,

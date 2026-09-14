@@ -182,6 +182,63 @@ class TestSecretServiceBuilder:
         assert stubs.Secret.objects.get_one().status == "ACTIVE"
         assert stubs.StorageSecret.objects.get_one().value == "late-value"
 
+    def test_clearing_value_withdraws_secret(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        secret_agent_service,
+        secret_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        url = client.build_collection_uri(["secret/secrets"])
+        response = client.post(url, json=secret_factory(value="delivered-value"))
+        assert response.status_code == 201
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        assert stubs.StorageSecret.objects.get_one().value == "delivered-value"
+
+        # No default stands behind the value, so clearing it leaves
+        # nothing to deliver: the old value must not stay on the node.
+        secret_obj = stubs.Secret.objects.get_one()
+        resource_url = client.build_resource_uri(
+            ["secret/secrets", str(secret_obj.uuid)]
+        )
+        response = client.put(resource_url, json={"value": None})
+        assert response.status_code == 200
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        assert len(stubs.TargetResource.objects.get_all()) == 0
+        assert len(stubs.StorageSecret.objects.get_all()) == 0
+        assert stubs.Secret.objects.get_one().status == "NEW"
+
+        # A new value is delivered again.
+        response = client.put(resource_url, json={"value": "next-value"})
+        assert response.status_code == 200
+
+        secret_builder._iteration()
+        universal_scheduler._iteration()
+        secret_agent_service._iteration()
+
+        secret_builder._iteration()
+        secret_agent_service._iteration()
+
+        assert stubs.Secret.objects.get_one().status == "ACTIVE"
+        assert stubs.StorageSecret.objects.get_one().value == "next-value"
+
     def test_delete_secret_without_value(
         self,
         default_node: tp.Dict[str, tp.Any],
@@ -524,6 +581,53 @@ class TestPasswordServiceBuilder:
         stored = stubs.StoragePassword.objects.get_one()
         assert stored.meta["name"] == "after"
         assert stored.value == old_value
+
+    def test_change_password_method(
+        self,
+        default_node: tp.Dict[str, tp.Any],
+        password_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        password_agent_service,
+        password_builder,
+        universal_scheduler,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        password = password_factory(method=sc.SecretMethod.AUTO_HEX)
+        url = client.build_collection_uri(["secret/passwords"])
+        client.post(url, json=password)
+
+        password_builder._iteration()
+        universal_scheduler._iteration()
+        password_agent_service._iteration()
+
+        password_builder._iteration()
+        password_agent_service._iteration()
+
+        password = stubs.Password.objects.get_one()
+        assert password.status == "ACTIVE"
+        old_value = password.value
+
+        # The length is unchanged, but a hex password is not what the new
+        # method generates, so it has to be regenerated.
+        url = client.build_resource_uri(["secret/passwords", str(password.uuid)])
+        response = client.put(url, json={"method": "AUTO_URL_SAFE"})
+        assert response.status_code == 200
+
+        password_builder._iteration()
+        password_agent_service._iteration()
+
+        password_builder._iteration()
+        password_agent_service._iteration()
+
+        password = stubs.Password.objects.get_one()
+        assert password.status == "ACTIVE"
+        assert password.value != old_value
+
+        stored = stubs.StoragePassword.objects.get_one()
+        assert stored.meta["method"] == "AUTO_URL_SAFE"
+        assert stored.value == password.value
 
     def test_delete_password(
         self,

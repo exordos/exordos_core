@@ -41,6 +41,10 @@ UPGRADE = [
     """,
     "CREATE INDEX idx_secret_secrets_tags ON public.secret_secrets USING GIN (tags)",
     """
+    CREATE INDEX secret_secrets_project_id_idx
+        ON public.secret_secrets USING btree (project_id)
+    """,
+    """
     CREATE TABLE public.storage_secrets (
         uuid uuid NOT NULL,
         status public.enum_secret_status
@@ -61,6 +65,7 @@ UPGRADE = [
 
 DOWNGRADE = [
     "DROP TABLE IF EXISTS public.storage_secrets",
+    "DROP INDEX IF EXISTS public.secret_secrets_project_id_idx",
     "DROP INDEX IF EXISTS public.idx_secret_secrets_tags",
     "DROP TABLE IF EXISTS public.secret_secrets",
 ]

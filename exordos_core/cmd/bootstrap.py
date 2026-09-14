@@ -595,6 +595,12 @@ def _ensure_core_agent_config_current() -> None:
             1,
         )
         if _CORE_AGENT_SECRET_MODEL_LINE not in new_content:
+            # Configs persisted before the password mapping have no anchor
+            # to sit next to, so open the section with the mapping instead.
+            new_content = new_content.replace(
+                "[models]\n", "[models]\n" + _CORE_AGENT_SECRET_MODEL_LINE, 1
+            )
+        if _CORE_AGENT_SECRET_MODEL_LINE not in new_content:
             LOG.warning(
                 "Could not insert em_core_secret_secrets into %s",
                 CORE_AGENT_CONFIG_PATH,
@@ -617,6 +623,12 @@ def _ensure_core_agent_config_current() -> None:
             + _CORE_AGENT_PASSWORD_TRANSFORMER_SECTION,
             1,
         )
+        if _CORE_AGENT_SECRET_TRANSFORMER_SECTION not in new_content:
+            new_content = (
+                new_content.rstrip("\n")
+                + "\n\n"
+                + _CORE_AGENT_SECRET_TRANSFORMER_SECTION
+            )
         if _CORE_AGENT_SECRET_TRANSFORMER_SECTION not in new_content:
             LOG.warning(
                 "Could not insert the em_core_secret_secrets transformer into %s",

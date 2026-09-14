@@ -242,6 +242,16 @@ def test_upgrades_core_agent_config(tmp_path):
         "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142"
         in content
     )
+    # No password mapping to anchor on, yet the opaque secret still lands
+    assert (
+        "[models]\nem_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
+        in content
+    )
+    assert (
+        "[resource_transformer:em_core_secret_secrets]\n"
+        "ignore_null_attributes = True\n"
+        "attributes = value\n" in content
+    )
     assert data_path.read_text(encoding="utf-8") == content
     run.assert_called_once()
     assert "ec-core-agent" in run.call_args.args[0]

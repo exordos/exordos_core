@@ -53,9 +53,8 @@ curl --location 'http://10.20.0.2:11010/v1/secret/secrets/<uuid>' \
 }
 ```
 
-There is no `value` field in the response, and no way to ask for one. The only response the value ever
-appears in is the reply to the create or update request that supplied it. Rotating a secret is a
-regular update:
+There is no `value` field in the response, and no way to ask for one. The same goes for `default_value`,
+and for the responses to create and update requests. Rotating a secret is a regular update:
 
 ```bash
 curl --request PUT --location 'http://10.20.0.2:11010/v1/secret/secrets/<uuid>' \
@@ -101,6 +100,9 @@ Target state is not available for resource <resource> by reason: 'value'
 This is deliberate: an element that needs a secret nobody has supplied yet should stall rather than
 deploy with an empty one. Set the value and the next reconciliation cycle picks it up on its own.
 
+Clearing the value of a delivered secret that has no default puts it back in the same state: the value
+is withdrawn from the data plane and the secret waits in `NEW`.
+
 ## Using secrets from a manifest
 
 A secret is consumed by reference. The value is delivered to the node agent, so a manifest reads it
@@ -120,8 +122,10 @@ resources:
     grafana_config:
       name: "grafana-config"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      body: |
-        api_token = $core.secret.secrets.$grafana_api_token:value
+      body:
+        kind: text
+        content: |
+          f"api_token = {$core.secret.secrets.$grafana_api_token:value}"
 ```
 
 Reference the secret itself with `:uuid` when another resource takes a secret UUID.

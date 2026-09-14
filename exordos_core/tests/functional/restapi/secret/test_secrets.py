@@ -201,12 +201,42 @@ class TestSecretsUserApi:
         response = client.put(url, json={"value": "new-value"})
 
         assert response.status_code == 200
-        # The write is echoed back to the writer that supplied it, and
-        # that is the only response the value ever appears in.
-        assert response.json()["value"] == "new-value"
+        # Not even the write that supplied it is answered with the value.
+        assert "value" not in response.json()
 
         stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
         assert stored.value == "new-value"
+        # cleanup
+        client.delete(url)
+
+    def test_secrets_update_does_not_return_stored_values(
+        self,
+        secret_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        secret = secret_factory(value="stored-value", default_value="stored-default")
+        url = client.build_collection_uri(["secret/secrets"])
+        response = client.post(url, json=secret)
+        output = response.json()
+        assert response.status_code == 201
+        assert "value" not in output
+        assert "default_value" not in output
+
+        # An update that does not touch the value must not hand it back.
+        url = client.build_resource_uri(["secret/secrets", output["uuid"]])
+        response = client.put(url, json={"name": "renamed"})
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "renamed"
+        assert "value" not in response.json()
+        assert "default_value" not in response.json()
+
+        stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
+        assert stored.value == "stored-value"
+        assert stored.default_value == "stored-default"
         # cleanup
         client.delete(url)
 

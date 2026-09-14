@@ -105,8 +105,10 @@ class DatabasePasswordBackendClient(base.AbstractBackendClient):
             }
         )
 
-        if target.default_length != actual.meta.get("default_length", 32) or (
-            target.method == "MANUAL" and target.value != actual.value
+        if (
+            target.default_length != actual.meta.get("default_length", 32)
+            or target.method != actual.meta.get("method", target.method)
+            or (target.method == "MANUAL" and target.value != actual.value)
         ):
             plain_password = self._gen_password(target)
             pass_value = target.constructor.build(plain_password)
