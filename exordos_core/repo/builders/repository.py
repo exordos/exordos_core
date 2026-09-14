@@ -85,19 +85,32 @@ class RepoProxyBuilderService(
         """
         super().post_create_instance_resource(instance, resource, derivatives)
 
+        # Elements may already be stored, for example uploaded to a database
+        # repository whose inventory is built from these very rows.
+        stored_elements = {
+            (elem.name, elem.version)
+            for elem in models.RepoElement.objects.get_all(
+                filters={"repository": instance.uuid},
+            )
+        }
+
         # Save the elements to the database
-        i = -1
-        for i, element in enumerate(instance.iter_elements_in_inventory()):
+        saved_count = 0
+        for element in instance.iter_elements_in_inventory():
+            if (element.name, element.version) in stored_elements:
+                continue
+
             # In COPY mode, actualize element to download full data
             if instance.sync_mode == models.SyncMode.COPY:
                 instance.actualize_element(element)
             else:
                 element.save()
             self._set_latest_for_new_element(instance, element)
+            saved_count += 1
 
         LOG.info(
             "Saved %d elements to the database for repository %s",
-            i + 1,
+            saved_count,
             instance.repo_uri,
         )
 
