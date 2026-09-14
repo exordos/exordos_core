@@ -433,10 +433,10 @@ class RepoElementBuilderService(
         called again on the next iteration.
         """
         # An element may already be marked as installed by the time the
-        # builder registers it: the installation request arrives between the
-        # repository sync and this iteration. Such an element is installed
-        # right away, so its dependencies must be resolvable first.
-        if self._require_installation(instance):
+        # builder registers it: the installation or upgrade request arrives
+        # between the repository sync and this iteration. Such an element is
+        # installed right away, so its dependencies must be resolvable first.
+        if self._require_installation(instance) or self._require_upgrade(instance):
             return self._dependencies_available(instance)
 
         return True
@@ -447,11 +447,11 @@ class RepoElementBuilderService(
         """Compute the derivative resources for a new instance.
 
         The hook is called only for new instances. An element that is already
-        installed when the builder registers it must be installed here: the
-        update path is never taken for it, because the instance is marked as
-        tracked right after the resource creation.
+        installed, or is an upgrade target, when the builder registers it must
+        be installed here: the update path is never taken for it, because the
+        instance is marked as tracked right after the resource creation.
         """
-        if self._require_installation(instance):
+        if self._require_installation(instance) or self._require_upgrade(instance):
             return [self._install_manifest(instance)]
 
         return ()

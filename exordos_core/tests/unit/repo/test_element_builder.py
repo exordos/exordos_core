@@ -541,6 +541,35 @@ class TestCreateInstanceHooks:
         assert self._service.can_create_instance_resource(element) is False
         assert element.status == models.RepoElementStatus.ERROR.value
 
+    def test_create_derivatives_installs_upgrade_target(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=sys_uuid.uuid4(),
+        )
+        manifest = object()
+        monkeypatch.setattr(self._service, "_install_manifest", lambda i: manifest)
+
+        result = self._service.create_instance_derivatives(element)
+
+        assert list(result) == [manifest]
+
+    def test_can_create_validates_dependencies_of_upgrade_target(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=sys_uuid.uuid4(),
+        )
+
+        def _raise(instance):
+            raise repo_exceptions.DependencyNotFoundError(
+                name="dep",
+                element=instance.name,
+            )
+
+        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+
+        assert self._service.can_create_instance_resource(element) is False
+        assert element.status == models.RepoElementStatus.ERROR.value
+
     def test_post_create_keeps_status_of_installed_element(self):
         element = FakeElement()
         element.status = models.RepoElementStatus.IN_PROGRESS.value
