@@ -263,7 +263,11 @@ graph TD
 
 При создании сервиса система:
 
-1. Создаёт файл сервиса systemd по пути `/etc/systemd/system/ec_<name>_<uuid>.service`
+1. Создаёт файл сервиса systemd по пути
+   `/etc/systemd/system/exordos_srv_<name>_<uuid>.service` на каждой целевой
+   ноде. `<uuid>` — это не uuid сервиса, а uuid для конкретной ноды,
+   вычисляемый из uuid ноды и `path`, поэтому ищите юнит по шаблону, например
+   `exordos_srv_<name>_*.service`, а не по полному имени
 2. Запускает `systemctl daemon-reload`
 3. Включает и запускает сервис, если `target_status` равен `enabled`
 4. Отключает сервис, если `target_status` равен `disabled`
