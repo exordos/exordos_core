@@ -52,8 +52,26 @@ class StorageClustersController(
 
     def create(self, **kwargs):
         self._validate_driver_spec_uniqueness(kwargs)
+        kwargs["storage_pools"] = self._parse_storage_pools(kwargs.get("storage_pools"))
 
         return super().create(**kwargs)
+
+    def _parse_storage_pools(self, storage_pools):
+        """Convert raw storage_pools dicts into typed model instances.
+
+        `driver_spec` is a single KindModelSelectorType field, and the
+        base controller's create() already converts its raw dict for us.
+        storage_pools is a TypedList wrapping the same selector type, and
+        that conversion doesn't descend into list items - each dict is
+        still raw here, so it's converted explicitly.
+        """
+        if not storage_pools:
+            return storage_pools
+
+        prop_type = models.StorageCluster.properties.properties[
+            "storage_pools"
+        ].get_property_type()
+        return prop_type.from_simple_type(storage_pools)
 
     def _validate_driver_spec_uniqueness(self, kwargs: dict) -> None:
         """Validate the driver_spec's endpoint is unique among clusters.
