@@ -109,8 +109,12 @@ resources:
         disks:
           - size: 10
             image: "https://repo.exordos.com/exordos_core/0.0.1/exordos_core.raw.gz"
+            speed: WARM
+            ephemeral: true
           - size: 10
             label: data
+            speed: WARM
+            ephemeral: true
 
   $core.dns.domains:
     local_domain:
