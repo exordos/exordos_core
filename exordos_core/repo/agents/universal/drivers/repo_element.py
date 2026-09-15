@@ -17,6 +17,7 @@
 import logging
 import os
 import typing as tp
+import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.clients.backend import db as client
 from gcl_sdk.agents.universal.clients.backend import exceptions as backend_exc
@@ -60,7 +61,7 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
     def _make_installed_manifest(
         self,
         em_manifest: em_models.Manifest,
-        em_element: em_models.Element | None,
+        em_element_uuid: sys_uuid.UUID | None,
     ) -> re_builder.InstalledManifest:
         """Build an InstalledManifest from an EM manifest and its counterparts.
 
@@ -80,7 +81,7 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
             name=em_manifest.name,
             version=em_manifest.version,
             description=em_manifest.description,
-            element=em_element.uuid if em_element is not None else None,
+            element=em_element_uuid,
             status=models.RepoElementStatus.ACTIVE.value,
             project_id=em_manifest.project_id,
         )
@@ -221,20 +222,25 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
         # that joins repo elements with EM manifests and elements in a single
         # query would be preferable. For now, we keep it simple with
         # individual queries.
+
+        # Only the UUID of an element is needed here. Keeping just the UUIDs
+        # lets the fetched Element objects (each of which prefetches its whole
+        # manifest and profile) be released before the manifests are read.
+        em_element_uuids = {
+            (e.name, e.version): e.uuid
+            for e in em_models.Element.objects.get_all(session=session)
+        }
         em_manifests = {
             (m.name, m.version): m
             for m in em_models.Manifest.objects.get_all(session=session)
-        }
-        em_elements = {
-            (e.name, e.version): e
-            for e in em_models.Element.objects.get_all(session=session)
         }
 
         # Match them by name and version
         installed = []
         for key, em_manifest in em_manifests.items():
-            em_element = em_elements.get(key)
-            installed.append(self._make_installed_manifest(em_manifest, em_element))
+            installed.append(
+                self._make_installed_manifest(em_manifest, em_element_uuids.get(key))
+            )
 
         return installed
 
