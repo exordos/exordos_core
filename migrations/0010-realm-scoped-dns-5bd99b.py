@@ -54,7 +54,7 @@ FROM public.dns_records
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0003-add-tags-to-models-9e4b2d1f.py"]
+        self._depends = ["0009-add-managed-token-metadata-8c42f019.py"]
 
     @property
     def migration_id(self):
