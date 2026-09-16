@@ -33,17 +33,29 @@ class MigrationStep(migrations.AbstarctMigrationStep):
 
     def upgrade(self, session):
         for table in constants.TABLES_TO_MODELS.keys():
+            # Tables added to the map after this migration are created
+            # with the column and the index already in place, so they are
+            # not there yet when this step runs on a fresh database.
             session.execute(
-                f"ALTER TABLE public.{table} ADD COLUMN tags TEXT[] NOT NULL DEFAULT '{{}}';"
-            )
-            session.execute(
-                f"CREATE INDEX idx_{table}_tags ON public.{table} USING GIN (tags);"
+                f"""
+                DO $$
+                BEGIN
+                    IF to_regclass('public.{table}') IS NOT NULL THEN
+                        ALTER TABLE public.{table}
+                            ADD COLUMN tags TEXT[] NOT NULL DEFAULT '{{}}';
+                        CREATE INDEX idx_{table}_tags
+                            ON public.{table} USING GIN (tags);
+                    END IF;
+                END $$;
+                """
             )
 
     def downgrade(self, session):
         for table in constants.TABLES_TO_MODELS.keys():
             session.execute(f"DROP INDEX IF EXISTS public.idx_{table}_tags;")
-            session.execute(f"ALTER TABLE public.{table} DROP COLUMN IF EXISTS tags;")
+            session.execute(
+                f"ALTER TABLE IF EXISTS public.{table} DROP COLUMN IF EXISTS tags;"
+            )
 
 
 migration_step = MigrationStep()

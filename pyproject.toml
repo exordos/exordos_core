@@ -182,6 +182,7 @@ IamUserRegistration = "exordos_core.events.payloads:RegistrationEventPayload"
 IamUserResetPassword = "exordos_core.events.payloads:ResetPasswordEventPayload"
 
 [project.entry-points."gcl_sdk_universal_agent"]
+OpaqueSecretCapabilityDriver = "exordos_core.agent.universal.drivers.secret.secret:OpaqueSecretCapabilityDriver"
 PasswordCapabilityDriver = "exordos_core.agent.universal.drivers.secret.password:PasswordCapabilityDriver"
 CoreDNSCertificateCapabilityDriver = "exordos_core.agent.universal.drivers.secret.cert:CoreDNSCertificateCapabilityDriver"
 

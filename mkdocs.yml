@@ -170,4 +170,5 @@ nav:
   - Secrets:
       - Certificates: secret/certificates.md
       - Passwords: secret/passwords.md
+      - Secrets: secret/secrets.md
   - Realms: realms/realm-virt-manager.md

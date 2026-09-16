@@ -63,6 +63,14 @@ class Resource(ua_models.Resource):
     _ObjectCollection = ObjectCollection
 
 
+class Secret(secret_models.Secret):
+    _ObjectCollection = ObjectCollection
+
+
+class StorageSecret(secret_driver_models.Secret):
+    _ObjectCollection = ObjectCollection
+
+
 class Password(secret_models.Password):
     _ObjectCollection = ObjectCollection
 

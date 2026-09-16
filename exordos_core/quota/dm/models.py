@@ -54,6 +54,7 @@ DEFAULT_QUOTA_LIMITS: tp.Dict[str, int] = {
     "net_lb": DEFAULT_QUOTA_LIMIT,
     "compute_sets": DEFAULT_QUOTA_LIMIT,
     "nodes": DEFAULT_QUOTA_LIMIT,
+    "secret_secrets": DEFAULT_QUOTA_LIMIT,
     "secret_passwords": DEFAULT_QUOTA_LIMIT,
     "secret_certificates": DEFAULT_QUOTA_LIMIT,
     "secret_rsa_keys": DEFAULT_QUOTA_LIMIT,

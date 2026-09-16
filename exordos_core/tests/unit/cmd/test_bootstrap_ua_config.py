@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import pathlib
 from unittest import mock
 
 from exordos_core.cmd import bootstrap
@@ -109,6 +110,34 @@ em_core_vs_profiles = exordos_core.vs.dm.models:Profile
 em_core_dns_domains = project_id:12345678-c625-4fee-81d5-f691897b8142
 em_core_dns_domains_records = project_id:12345678-c625-4fee-81d5-f691897b8142
 em_core_vs_profiles = project_id:12345678-c625-4fee-81d5-f691897b8142
+"""
+
+
+# A core agent config persisted by an image that scoped the opaque secret
+# capability to the service project.
+_FILTERED_SECRET_CORE_AGENT_CONFIG = """\
+[DEFAULT]
+verbose = True
+
+[agent]
+uuid5_name = core_agent
+
+[models]
+em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp
+em_core_secret_secrets = exordos_core.secret.dm.models:Secret
+em_core_secret_passwords = exordos_core.secret.dm.models:Password
+
+[filters]
+em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142
+em_core_secret_passwords = project_id:12345678-c625-4fee-81d5-f691897b8142
+
+[resource_transformer:em_core_secret_secrets]
+ignore_null_attributes = True
+attributes = value
+
+[resource_transformer:em_core_secret_passwords]
+ignore_null_attributes = True
+attributes = value
 """
 
 
@@ -214,6 +243,17 @@ def test_upgrades_core_agent_config(tmp_path):
         "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142"
         in content
     )
+    assert (
+        "em_core_vs_profiles = exordos_core.vs.dm.models:Profile\n"
+        "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
+        "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
+        "\n[filters]\n" in content
+    )
+    assert (
+        "[resource_transformer:em_core_secret_secrets]\n"
+        "ignore_null_attributes = True\n"
+        "attributes = value\n" in content
+    )
     assert data_path.read_text(encoding="utf-8") == content
     run.assert_called_once()
     assert "ec-core-agent" in run.call_args.args[0]
@@ -237,3 +277,93 @@ def test_missing_core_agent_config_is_skipped(tmp_path):
     assert not etc_path.exists()
     assert not data_path.exists()
     run.assert_not_called()
+
+
+def test_drops_secret_project_filter(tmp_path):
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(_FILTERED_SECRET_CORE_AGENT_CONFIG, encoding="utf-8")
+
+    etc_path, data_path, run = _run_core_agent(tmp_path)
+
+    content = etc_path.read_text(encoding="utf-8")
+    assert (
+        "em_core_secret_secrets = project_id:12345678-c625-4fee-81d5-f691897b8142"
+        not in content
+    )
+    # The password filter and the secret model mapping are left alone
+    assert (
+        "em_core_secret_passwords = project_id:12345678-c625-4fee-81d5-f691897b8142"
+        in content
+    )
+    assert "em_core_secret_secrets = exordos_core.secret.dm.models:Secret" in content
+    assert data_path.read_text(encoding="utf-8") == content
+    run.assert_called_once()
+
+
+def test_noop_on_unfiltered_secret_core_agent_config(tmp_path):
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(_FILTERED_SECRET_CORE_AGENT_CONFIG, encoding="utf-8")
+    _run_core_agent(tmp_path)
+    content = etc_path.read_text(encoding="utf-8")
+
+    etc_path, data_path, run = _run_core_agent(tmp_path)
+
+    assert etc_path.read_text(encoding="utf-8") == content
+    run.assert_not_called()
+
+
+def test_noop_on_template_core_agent_config(tmp_path):
+    template = (
+        pathlib.Path(__file__).parents[4] / "etc/exordos_core/core_agent.conf.j2"
+    )
+    etc_path = tmp_path / "core_agent.conf"
+    etc_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+
+    etc_path, data_path, run = _run_core_agent(tmp_path)
+
+    assert etc_path.read_text(encoding="utf-8") == template.read_text(
+        encoding="utf-8"
+    )
+    run.assert_not_called()
+
+
+def test_ensure_section_sets_and_removes_keys():
+    content = (
+        "[a]\n"
+        "# keep = me\n"
+        "same=1\n"
+        "changed = old\n"
+        "dropped = x\n"
+        "\n"
+        "[b]\n"
+        "dropped = x\n"
+    )
+
+    result = bootstrap._ensure_section(
+        content,
+        "a",
+        {"same": "1", "changed": "new", "dropped": None, "added": "2"},
+    )
+
+    assert result == (
+        "[a]\n"
+        "# keep = me\n"
+        "same=1\n"
+        "changed = new\n"
+        "added = 2\n"
+        "\n"
+        "[b]\n"
+        "dropped = x\n"
+    )
+
+
+def test_ensure_section_appends_missing_section():
+    result = bootstrap._ensure_section(
+        "[a]\nkey = 1", "b", {"key": "2", "absent": None}
+    )
+
+    assert result == "[a]\nkey = 1\n\n[b]\nkey = 2\n"
+
+
+def test_ensure_section_skips_missing_section_with_only_removals():
+    assert bootstrap._ensure_section("[a]\n", "b", {"key": None}) == "[a]\n"

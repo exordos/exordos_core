@@ -78,6 +78,36 @@ body:
     f"MY_PASS={$core.secret.passwords.$my_password:value}"
 ```
 
+## An element waits forever on a secret
+
+A `$core.secret.secrets` resource with neither a `value` nor a `default_value` has nothing to deliver.
+It stays in `NEW`, and every resource that renders `:value` from it keeps its old target state and
+logs:
+
+```text
+Target state is not available for resource <resource> by reason: 'value'
+```
+
+Check whether the secret has a value at all — the API never returns one, so ask the database:
+
+```bash
+psql exordos_core -c \
+  "SELECT name, status, value IS NOT NULL AS has_value,
+          default_value IS NOT NULL AS has_default
+   FROM secret_secrets;"
+```
+
+Set the value and the next reconciliation cycle unblocks the element:
+
+```bash
+curl --request PUT --location 'http://<api>/v1/secret/secrets/<uuid>' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer $TOKEN' \
+--data-raw '{"value": "the-real-value"}'
+```
+
+See [Secrets](../secret/secrets.md) for how a manifest ships a default value instead.
+
 ## Bootstrap script reads an empty config file
 
 Content delivered through `$core.config.configs` is written to the target node as a plain file write: the

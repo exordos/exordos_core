@@ -91,9 +91,9 @@ class SecretServiceBuilder(basic.BasicService):
 
     def _get_outdated_secrets(
         self,
-        model: models.Secret,
+        model: models.AbstractSecret,
         uuids: tp.Collection[sys_uuid.UUID],
-    ) -> tp.List[models.Secret]:
+    ) -> tp.List[models.AbstractSecret]:
         return model.objects.get_all(
             filters={"uuid": dm_filters.In(str(p) for p in uuids)},
         )
@@ -142,7 +142,7 @@ class SecretServiceBuilder(basic.BasicService):
         return list(zip(ssh_keys, ssh_key_resources))
 
     def _actualize_new_secrets(
-        self, kind: str, secrets: tp.Collection[models.Secret]
+        self, kind: str, secrets: tp.Collection[models.AbstractSecret]
     ) -> None:
         """Actualize new secrets."""
         # Just create resources for new secrets
@@ -163,7 +163,7 @@ class SecretServiceBuilder(basic.BasicService):
                 LOG.exception("Error creating cert resource %s", secret.uuid)
 
     def _actualize_changed_secrets(
-        self, kind: str, changed_secrets: tp.Dict[sys_uuid.UUID, models.Secret]
+        self, kind: str, changed_secrets: tp.Dict[sys_uuid.UUID, models.AbstractSecret]
     ) -> None:
         """Actualize secrets changed by user."""
         if len(changed_secrets) == 0:
@@ -201,9 +201,9 @@ class SecretServiceBuilder(basic.BasicService):
     def _actualize_outdated_secrets(
         self,
         kind: str,
-        model: models.Secret,
+        model: models.AbstractSecret,
         secret_handler: tp.Callable[
-            [models.Secret, ua_models.TargetResource, ua_models.Resource], None
+            [models.AbstractSecret, ua_models.TargetResource, ua_models.Resource], None
         ],
     ) -> None:
         """Actualize outdated secrets.
