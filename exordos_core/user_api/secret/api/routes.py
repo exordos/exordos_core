@@ -19,6 +19,12 @@ from restalchemy.api import routes
 from exordos_core.user_api.secret.api import controllers
 
 
+class SecretsRoute(routes.Route):
+    """Handler for /v1/secret/secrets/ endpoint"""
+
+    __controller__ = controllers.SecretsController
+
+
 class PasswordsRoute(routes.Route):
     """Handler for /v1/secret/passwords/ endpoint"""
 
@@ -49,6 +55,7 @@ class SecretRoute(routes.Route):
     __allow_methods__ = [routes.FILTER]
     __controller__ = controllers.SecretController
 
+    secrets = routes.route(SecretsRoute)
     passwords = routes.route(PasswordsRoute)
     certificates = routes.route(CertificatesRoute)
     ssh_keys = routes.route(SSHKeysRoute)

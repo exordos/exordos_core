@@ -371,6 +371,7 @@ _UA_SCHEDULER_SECTION = """\
 [universal_agent_scheduler]
 capabilities =
     em_*,
+    secret,
     password,
     certificate,
     paas_lb_agent,
@@ -378,6 +379,7 @@ capabilities =
     border_agent
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
+_UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
 
 # Extra lines appended to the [SecretCapabilityDriver] section when
 # migrating from [UserCapabilityDriver]. Keep in sync with
@@ -479,6 +481,18 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
+    if "OpaqueSecretCapabilityDriver" not in new_content:
+        new_content = new_content.replace(
+            "    PasswordCapabilityDriver,\n",
+            _UA_OPAQUE_SECRET_DRIVER_LINE + "    PasswordCapabilityDriver,\n",
+            1,
+        )
+        if "OpaqueSecretCapabilityDriver" not in new_content:
+            LOG.warning(
+                "Could not insert OpaqueSecretCapabilityDriver into caps_drivers in %s",
+                UA_CONFIG_PATH,
+            )
+
     new_content = _migrate_ua_secret_driver(new_content)
 
     if new_content == content:
@@ -505,23 +519,89 @@ def _ensure_ua_config_current() -> None:
         LOG.warning("Failed to restart universal agent services: %s", e)
 
 
-# Lines to add to the core agent config for the IdP model. Keep in sync
-# with etc/exordos_core/core_agent.conf.j2.
-_CORE_AGENT_IDP_MODEL_LINE = (
-    "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
-)
-_CORE_AGENT_IDP_FILTER_LINE = (
-    "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142\n"
-)
+# The image-defined parts of the core agent config, by section. Keep in
+# sync with etc/exordos_core/core_agent.conf.j2. A key mapped to None must
+# not be in its section.
+_CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
+    "models": {
+        "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
+        "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
+    },
+    "filters": {
+        "em_core_iam_idp": "project_id:12345678-c625-4fee-81d5-f691897b8142",
+        # Written by earlier images. A manifest declares the project its
+        # secret belongs to, and it is not the service project. Scoping the
+        # capability to one project hides every other secret from the
+        # agent: it keeps creating a row it cannot see and the insert
+        # conflicts on the primary key forever.
+        "em_core_secret_secrets": None,
+    },
+    # Without the transformer a secret with no value yet reports
+    # `value: null` instead of dropping the field, and an element
+    # consuming it renders a null secret instead of waiting.
+    "resource_transformer:em_core_secret_secrets": {
+        "ignore_null_attributes": "True",
+        "attributes": "value",
+    },
+}
+
+
+def _ensure_section(content: str, section: str, items: dict[str, str | None]) -> str:
+    """Make `section` of an INI text hold `items` and return the new text.
+
+    A key mapped to a value is set to it, and added at the end of the
+    section when missing. A key mapped to None is removed. A missing
+    section is appended to the text. The text is edited line by line
+    rather than through configparser, which would drop the comments.
+    """
+    lines = content.splitlines(keepends=True)
+    header = f"[{section}]"
+    start = next(
+        (i + 1 for i, line in enumerate(lines) if line.strip() == header), None
+    )
+    if start is None:
+        body = "".join(f"{k} = {v}\n" for k, v in items.items() if v is not None)
+        if not body:
+            return content
+        prefix = content.rstrip("\n") + "\n\n" if content.strip() else ""
+        return f"{prefix}{header}\n{body}"
+
+    end = next(
+        (i for i in range(start, len(lines)) if lines[i].lstrip().startswith("[")),
+        len(lines),
+    )
+    # Blank lines at the end separate the section from the next one, so
+    # new keys go above them.
+    last = end
+    while last > start and not lines[last - 1].strip():
+        last -= 1
+
+    body = []
+    seen = set()
+    for line in lines[start:last]:
+        key, sep, value = line.partition("=")
+        key = key.strip()
+        if sep and key in items:
+            seen.add(key)
+            if items[key] is None:
+                continue
+            if value.strip() != items[key]:
+                line = f"{key} = {items[key]}\n"
+        body.append(line)
+    if body and not body[-1].endswith("\n"):
+        body[-1] += "\n"
+    body += [
+        f"{k} = {v}\n" for k, v in items.items() if v is not None and k not in seen
+    ]
+    return "".join(lines[:start] + body + lines[last:])
 
 
 def _ensure_core_agent_config_current() -> None:
     """Bring the core agent config up to date with this image.
 
     Like the UA config, the core agent config is restored from the
-    persisted copy on upgraded stands. Idempotently add the
-    em_core_iam_idp model mapping and filter so IdP resources can be
-    reconciled by the core agent.
+    persisted copy on upgraded stands. Idempotently bring every section
+    listed in _CORE_AGENT_SECTIONS to the content it declares.
     """
     try:
         with open(CORE_AGENT_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -530,31 +610,12 @@ def _ensure_core_agent_config_current() -> None:
         LOG.warning("Core agent config not found: %s", CORE_AGENT_CONFIG_PATH)
         return
 
-    if "em_core_iam_idp" in content:
-        LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
-        return
-
-    new_content = content.replace(
-        "em_core_iam_permission_bindings = "
-        "exordos_core.user_api.iam.dm.models:PermissionBinding\n",
-        "em_core_iam_permission_bindings = "
-        "exordos_core.user_api.iam.dm.models:PermissionBinding\n"
-        + _CORE_AGENT_IDP_MODEL_LINE,
-        1,
-    )
-    new_content = new_content.replace(
-        "em_core_dns_domains_records = "
-        "project_id:12345678-c625-4fee-81d5-f691897b8142\n",
-        "em_core_dns_domains_records = "
-        "project_id:12345678-c625-4fee-81d5-f691897b8142\n"
-        + _CORE_AGENT_IDP_FILTER_LINE,
-        1,
-    )
+    new_content = content
+    for section, items in _CORE_AGENT_SECTIONS.items():
+        new_content = _ensure_section(new_content, section, items)
 
     if new_content == content:
-        LOG.warning(
-            "Could not insert em_core_iam_idp into %s", CORE_AGENT_CONFIG_PATH
-        )
+        LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
         return
 
     with open(CORE_AGENT_CONFIG_PATH, "w", encoding="utf-8") as f:

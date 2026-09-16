@@ -27,7 +27,7 @@ from exordos_core.common import constants as c
 from exordos_core.secret import constants as sc
 
 
-class Secret(
+class AbstractSecret(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
 ):
@@ -39,7 +39,33 @@ class Secret(
     meta = properties.property(types.Dict(), default=lambda: {})
 
 
-class Password(Secret, orm.SQLStorableMixin):
+class Secret(AbstractSecret, orm.SQLStorableMixin):
+    """An opaque secret stored on the data plane."""
+
+    __tablename__ = "storage_secrets"
+
+    value = properties.property(
+        types.String(min_length=1, max_length=10240),
+        required=True,
+    )
+
+    @classmethod
+    def from_secret_resource(
+        cls, resource: ua_models.TargetResource, value: str
+    ) -> "Secret":
+        meta = resource.value.copy()
+        meta["value"] = value
+        meta["status"] = sc.SecretStatus.ACTIVE.value
+
+        return cls(
+            uuid=resource.uuid,
+            value=value,
+            status=sc.SecretStatus.ACTIVE.value,
+            meta=meta,
+        )
+
+
+class Password(AbstractSecret, orm.SQLStorableMixin):
     __tablename__ = "storage_passwords"
 
     value = properties.property(
@@ -63,7 +89,7 @@ class Password(Secret, orm.SQLStorableMixin):
         )
 
 
-class Certificate(Secret, orm.SQLStorableMixin):
+class Certificate(AbstractSecret, orm.SQLStorableMixin):
     __tablename__ = "storage_certs"
 
     pkey = properties.property(

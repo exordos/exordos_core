@@ -14,6 +14,7 @@ orch_endpoint = http://{{ boot_ip }}:11013
 status_endpoint = http://{{ boot_ip }}:11013
 caps_drivers =
     SecretCapabilityDriver,
+    OpaqueSecretCapabilityDriver,
     PasswordCapabilityDriver,
     CoreDNSCertificateCapabilityDriver,
     LBAgentCapabilityDriver,
@@ -26,6 +27,7 @@ caps_drivers =
 [universal_agent_scheduler]
 capabilities =
     em_*,
+    secret,
     password,
     certificate,
     paas_lb_agent,
