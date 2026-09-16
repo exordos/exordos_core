@@ -3829,7 +3829,9 @@ components:
       - target
       type: object
     Secret_Create:
+      $ref: '#/components/schemas/Secret_Get'
       path: /v1/secret/secrets/
+    Secret_Get:
       properties:
         constructor:
           default:
