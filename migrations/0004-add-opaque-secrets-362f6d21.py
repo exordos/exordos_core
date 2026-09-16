@@ -16,52 +16,6 @@
 
 from restalchemy.storage.sql import migrations
 
-from exordos_core.common.constants import OWNER_ROLE_UUID
-
-# The core manifest declares these permissions and bindings, but
-# ec-bootstrap skips reapplying the core manifest once its RepoElement is
-# ACTIVE, so an already installed stand never seeds them. Seed them here so
-# the upgrade path reaches them too.
-#
-# The UUIDs are the ones the manifest declares: iam_permissions.name is
-# unique, so a row seeded under a different UUID collides with the manifest
-# on a fresh installation.
-SECRET_PERMISSIONS = [
-    (
-        "0452063a-8bb7-4433-a8ee-a3fec331d43b",
-        "secret.secret.create",
-        "Create secrets",
-    ),
-    (
-        "ade9d7d9-8972-4c41-b3d7-3e2eee86d097",
-        "secret.secret.delete",
-        "Delete secrets",
-    ),
-    (
-        "a2587371-ba16-4d69-982b-f7321824b273",
-        "secret.secret.read",
-        "List and read secrets",
-    ),
-    (
-        "1f6d73f4-0611-48f8-88dd-94a3c2b9022d",
-        "secret.secret.update",
-        "Update secrets",
-    ),
-]
-
-# The owner role gets read and update, the two bindings the manifest
-# declares. They carry no project_id there, so these rows leave it NULL.
-OWNER_BINDINGS = [
-    (
-        "4f3a8e13-9bea-52f2-b2ce-3acb390a8d99",
-        "a2587371-ba16-4d69-982b-f7321824b273",
-    ),
-    (
-        "19227824-60dd-5e56-8bfd-dd06fde8c9ba",
-        "1f6d73f4-0611-48f8-88dd-94a3c2b9022d",
-    ),
-]
-
 UPGRADE = [
     """
     CREATE TABLE public.secret_secrets (
@@ -109,51 +63,12 @@ UPGRADE = [
     """,
 ]
 
-UPGRADE += [
-    f"""
-    INSERT INTO iam_permissions (uuid, name, description)
-    VALUES ('{permission_uuid}', '{name}', '{description}')
-    ON CONFLICT (uuid) DO NOTHING
-    """
-    for permission_uuid, name, description in SECRET_PERMISSIONS
-]
-
-# Both orderings have to converge on a single row. On a fresh installation
-# the migration runs first and the manifest then declares these same UUIDs;
-# on a stand that did reapply the manifest the binding is already there
-# under a UUID of its own, which only the pair guard catches.
-UPGRADE += [
-    f"""
-    INSERT INTO iam_binding_permissions (uuid, role, permission)
-    SELECT '{binding_uuid}', '{OWNER_ROLE_UUID}', '{permission_uuid}'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM iam_binding_permissions
-        WHERE role = '{OWNER_ROLE_UUID}'
-          AND permission = '{permission_uuid}'
-    )
-    """
-    for binding_uuid, permission_uuid in OWNER_BINDINGS
-]
-
 DOWNGRADE = [
     "DROP TABLE IF EXISTS public.storage_secrets",
     "DROP INDEX IF EXISTS public.secret_secrets_project_id_idx",
     "DROP INDEX IF EXISTS public.idx_secret_secrets_tags",
     "DROP TABLE IF EXISTS public.secret_secrets",
 ]
-
-# The bindings reference the permissions, so they have to go first.
-DOWNGRADE = (
-    [
-        f"DELETE FROM iam_binding_permissions WHERE permission = '{permission_uuid}'"
-        for permission_uuid, _, _ in SECRET_PERMISSIONS
-    ]
-    + [
-        f"DELETE FROM iam_permissions WHERE uuid = '{permission_uuid}'"
-        for permission_uuid, _, _ in SECRET_PERMISSIONS
-    ]
-    + DOWNGRADE
-)
 
 
 class MigrationStep(migrations.AbstarctMigrationStep):
