@@ -263,7 +263,11 @@ Services can define dependencies that run before or after the main service:
 
 When a Service is created, the system:
 
-1. Creates a systemd service file at `/etc/systemd/system/ec_<name>_<uuid>.service`
+1. Creates a systemd service file at
+   `/etc/systemd/system/exordos_srv_<name>_<uuid>.service` on each target node.
+   `<uuid>` is not the Service uuid but the per-node one, derived from the
+   node uuid and `path`, so match the unit by a pattern such as
+   `exordos_srv_<name>_*.service` rather than by its full name
 2. Runs `systemctl daemon-reload`
 3. Enables and starts the service if `target_status` is `enabled`
 4. Disables the service if `target_status` is `disabled`
