@@ -118,8 +118,10 @@ UPGRADE += [
     for permission_uuid, name, description in SECRET_PERMISSIONS
 ]
 
-# A stand that did reapply the manifest already has the binding under a
-# UUID of its own, so match on the pair instead of the UUID.
+# Both orderings have to converge on a single row. On a fresh installation
+# the migration runs first and the manifest then declares these same UUIDs;
+# on a stand that did reapply the manifest the binding is already there
+# under a UUID of its own, which only the pair guard catches.
 UPGRADE += [
     f"""
     INSERT INTO iam_binding_permissions (uuid, role, permission)
