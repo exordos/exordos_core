@@ -50,6 +50,15 @@ api_cli_opts = [
         default=2,
         help="How many http servers should be started",
     ),
+    cfg.ListOpt(
+        "cors-allowed-origins",
+        default=[],
+        help=(
+            "Origins allowed to call the API from a browser, for example "
+            "https://example.com. Use * to allow any origin. CORS handling "
+            "is disabled while the list is empty."
+        ),
+    ),
 ]
 
 iam_cli_opts = [
@@ -119,6 +128,7 @@ def main():
             wsgi_app=app.build_wsgi_application(
                 context_storage=context_storage,
                 iam_engine_driver=iam_engine_driver,
+                cors_allowed_origins=CONF[DOMAIN].cors_allowed_origins,
             ),
             host=CONF[DOMAIN].bind_host,
             port=CONF[DOMAIN].bind_port,
