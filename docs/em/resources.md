@@ -894,9 +894,8 @@ resources:
 
 ### Notes
 
-- The value is write only in the user API: it can be set and replaced, but it is never returned by a
-  read. `default_value` is hidden the same way. Reference the value from a manifest with the `:value`
-  link parameter, or reference the secret itself with `:uuid`.
+- The user API returns `value` and `default_value` to anyone allowed to read the secret. Reference the
+  value from a manifest with the `:value` link parameter, or reference the secret itself with `:uuid`.
 - `default_value` is what a manifest declares when it knows a workable value; the operator overrides it
   through the API. `value` wins whenever it is set, and clearing it falls back to the default again.
 - A secret with neither a value nor a default has nothing to deliver: it stays in `NEW`, and an element

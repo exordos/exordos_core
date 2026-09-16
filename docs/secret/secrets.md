@@ -34,9 +34,9 @@ The main fields are:
 - **default_value** - the value to fall back on while `value` is unset. Optional, up to 10240
   characters.
 
-## The value is write only
+## Reading and rotating the value
 
-The value can be set on create and replaced on update, but it is never read back through the API:
+Anyone allowed to read the secret (`secret.secret.read`) gets its value and default back:
 
 ```bash
 curl --location 'http://10.20.0.2:11010/v1/secret/secrets/<uuid>' \
@@ -49,12 +49,14 @@ curl --location 'http://10.20.0.2:11010/v1/secret/secrets/<uuid>' \
     "name": "my-secret",
     "project_id": "00000000-0000-0000-0000-000000000000",
     "status": "ACTIVE",
-    "constructor": {"kind": "plain"}
+    "constructor": {"kind": "plain"},
+    "value": "s3cr3t-api-token"
 }
 ```
 
-There is no `value` field in the response, and no way to ask for one. The same goes for `default_value`,
-and for the responses to create and update requests. Rotating a secret is a regular update:
+An unset `value` or `default_value` is left out of the response. A service that manages secrets through
+the API compares the value it reads back with the one it wants, which is why reads carry it. Rotating a
+secret is a regular update:
 
 ```bash
 curl --request PUT --location 'http://10.20.0.2:11010/v1/secret/secrets/<uuid>' \

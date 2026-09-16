@@ -132,7 +132,7 @@ class TestSecretsUserApi:
         # cleanup
         client.delete(resource_url)
 
-    def test_secrets_default_value_is_not_readable(
+    def test_secrets_default_value_is_readable(
         self,
         secret_factory: tp.Callable,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
@@ -149,11 +149,11 @@ class TestSecretsUserApi:
         url = client.build_resource_uri(["secret/secrets", output["uuid"]])
         response = client.get(url)
         assert response.status_code == 200
-        assert "default_value" not in response.json()
+        assert response.json()["default_value"] == "default-token"
         # cleanup
         client.delete(url)
 
-    def test_secrets_value_is_not_readable(
+    def test_secrets_value_is_readable(
         self,
         secret_factory: tp.Callable,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
@@ -167,17 +167,17 @@ class TestSecretsUserApi:
         output = response.json()
         assert response.status_code == 201
 
-        # The value is not part of any read response.
+        # A REST client reconciling the secret compares the value it reads
+        # back with the one it wants, so every read carries it.
         url = client.build_resource_uri(["secret/secrets", output["uuid"]])
         response = client.get(url)
         assert response.status_code == 200
-        assert "value" not in response.json()
+        assert response.json()["value"] == "super-secret-value"
 
         response = client.get(client.build_collection_uri(["secret/secrets"]))
         assert response.status_code == 200
-        assert all("value" not in item for item in response.json())
+        assert [item["value"] for item in response.json()] == ["super-secret-value"]
 
-        # It is stored though, so the data plane can pick it up.
         stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
         assert stored.value == "super-secret-value"
         # cleanup
@@ -201,15 +201,14 @@ class TestSecretsUserApi:
         response = client.put(url, json={"value": "new-value"})
 
         assert response.status_code == 200
-        # Not even the write that supplied it is answered with the value.
-        assert "value" not in response.json()
+        assert response.json()["value"] == "new-value"
 
         stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
         assert stored.value == "new-value"
         # cleanup
         client.delete(url)
 
-    def test_secrets_update_does_not_return_stored_values(
+    def test_secrets_update_keeps_stored_values(
         self,
         secret_factory: tp.Callable,
         user_api_client: iam_clients.GenesisCoreTestRESTClient,
@@ -222,17 +221,17 @@ class TestSecretsUserApi:
         response = client.post(url, json=secret)
         output = response.json()
         assert response.status_code == 201
-        assert "value" not in output
-        assert "default_value" not in output
+        assert output["value"] == "stored-value"
+        assert output["default_value"] == "stored-default"
 
-        # An update that does not touch the value must not hand it back.
+        # An update that does not touch the values leaves them as they are.
         url = client.build_resource_uri(["secret/secrets", output["uuid"]])
         response = client.put(url, json={"name": "renamed"})
 
         assert response.status_code == 200
         assert response.json()["name"] == "renamed"
-        assert "value" not in response.json()
-        assert "default_value" not in response.json()
+        assert response.json()["value"] == "stored-value"
+        assert response.json()["default_value"] == "stored-default"
 
         stored = secret_models.Secret.objects.get_one(filters={"uuid": output["uuid"]})
         assert stored.value == "stored-value"
