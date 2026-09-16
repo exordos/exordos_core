@@ -384,8 +384,7 @@ class MachineVolume(
     )
     # Network address (ost://host:port) of the StorageCluster this
     # volume was scheduled onto, set by the scheduler - unset for a
-    # volume on a local pool, where the agent resolves the address from
-    # its own driver_spec.rawstor_pools by `storage_pool` name instead.
+    # volume on the hypervisor's own local (qcow2) pool.
     storage_location = properties.property(
         types.AllowNone(types.String(max_length=2048)), default=None
     )
