@@ -196,6 +196,36 @@ class TestRepoProxyBuilderService:
         for elem in elements:
             assert elem.manifest == {}
 
+    def test_new_repository_iteration_keeps_uploaded_elements(self, user_api):
+        """_iteration should activate a database repository with an upload.
+
+        The database driver builds its inventory from the stored elements, so
+        an element uploaded before the first iteration must not be inserted
+        again.
+        """
+        repo = repo_builder.Repository(
+            name="test-repo-database",
+            description="Test database repository",
+            project_id=c.ZERO_UUID,
+            status=ua_c.InstanceStatus.NEW.value,
+            sync_mode=repo_models.SyncMode.LAZY.value,
+            driver_spec=repo_models.DatabaseDriverSpec(),
+        )
+        repo.insert()
+        uploaded = repo.upload("core", "1.0.0", _make_manifest("core", "1.0.0"))
+
+        self._service._iteration()
+
+        updated = repo_models.Repository.objects.get_one(
+            filters={"uuid": dm_filters.EQ(repo.uuid)},
+        )
+        assert updated.status == repo_models.RepositoryStatus.ACTIVE.value
+
+        elements = repo_models.RepoElement.objects.get_all(
+            filters={"repository": repo.uuid},
+        )
+        assert [e.uuid for e in elements] == [uploaded.uuid]
+
     def test_iteration_sets_next_refresh(self, manifests_dir, user_api):
         """_iteration should set next_refresh when refresh_rate is configured."""
         _write_manifest(manifests_dir, "core", "1.0.0")
