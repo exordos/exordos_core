@@ -49,8 +49,8 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 
-# Headers a replayed call takes from the MCP request: credentials and what
-# the API derives the caller's address and public URL from.
+# What a replayed call takes from the MCP request: credentials and what the
+# API derives the caller's address and its own URL from.
 FORWARDED_HEADERS = (
     "HTTP_AUTHORIZATION",
     "HTTP_X_OTP",
@@ -60,7 +60,9 @@ FORWARDED_HEADERS = (
     "HTTP_X_FORWARDED_PREFIX",
     "HTTP_X_FORWARDED_PROTO",
     "HTTP_X_REAL_IP",
+    "HTTP_HOST",
     "REMOTE_ADDR",
+    "wsgi.url_scheme",
 )
 
 INSTRUCTIONS = (
@@ -145,6 +147,11 @@ TOOLS = [
     },
 ]
 
+TOOLS_BY_NAME = {tool["name"]: tool for tool in TOOLS}
+
+# The JSON types the tool input schemas above use.
+JSON_TYPES = {"string": str, "object": dict}
+
 
 class ToolError(Exception):
     """A tool failed in a way the model should read and react to."""
@@ -162,7 +169,7 @@ class McpMiddleware:
         if req.method != "POST":
             # No server-initiated stream (GET) and no session to end (DELETE).
             return webob.Response(status=405, headers={"Allow": "POST"})
-        if not req.authorization:
+        if not req.authorization or req.authorization.authtype.lower() != "bearer":
             resp = _json_response(
                 _error(None, INVALID_REQUEST, "Authorization required"), status=401
             )
@@ -187,7 +194,9 @@ class McpMiddleware:
     def _dispatch(self, req, message):
         msg_id = message["id"]
         method = message["method"]
-        params = message.get("params") or {}
+        params = message.get("params", {})
+        if not isinstance(params, dict):
+            return _error(msg_id, INVALID_PARAMS, "params must be an object")
 
         if method == "initialize":
             requested = params.get("protocolVersion")
@@ -210,14 +219,17 @@ class McpMiddleware:
         if method == "tools/list":
             return _result(msg_id, {"tools": TOOLS})
         if method == "tools/call":
-            handler = getattr(self, f"_tool_{params.get('name')}", None)
-            if handler is None:
-                return _error(
-                    msg_id, INVALID_PARAMS, f"Unknown tool: {params.get('name')}"
-                )
+            name = params.get("name")
+            if not isinstance(name, str) or name not in TOOLS_BY_NAME:
+                return _error(msg_id, INVALID_PARAMS, f"Unknown tool: {name}")
+            arguments = params.get("arguments", {})
+            if not isinstance(arguments, dict):
+                return _error(msg_id, INVALID_PARAMS, "arguments must be an object")
             try:
-                text, is_error = handler(req, **(params.get("arguments") or {}))
-            except (ToolError, TypeError) as e:
+                _check_arguments(TOOLS_BY_NAME[name], arguments)
+                handler = getattr(self, f"_tool_{name}")
+                text, is_error = handler(req, **arguments)
+            except ToolError as e:
                 text, is_error = str(e), True
             return _result(
                 msg_id,
@@ -279,6 +291,26 @@ class McpMiddleware:
         if resp.body:
             text += "\n" + resp.text
         return text, resp.status_code >= 400
+
+
+def _check_arguments(tool, arguments):
+    """Hold the arguments to the tool's input schema before calling it.
+
+    This middleware is outside the one turning exceptions into responses, so
+    a wrongly typed argument has to become a tool error here.
+    """
+    schema = tool["inputSchema"]
+    properties = schema["properties"]
+    unknown = sorted(set(arguments) - set(properties))
+    if unknown:
+        raise ToolError(f"Unknown arguments: {', '.join(unknown)}")
+    for name in schema.get("required", []):
+        if name not in arguments:
+            raise ToolError(f"Missing argument: {name}")
+    for name, value in arguments.items():
+        expected = properties[name]["type"]
+        if not isinstance(value, JSON_TYPES[expected]):
+            raise ToolError(f"Argument {name} must be of type {expected}")
 
 
 def _json_response(body, status=200):
