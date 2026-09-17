@@ -27,7 +27,7 @@ Key capabilities:
 
 - **Declarative management** — describe the desired state; the platform reconciles reality to match it automatically (self-healing). No more configuration drift or manual correction after every change.
 - **Image-based provisioning** — fast, repeatable, and predictable delivery of environments and services. Rollouts and recovery become straightforward operations, not fire-fighting exercises.
-- **AI-ready architecture** — the platform is designed from the ground up to be controlled by an AI agent, reducing manual toil and letting teams operate at the level of intent rather than low-level steps.
+- **AI-ready architecture** — the platform is designed from the ground up to be controlled by an AI agent, reducing manual toil and letting teams operate at the level of intent rather than low-level steps. The User API serves an [MCP endpoint](https://exordos.github.io/exordos_core/usage/mcp/) agents can connect to directly.
 - **Unified lifecycle management** — infrastructure, internal services, and application lifecycle all managed through a single control plane. One system instead of a zoo of tools.
 - **Sovereign deployment** — run entirely within your own on-prem or private cloud perimeter with no dependency on external services. Full control over data, access, and the operational boundary.
 - **Element ecosystem** — install and manage ready-to-use software elements (databases, messengers, internal services, and more) directly from the platform marketplace, just like an app store for enterprise software.
