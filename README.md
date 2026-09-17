@@ -31,6 +31,7 @@ Key capabilities:
 - **Unified lifecycle management** — infrastructure, internal services, and application lifecycle all managed through a single control plane. One system instead of a zoo of tools.
 - **Sovereign deployment** — run entirely within your own on-prem or private cloud perimeter with no dependency on external services. Full control over data, access, and the operational boundary.
 - **Element ecosystem** — install and manage ready-to-use software elements (databases, messengers, internal services, and more) directly from the platform marketplace, just like an app store for enterprise software.
+- **DNS mirroring** — realm tags keep shared-zone records outside the mirror's ownership intact; see [DNS synchronization](docs/usage/functional-characteristics.md#24-dns-module).
 
 > **For a full overview of architecture, configuration, and advanced usage, visit the [documentation](https://exordos.github.io/exordos_core/).**
 
