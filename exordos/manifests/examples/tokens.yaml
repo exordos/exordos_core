@@ -1,0 +1,60 @@
+name: "tokens_example"
+uuid: "6b0f1e5a-9c2d-4e7b-a3f8-2d51c47e9b60"
+description: "Exordos IAM tokens example"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.compute.nodes:
+    exporter_node:
+      name: "exporter-node"
+      description: "Node running a service that calls the platform API"
+      cores: 1
+      ram: 768
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      disk_spec:
+        kind: "root_disk"
+        size: 10
+        image: "https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst"
+
+  # A service account the token authenticates as
+  $core.iam.users:
+    exporter:
+      username: "exporter"
+      email: "exporter@example.com"
+      type: "service"
+
+  # The token carries the permissions its user has in the scoped project
+  $core.iam.role_bindings:
+    exporter_role:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      user: $core.iam.users.$exporter:uuid
+      project: "12345678-c625-4fee-81d5-f691897b8142"
+
+  $core.iam.tokens:
+    # The platform renews the token once half its lifetime has passed.
+    # Everything rendering `:access_token` picks up the new value.
+    exporter_token:
+      user: $core.iam.users.$exporter:uuid
+      # The default IAM client
+      iam_client: "00000000-0000-0000-0000-000000000000"
+      scope: "project:12345678-c625-4fee-81d5-f691897b8142"
+      expiration_delta: 604800
+
+  # Deliver the token to the node. The file is rewritten on every renewal.
+  $core.config.configs:
+    exporter_token_file:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exporter/token
+      mode: "0600"
+      target:
+        kind: node
+        node: "$core.compute.nodes.$exporter_node:uuid"
+      body:
+        kind: text
+        content: f"{$core.iam.tokens.$exporter_token:access_token}"

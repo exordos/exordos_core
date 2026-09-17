@@ -33,6 +33,7 @@ is defined in `exordos/manifests/specification/full_spec.yaml`.
 | [`$core.iam.projects`](#coreiamprojects) | IAM projects |
 | [`$core.iam.users`](#coreiamusers) | IAM users |
 | [`$core.iam.role_bindings`](#coreiamrole_bindings) | IAM role bindings |
+| [`$core.iam.tokens`](#coreiamtokens) | IAM access tokens that renew themselves |
 
 ---
 
@@ -1126,6 +1127,54 @@ resources:
   (`726f6c65-0000-0000-0000-000000000002`, full administrative privileges within a project, assigned
   automatically on project creation). See the [IAM Permissions](../iam/permissions_overview.md) page for
   the role/permission model.
+
+---
+
+## $core.iam.tokens
+
+An access token for a user, signed by an IAM client. The platform renews it before it expires, so an
+element can hand a service a credential that keeps working without anyone logging in.
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `user` | uuid | The user the token authenticates. **Required.** |
+| `iam_client` | uuid | The IAM client that signs the token. **Required.** The default client is `00000000-0000-0000-0000-000000000000`. |
+| `scope` | string | Token scope, e.g. `project:<uuid>` to scope the token to a project. |
+| `expiration_delta` | integer | Lifetime in seconds, at least 60 (default: 3600). |
+| `auto_renew` | boolean | Renew the token before it expires (default: `true`). |
+| `audience` | string | The `aud` claim. Defaults to the client's `client_id`. |
+| `issuer` | string | The `iss` claim. Defaults to the client's URL. |
+
+### Example
+
+```yaml
+resources:
+  $core.iam.tokens:
+    exporter_token:
+      user: $core.iam.users.$exporter:uuid
+      iam_client: "00000000-0000-0000-0000-000000000000"
+      scope: "project:12345678-c625-4fee-81d5-f691897b8142"
+      expiration_delta: 604800
+```
+
+### Notes
+
+- Reference the signed token with the `:access_token` link parameter, for example
+  `f"{$core.iam.tokens.$exporter_token:access_token}"` in a config body. The user API never returns
+  it.
+- Once half the lifetime has passed the platform extends the token by `expiration_delta`. The access
+  token changes, and every resource rendering `:access_token` is updated. The previous access token
+  stays valid until the expiration signed into it, so consumers have the other half of the lifetime
+  to pick up the new one.
+- Choose a lifetime long enough that renewals are rare: each one rewrites everything that renders the
+  token. With `auto_renew: false` the token expires once and stays expired.
+- Changing `scope` moves the token to the new project, and changing `expiration_delta` starts a new
+  lifetime from that moment.
+- The token carries the permissions of its user in the project from `scope`, so bind the user a role
+  in that project. Managing tokens through `/v1/iam/tokens/` takes the `iam.token.*` permissions,
+  which no built-in role except admin has.
 
 ---
 

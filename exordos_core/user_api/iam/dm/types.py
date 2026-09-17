@@ -75,3 +75,30 @@ class Email(types.Email):
 
     def from_simple_type(self, value):
         return value.lower()
+
+
+class Seconds(types.TimeDelta):
+    """A lifetime in whole seconds.
+
+    The core agent hashes the view a model reports against the manifest
+    value, and a manifest writes seconds as an integer. A float view
+    (`86400.0`) never hashes equal to it.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._openapi_type = "integer"
+        self._openapi_format = None
+
+    def to_simple_type(self, value):
+        return int(value.total_seconds())
+
+    def to_openapi_spec(self, prop_kwargs):
+        spec = super().to_openapi_spec(prop_kwargs)
+        # TimeDelta always writes the format, and an integer has none
+        spec.pop("format")
+        return spec
+
+    @property
+    def example(self):
+        return 3600

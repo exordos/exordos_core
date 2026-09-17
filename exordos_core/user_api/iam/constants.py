@@ -229,6 +229,21 @@ PERMISSION_ROLE_BINDING_DELETE = rules.Rule.from_raw(
 )
 
 
+# Tokens
+PERMISSION_TOKEN_CREATE = rules.Rule.from_raw(
+    "iam.token.create",
+)
+PERMISSION_TOKEN_READ = rules.Rule.from_raw(
+    "iam.token.read",
+)
+PERMISSION_TOKEN_UPDATE = rules.Rule.from_raw(
+    "iam.token.update",
+)
+PERMISSION_TOKEN_DELETE = rules.Rule.from_raw(
+    "iam.token.delete",
+)
+
+
 # Service Token
 PERMISSION_SERVICE_TOKEN_CREATE = rules.Rule.from_raw(
     "iam.service_token.create",
