@@ -526,6 +526,7 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
+        "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
     },
     "filters": {
         "em_core_iam_idp": "project_id:12345678-c625-4fee-81d5-f691897b8142",

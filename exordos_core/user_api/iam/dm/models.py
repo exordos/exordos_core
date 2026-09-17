@@ -1612,6 +1612,10 @@ class Token(
         ra_types.String(max_length=256),
         default=None,
     )
+    auto_renew = properties.property(
+        ra_types.Boolean(),
+        default=False,
+    )
 
     def __init__(self, user=None, scope="", project=None, **kwargs):
         user = user or User.me()
@@ -1727,11 +1731,20 @@ class Token(
                 return True
         return False
 
-    def get_response_body(self):
-        now = datetime.datetime.now(datetime.timezone.utc)
-        algorithm = self.iam_client.get_token_algorithm()
+    def needs_renewal(self, now: datetime.datetime) -> bool:
+        # Renew once half the lifetime is gone: the previous access token
+        # stays valid for the other half while its consumers pick up the
+        # new one.
+        return self.expiration_at - now < self.expiration_delta / 2
 
-        access_token_info = {
+    def renew(self, now: datetime.datetime) -> None:
+        # The token keeps its uuid, so the old access token stays valid
+        # until the expiration signed into it.
+        self.expiration_at = now + self.expiration_delta
+        self.update()
+
+    def _get_access_token_info(self):
+        return {
             "exp": int(self.expiration_at.timestamp()),
             "iat": int(self.created_at.timestamp()),
             "auth_time": int(self.created_at.timestamp()),
@@ -1742,7 +1755,12 @@ class Token(
             "typ": self.typ,
             "otp": self.user.otp_enabled,
         }
-        access_token = algorithm.encode(access_token_info)
+
+    def get_response_body(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        algorithm = self.iam_client.get_token_algorithm()
+
+        access_token = algorithm.encode(self._get_access_token_info())
 
         id_token_info = {
             "exp": int(self.expiration_at.timestamp()),
@@ -1814,6 +1832,70 @@ class Token(
             permissions=[v.permission for v in values],
             otp_verified=otp_verified,
         )
+
+
+class ManagedToken(Token, ua_models.TargetResourceMixin):
+    """A token declared by a manifest or created through the tokens API.
+
+    Unlike a login session it renews itself before it expires, and it
+    reports its signed access token so an element can render it with
+    `:access_token`. The access token is not a property, so the user API
+    never returns it.
+    """
+
+    # A renewal runs every few seconds, so a shorter lifetime would renew
+    # the token, and rewrite everything rendering it, on every iteration.
+    MIN_RENEWABLE_LIFETIME = datetime.timedelta(seconds=60)
+
+    auto_renew = properties.property(
+        ra_types.Boolean(),
+        default=True,
+    )
+    expiration_delta = properties.property(
+        types.Seconds(),
+        default=Token.get_default_expiration_delta,
+    )
+
+    def __init__(self, iam_client=None, **kwargs):
+        if iam_client is not None:
+            kwargs.setdefault(
+                "issuer", f"{c.DEFAULT_ROOT_ENDPOINT}iam/clients/{iam_client.uuid}"
+            )
+            kwargs.setdefault("audience", iam_client.client_id)
+        super().__init__(iam_client=iam_client, **kwargs)
+
+    def _validate_lifetime(self):
+        # Checked on write rather than by the type: the tokens API lists
+        # login sessions too, and those may have any lifetime.
+        if self.auto_renew and self.expiration_delta < self.MIN_RENEWABLE_LIFETIME:
+            raise iam_exceptions.TokenLifetimeTooShortError(
+                min_seconds=int(self.MIN_RENEWABLE_LIFETIME.total_seconds())
+            )
+
+    def insert(self, session=None):
+        self._validate_lifetime()
+        super().insert(session=session)
+
+    def update(self, session=None, force=False):
+        self._validate_lifetime()
+        # The project follows the scope, and a new lifetime starts now.
+        # Both are derived at creation, so an update has to derive them
+        # again or they keep the values of the old scope and lifetime.
+        if self.properties["scope"].is_dirty():
+            self.project = self._get_project_by_scope(self.user, self.scope)
+        if self.properties["expiration_delta"].is_dirty():
+            now = datetime.datetime.now(datetime.timezone.utc)
+            self.expiration_at = now + self.expiration_delta
+        super().update(session=session, force=force)
+
+    def get_access_token(self) -> str:
+        algorithm = self.iam_client.get_token_algorithm()
+        return algorithm.encode(self._get_access_token_info())
+
+    def dump_to_simple_view(self, *args, **kwargs):
+        view = super().dump_to_simple_view(*args, **kwargs)
+        view["access_token"] = self.get_access_token()
+        return view
 
 
 class Idp(

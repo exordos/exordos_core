@@ -35,6 +35,7 @@ from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import contexts as ra_a_contexts
 from restalchemy.api import controllers
+from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 from restalchemy.common import contexts
 from restalchemy.common import exceptions as ra_e
@@ -677,6 +678,46 @@ class RoleBindingController(
             ctx.get_user_ip(),
         )
         return role_binding
+
+
+class TokenController(
+    iam_controllers.PolicyBasedWithoutProjectController,
+    controllers.BaseResourceControllerPaginated,
+):
+    """Controller for /v1/iam/tokens/ endpoint"""
+
+    __resource__ = resources.ResourceByRAModel(
+        models.ManagedToken,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # Derived from the scope and the lifetime
+                "project": {ra_c.ALL: field_p.Permissions.RO},
+                "expiration_at": {ra_c.ALL: field_p.Permissions.RO},
+                "refresh_expiration_at": {ra_c.ALL: field_p.Permissions.RO},
+                # A managed token is never refreshed
+                "refresh_expiration_delta": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "refresh_token_uuid": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "nonce": {ra_c.ALL: field_p.Permissions.HIDDEN},
+            },
+        ),
+    )
+
+    __policy_service_name__ = "iam"
+    __policy_name__ = "token"
+
+    def create(self, **kwargs):
+        token = super().create(**kwargs)
+        ctx = self.get_context()
+        LOG.info(
+            "IAM AUDIT: token issued user=%s user_uuid=%s token_uuid=%s ip=%s",
+            token.user.name,
+            token.user.uuid,
+            token.uuid,
+            ctx.get_user_ip(),
+        )
+        return token
 
 
 class PermissionController(

@@ -137,6 +137,12 @@ class RoleBindingRoute(routes.Route):
     __controller__ = controllers.RoleBindingController
 
 
+class TokenRoute(routes.Route):
+    """Handler for /v1/iam/tokens/ endpoint"""
+
+    __controller__ = controllers.TokenController
+
+
 class PermissionRoute(routes.Route):
     """Handler for /v1/iam/permissions/ endpoint"""
 
@@ -294,6 +300,7 @@ class IamRoute(routes.Route):
     role_bindings = routes.route(RoleBindingRoute)
     permissions = routes.route(PermissionRoute)
     permission_bindings = routes.route(PermissionBindingRoute)
+    tokens = routes.route(TokenRoute)
 
     # oauth2, oidc, sso, etc
     idp = routes.route(IdpRoute)
