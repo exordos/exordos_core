@@ -1140,7 +1140,7 @@ element can hand a service a credential that keeps working without anyone loggin
 | Field | Type | Description |
 |---|---|---|
 | `user` | uuid | The user the token authenticates. **Required.** |
-| `iam_client` | uuid | The IAM client that signs the token. **Required.** The default client is `00000000-0000-0000-0000-000000000000`. |
+| `iam_client` | uuid | The IAM client that signs the token. **Required.** The default client is `00000000-0000-0000-0000-000000000000`, or link a client the manifest declares: `$core.iam.clients.$my_client:uuid`. |
 | `scope` | string | Token scope, e.g. `project:<uuid>` to scope the token to a project. |
 | `expiration_delta` | integer | Lifetime in seconds, at least 60 (default: 3600). |
 | `auto_renew` | boolean | Renew the token before it expires (default: `true`). |
