@@ -70,6 +70,23 @@ Provides management of DNS resources through a built-in DNS server based on Core
 - Creation of DNS records of types A, NS, SOA, TXT.
 - Synchronization of domains with external DNS (ecosystem DNS).
 
+The realm mirror writes `realm:<realm_uuid>` into each upstream record's tags and
+updates or removes only records carrying its own mark. Local `realm:` tags are
+replaced with the current realm's mark. Other realms' and unmarked records remain
+intact, including records with a conflicting UUID.
+The mark is a reconciliation label; IAM and project permissions still authorize
+API access.
+
+Before handing legacy records to the mirror, verify their origin and add the
+realm mark through the upstream DNS API, preserving their other tags. A UUID or
+matching content alone does not establish ownership. Older upstream APIs without
+tag support accept new unmarked records, but existing records are not updated or
+removed until the upstream is upgraded and those records are explicitly marked.
+The mirror retries an unsupported tag filter after one hour; unrelated server
+errors remain failures. Record listing supports `q=tags:"realm:<realm_uuid>"`;
+unknown field parameters and invalid typed values return HTTP 400. A bare `*`
+record name denotes the zone's wildcard.
+
 ### 2.5. Load Balancer module
 
 Provides nginx-based load balancing.
