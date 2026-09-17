@@ -3,7 +3,7 @@
   "name": "io.github.exordos/exordos-core",
   "title": "Exordos Core",
   "description": "Manage an Exordos Core installation through its User API.",
-  "version": "0.2.32",
+  "version": "latest",
   "websiteUrl": "https://exordos.github.io/exordos_core/usage/mcp/",
   "repository": {
     "url": "https://github.com/exordos/exordos_core",
