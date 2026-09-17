@@ -32,6 +32,7 @@ def echo_app(req):
         json_body={
             "method": req.method,
             "path": req.path_info,
+            "host_url": req.host_url,
             "query": req.query_string,
             "authorization": req.headers.get("Authorization"),
             "body": req.json_body if req.body else None,
@@ -45,7 +46,9 @@ def middleware():
 
 
 def post(middleware, message, authorization="Bearer token"):
-    req = webob.Request.blank(mcp.MCP_PATH, method="POST")
+    req = webob.Request.blank(
+        mcp.MCP_PATH, method="POST", base_url="https://exordos.example.com"
+    )
     if authorization:
         req.authorization = authorization
     req.body = message if isinstance(message, bytes) else json.dumps(message).encode()
@@ -77,8 +80,11 @@ class TestTransport:
 
         assert resp.status_code == 405
 
-    def test_requires_authorization(self, middleware):
-        resp = post(middleware, {"jsonrpc": "2.0", "id": 1, "method": "ping"}, None)
+    @pytest.mark.parametrize("authorization", [None, "Basic dXNlcjpwYXNz"])
+    def test_requires_bearer_authorization(self, middleware, authorization):
+        resp = post(
+            middleware, {"jsonrpc": "2.0", "id": 1, "method": "ping"}, authorization
+        )
 
         assert resp.status_code == 401
         assert resp.headers["WWW-Authenticate"] == "Bearer"
@@ -150,10 +156,50 @@ class TestProtocol:
 
         assert resp.json_body["error"]["code"] == mcp.INVALID_PARAMS
 
-    def test_missing_arguments_are_a_tool_error(self, middleware):
-        _, is_error = call_tool(middleware, "call_api")
+    @pytest.mark.parametrize(
+        "method, params",
+        [
+            ("initialize", []),
+            ("tools/call", "call_api"),
+            ("tools/call", {"name": ["call_api"]}),
+            ("tools/call", {"name": "call_api", "arguments": []}),
+        ],
+    )
+    def test_malformed_params(self, middleware, method, params):
+        resp = post(
+            middleware,
+            {"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json_body["error"]["code"] == mcp.INVALID_PARAMS
+
+    @pytest.mark.parametrize(
+        "name, arguments, message",
+        [
+            ("call_api", {}, "Missing argument: method"),
+            ("call_api", {"method": "GET"}, "Missing argument: path"),
+            ("list_endpoints", {"search": None}, "search must be of type string"),
+            ("list_endpoints", {"filter": "x"}, "Unknown arguments: filter"),
+            (
+                "describe_endpoint",
+                {"method": 1, "path": "/v1/"},
+                "method must be of type string",
+            ),
+            (
+                "call_api",
+                {"method": "GET", "path": "/v1/", "query": "a=b"},
+                "query must be of type object",
+            ),
+        ],
+    )
+    def test_invalid_arguments_are_a_tool_error(
+        self, middleware, name, arguments, message
+    ):
+        text, is_error = call_tool(middleware, name, **arguments)
 
         assert is_error
+        assert message in text
 
 
 class TestTools:
@@ -204,6 +250,7 @@ class TestTools:
         assert json.loads(body) == {
             "method": "POST",
             "path": "/v1/compute/nodes/",
+            "host_url": "https://exordos.example.com",
             "query": "name=a&name=b",
             "authorization": "Bearer token",
             "body": {"name": "vm"},

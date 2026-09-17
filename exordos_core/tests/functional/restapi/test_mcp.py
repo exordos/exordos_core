@@ -84,3 +84,31 @@ class TestMcp:
 
         assert is_error
         assert text.startswith("HTTP 403")
+
+    def test_discovery_in_a_running_service(
+        self,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        client = user_api_client(auth_user_admin)
+
+        text, is_error = call_tool(client, "list_endpoints", search="em/elements")
+
+        assert not is_error
+        assert "GET /v1/em/elements/ - Get Elements" in text.splitlines()
+
+        text, is_error = call_tool(
+            client,
+            "describe_endpoint",
+            method="GET",
+            path="/v1/em/elements/{ElementUuid}",
+        )
+
+        assert not is_error
+        assert "$ref" not in text
+
+        # Building the document swaps request state in and out; the service
+        # has to keep answering ordinary calls afterwards.
+        response = client.get(client.build_collection_uri(["em", "elements"]))
+
+        assert response.status_code == 200
