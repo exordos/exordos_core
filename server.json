@@ -1,0 +1,65 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.exordos/exordos-core",
+  "title": "Exordos Core",
+  "description": "Manage an Exordos Core installation through its User API.",
+  "version": "0.2.32",
+  "websiteUrl": "https://exordos.github.io/exordos_core/usage/mcp/",
+  "repository": {
+    "url": "https://github.com/exordos/exordos_core",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://{domain}/api/core/v1/mcp",
+      "variables": {
+        "domain": {
+          "description": "Domain of the Exordos installation",
+          "placeholder": "exordos.example.com",
+          "isRequired": true
+        }
+      },
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "IAM access token of the user the tools act as",
+          "value": "Bearer {token}",
+          "isRequired": true,
+          "variables": {
+            "token": {
+              "description": "IAM access token",
+              "isRequired": true,
+              "isSecret": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "streamable-http",
+      "url": "http://{host}:11010/v1/mcp",
+      "variables": {
+        "host": {
+          "description": "Host of a User API service reached directly, without nginx",
+          "default": "127.0.0.1"
+        }
+      },
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "IAM access token of the user the tools act as",
+          "value": "Bearer {token}",
+          "isRequired": true,
+          "variables": {
+            "token": {
+              "description": "IAM access token",
+              "isRequired": true,
+              "isSecret": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

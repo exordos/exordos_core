@@ -46,6 +46,11 @@ claude mcp add --transport http exordos \
     --header "Authorization: Bearer $TOKEN"
 ```
 
+To add the server to [MCP Inspector](https://github.com/modelcontextprotocol/inspector),
+import [`server.json`](https://github.com/exordos/exordos_core/blob/master/server.json)
+from the repository root, an MCP Registry description of both endpoints.
+The Inspector asks for the domain (or host) and the token.
+
 Or check the endpoint with `curl`:
 
 ```bash
