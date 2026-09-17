@@ -60,12 +60,14 @@ resources:
       description: "Project the exporter works in"
       organization: $core.iam.organizations.$exporter_org:uuid
 
-  # A service account the token authenticates as
+  # A service account the token authenticates as. `password` is required
+  # by the users API even for a service account, which never keeps one.
   $core.iam.users:
     exporter:
       username: "exporter"
       email: "exporter@example.com"
       type: "service"
+      password: "unused-by-a-service-account"
 
   # The token carries the permissions its user has in the scoped project
   $core.iam.role_bindings:
