@@ -1143,9 +1143,8 @@ element can hand a service a credential that keeps working without anyone loggin
 | `iam_client` | uuid | The IAM client that signs the token. **Required.** The default client is `00000000-0000-0000-0000-000000000000`, or link a client the manifest declares: `$core.iam.clients.$my_client:uuid`. |
 | `scope` | string | Token scope, e.g. `project:<uuid>` to scope the token to a project. |
 | `expiration_delta` | integer | Lifetime in seconds, at least 60 (default: 3600). |
-| `auto_renew` | boolean | Renew the token before it expires (default: `true`). |
-| `audience` | string | The `aud` claim. Defaults to the client's `client_id`. |
-| `issuer` | string | The `iss` claim. Defaults to the client's URL. |
+| `audience` | string | The `aud` claim. Unset, it is the `client_id` of the current client. |
+| `issuer` | string | The `iss` claim. Unset, it is the URL of the current client. |
 
 ### Example
 
@@ -1169,7 +1168,7 @@ resources:
   stays valid until the expiration signed into it, so consumers have the other half of the lifetime
   to pick up the new one.
 - Choose a lifetime long enough that renewals are rare: each one rewrites everything that renders the
-  token. With `auto_renew: false` the token expires once and stays expired.
+  token.
 - Changing `scope` moves the token to the new project, and changing `expiration_delta` starts a new
   lifetime from that moment.
 - The token carries the permissions of its user in the project from `scope`, so bind the user a role
