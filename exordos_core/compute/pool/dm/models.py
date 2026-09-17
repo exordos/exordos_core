@@ -138,6 +138,10 @@ class MachineVolume(
                 "boot",
                 "label",
                 "device_type",
+                "speed",
+                "ephemeral",
+                "storage_pool",
+                "storage_location",
                 "project_id",
             )
         )
