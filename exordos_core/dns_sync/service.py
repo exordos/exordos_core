@@ -36,6 +36,29 @@ DNS_SYNC_TIMEOUT = 30
 DNS_SYNC_POOL_SIZE = 1
 FULL_SYNC_INTERVAL = 60
 
+# What an ecosystem that cannot read the filter expression answers with.
+# The current one rejects it as a bad request; one that predates the
+# expression takes `q` for an ordinary field filter, fails to find a field
+# by that name and answers 500. Any other status -- a gateway that is
+# briefly down, a token that stopped working -- says nothing about the
+# filter, so it is not remembered as a refusal and not retried without one.
+FILTER_UNSUPPORTED_STATUSES = frozenset((400, 500))
+# How long a refusal stands before the filter is tried again: an ecosystem
+# upgraded in place under a running mirror learns the filter meanwhile.
+FILTER_REFUSAL_TTL = 3600
+
+# The mark a realm's mirror puts on the records it writes upstream. It is a
+# label the mirror sets, not a proof: the zone it mirrors into is shared
+# with the ecosystem's own records and an operator's, and the mark is how
+# the mirror tells its rows from theirs when reconciling. The realm uuid is
+# what names it, so it survives the realm's token or IAM user changing and
+# two realms of one project do not take each other's rows for their own.
+REALM_TAG_PREFIX = "realm:"
+
+
+def realm_tag(realm_uuid):
+    return REALM_TAG_PREFIX + str(realm_uuid)
+
 
 class DNSSyncService(basic.BasicService):
     """Periodically syncs local DNS records to the ecosystem."""
@@ -48,6 +71,12 @@ class DNSSyncService(basic.BasicService):
         self._initialized = False
         self._last_full_sync_at = FULL_SYNC_INTERVAL + 1  # sync immediately on start
         self._last_fast_sync_dt = None
+        # When each endpoint refused the filter expression, so a mirror
+        # talking to an older one does not ask on every pass -- and one
+        # that moves to, or is upgraded into, a newer one is not stuck
+        # with the answer the old one gave. An ecosystem that cannot filter
+        # by tags predates tags on records too, so nothing is marked there.
+        self._filter_lang_refused = {}
 
     def _get_variable_value(self, var_uuid):
         """Read variable value from ValuesStore by UUID."""
@@ -104,20 +133,78 @@ class DNSSyncService(basic.BasicService):
         )
         return resp.json()
 
-    def _eco_list_records(self, endpoint, headers, eco_domain_uuid):
-        """GET /api/core/v1/dns/domains/{uuid}/records/"""
+    def _mark_for(self, endpoint, tag):
+        """The mark to write to `endpoint`: none where it cannot hold one."""
+        return None if endpoint in self._filter_lang_refused else tag
+
+    def _filter_refused(self, endpoint):
+        refused_at = self._filter_lang_refused.get(endpoint)
+        if refused_at is None:
+            return False
+        if time.monotonic() - refused_at >= FILTER_REFUSAL_TTL:
+            del self._filter_lang_refused[endpoint]
+            return False
+        return True
+
+    def _eco_list_records(self, endpoint, headers, eco_domain_uuid, tag=None):
+        """GET /api/core/v1/dns/domains/{uuid}/records/
+
+        Asks for the records carrying `tag` only: the rest of the zone is
+        not this mirror's business, and a zone is read on every
+        reconciliation. An ecosystem that cannot read the filter refuses
+        it -- see `FILTER_UNSUPPORTED_STATUSES` for the two ways it does --
+        and then the whole zone comes back and the caller checks the tag
+        instead: the same answer, read further from the index. Any other
+        failure is the caller's to see, and is raised rather than turned
+        into a second request that would fail too.
+        """
         url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
+        if tag and not self._filter_refused(endpoint):
+            try:
+                resp = self._client.get(
+                    url,
+                    headers=headers,
+                    params={"q": 'tags:"%s"' % tag},
+                )
+                return resp.json()
+            except bazooka_exc.BaseHTTPException as e:
+                if e.code not in FILTER_UNSUPPORTED_STATUSES:
+                    raise
+                LOG.info(
+                    "The ecosystem refused the tag filter with %s; "
+                    "reading whole zones from %s",
+                    e.code,
+                    endpoint,
+                )
+                self._filter_lang_refused[endpoint] = time.monotonic()
         resp = self._client.get(url, headers=headers)
         return resp.json()
 
     def _eco_create_record(self, endpoint, headers, eco_domain_uuid, record_data):
-        """POST /api/core/v1/dns/domains/{uuid}/records/"""
+        """POST /api/core/v1/dns/domains/{uuid}/records/
+
+        A record can be there without this mirror having seen it: asking
+        for its marked records hides the ones it wrote before it marked
+        them. The uuid is the local record's, so a conflict on it is this
+        mirror's own row: creating it is then an update, not a conflict to
+        report every minute -- and the update puts the mark on, so the
+        next pass finds it instead of coming back here forever.
+        """
         url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
-        self._client.post(
-            url,
-            json=record_data,
-            headers=headers,
-        )
+        try:
+            self._client.post(
+                url,
+                json=record_data,
+                headers=headers,
+            )
+        except bazooka_exc.ConflictError:
+            self._eco_update_record(
+                endpoint,
+                headers,
+                eco_domain_uuid,
+                record_data["uuid"],
+                record_data,
+            )
 
     def _eco_update_record(
         self, endpoint, headers, eco_domain_uuid, record_uuid, record_data
@@ -183,23 +270,31 @@ class DNSSyncService(basic.BasicService):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_record_data(record):
-        """Convert a local Record to the dict sent to ecosystem."""
+    def _build_record_data(record, tag):
+        """Convert a local Record to the dict sent to ecosystem.
+
+        The upstream copy carries the local record's tags and the realm's
+        mark beside them -- or no tags at all where there is no mark to
+        write, for an ecosystem whose records have none.
+        """
         record_prop = record.properties.properties["record"]
         record_type = record_prop.get_property_type()
-        return {
+        data = {
             "uuid": str(record.uuid),
             "type": record.type,
             "ttl": record.ttl,
             "disabled": record.disabled,
             "record": record_type.to_simple_type(record.record),
         }
+        if tag:
+            data["tags"] = [t for t in (record.tags or []) if t != tag] + [tag]
+        return data
 
     # ------------------------------------------------------------------
     # Fast path: push only new / updated records since last cycle
     # ------------------------------------------------------------------
 
-    def _fast_sync(self, endpoint, headers, since_dt):
+    def _fast_sync(self, endpoint, headers, since_dt, tag):
         """Query all recently changed records, push them to ecosystem.
 
         Records are selected globally by updated_at, then grouped by
@@ -244,7 +339,7 @@ class DNSSyncService(basic.BasicService):
                 continue
 
             for rec in records:
-                data = self._build_record_data(rec)
+                data = self._build_record_data(rec, tag)
                 try:
                     if rec.created_at >= since_dt:
                         LOG.debug(
@@ -284,8 +379,12 @@ class DNSSyncService(basic.BasicService):
     # Full reconciliation: build diff, create / delete
     # ------------------------------------------------------------------
 
-    def _full_sync_domain(self, domain, endpoint, headers, eco_domain_uuid):
-        """Full diff-based sync for a single domain."""
+    def _full_sync_domain(self, domain, endpoint, headers, eco_domain_uuid, tag):
+        """Full diff-based sync for a single domain.
+
+        `tag` is the realm's mark: which of the zone's records are this
+        mirror's own.
+        """
         domain_name = domain.name
 
         # Get local records (skip SOA)
@@ -296,8 +395,8 @@ class DNSSyncService(basic.BasicService):
             }
         )
 
-        # Get ecosystem records
-        eco_records = self._eco_list_records(endpoint, headers, eco_domain_uuid)
+        eco_records = self._eco_list_records(endpoint, headers, eco_domain_uuid, tag)
+        tag = self._mark_for(endpoint, tag)
         eco_records = [r for r in eco_records if r.get("type") != "SOA"]
 
         # Build UUID-keyed maps
@@ -321,7 +420,7 @@ class DNSSyncService(basic.BasicService):
                     endpoint,
                     headers,
                     eco_domain_uuid,
-                    self._build_record_data(rec),
+                    self._build_record_data(rec, tag),
                 )
             except Exception:
                 LOG.exception(
@@ -330,13 +429,18 @@ class DNSSyncService(basic.BasicService):
                     rec.name,
                 )
 
-        # Update existing only if content differs
+        # Update existing only if content differs. The tags count too: a
+        # row this mirror wrote before it marked its rows gets the mark here
+        # when the whole zone was read.
         compare_keys = ("type", "ttl", "disabled", "record")
         for uid in local_uuids & eco_uuids:
             rec = local_map[uid]
-            local_data = self._build_record_data(rec)
+            local_data = self._build_record_data(rec, tag)
             eco_rec = eco_map[uid]
-            if all(local_data.get(k) == eco_rec.get(k) for k in compare_keys):
+            if all(local_data.get(k) == eco_rec.get(k) for k in compare_keys) and (
+                not tag
+                or sorted(local_data["tags"]) == sorted(eco_rec.get("tags") or [])
+            ):
                 continue
             try:
                 self._eco_update_record(
@@ -353,9 +457,22 @@ class DNSSyncService(basic.BasicService):
                     rec.name,
                 )
 
-        # Delete extra
+        # Delete extra -- but only what this mirror put there. A zone in
+        # the ecosystem is not this realm's alone: the ecosystem publishes
+        # the realm's own ingress records into it, and an operator may add
+        # more. Anything not carrying the realm's mark is somebody else's
+        # row -- or one this mirror wrote before it marked them and has
+        # since lost locally, which it can no longer tell from theirs.
         for uid in eco_uuids - local_uuids:
             eco_rec = eco_map[uid]
+            if not tag or tag not in (eco_rec.get("tags") or []):
+                LOG.debug(
+                    "Keeping %s %s in ecosystem domain %s: not this realm's row",
+                    eco_rec.get("type"),
+                    eco_rec.get("name"),
+                    domain_name,
+                )
+                continue
             LOG.info(
                 "Deleting record %s %s from ecosystem domain %s",
                 eco_rec.get("type"),
@@ -435,6 +552,7 @@ class DNSSyncService(basic.BasicService):
                         endpoint,
                         headers,
                         eco_domain_uuid,
+                        realm_tag(realm_uuid),
                     )
                 except Exception:
                     LOG.exception("Full sync failed for domain %s", domain.name)
@@ -445,7 +563,12 @@ class DNSSyncService(basic.BasicService):
             if since_dt is None:
                 return
             LOG.debug("Running fast DNS sync (since %s)", since_dt)
-            self._fast_sync(endpoint, headers, since_dt)
+            self._fast_sync(
+                endpoint,
+                headers,
+                since_dt,
+                self._mark_for(endpoint, realm_tag(realm_uuid)),
+            )
             self._last_fast_sync_dt = datetime.datetime.now(datetime.timezone.utc)
 
     # ------------------------------------------------------------------
