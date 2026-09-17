@@ -25,6 +25,7 @@ from restalchemy.openapi import structures as openapi_structures
 from exordos_core import version
 from exordos_core.common import contexts as common_contexts
 from exordos_core.common.api.middlewares import errors as errors_mw
+from exordos_core.user_api.api import mcp
 from exordos_core.user_api.api import middlewares as user_api_mw
 from exordos_core.user_api.api import routes as app_routes
 from exordos_core.user_api.api import versions
@@ -80,5 +81,7 @@ def build_wsgi_application(context_storage, iam_engine_driver):
             ),
             errors_mw.ErrorsHandlerMiddleware,
             logging_mw.LoggingMiddleware,
+            # Outermost: its tool calls re-enter the whole stack above.
+            mcp.McpMiddleware,
         ],
     )
