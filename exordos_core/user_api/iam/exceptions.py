@@ -286,12 +286,6 @@ class ServiceAccountUuidRequiredError(exceptions.CommonValueErrorException):
     __template__ = "service_account_uuid is required"
 
 
-class TokenLifetimeTooShortError(exceptions.CommonValueErrorException):
-    __template__ = (
-        "A token that renews itself needs a lifetime of at least {min_seconds} seconds"
-    )
-
-
 class ProjectScopeRequiredError(exceptions.CommonValueErrorException):
     """Exception raised when project scope is required but not provided."""
 

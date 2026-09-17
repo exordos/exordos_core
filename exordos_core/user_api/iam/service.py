@@ -27,12 +27,12 @@ LOG = logging.getLogger(__name__)
 
 
 class TokenRenewalService(basic.BasicService):
-    """Renews the tokens that renew themselves before they expire."""
+    """Renews managed tokens before they expire."""
 
     def _iteration(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         tokens = models.ManagedToken.objects.get_all(
-            filters={"auto_renew": dm_filters.EQ(True)},
+            filters={"managed": dm_filters.EQ(True)},
         )
         for token in tokens:
             if not token.needs_renewal(now):

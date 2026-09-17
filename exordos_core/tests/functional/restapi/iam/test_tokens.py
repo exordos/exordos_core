@@ -41,6 +41,13 @@ def _get_token(uuid):
     return iam_models.ManagedToken.objects.get_one(filters={"uuid": uuid})
 
 
+def _claims(token):
+    # Verified with the key of the client the token names
+    return token.iam_client.get_token_algorithm().decode(
+        token.get_access_token(), ignore_audience=True
+    )
+
+
 class TestTokens:
     @pytest.fixture()
     def admin_client(self, user_api_client, auth_user_admin):
@@ -74,14 +81,16 @@ class TestTokens:
 
         assert response.status_code == 201
         assert output["user"] == f"/v1/iam/users/{service_user['uuid']}"
-        assert output["auto_renew"] is True
         assert output["expiration_delta"] == DAY
-        assert output["audience"] == default_client_id
-        # The signed token and the refresh token id never leave the server
+        # The signed token, the refresh token id and the marker never
+        # leave the server
         assert "access_token" not in output
         assert "refresh_token_uuid" not in output
+        assert "managed" not in output
 
         token = _get_token(output["uuid"])
+        assert token.managed is True
+        assert _claims(token)["aud"] == default_client_id
         lifetime = token.expiration_at - _now()
         assert datetime.timedelta(hours=23) < lifetime <= datetime.timedelta(days=1)
 
@@ -89,13 +98,7 @@ class TestTokens:
         with pytest.raises(bazooka_exc.BadRequestError):
             create_token(expiration_delta=59)
 
-    def test_create_short_token_without_renewal(self, create_token):
-        response = create_token(expiration_delta=30, auto_renew=False)
-
-        assert response.status_code == 201
-        assert response.json()["expiration_delta"] == 30
-
-    def test_list_shows_short_login_tokens(self, admin_client, service_user):
+    def test_login_sessions_are_out_of_reach(self, admin_client, service_user):
         login_token = iam_models.Token(
             user=iam_models.User.objects.get_one(
                 filters={"uuid": service_user["uuid"]}
@@ -106,12 +109,19 @@ class TestTokens:
             expiration_delta=datetime.timedelta(seconds=10),
         )
         login_token.insert()
+        url = admin_client.build_resource_uri(["iam/tokens", str(login_token.uuid)])
 
         tokens = admin_client.get(
             admin_client.build_collection_uri(["iam/tokens"])
         ).json()
 
-        assert str(login_token.uuid) in [t["uuid"] for t in tokens]
+        assert str(login_token.uuid) not in [t["uuid"] for t in tokens]
+        with pytest.raises(bazooka_exc.NotFoundError):
+            admin_client.get(url)
+        with pytest.raises(bazooka_exc.NotFoundError):
+            admin_client.put(url, json={"expiration_delta": DAY})
+        with pytest.raises(bazooka_exc.NotFoundError):
+            admin_client.delete(url)
 
     def test_token_authenticates_its_user(
         self, user_api, create_token, service_user, default_client_uuid
@@ -146,20 +156,34 @@ class TestTokens:
                 "previous_secret_uuid": None,
             },
         )
+        output = create_token().json()
 
-        output = create_token(iam_client=f"/v1/iam/clients/{iam_client['uuid']}").json()
+        # Switching the client moves the claims along with the signature
+        admin_client.put(
+            admin_client.build_resource_uri(["iam/tokens", output["uuid"]]),
+            json={"iam_client": f"/v1/iam/clients/{iam_client['uuid']}"},
+        )
         token = _get_token(output["uuid"])
-        access_token = token.get_access_token()
+        claims = _claims(token)
 
-        assert output["audience"] == "token-client"
-        assert token.iam_client.get_token_algorithm().decode(
-            access_token, ignore_audience=True
-        )["jti"] == str(token.uuid)
+        assert claims["jti"] == str(token.uuid)
+        assert claims["aud"] == "token-client"
+        assert claims["iss"].endswith(f"iam/clients/{iam_client['uuid']}")
         response = bazooka.Client().get(
             f"{user_api.get_endpoint()}v1/iam/clients/{iam_client['uuid']}/actions/me",
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers={"Authorization": f"Bearer {token.get_access_token()}"},
         )
         assert response.status_code == 200
+
+    def test_explicit_claims_are_kept(self, create_token):
+        output = create_token(
+            issuer="https://issuer.example", audience="exporter"
+        ).json()
+
+        claims = _claims(_get_token(output["uuid"]))
+
+        assert claims["iss"] == "https://issuer.example"
+        assert claims["aud"] == "exporter"
 
     def test_read_hides_access_token(self, admin_client, create_token):
         output = create_token().json()
@@ -279,7 +303,7 @@ class TestTokenRenewal:
         token = self._token(
             iam_models.Token, admin, iam_client, datetime.timedelta(minutes=10)
         )
-        assert token.auto_renew is False
+        assert token.managed is False
 
         iam_service.TokenRenewalService()._iteration()
 
@@ -319,11 +343,21 @@ class TestTokenCoreAgent:
         )
 
     def test_reports_access_token(self, driver, resource):
+        # A login session shares the table and must stay out of the list
+        admin = iam_models.User.objects.get_one(
+            filters={"name": c.DEFAULT_ADMIN_USERNAME}
+        )
+        iam_models.Token(
+            user=admin,
+            iam_client=iam_models.IamClient.objects.get_one(
+                filters={"uuid": c.ZERO_UUID}
+            ),
+        ).insert()
         created = driver.create(resource)
         listed = driver.list(TOKEN_KIND)
 
         token = _get_token(resource.uuid)
-        assert token.auto_renew is True
+        assert token.managed is True
         assert created.value["access_token"] == token.get_access_token()
         assert [r.uuid for r in listed] == [resource.uuid]
         # A stable token hashes the same on every iteration

@@ -1366,14 +1366,10 @@ components:
       path: /v1/iam/tokens/
       properties:
         audience:
-          default: account
           example: any_string
           maxLength: 64
+          nullable: true
           type: string
-        auto_renew:
-          default: true
-          example: true
-          type: boolean
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'
@@ -1391,13 +1387,14 @@ components:
           default: 3600
           example: 3600
           maximum: 2147483647
-          minimum: -2147483647
+          minimum: 60
           type: integer
         iam_client:
           type: string
         issuer:
           example: any_string
           maxLength: 256
+          nullable: true
           type: string
         project:
           readOnly: true

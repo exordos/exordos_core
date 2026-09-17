@@ -700,12 +700,17 @@ class TokenController(
                 "refresh_expiration_delta": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "refresh_token_uuid": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "nonce": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "managed": {ra_c.ALL: field_p.Permissions.HIDDEN},
             },
         ),
     )
 
     __policy_service_name__ = "iam"
     __policy_name__ = "token"
+
+    def get_autofilters(self):
+        # Login sessions share the table and stay out of reach
+        return {"managed": ra_filters.EQ(True)}
 
     def create(self, **kwargs):
         token = super().create(**kwargs)

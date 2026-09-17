@@ -1612,7 +1612,9 @@ class Token(
         ra_types.String(max_length=256),
         default=None,
     )
-    auto_renew = properties.property(
+    # Set on the tokens a manifest or the tokens API manages. Only those
+    # renew themselves; a login session never does.
+    managed = properties.property(
         ra_types.Boolean(),
         default=False,
     )
@@ -1843,41 +1845,28 @@ class ManagedToken(Token, ua_models.TargetResourceMixin):
     never returns it.
     """
 
-    # A renewal runs every few seconds, so a shorter lifetime would renew
-    # the token, and rewrite everything rendering it, on every iteration.
-    MIN_RENEWABLE_LIFETIME = datetime.timedelta(seconds=60)
-
-    auto_renew = properties.property(
+    managed = properties.property(
         ra_types.Boolean(),
         default=True,
     )
+    # A renewal runs every few seconds, so a shorter lifetime would renew
+    # the token, and rewrite everything rendering it, on every iteration.
     expiration_delta = properties.property(
-        types.Seconds(),
+        types.Seconds(min_value=60),
         default=Token.get_default_expiration_delta,
     )
-
-    def __init__(self, iam_client=None, **kwargs):
-        if iam_client is not None:
-            kwargs.setdefault(
-                "issuer", f"{c.DEFAULT_ROOT_ENDPOINT}iam/clients/{iam_client.uuid}"
-            )
-            kwargs.setdefault("audience", iam_client.client_id)
-        super().__init__(iam_client=iam_client, **kwargs)
-
-    def _validate_lifetime(self):
-        # Checked on write rather than by the type: the tokens API lists
-        # login sessions too, and those may have any lifetime.
-        if self.auto_renew and self.expiration_delta < self.MIN_RENEWABLE_LIFETIME:
-            raise iam_exceptions.TokenLifetimeTooShortError(
-                min_seconds=int(self.MIN_RENEWABLE_LIFETIME.total_seconds())
-            )
-
-    def insert(self, session=None):
-        self._validate_lifetime()
-        super().insert(session=session)
+    # Unset claims follow the client that signs the token, so switching
+    # the client does not leave the claims of the previous one behind.
+    issuer = properties.property(
+        ra_types.AllowNone(ra_types.String(max_length=256)),
+        default=None,
+    )
+    audience = properties.property(
+        ra_types.AllowNone(ra_types.String(max_length=64)),
+        default=None,
+    )
 
     def update(self, session=None, force=False):
-        self._validate_lifetime()
         # The project follows the scope, and a new lifetime starts now.
         # Both are derived at creation, so an update has to derive them
         # again or they keep the values of the old scope and lifetime.
@@ -1887,6 +1876,14 @@ class ManagedToken(Token, ua_models.TargetResourceMixin):
             now = datetime.datetime.now(datetime.timezone.utc)
             self.expiration_at = now + self.expiration_delta
         super().update(session=session, force=force)
+
+    def _get_access_token_info(self):
+        info = super()._get_access_token_info()
+        if self.issuer is None:
+            info["iss"] = f"{c.DEFAULT_ROOT_ENDPOINT}iam/clients/{self.iam_client.uuid}"
+        if self.audience is None:
+            info["aud"] = self.iam_client.client_id
+        return info
 
     def get_access_token(self) -> str:
         algorithm = self.iam_client.get_token_algorithm()
