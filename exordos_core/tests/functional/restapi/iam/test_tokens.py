@@ -126,6 +126,41 @@ class TestTokens:
 
         assert response.json()["user"]["uuid"] == service_user["uuid"]
 
+    def test_token_signed_by_own_client(self, user_api, admin_client, create_token):
+        signing_key = admin_client.post(
+            admin_client.build_collection_uri(["secret/passwords"]),
+            json={
+                "name": "token-signing-key",
+                "project_id": str(c.EM_PROJECT_ID),
+                "method": "MANUAL",
+                "value": "a-signing-key-of-the-token-client",
+            },
+        ).json()
+        iam_client = admin_client.create_iam_client(
+            name="token-client",
+            client_id="token-client",
+            secret="12345678",
+            signature_algorithm={
+                "kind": "HS256",
+                "secret_uuid": signing_key["uuid"],
+                "previous_secret_uuid": None,
+            },
+        )
+
+        output = create_token(iam_client=f"/v1/iam/clients/{iam_client['uuid']}").json()
+        token = _get_token(output["uuid"])
+        access_token = token.get_access_token()
+
+        assert output["audience"] == "token-client"
+        assert token.iam_client.get_token_algorithm().decode(
+            access_token, ignore_audience=True
+        )["jti"] == str(token.uuid)
+        response = bazooka.Client().get(
+            f"{user_api.get_endpoint()}v1/iam/clients/{iam_client['uuid']}/actions/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert response.status_code == 200
+
     def test_read_hides_access_token(self, admin_client, create_token):
         output = create_token().json()
 
