@@ -60,6 +60,19 @@ class RecordController(
     __resource__ = resources.ResourceByRAModel(
         models.Record,
         convert_underscore=False,
+        # Query parameters are parsed against the model, which is also what
+        # the filter expression (`?q=`) needs: it is how a realm's mirror
+        # asks for the records it marked instead of reading the zone.
+        #
+        # COMPATIBILITY: this changes how the collection reads its query
+        # parameters. A parameter naming no field of the resource used to
+        # be passed to `filter()` untouched; it is now answered with a 400.
+        # A value is now parsed into the type of the field it names, so one
+        # that does not parse is a 400 too where it used to reach storage.
+        # Both were reported as filters that quietly matched nothing or
+        # failed inside the database, so no caller was relying on an
+        # answer -- but a caller sending a stray parameter now sees it.
+        process_filters=True,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
