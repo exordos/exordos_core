@@ -346,6 +346,14 @@ resources:
       uuid: "ef1dd949-29c5-514a-ad19-3502a343a9d8"
       name: "iam.service_token.create"
       description: "Create service account tokens"
+    iam_token_create_all:
+      uuid: "31644e41-7c73-4aa1-b9eb-71d4ff84c69a"
+      name: "iam.token.create_all"
+      description: "Issue IAM tokens for other users"
+    iam_token_read_all:
+      uuid: "2bfa8c70-4d79-4df3-a2ab-a9fb11721e57"
+      name: "iam.token.read_all"
+      description: "See and manage the IAM tokens of other users"
     iam_token_create:
       uuid: "a7c99b8d-b26c-4c80-a708-e86cd7611c07"
       name: "iam.token.create"
@@ -753,6 +761,18 @@ resources:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$em_service_delete:uuid"
       project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_iam_token_create:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_token_create:uuid"
+    binding_owner_iam_token_read:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_token_read:uuid"
+    binding_owner_iam_token_update:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_token_update:uuid"
+    binding_owner_iam_token_delete:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$iam_token_delete:uuid"
     binding_owner_iam_service_token_create:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$iam_service_token_create:uuid"

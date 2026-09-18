@@ -26,6 +26,7 @@ from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
 import pytest
 
 from exordos_core.common import constants as c
+from exordos_core.user_api.iam import constants as iam_c
 from exordos_core.user_api.iam import service as iam_service
 from exordos_core.user_api.iam.dm import models as iam_models
 
@@ -198,9 +199,7 @@ class TestTokens:
 
         assert _get_token(output["uuid"]).expiration_at == expiration_at
 
-    def test_renewal_cannot_be_turned_on_afterwards(
-        self, admin_client, create_token
-    ):
+    def test_renewal_cannot_be_turned_on_afterwards(self, admin_client, create_token):
         output = create_token(expiration_delta=120, auto_renew=False).json()
 
         with pytest.raises(bazooka_exc.ForbiddenError):
@@ -281,6 +280,78 @@ class TestTokens:
             iam_models.Token.objects.get_one_or_none(filters={"uuid": output["uuid"]})
             is None
         )
+
+
+class TestOwnTokens:
+    """An account issues and reads the tokens of its own, and no others."""
+
+    @pytest.fixture()
+    def owner_client(self, user_api_client, auth_test1_user):
+        return user_api_client(
+            auth_test1_user,
+            permissions=[
+                iam_c.PERMISSION_TOKEN_CREATE,
+                iam_c.PERMISSION_TOKEN_READ,
+                iam_c.PERMISSION_TOKEN_DELETE,
+            ],
+        )
+
+    @staticmethod
+    def _body(**kwargs):
+        body = {"iam_client": f"/v1/iam/clients/{c.ZERO_UUID}", "expiration_delta": DAY}
+        body.update(kwargs)
+        return body
+
+    def test_issues_a_token_for_itself(self, owner_client, auth_test1_user):
+        url = owner_client.build_collection_uri(["iam/tokens"])
+
+        response = owner_client.post(url, json=self._body())
+        output = response.json()
+
+        assert response.status_code == 201
+        assert output["user"] == f"/v1/iam/users/{auth_test1_user.uuid}"
+        assert output["access_token"]
+
+    def test_cannot_issue_a_token_for_another_user(
+        self, owner_client, user_api_client, auth_user_admin
+    ):
+        other = user_api_client(auth_user_admin).create_user(
+            username="other_user",
+            password="12345678",
+        )
+        url = owner_client.build_collection_uri(["iam/tokens"])
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            owner_client.post(
+                url, json=self._body(user=f"/v1/iam/users/{other['uuid']}")
+            )
+
+    def test_reads_only_its_own_tokens(
+        self, owner_client, user_api_client, auth_user_admin, auth_test1_user
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        admin_url = admin_client.build_collection_uri(["iam/tokens"])
+        # Issued for the admin itself: the body names nobody, so the
+        # token belongs to the account asking for it
+        admin_token = admin_client.post(admin_url, json=self._body()).json()
+        own = owner_client.post(
+            owner_client.build_collection_uri(["iam/tokens"]), json=self._body()
+        ).json()
+
+        listed = owner_client.get(
+            owner_client.build_collection_uri(["iam/tokens"])
+        ).json()
+
+        assert admin_token["user"] != own["user"]
+        assert [t["uuid"] for t in listed] == [own["uuid"]]
+        # The token of another account is not there to be read or deleted
+        other_url = owner_client.build_resource_uri(["iam/tokens", admin_token["uuid"]])
+        with pytest.raises(bazooka_exc.NotFoundError):
+            owner_client.get(other_url)
+        with pytest.raises(bazooka_exc.NotFoundError):
+            owner_client.delete(other_url)
+        # An admin sees both
+        assert len(admin_client.get(admin_url).json()) == 2
 
 
 class TestTokenRenewal:
