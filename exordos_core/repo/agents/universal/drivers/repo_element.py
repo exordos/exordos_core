@@ -192,9 +192,10 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
         if upgrade_manifest:
             em_manifest.upgrade(session=session)
 
-        # Fetch installed EM element
+        # Fetch the EM element installed from this manifest. Matching by name
+        # alone is ambiguous when the same element exists in several projects.
         em_element = em_models.Element.objects.get_one_or_none(
-            filters={"name": ra_filters.EQ(to_install.name)},
+            filters={"manifest": ra_filters.EQ(em_manifest.uuid)},
             session=session,
         )
 
@@ -208,10 +209,8 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
     ) -> tp.Collection[re_builder.InstalledManifest]:
         """List all installed elements for the given kind.
 
-        Collects installed repo elements and matches them against EM manifests
-        and elements by (name, version). Returns an InstalledManifest for
-        each EM manifest, enriched with repo element and EM element data
-        when available.
+        Returns an InstalledManifest for each EM manifest, enriched with the
+        EM element installed from that manifest when there is one.
         """
         if kind != KIND:
             raise ValueError(f"Unsupported kind {kind}")
@@ -221,19 +220,18 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
         # that joins repo elements with EM manifests and elements in a single
         # query would be preferable. For now, we keep it simple with
         # individual queries.
-        em_manifests = {
-            (m.name, m.version): m
-            for m in em_models.Manifest.objects.get_all(session=session)
-        }
+        #
+        # Elements are matched by their manifest link rather than by
+        # (name, version): the same name and version may exist in several
+        # projects, and keying manifests that way hides all but one of them.
         em_elements = {
-            (e.name, e.version): e
+            e.manifest.uuid: e
             for e in em_models.Element.objects.get_all(session=session)
         }
 
-        # Match them by name and version
         installed = []
-        for key, em_manifest in em_manifests.items():
-            em_element = em_elements.get(key)
+        for em_manifest in em_models.Manifest.objects.get_all(session=session):
+            em_element = em_elements.get(em_manifest.uuid)
             installed.append(self._make_installed_manifest(em_manifest, em_element))
 
         return installed
