@@ -1626,6 +1626,14 @@ class Token(
         ra_types.Boolean(),
         default=False,
     )
+    # Bumped every time a token is regenerated, and signed into the
+    # token as `gen`. A value handed out before the last regeneration
+    # carries an older generation and is refused, so regenerating a
+    # token takes the previous one out of use at once.
+    generation = properties.property(
+        ra_types.Integer(min_value=0),
+        default=0,
+    )
 
     def __init__(self, user=None, scope="", project=None, **kwargs):
         user = user or User.me()
@@ -1665,6 +1673,13 @@ class Token(
 
     def validate_expiration(self):
         if not self.check_expiration():
+            raise iam_e.InvalidAuthTokenError()
+
+    def validate_generation(self, token_info):
+        # A token signed before the last regeneration carries an older
+        # generation. Tokens signed before the claim existed report none
+        # and match the generation every record starts at.
+        if token_info.token_info.get("gen", 0) != self.generation:
             raise iam_e.InvalidAuthTokenError()
 
     def _get_default_project(self, user):
@@ -1764,6 +1779,7 @@ class Token(
             "sub": str(self.user.uuid),
             "typ": self.typ,
             "otp": self.user.otp_enabled,
+            "gen": self.generation,
         }
 
     def get_response_body(self):
@@ -1898,6 +1914,16 @@ class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomProperties
             now = datetime.datetime.now(datetime.timezone.utc)
             self.expiration_at = now + self.expiration_delta
         super().update(session=session, force=force)
+
+    def regenerate(self) -> None:
+        # A new generation refuses the token handed out so far, and the
+        # lifetime starts again so the replacement gets a full term.
+        # Renewal leaves the generation alone, which is what lets the
+        # previous token keep working while a renewal is picked up.
+        now = datetime.datetime.now(datetime.timezone.utc)
+        self.generation += 1
+        self.expiration_at = now + self.expiration_delta
+        self.update()
 
     def _get_access_token_info(self):
         info = super()._get_access_token_info()

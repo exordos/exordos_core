@@ -1398,6 +1398,12 @@ components:
           maximum: 2147483647
           minimum: 60
           type: integer
+        generation:
+          default: 0
+          example: 0
+          minimum: 0
+          readOnly: true
+          type: integer
         iam_client:
           type: string
         issuer:

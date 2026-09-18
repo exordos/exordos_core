@@ -42,6 +42,10 @@ def _get_token(uuid):
     return iam_models.ManagedToken.objects.get_one(filters={"uuid": uuid})
 
 
+def _regenerate_url(client, uuid):
+    return client.build_resource_uri(["iam/tokens", uuid, "actions/regenerate/invoke"])
+
+
 def _claims(token):
     # Verified with the key of the client the token names
     return token.iam_client.get_token_algorithm().decode(
@@ -268,6 +272,72 @@ class TestTokens:
 
         lifetime = _get_token(output["uuid"]).expiration_at - _now()
         assert lifetime > datetime.timedelta(days=6)
+
+    def test_regenerate_answers_with_a_new_token(self, admin_client, create_token):
+        output = create_token().json()
+        previous = output["access_token"]
+
+        regenerated = admin_client.post(
+            _regenerate_url(admin_client, output["uuid"]),
+            json={},
+        ).json()
+
+        token = _get_token(output["uuid"])
+        # The token keeps its identity, and only the value it signs moves
+        assert token.generation == 1
+        assert regenerated["access_token"] == token.access_token
+        assert regenerated["access_token"] != previous
+        assert _claims(token)["jti"] == output["uuid"]
+
+    def test_regenerate_refuses_the_previous_token(
+        self, user_api, admin_client, create_token, default_client_uuid
+    ):
+        output = create_token().json()
+        previous = output["access_token"]
+        url = (
+            f"{user_api.get_endpoint()}v1/iam/clients/{default_client_uuid}/actions/me"
+        )
+
+        # The token works right up to the regeneration
+        bazooka.Client().get(url, headers={"Authorization": f"Bearer {previous}"})
+        regenerated = admin_client.post(
+            _regenerate_url(admin_client, output["uuid"]),
+            json={},
+        ).json()
+
+        with pytest.raises(bazooka_exc.UnauthorizedError):
+            bazooka.Client().get(url, headers={"Authorization": f"Bearer {previous}"})
+        # ...and the one it answered with takes over
+        bazooka.Client().get(
+            url, headers={"Authorization": f"Bearer {regenerated['access_token']}"}
+        )
+
+    def test_regenerate_restarts_the_lifetime(self, admin_client, create_token):
+        output = create_token().json()
+        token = _get_token(output["uuid"])
+        token.expiration_at = _now() + datetime.timedelta(minutes=1)
+        token.update()
+
+        admin_client.post(
+            _regenerate_url(admin_client, output["uuid"]),
+            json={},
+        )
+
+        token = _get_token(output["uuid"])
+        lifetime = token.expiration_at - _now()
+        assert datetime.timedelta(hours=23) < lifetime <= datetime.timedelta(days=1)
+        # The lifetime itself is what it was issued as
+        assert token.expiration_delta == datetime.timedelta(seconds=DAY)
+
+    def test_renewal_keeps_the_generation(self, admin_client, create_token):
+        output = create_token().json()
+
+        token = _get_token(output["uuid"])
+        token.renew(_now() + datetime.timedelta(minutes=1))
+
+        # A renewal must leave the token already handed out in use, so it
+        # is only a regeneration that moves the generation on
+        assert _get_token(output["uuid"]).generation == 0
 
     def test_delete_token(self, admin_client, create_token):
         output = create_token().json()

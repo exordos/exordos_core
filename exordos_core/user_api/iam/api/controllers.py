@@ -706,6 +706,10 @@ class TokenController(
                 # Derived from the scope and the lifetime
                 "project": {ra_c.ALL: field_p.Permissions.RO},
                 "expiration_at": {ra_c.ALL: field_p.Permissions.RO},
+                # Only a regenerate moves this: setting it by hand would
+                # refuse a token that is still good, or bring a
+                # regenerated one back into use.
+                "generation": {ra_c.ALL: field_p.Permissions.RO},
                 "refresh_expiration_at": {ra_c.ALL: field_p.Permissions.RO},
                 # A managed token is never refreshed
                 "refresh_expiration_delta": {ra_c.ALL: field_p.Permissions.HIDDEN},
@@ -752,6 +756,26 @@ class TokenController(
             ctx.get_user_ip(),
         )
         return token
+
+    @actions.post
+    def regenerate(self, resource):
+        # Resolving the resource already enforced `read` and scoped it to
+        # the tokens of the account asking, so only the write is left.
+        self._enforce("update")
+        resource.regenerate()
+        ctx = self.get_context()
+        LOG.info(
+            "IAM AUDIT: token regenerated user=%s user_uuid=%s token_uuid=%s "
+            "generation=%s ip=%s",
+            resource.user.name,
+            resource.user.uuid,
+            resource.uuid,
+            resource.generation,
+            ctx.get_user_ip(),
+        )
+        # Answered here and nowhere else, the same as on the create that
+        # issues a token.
+        return {"access_token": resource.access_token}
 
 
 class PermissionController(

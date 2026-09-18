@@ -137,10 +137,18 @@ class RoleBindingRoute(routes.Route):
     __controller__ = controllers.RoleBindingController
 
 
+class RegenerateTokenAction(routes.Action):
+    """Handler for .../tokens/<uuid>/actions/regenerate/invoke endpoint"""
+
+    __controller__ = controllers.TokenController
+
+
 class TokenRoute(routes.Route):
     """Handler for /v1/iam/tokens/ endpoint"""
 
     __controller__ = controllers.TokenController
+
+    regenerate = routes.action(RegenerateTokenAction, invoke=True)
 
 
 class PermissionRoute(routes.Route):
