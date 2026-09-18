@@ -242,6 +242,13 @@ PERMISSION_TOKEN_UPDATE = rules.Rule.from_raw(
 PERMISSION_TOKEN_DELETE = rules.Rule.from_raw(
     "iam.token.delete",
 )
+# The two that reach past the tokens of the account itself.
+PERMISSION_TOKEN_CREATE_ALL = rules.Rule.from_raw(
+    "iam.token.create_all",
+)
+PERMISSION_TOKEN_READ_ALL = rules.Rule.from_raw(
+    "iam.token.read_all",
+)
 
 
 # Service Token
