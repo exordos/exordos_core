@@ -243,6 +243,18 @@ class SSHKeyBuilder(sdk_builder.UniversalBuilderService):
         )
 
     def can_create_instance_resource(self, instance: SSHKey) -> bool:
+        return self._can_deliver_instance(instance)
+
+    def can_update_instance_resource(
+        self,
+        instance: SSHKey,
+        resource: ua_models.TargetResource,
+    ) -> bool:
+        # The target is writable, so the owners have to be validated again
+        # on every update, not only on creation.
+        return self._can_deliver_instance(instance)
+
+    def _can_deliver_instance(self, instance: SSHKey) -> bool:
         # Validate the owners exist
         # FIXME(akremenetsky): Only nodes as owners are supported for now.
         # It will be updated when sets appear.
@@ -280,15 +292,29 @@ class SSHKeyBuilder(sdk_builder.UniversalBuilderService):
         resource: ua_models.TargetResource,
         derivatives: tp.Collection[ua_models.TargetResource] = (),
     ) -> None:
-        instance.status = sc.SecretStatus.IN_PROGRESS.value
+        # An update does not have to touch a per node field, `name` for
+        # instance. Then no derivative resource changes, nothing becomes
+        # outdated and `actualize_outdated_instance_derivatives` is never
+        # called, so the status is rolled up here as well.
+        self._roll_up_status(instance, self.create_instance_derivatives(instance))
 
     def actualize_outdated_instance_derivatives(
         self,
         instance: SSHKey,
         derivative_pairs: tp.Collection[tp.Tuple[SSHHostKey, tp.Optional[SSHHostKey]]],
     ) -> tp.Collection[SSHHostKey]:
+        host_keys = tuple(t for t, _ in derivative_pairs)
+        self._roll_up_status(instance, host_keys)
+
+        return host_keys
+
+    def _roll_up_status(
+        self,
+        instance: SSHKey,
+        host_keys: tp.Collection[SSHHostKey],
+    ) -> None:
         """Roll the per node statuses up into the status of the key."""
-        statuses = self._host_key_statuses([t for t, _ in derivative_pairs])
+        statuses = self._host_key_statuses(host_keys)
 
         if all(s == sc.SecretStatus.ACTIVE for s in statuses):
             instance.status = sc.SecretStatus.ACTIVE.value
@@ -297,9 +323,7 @@ class SSHKeyBuilder(sdk_builder.UniversalBuilderService):
         elif any(s == sc.SecretStatus.IN_PROGRESS for s in statuses):
             instance.status = sc.SecretStatus.IN_PROGRESS.value
 
-        return tuple(t for t, _ in derivative_pairs)
-
-    def _host_key_statuses(self, host_keys: tp.List[SSHHostKey]) -> tp.List[str]:
+    def _host_key_statuses(self, host_keys: tp.Collection[SSHHostKey]) -> tp.List[str]:
         """Return what the data plane reports for every host key.
 
         A host key carries no status in its value, so the status cannot
