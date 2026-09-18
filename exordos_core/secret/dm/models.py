@@ -397,61 +397,6 @@ class SSHKey(
             "target_public_key",
         }
 
-    def to_host_resource(
-        self,
-        master: sys_uuid.UUID,
-        node: sys_uuid.UUID,
-        status: tp.Optional[sc.SecretStatus] = None,
-    ) -> ua_models.TargetResource:
-        """Create a target resource for a specific host (node).
-
-        This creates a 'slave' resource for a specific node, which is linked
-        to the 'master' SSHKey secret.
-
-        Args:
-            master: The UUID of the master SSHKey secret.
-            node: The UUID of the target node.
-            status: The initial status for the host resource.
-
-        Returns:
-            A TargetResource instance for the host.
-        """
-        properties = {}
-
-        # Copy properties
-        for name in self.properties.properties.keys():
-            if name not in SSHHostKey.properties.properties:
-                continue
-            properties[name] = getattr(self, name)
-
-        # Correct UUID based on node UUID
-        properties["uuid"] = sys_uuid.uuid5(self.uuid, str(node))
-        host_ssh = SSHHostKey(**properties)
-
-        resource = host_ssh.to_ua_resource(sc.SSH_KEY_TARGET_KIND, master=master)
-        if status is not None:
-            resource.status = status.value
-        # Place the key on the node
-        resource.agent = node
-
-        return resource
-
-    @classmethod
-    def get_new_keys(cls, limit: int = c.DEFAULT_SQL_LIMIT) -> tp.List["SSHKey"]:
-        return cls.get_new_entities(cls.__tablename__, sc.SSH_KEY_KIND, limit=limit)
-
-    @classmethod
-    def get_updated_keys(cls, limit: int = c.DEFAULT_SQL_LIMIT) -> tp.List["SSHKey"]:
-        return cls.get_updated_entities(cls.__tablename__, sc.SSH_KEY_KIND, limit=limit)
-
-    @classmethod
-    def get_deleted_keys(
-        cls, limit: int = c.DEFAULT_SQL_LIMIT
-    ) -> tp.List[ua_models.TargetResource]:
-        return cls.get_deleted_target_resources(
-            cls.__tablename__, sc.SSH_KEY_KIND, limit=limit
-        )
-
 
 class SSHHostKey(
     ra_models.ModelWithUUID,
