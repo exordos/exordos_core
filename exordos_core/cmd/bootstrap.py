@@ -633,6 +633,65 @@ def _ensure_core_agent_config_current() -> None:
         LOG.warning("Failed to restart core agent service: %s", e)
 
 
+def _ensure_cors_config(spec: dict[str, tp.Any]) -> None:
+    """Set [user_api] cors_allowed_origins from the spec.
+
+    The user API keeps CORS disabled while the option is empty, so a spec
+    without allowed origins leaves the config untouched. The user API is
+    started before ec-bootstrap runs, thus holding the stale config, and is
+    restarted on changes to pick the new value up.
+    """
+    origins = spec.get("cors_allowed_origins")
+    if not origins:
+        LOG.info("No CORS allowed origins in spec")
+        return
+
+    option_line = f"cors_allowed_origins = {','.join(origins)}\n"
+
+    try:
+        with open(CORE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        LOG.warning("Core config file not found: %s", CORE_CONFIG_PATH)
+        return
+
+    if re.search(r"^cors_allowed_origins\s*=", content, flags=re.MULTILINE):
+        new_content = re.sub(
+            r"^cors_allowed_origins\s*=.*\n",
+            option_line,
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    elif "[user_api]\n" in content:
+        new_content = content.replace(
+            "[user_api]\n",
+            f"[user_api]\n{option_line}",
+            1,
+        )
+    else:
+        LOG.warning("No [user_api] section found in %s", CORE_CONFIG_PATH)
+        return
+
+    if new_content == content:
+        LOG.info("CORS allowed origins already up to date in %s", CORE_CONFIG_PATH)
+        return
+
+    with open(CORE_CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    LOG.info("Set CORS allowed origins in %s", CORE_CONFIG_PATH)
+    _sync_config_to_data_path(new_content, CORE_CONFIG_DATA_PATH)
+
+    try:
+        subprocess.run(
+            ["systemctl", "try-restart", "ec-user-api"],
+            check=True,
+        )
+        LOG.info("Restarted the user API to apply the new config")
+    except (OSError, subprocess.CalledProcessError) as e:
+        LOG.warning("Failed to restart the user API: %s", e)
+
+
 def _migrate_installed_elements_to_repo() -> None:
     """Migrate installed EM elements to repo proxy.
 
@@ -879,6 +938,7 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
         {"func": bootstrap_defaults.set_disable_telemetry_var, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_uuid_var, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_secret_var, "args": [spec]},
+        {"func": bootstrap_defaults.ensure_realm_dns_domain, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_access_token_var, "args": [spec]},
         {"func": bootstrap_defaults.set_realm_refresh_token_var, "args": [spec]},
         {
@@ -949,6 +1009,7 @@ def main() -> None:
             )
             bootstrap_defaults.add_core_set(spec)
             _ensure_exordos_config(spec)
+            _ensure_cors_config(spec)
             _install_element_from_bootstrap_repo("core", CONF.manifests_dir)
             _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
