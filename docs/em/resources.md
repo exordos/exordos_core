@@ -1172,11 +1172,16 @@ resources:
 - Choose a lifetime long enough that renewals are rare: each one rewrites everything that renders the
   token.
 - Changing `scope` moves the token to the new project, and changing `expiration_delta` starts a new
-  lifetime from that moment. Whether a token renews is fixed when it is issued: `auto_renew` cannot be
-  changed afterwards, so a token issued for a fixed term cannot become a standing one.
+  lifetime from that moment. Changing `auto_renew` in a manifest takes effect too. The `/v1/iam/tokens/`
+  API is stricter: there `auto_renew` is fixed at issue time, so a token issued for a fixed term stays
+  one.
 - The token carries the permissions of its user in the project from `scope`, so bind the user a role
-  in that project. Managing tokens through `/v1/iam/tokens/` takes the `iam.token.*` permissions,
-  which no built-in role except admin has.
+  in that project.
+- Through `/v1/iam/tokens/` an account manages the tokens of its own: `iam.token.create`, `read`,
+  `update` and `delete` are bound to the `owner` role, and each is scoped to the account asking. The
+  tokens of other accounts take `iam.token.read_all`, and issuing a token for somebody else takes
+  `iam.token.create_all`; only admin holds either. A manifest declares a token for any user, since it
+  goes through the platform rather than the API.
 
 ---
 

@@ -252,8 +252,8 @@ class GeneralService(basic.BasicService):
             secret_builder,
             password_builder,
             cert_builder,
-            em_builder,
             token_renewal,
+            em_builder,
             dns_sync,
             # non-essential services should be last
             janitor,

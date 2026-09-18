@@ -683,6 +683,7 @@ class RoleBindingController(
 class TokenController(
     iam_controllers.PolicyBasedWithoutProjectController,
     controllers.BaseResourceControllerPaginated,
+    EnforceMixin,
 ):
     """Controller for /v1/iam/tokens/ endpoint"""
 
@@ -702,6 +703,9 @@ class TokenController(
                 # token issued for a fixed term must not be turned into a
                 # standing one behind the back of whoever issued it.
                 "auto_renew": {ra_c.UPDATE: field_p.Permissions.RO},
+                # The account a token authenticates is the one it was
+                # issued for: an update must not hand it to somebody else.
+                "user": {ra_c.UPDATE: field_p.Permissions.RO},
                 # Derived from the scope and the lifetime
                 "project": {ra_c.ALL: field_p.Permissions.RO},
                 "expiration_at": {ra_c.ALL: field_p.Permissions.RO},
@@ -719,10 +723,28 @@ class TokenController(
     __policy_name__ = "token"
 
     def get_autofilters(self):
-        # Login sessions share the table and stay out of reach
-        return {"managed": ra_filters.EQ(True)}
+        # Login sessions share the table and stay out of reach, and an
+        # account reaches its own tokens unless it may see every one.
+        filters = {"managed": ra_filters.EQ(True)}
+        if not self.enforce(c.PERMISSION_TOKEN_READ_ALL):
+            filters["user"] = ra_filters.EQ(models.User.me().uuid)
+        return filters
 
     def create(self, **kwargs):
+        # A token is issued for the account asking for it. Issuing one for
+        # somebody else is handing over their identity, so it takes a
+        # permission of its own; the model falls back to the caller when
+        # the body names nobody.
+        user = kwargs.get("user")
+        if (
+            user is not None
+            and user.uuid != models.User.me().uuid
+            and not self.enforce(c.PERMISSION_TOKEN_CREATE_ALL)
+        ):
+            raise iam_e.CanNotIssueTokenForAnotherUser(
+                rule=str(c.PERMISSION_TOKEN_CREATE_ALL)
+            )
+
         token = super().create(**kwargs)
         ctx = self.get_context()
         LOG.info(
