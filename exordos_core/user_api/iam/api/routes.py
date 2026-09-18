@@ -125,10 +125,18 @@ class ProjectRoute(routes.Route):
     add_user = routes.action(AddUserToProjectAction, invoke=True)
 
 
+class GetRolePermissionsAction(routes.Action):
+    """Handler for .../roles/<uuid>/actions/get_permissions endpoint"""
+
+    __controller__ = controllers.RoleController
+
+
 class RoleRoute(routes.Route):
     """Handler for /v1/iam/roles/ endpoint"""
 
     __controller__ = controllers.RoleController
+
+    get_permissions = routes.action(GetRolePermissionsAction)
 
 
 class RoleBindingRoute(routes.Route):

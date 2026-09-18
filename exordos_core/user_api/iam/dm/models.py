@@ -185,6 +185,15 @@ class RolesInfo:
         return result
 
 
+class PermissionsInfo:
+    def __init__(self, permissions):
+        super().__init__()
+        self._permissions = permissions
+
+    def get_response_body(self):
+        return [permission.get_storable_snapshot() for permission in self._permissions]
+
+
 class IdpResponseType(str, enum.Enum):
     CODE = "code"
 
@@ -625,6 +634,16 @@ class Role(
         default=None,
         read_only=True,
     )
+
+    def get_permissions(self):
+        # Nothing stops the same permission from being bound to the role
+        # twice, and the role grants it once either way.
+        permissions = {}
+        for binding in PermissionBinding.objects.get_all(
+            filters={"role": ra_filters.EQ(self)}
+        ):
+            permissions.setdefault(binding.permission.uuid, binding.permission)
+        return PermissionsInfo(list(permissions.values()))
 
 
 class Permission(
