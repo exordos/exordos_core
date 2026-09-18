@@ -1143,6 +1143,7 @@ element can hand a service a credential that keeps working without anyone loggin
 | `iam_client` | uuid | The IAM client that signs the token. **Required.** The default client is `00000000-0000-0000-0000-000000000000`, or link a client the manifest declares: `$core.iam.clients.$my_client:uuid`. |
 | `scope` | string | Token scope, e.g. `project:<uuid>` to scope the token to a project. |
 | `expiration_delta` | integer | Lifetime in seconds, at least 60 (default: 3600). |
+| `auto_renew` | boolean | Keep the token alive past its expiration (default: `true`). With `false` the token is spent when it expires. |
 | `audience` | string | The `aud` claim. Unset, it is the `client_id` of the current client. |
 | `issuer` | string | The `iss` claim. Unset, it is the URL of the current client. |
 
@@ -1161,16 +1162,18 @@ resources:
 ### Notes
 
 - Reference the signed token with the `:access_token` link parameter, for example
-  `f"{$core.iam.tokens.$exporter_token:access_token}"` in a config body. The user API never returns
-  it.
-- Once half the lifetime has passed the platform extends the token by `expiration_delta`. The access
-  token changes, and every resource rendering `:access_token` is updated. The previous access token
+  `f"{$core.iam.tokens.$exporter_token:access_token}"` in a config body. The user API answers with the
+  signed token once, on the create that issues it, and never again: a read and a list leave it out, so
+  an account that loses it issues another token.
+- Once half the lifetime has passed the platform extends a token with `auto_renew` by
+  `expiration_delta`. The access token changes, and every resource rendering `:access_token` is updated. The previous access token
   stays valid until the expiration signed into it, so consumers have the other half of the lifetime
   to pick up the new one.
 - Choose a lifetime long enough that renewals are rare: each one rewrites everything that renders the
   token.
 - Changing `scope` moves the token to the new project, and changing `expiration_delta` starts a new
-  lifetime from that moment.
+  lifetime from that moment. Whether a token renews is fixed when it is issued: `auto_renew` cannot be
+  changed afterwards, so a token issued for a fixed term cannot become a standing one.
 - The token carries the permissions of its user in the project from `scope`, so bind the user a role
   in that project. Managing tokens through `/v1/iam/tokens/` takes the `iam.token.*` permissions,
   which no built-in role except admin has.

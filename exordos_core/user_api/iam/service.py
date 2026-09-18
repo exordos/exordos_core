@@ -32,7 +32,10 @@ class TokenRenewalService(basic.BasicService):
     def _iteration(self):
         now = datetime.datetime.now(datetime.timezone.utc)
         tokens = models.ManagedToken.objects.get_all(
-            filters={"managed": dm_filters.EQ(True)},
+            filters={
+                "managed": dm_filters.EQ(True),
+                "auto_renew": dm_filters.EQ(True),
+            },
         )
         for token in tokens:
             if not token.needs_renewal(now):

@@ -21,6 +21,10 @@ UPGRADE = [
     ALTER TABLE public.iam_tokens
         ADD COLUMN IF NOT EXISTS managed boolean DEFAULT false NOT NULL
     """,
+    """
+    ALTER TABLE public.iam_tokens
+        ADD COLUMN IF NOT EXISTS auto_renew boolean DEFAULT false NOT NULL
+    """,
     # Login sessions fill the table, while the renewal loop and the
     # tokens API only look for the few managed tokens.
     """
@@ -31,6 +35,7 @@ UPGRADE = [
 
 DOWNGRADE = [
     "DROP INDEX IF EXISTS public.iam_tokens_managed_idx",
+    "ALTER TABLE public.iam_tokens DROP COLUMN IF EXISTS auto_renew",
     "ALTER TABLE public.iam_tokens DROP COLUMN IF EXISTS managed",
 ]
 

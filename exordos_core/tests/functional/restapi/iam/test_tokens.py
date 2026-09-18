@@ -82,9 +82,11 @@ class TestTokens:
         assert response.status_code == 201
         assert output["user"] == f"/v1/iam/users/{service_user['uuid']}"
         assert output["expiration_delta"] == DAY
-        # The signed token, the refresh token id and the marker never
-        # leave the server
-        assert "access_token" not in output
+        assert output["auto_renew"] is True
+        # Answered once, on the create: this is the only time an account
+        # holding it sees the signed token
+        assert output["access_token"] == _get_token(output["uuid"]).access_token
+        # The refresh token id and the marker never leave the server
         assert "refresh_token_uuid" not in output
         assert "managed" not in output
 
@@ -184,6 +186,30 @@ class TestTokens:
 
         assert claims["iss"] == "https://issuer.example"
         assert claims["aud"] == "exporter"
+
+    def test_fixed_term_token_is_not_renewed(self, admin_client, create_token):
+        output = create_token(expiration_delta=120, auto_renew=False).json()
+        token = _get_token(output["uuid"])
+        token.expiration_at = _now() + datetime.timedelta(seconds=10)
+        token.update()
+        expiration_at = token.expiration_at
+
+        iam_service.TokenRenewalService()._iteration()
+
+        assert _get_token(output["uuid"]).expiration_at == expiration_at
+
+    def test_renewal_cannot_be_turned_on_afterwards(
+        self, admin_client, create_token
+    ):
+        output = create_token(expiration_delta=120, auto_renew=False).json()
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            admin_client.put(
+                admin_client.build_resource_uri(["iam/tokens", output["uuid"]]),
+                json={"auto_renew": True},
+            )
+
+        assert _get_token(output["uuid"]).auto_renew is False
 
     def test_read_hides_access_token(self, admin_client, create_token):
         output = create_token().json()
@@ -304,6 +330,7 @@ class TestTokenRenewal:
             iam_models.Token, admin, iam_client, datetime.timedelta(minutes=10)
         )
         assert token.managed is False
+        assert token.auto_renew is False
 
         iam_service.TokenRenewalService()._iteration()
 
