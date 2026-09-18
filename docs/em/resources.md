@@ -1165,6 +1165,11 @@ resources:
   `f"{$core.iam.tokens.$exporter_token:access_token}"` in a config body. The user API answers with the
   signed token once, on the create that issues it, and never again: a read and a list leave it out, so
   an account that loses it issues another token.
+- `POST /v1/iam/tokens/<uuid>/actions/regenerate/invoke` signs a new token in place of the one handed
+  out so far and answers with it, once, the same way a create does. The token keeps its uuid, so
+  everything rendering `:access_token` follows it, and the lifetime starts again from that moment.
+  The previous token stops working at once: unlike a renewal, a regeneration refuses it. Regenerate a
+  token that has leaked, and `iam.token.update` is what it takes.
 - Once half the lifetime has passed the platform extends a token with `auto_renew` by
   `expiration_delta`. The access token changes, and every resource rendering `:access_token` is updated. The previous access token
   stays valid until the expiration signed into it, so consumers have the other half of the lifetime
