@@ -1365,11 +1365,20 @@ components:
     ManagedToken_Create:
       path: /v1/iam/tokens/
       properties:
+        access_token:
+          example: any_string
+          maxLength: 8192
+          readOnly: true
+          type: string
         audience:
           example: any_string
           maxLength: 64
           nullable: true
           type: string
+        auto_renew:
+          default: true
+          example: true
+          type: boolean
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
           example: '2006-01-02T15:04:05.000576Z'

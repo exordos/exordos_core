@@ -686,12 +686,22 @@ class TokenController(
 ):
     """Controller for /v1/iam/tokens/ endpoint"""
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         models.ManagedToken,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
+                # Answered once, on the create that issues the token, and
+                # never again: an account that loses it issues another one.
+                "access_token": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RO,
+                },
+                # Whether the token renews is what it was issued as: a
+                # token issued for a fixed term must not be turned into a
+                # standing one behind the back of whoever issued it.
+                "auto_renew": {ra_c.UPDATE: field_p.Permissions.RO},
                 # Derived from the scope and the lifetime
                 "project": {ra_c.ALL: field_p.Permissions.RO},
                 "expiration_at": {ra_c.ALL: field_p.Permissions.RO},

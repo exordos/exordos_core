@@ -1612,9 +1612,17 @@ class Token(
         ra_types.String(max_length=256),
         default=None,
     )
-    # Set on the tokens a manifest or the tokens API manages. Only those
-    # renew themselves; a login session never does.
+    # Set on the tokens a manifest or the tokens API manages, which are
+    # the only ones the tokens API serves. A login session is not one.
     managed = properties.property(
+        ra_types.Boolean(),
+        default=False,
+    )
+    # Whether the platform keeps the token alive. A managed token that
+    # renews itself outlives its own expiration; one that does not is
+    # spent when it expires, which is what a token issued for a fixed
+    # term is. A login session never renews.
+    auto_renew = properties.property(
         ra_types.Boolean(),
         default=False,
     )
@@ -1836,16 +1844,30 @@ class Token(
         )
 
 
-class ManagedToken(Token, ua_models.TargetResourceMixin):
+class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomPropertiesMixin):
     """A token declared by a manifest or created through the tokens API.
 
-    Unlike a login session it renews itself before it expires, and it
-    reports its signed access token so an element can render it with
-    `:access_token`. The access token is not a property, so the user API
-    never returns it.
+    It reports its signed access token, so an element renders it with
+    `:access_token` and the account that issues one is shown it once.
+    The token is derived from the record and the key of its client, so
+    it is never stored: `access_token` is a custom property the model
+    signs on the spot.
     """
 
+    # The signed token. It is derived rather than stored, so it is a
+    # custom property: the view a manifest reads carries it, and the
+    # tokens API answers with it on a create and never again.
+    __custom_properties__ = {
+        "access_token": ra_types.String(max_length=8192),
+    }
+
     managed = properties.property(
+        ra_types.Boolean(),
+        default=True,
+    )
+    # A token issued for a fixed term says so by turning this off, and
+    # is spent when it expires.
+    auto_renew = properties.property(
         ra_types.Boolean(),
         default=True,
     )
@@ -1885,14 +1907,13 @@ class ManagedToken(Token, ua_models.TargetResourceMixin):
             info["aud"] = self.iam_client.client_id
         return info
 
-    def get_access_token(self) -> str:
+    @property
+    def access_token(self) -> str:
         algorithm = self.iam_client.get_token_algorithm()
         return algorithm.encode(self._get_access_token_info())
 
-    def dump_to_simple_view(self, *args, **kwargs):
-        view = super().dump_to_simple_view(*args, **kwargs)
-        view["access_token"] = self.get_access_token()
-        return view
+    def get_access_token(self) -> str:
+        return self.access_token
 
 
 class Idp(
