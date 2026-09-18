@@ -1362,6 +1362,92 @@ components:
       required:
       - driver_spec
       type: object
+    ManagedToken_Create:
+      path: /v1/iam/tokens/
+      properties:
+        access_token:
+          example: any_string
+          maxLength: 8192
+          readOnly: true
+          type: string
+        audience:
+          example: any_string
+          maxLength: 64
+          nullable: true
+          type: string
+        auto_renew:
+          default: true
+          example: true
+          type: boolean
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        expiration_at:
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        expiration_delta:
+          default: 3600
+          example: 3600
+          maximum: 2147483647
+          minimum: 60
+          type: integer
+        generation:
+          default: 0
+          example: 0
+          minimum: 0
+          readOnly: true
+          type: integer
+        iam_client:
+          type: string
+        issuer:
+          example: any_string
+          maxLength: 256
+          nullable: true
+          type: string
+        project:
+          readOnly: true
+          type: string
+        refresh_expiration_at:
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        scope:
+          default: ''
+          example: any_string
+          maxLength: 128
+          type: string
+        typ:
+          default: Bearer
+          example: any_string
+          maxLength: 64
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        user:
+          type: string
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - user
+      - iam_client
+      type: object
     Manifest_Create:
       $ref: '#/components/schemas/Manifest_Get'
       path: /v1/em/manifests/
@@ -4985,6 +5071,10 @@ properties:
       $core.iam.roles:
         additionalProperties:
           $ref: '#/components/schemas/Role_Create'
+        type: object
+      $core.iam.tokens:
+        additionalProperties:
+          $ref: '#/components/schemas/ManagedToken_Create'
         type: object
       $core.iam.users:
         additionalProperties:

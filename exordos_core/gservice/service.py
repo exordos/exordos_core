@@ -57,6 +57,7 @@ from exordos_core.network.lb.dm import models as lb_models
 from exordos_core.secret import service as secret_service
 from exordos_core.secret.builders import service as secret_builder_svc
 from exordos_core.telemetry import service as telemetry_service
+from exordos_core.user_api.iam import service as iam_service
 from exordos_core.vs.builders import service as vs_builder_svc
 
 LOG = logging.getLogger(__name__)
@@ -213,6 +214,9 @@ class GeneralService(basic.BasicService):
         else:
             event_sender = None
         em_builder = em_builders.ElementManagerBuilder(iter_min_period=iter_min_period)
+        token_renewal = iam_service.TokenRenewalService(
+            iter_min_period=iter_min_period,
+        )
         janitor = janitor_service.ExpiredEmailConfirmationCodeJanitorService(
             iter_min_period=60 * 60,
         )
@@ -249,6 +253,7 @@ class GeneralService(basic.BasicService):
             password_builder,
             cert_builder,
             em_builder,
+            token_renewal,
             dns_sync,
             # non-essential services should be last
             janitor,

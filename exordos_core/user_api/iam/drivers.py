@@ -24,6 +24,7 @@ class DirectDriver(iam_drivers.AbstractAuthDriver):
     def get_introspection_info(self, token_info, otp_code=None):
         token = models.Token.my(token_info=token_info)
         token.validate_expiration()
+        token.validate_generation(token_info=token_info)
         return token.introspect(
             token_info=token_info, otp_code=otp_code
         ).get_response_body()
