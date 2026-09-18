@@ -605,6 +605,13 @@ class TestVSUserApi:
             with pytest.raises(bazooka_exc.NotFoundError):
                 client.delete(profile_url)
 
+        # An own profile is not handed over to another project either.
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.put(
+                own_url,
+                json={"project_id": str(auth_test2_p1_user.project_id)},
+            )
+
         assert client.delete(own_url).status_code == 204
 
     def test_variables_read_only_exported_and_own(
