@@ -1066,6 +1066,28 @@ resources:
           - kind: rewrite_url
             regex: "^/api/core/v1/iam/clients/default(.*)"
             replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
+    # Projects' internal element repos, written over WebDAV by `exordos
+    # push --realm-repo`; core's /v1/repo/auth/ decides on every request.
+    core_lb_repo_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
+      condition:
+        kind: prefix
+        value: /repo/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: local_dir
+            path: /var/www/repo
+            is_spa: false
+            dav_methods:
+              - PUT
+              - DELETE
+              - MKCOL
+        modifiers:
+          - kind: auth_request
+            pool: $core.network.lb.$core_lb.backend_pools.$core_lb_core_backend_http:uuid
+            path: /v1/repo/auth/
 
 exports:
   local_domain:
