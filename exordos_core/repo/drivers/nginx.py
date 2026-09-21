@@ -31,7 +31,7 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
     def __init__(self, repository: repo_models.Repository) -> None:
         super().__init__(repository)
-        if repository.driver_spec.KIND != "nginx":
+        if repository.driver_spec.KIND not in ("nginx", "internal"):
             raise ValueError(
                 f"Unsupported driver spec kind: {repository.driver_spec.KIND!r}"
             )

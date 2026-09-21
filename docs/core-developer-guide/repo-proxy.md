@@ -153,6 +153,25 @@ The inventory file is fetched from `{url}/inventory.json`. Individual elements
 are fetched from `{url}/{name}/{version}/manifests/{name}.yaml` and
 `{url}/{name}/{version}/inventory.json`.
 
+### InternalDriverSpec (`kind: "internal"`)
+
+A project's own repository inside the realm, with the fields and driver of
+`nginx`. The core LB serves `/repo/<project_id>/` from the core node as
+WebDAV and asks `GET /v1/repo/auth/` (nginx `auth_request`) about every
+request, see `exordos_core/repo/internal.py`:
+
+- `GET`/`HEAD` from a realm subnet or loopback pass without a token;
+- `GET`/`HEAD` from elsewhere need `repo.repository.read`, and
+  `PUT`/`DELETE`/`MKCOL` need `repo.repository.upload`, in a token scoped
+  to that very project;
+- any other method (`MOVE` and `COPY` included, whose `Destination` is not
+  checked) and any URI that nginx could normalize into another project's
+  path are refused.
+
+Core creates the repository on the project's first authorized write, with a
+UUID derived from the project, `sync_mode: copy` and
+`url: http://<core_ip>/repo/<project_id>/`.
+
 ### BootstrapDriverSpec (`kind: "bootstrap"`)
 
 For local filesystem repositories used during bootstrap. Reads YAML manifests
@@ -384,6 +403,7 @@ The User API is served under `/v1/repo/` and defined in
 | POST | `/v1/repo/elements/{uuid}/actions/uninstall/invoke` | Uninstall element |
 | POST | `/v1/repo/elements/{uuid}/actions/upgrade/invoke` | Upgrade element |
 | POST | `/v1/repo/elements/{uuid}/actions/edit/invoke` | Edit manifest |
+| GET | `/v1/repo/auth/` | Authorize a core LB request to an internal repository |
 
 ### Field permissions
 

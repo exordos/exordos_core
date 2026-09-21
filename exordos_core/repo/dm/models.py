@@ -120,6 +120,16 @@ class NginxDriverSpec(AbstractDriverSpec):
         return urljoin(base_url, self.INVENTORY_FILE)
 
 
+class InternalDriverSpec(NginxDriverSpec):
+    """A project's repository served by the core LB under ``/repo/``.
+
+    Core creates it on the project's first push, see
+    :mod:`exordos_core.repo.internal`.
+    """
+
+    KIND = "internal"
+
+
 class BootstrapDriverSpec(AbstractDriverSpec):
     KIND = "bootstrap"
 
@@ -197,6 +207,7 @@ class Repository(
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(NginxDriverSpec),
+            types_dynamic.KindModelType(InternalDriverSpec),
             types_dynamic.KindModelType(BootstrapDriverSpec),
             types_dynamic.KindModelType(DummyMigrationDriverSpec),
             types_dynamic.KindModelType(DatabaseDriverSpec),

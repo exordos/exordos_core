@@ -657,3 +657,155 @@ class TestLBApi:
         with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
             client.delete(url)
         assert "Backend pool in use" in str(exc_info.value.cause.response.text)
+
+    def _lb_with_pool_and_vhost(
+        self,
+        client,
+        lb_factory_with_model,
+        vhost_factory_with_model,
+        backend_pool_factory_with_model,
+    ):
+        lb, lb_model = lb_factory_with_model()
+        client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+        endpoint = nm.BackendHostKind(kind="host", host="127.0.0.1", port=11010)
+        pool, pool_model = backend_pool_factory_with_model(
+            lb_model, endpoints=[endpoint]
+        )
+        client.post(
+            client.build_collection_uri(["network", "lb", lb["uuid"], "backend_pools"]),
+            json=pool,
+        )
+        vhost, vhost_model = vhost_factory_with_model(
+            lb_model, protocol=nm.Protocol.HTTP, port=80, domains=["_"]
+        )
+        client.post(
+            client.build_collection_uri(["network", "lb", lb["uuid"], "vhosts"]),
+            json=vhost,
+        )
+        routes_url = client.build_collection_uri(
+            ["network", "lb", lb["uuid"], "vhosts", vhost["uuid"], "routes"]
+        )
+        pool_url = client.build_resource_uri(
+            ["network", "lb", lb["uuid"], "backend_pools", pool["uuid"]]
+        )
+        return vhost_model, pool_model, routes_url, pool_url
+
+    def test_creates_writable_dir_route_guarded_by_auth_request(
+        self,
+        user_api_client,
+        auth_user_admin,
+        lb_factory_with_model,
+        vhost_factory_with_model,
+        backend_pool_factory_with_model,
+        route_factory,
+    ):
+        client = user_api_client(auth_user_admin)
+        vhost_model, pool_model, routes_url, pool_url = self._lb_with_pool_and_vhost(
+            client,
+            lb_factory_with_model,
+            vhost_factory_with_model,
+            backend_pool_factory_with_model,
+        )
+        condition = nm.RoutePrefixConditionKind(
+            value="/repo/",
+            modifiers=[
+                nm.ModifierAuthRequestKind(pool=pool_model, path="/v1/repo/auth/")
+            ],
+            actions=[
+                nm.RuleStaticKind(
+                    path="/var/www/repo",
+                    is_spa=False,
+                    dav_methods=["PUT", "DELETE", "MKCOL"],
+                )
+            ],
+        )
+        route = route_factory(vhost_model, condition=condition)
+
+        response = client.post(routes_url, json=route)
+
+        assert response.status_code == 201
+        output = client.get(f"{routes_url}{route['uuid']}").json()
+        assert output["condition"]["actions"][0]["dav_methods"] == [
+            "PUT",
+            "DELETE",
+            "MKCOL",
+        ]
+        assert output["condition"]["modifiers"] == [
+            {
+                "kind": "auth_request",
+                "pool": str(pool_model.uuid),
+                "path": "/v1/repo/auth/",
+                "location_prefix": None,
+            }
+        ]
+        # The guard's pool is in use as much as a backend's.
+        with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
+            client.delete(pool_url)
+        assert "Backend pool in use" in str(exc_info.value.cause.response.text)
+
+    @pytest.mark.parametrize(
+        "modifier_kwargs",
+        [
+            {"path": "/v1/repo/auth/;deny all"},
+            {"path": "/v1/repo/auth/", "location_prefix": "/a b"},
+        ],
+    )
+    def test_auth_request_refuses_unsafe_paths(
+        self,
+        user_api_client,
+        auth_user_admin,
+        lb_factory_with_model,
+        vhost_factory_with_model,
+        backend_pool_factory_with_model,
+        route_factory,
+        modifier_kwargs,
+    ):
+        client = user_api_client(auth_user_admin)
+        vhost_model, pool_model, routes_url, _ = self._lb_with_pool_and_vhost(
+            client,
+            lb_factory_with_model,
+            vhost_factory_with_model,
+            backend_pool_factory_with_model,
+        )
+        route = route_factory(
+            vhost_model,
+            condition=nm.RoutePrefixConditionKind(
+                value="/repo/",
+                modifiers=[
+                    nm.ModifierAuthRequestKind(pool=pool_model, path="/v1/repo/auth/")
+                ],
+                actions=[nm.RuleStaticKind(path="/var/www/repo")],
+            ),
+        )
+        route["condition"]["modifiers"][0].update(modifier_kwargs)
+
+        with pytest.raises(bazooka_exc.BadRequestError):
+            client.post(routes_url, json=route)
+
+    def test_auth_locations_are_reserved(
+        self,
+        user_api_client,
+        auth_user_admin,
+        lb_factory_with_model,
+        vhost_factory_with_model,
+        backend_pool_factory_with_model,
+        route_factory,
+    ):
+        client = user_api_client(auth_user_admin)
+        vhost_model, _, routes_url, _ = self._lb_with_pool_and_vhost(
+            client,
+            lb_factory_with_model,
+            vhost_factory_with_model,
+            backend_pool_factory_with_model,
+        )
+        route = route_factory(
+            vhost_model,
+            condition=nm.RouteExactConditionKind(
+                value="/_exordos_auth_x",
+                actions=[nm.RuleStaticKind(path="/var/www/x")],
+            ),
+        )
+
+        with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
+            client.post(routes_url, json=route)
+        assert "reserved" in str(exc_info.value.cause.response.text)
