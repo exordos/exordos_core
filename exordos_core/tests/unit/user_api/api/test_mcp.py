@@ -55,7 +55,7 @@ def post(middleware, message, authorization="Bearer token"):
     return req.get_response(middleware)
 
 
-def call_tool(middleware, name, **arguments):
+def call_tool(middleware, name, /, **arguments):
     resp = post(
         middleware,
         {
@@ -136,7 +136,8 @@ class TestProtocol:
         resp = post(middleware, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
 
         names = [tool["name"] for tool in resp.json_body["result"]["tools"]]
-        assert names == ["list_endpoints", "describe_endpoint", "call_api"]
+        assert names[:3] == ["list_endpoints", "describe_endpoint", "call_api"]
+        assert set(names[3:]) == set(mcp.CURATED)
 
     def test_unknown_method(self, middleware):
         resp = post(middleware, {"jsonrpc": "2.0", "id": 1, "method": "nope"})
@@ -256,6 +257,39 @@ class TestTools:
             "body": {"name": "vm"},
         }
 
+    @pytest.mark.parametrize(
+        "header",
+        ["X-OTP", "X-Firebase-AppCheck", "X-Goog-Firebase-AppCheck", "X-Captcha"],
+    )
+    def test_call_api_forwards_verifier_headers(self, header):
+        """The security rule verifiers read these off the replayed request."""
+
+        @dec.wsgify
+        def echo_headers(req):
+            return webob.Response(
+                content_type="application/json",
+                json_body={"seen": req.headers.get(header)},
+            )
+
+        req = webob.Request.blank(mcp.MCP_PATH, method="POST")
+        req.authorization = "Bearer token"
+        req.headers[header] = "proof"
+        req.body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "call_api",
+                    "arguments": {"method": "GET", "path": "/v1/compute/nodes/"},
+                },
+            }
+        ).encode()
+        resp = req.get_response(mcp.McpMiddleware(echo_headers))
+
+        text = resp.json_body["result"]["content"][0]["text"]
+        assert json.loads(text.split("\n", 1)[1]) == {"seen": "proof"}
+
     def test_call_api_reports_http_errors(self, middleware):
         text, is_error = call_tool(
             middleware, "call_api", method="GET", path="/v1/missing/"
@@ -279,3 +313,112 @@ class TestTools:
         )
 
         assert is_error
+
+
+NODE_UUID = "11111111-2222-3333-4444-555555555555"
+
+# What the document requires of a node, and the caller can set.
+NODE_FIELDS = {"cores": 2, "ram": 1024, "disk_spec": {"size": 10}}
+
+
+class TestCuratedTools:
+    """The per-resource tools generated from the OpenAPI document."""
+
+    def test_every_resource_has_the_five_operations(self):
+        for name, _, _ in mcp.RESOURCES:
+            assert f"list_{name}s" in mcp.CURATED
+            for operation in ("get", "create", "update", "delete"):
+                assert f"{operation}_{name}" in mcp.CURATED
+
+    @pytest.mark.parametrize(
+        "tool, arguments, method, path, query, body",
+        [
+            (
+                "list_nodes",
+                {"status": "ACTIVE"},
+                "GET",
+                "/v1/compute/nodes/",
+                "status=ACTIVE",
+                None,
+            ),
+            (
+                "get_node",
+                {"uuid": NODE_UUID},
+                "GET",
+                f"/v1/compute/nodes/{NODE_UUID}",
+                "",
+                None,
+            ),
+            (
+                "delete_node",
+                {"uuid": NODE_UUID},
+                "DELETE",
+                f"/v1/compute/nodes/{NODE_UUID}",
+                "",
+                None,
+            ),
+            (
+                "create_node",
+                dict(NODE_FIELDS, name="vm"),
+                "POST",
+                "/v1/compute/nodes/",
+                "",
+                dict(NODE_FIELDS, name="vm"),
+            ),
+            (
+                "update_node",
+                dict(NODE_FIELDS, uuid=NODE_UUID, name="vm2"),
+                "PUT",
+                f"/v1/compute/nodes/{NODE_UUID}",
+                "",
+                dict(NODE_FIELDS, name="vm2"),
+            ),
+            (
+                "create_secret",
+                {"name": "s"},
+                "POST",
+                "/v1/secret/secrets/",
+                "",
+                {"name": "s"},
+            ),
+        ],
+    )
+    def test_curated_tool_maps_to_a_request(
+        self, middleware, tool, arguments, method, path, query, body
+    ):
+        text, is_error = call_tool(middleware, tool, **arguments)
+
+        assert not is_error
+        replayed = json.loads(text.split("\n", 1)[1])
+        assert replayed["method"] == method
+        assert replayed["path"] == path
+        assert replayed["query"] == query
+        assert replayed["body"] == body
+
+    def test_read_only_fields_are_not_arguments(self, middleware):
+        """project_id is required in the document but the caller cannot set it."""
+        schema = middleware._get_curated_tools()["create_node"]["inputSchema"]
+
+        assert "project_id" not in schema["properties"]
+        assert "project_id" not in schema["required"]
+        assert "cores" in schema["required"]
+
+    def test_rejects_a_uuid_that_is_not_one(self, middleware):
+        text, is_error = call_tool(middleware, "get_node", uuid="../../../secret")
+
+        assert is_error
+        assert "must be a UUID" in text
+
+    def test_rejects_an_unknown_field(self, middleware):
+        text, is_error = call_tool(middleware, "create_node", nope="x")
+
+        assert is_error
+        assert "Unknown arguments: nope" in text
+
+    def test_rejects_a_wrongly_typed_field(self, middleware):
+        text, is_error = call_tool(
+            middleware, "create_node", **dict(NODE_FIELDS, cores="many")
+        )
+
+        assert is_error
+        assert "cores must be of type integer" in text
