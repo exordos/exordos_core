@@ -14,31 +14,46 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-"""MCP (Model Context Protocol) endpoint of the User API.
+"""MCP (Model Context Protocol) server for the User API.
 
 A stateless implementation of the Streamable HTTP transport: every message is
 a single JSON-RPC POST answered with a single JSON body, there are no
 sessions and no server-sent events. The official SDK is asyncio-only, while
 this API is served by a WSGI server, and the subset used here is small.
 
-The tools do not reimplement the API. `call_api` replays the call through the
-whole application with the caller's credentials, so authentication, security
-rules and permissions apply exactly as they do to a direct call. That is why
-this middleware wraps every other one: the IAM middleware refuses to open a
-session inside another one.
+The tools do not reimplement the API. `call_api` makes the call against the
+User API over HTTP carrying the caller's credentials, so authentication,
+security rules and permissions are decided there, exactly as they are for a
+direct call. This service holds no credentials of its own and reaches no
+database: without a caller's token it can do nothing.
+
+The tool schemas come from the OpenAPI document, built here from the route
+tree rather than fetched from the User API. A served document is shaped by
+the rights of whoever asked for it, so a fetched one would describe some
+particular caller instead of the API, and would describe every caller that
+way once cached.
 """
 
 import json
+import logging
 import urllib.parse
 import uuid as uuid_module
 
+import bazooka
+from bazooka import exceptions as bazooka_exc
 import webob
 from webob import dec
 
 from exordos_core import version
 from exordos_core.common import openapi
 
+LOG = logging.getLogger(__name__)
+
 MCP_PATH = "/v1/mcp"
+
+# A call is one request the caller is waiting on, so it fails rather than
+# holds the worker: this service serves one request at a time per worker.
+CALL_TIMEOUT = 60
 
 # Newest first; the first one is offered when the client asks for another.
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -50,24 +65,23 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 
-# What a replayed call takes from the MCP request: credentials, the proofs the
-# security rule verifiers look for, and what the API derives the caller's
-# address and its own URL from.
+# What a call carries over from the MCP request: the caller's credentials,
+# the proofs the security rule verifiers look for, and what the User API
+# derives the caller's address and its own URL from. Nothing else is passed
+# on -- this list is the boundary between the two services, so a header the
+# User API trusts has to be named here to cross it.
 FORWARDED_HEADERS = (
-    "HTTP_AUTHORIZATION",
-    "HTTP_X_OTP",
-    "HTTP_X_FIREBASE_APPCHECK",
-    "HTTP_X_GOOG_FIREBASE_APPCHECK",
-    "HTTP_X_CAPTCHA",
-    "HTTP_X_FORWARDED_FOR",
-    "HTTP_X_FORWARDED_HOST",
-    "HTTP_X_FORWARDED_PORT",
-    "HTTP_X_FORWARDED_PREFIX",
-    "HTTP_X_FORWARDED_PROTO",
-    "HTTP_X_REAL_IP",
-    "HTTP_HOST",
-    "REMOTE_ADDR",
-    "wsgi.url_scheme",
+    "Authorization",
+    "X-OTP",
+    "X-Firebase-AppCheck",
+    "X-Goog-Firebase-AppCheck",
+    "X-Captcha",
+    "X-Forwarded-For",
+    "X-Forwarded-Host",
+    "X-Forwarded-Port",
+    "X-Forwarded-Prefix",
+    "X-Forwarded-Proto",
+    "X-Real-IP",
 )
 
 INSTRUCTIONS = (
@@ -199,16 +213,25 @@ class ToolError(Exception):
     """A tool failed in a way the model should read and react to."""
 
 
-class McpMiddleware:
-    def __init__(self, application):
-        self.application = application
+class McpApplication:
+    """The MCP endpoint, calling the User API at `user_api_url`.
+
+    `user_api_url` is the base the User API answers `/v1/...` under, and
+    should be the address callers themselves would use: the User API builds
+    absolute URLs from the host it is asked on, so an internal address there
+    puts an internal address in what it returns.
+    """
+
+    def __init__(self, user_api_url, client=None):
+        self.user_api_url = user_api_url.rstrip("/")
+        self.client = client or bazooka.Client(default_timeout=CALL_TIMEOUT)
         self._specification = None
         self._curated_tools = None
 
     @dec.wsgify
     def __call__(self, req):
         if req.path_info.rstrip("/") != MCP_PATH:
-            return req.get_response(self.application)
+            return webob.Response(status=404)
         if req.method != "POST":
             # No server-initiated stream (GET) and no session to end (DELETE).
             return webob.Response(status=405, headers={"Allow": "POST"})
@@ -349,20 +372,26 @@ class McpMiddleware:
         if not path.startswith("/v1/") or path.rstrip("/") == MCP_PATH:
             raise ToolError("path must be a User API path starting with '/v1/'.")
 
-        url = path
+        url = self.user_api_url + path
         if query:
             url += "?" + urllib.parse.urlencode(query, doseq=True)
-        environ = {
-            key: req.environ[key] for key in FORWARDED_HEADERS if key in req.environ
-        }
-        sub_req = webob.Request.blank(url, environ=environ, method=method)
-        sub_req.accept = "application/json"
-        if body is not None:
-            sub_req.json_body = body
+        headers = {"Accept": "application/json"}
+        for header in FORWARDED_HEADERS:
+            if header in req.headers:
+                headers[header] = req.headers[header]
 
-        resp = sub_req.get_response(self.application)
-        text = f"HTTP {resp.status}"
-        if resp.body:
+        try:
+            resp = self.client.request(method, url, headers=headers, json=body)
+        except bazooka_exc.BaseHTTPException as e:
+            # The User API refused the call and said why; that answer is the
+            # tool's result, not a failure of this service.
+            resp = e.cause.response
+        except Exception:
+            LOG.exception("Calling %s %s failed:", method, path)
+            raise ToolError(f"Could not reach the User API: {method} {path}")
+
+        text = f"HTTP {resp.status_code} {resp.reason}"
+        if resp.content:
             text += "\n" + resp.text
         return text, resp.status_code >= 400
 
@@ -370,8 +399,8 @@ class McpMiddleware:
 def _check_arguments(tool, arguments):
     """Hold the arguments to the tool's input schema before calling it.
 
-    This middleware is outside the one turning exceptions into responses, so
-    a wrongly typed argument has to become a tool error here.
+    A wrongly typed argument is the model's mistake to correct, so it comes
+    back as a tool error it can read rather than as a failed request.
     """
     schema = tool["inputSchema"]
     properties = schema["properties"]
@@ -431,7 +460,11 @@ def _build_curated_tools(spec):
                 )
                 body, body_required = _body_properties(spec, path, method)
                 properties.update(body)
-                required.extend(body_required)
+                # An update sends only the fields to change, so the body's
+                # required fields are required of a create alone; asking for
+                # them here would make every change a read-modify-write.
+                if operation == "create":
+                    required.extend(body_required)
             description = {
                 "get": f"Return one {label} by UUID.",
                 "create": f"Create a {label}.",
@@ -477,8 +510,9 @@ def _body_properties(spec, path, method):
         for name, value in schema["properties"].items()
         if not value.get("readOnly")
     }
-    # The document marks some fields required and read-only at once, project_id
-    # among them; asking for one the caller cannot set would block every call.
+    # A field the caller cannot set is not an argument. The document leaves
+    # project_id writable on a create, where the API insists on having it,
+    # and read-only on an update, where the API sets it itself.
     required = [name for name in schema.get("required", []) if name in properties]
     return properties, required
 

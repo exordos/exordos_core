@@ -3,12 +3,18 @@ icon: lucide/bot
 ---
 # MCP Server
 
-The User API also serves the
-[Model Context Protocol](https://modelcontextprotocol.io/) at `/v1/mcp`, so an
-AI agent can manage the platform with the same credentials and permissions as
-a direct API client. On an installation the endpoint is
-`https://<your-domain>/api/core/v1/mcp`; a local service answers at
-`http://127.0.0.1:11010/v1/mcp`.
+`ec-mcp-api` serves the
+[Model Context Protocol](https://modelcontextprotocol.io/), so an AI agent can
+manage the platform with the same credentials and permissions as a direct API
+client. On an installation the endpoint is
+`https://<your-domain>/api/core/v1/mcp`; the service itself answers at
+`http://127.0.0.1:11014/v1/mcp`.
+
+It is a service of its own, next to the User API rather than part of it. A
+tool call becomes an ordinary HTTP call to the User API carrying the caller's
+credentials, so the User API decides what the call may do, exactly as it does
+for a direct client. This service holds no credentials and reaches no
+database: without a caller's token it can do nothing.
 
 The endpoint implements the stateless subset of the Streamable HTTP
 transport: each JSON-RPC message is one `POST`, answered with one JSON
@@ -19,7 +25,23 @@ response. There are no sessions, no server-sent events, and no batching.
 Every request needs an `Authorization: Bearer <token>` header with an IAM
 access token; without the header the endpoint answers `401`. Tool calls run
 as the token's owner, so IAM permissions and security rules apply exactly as
-they do to direct API calls. An `X-OTP` header is passed on as well.
+they do to direct API calls. `X-OTP` is passed on as well, along with the
+headers the security rule verifiers read (`X-Firebase-AppCheck`,
+`X-Goog-Firebase-AppCheck` and `X-Captcha`). Nothing else is passed on.
+
+## Configuration
+
+`user_api_url` is the base the service calls the User API under. Use the
+address callers themselves use: the User API builds absolute URLs from the
+host it is asked on, so an internal address there puts an internal address in
+what it returns.
+
+```ini
+[mcp_api]
+bind_host = 0.0.0.0
+bind_port = 11014
+user_api_url = http://127.0.0.1:11010
+```
 
 ## Tools
 

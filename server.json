@@ -38,10 +38,10 @@
     },
     {
       "type": "streamable-http",
-      "url": "http://{host}:11010/v1/mcp",
+      "url": "http://{host}:11014/v1/mcp",
       "variables": {
         "host": {
-          "description": "Host of a User API service reached directly, without nginx",
+          "description": "Host of an MCP service reached directly, without nginx",
           "default": "127.0.0.1"
         }
       },
