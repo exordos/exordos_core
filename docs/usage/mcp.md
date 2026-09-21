@@ -23,17 +23,35 @@ they do to direct API calls. An `X-OTP` header is passed on as well.
 
 ## Tools
 
+### Resource tools
+
+The resources agents reach for most have a tool per operation, named
+`list_<resources>`, `get_<resource>`, `create_<resource>`,
+`update_<resource>` and `delete_<resource>`, with every field of the request
+spelled out in the tool's input schema. The resources are nodes, node sets,
+configs, values, secrets, elements, users, projects, organizations and roles.
+
+`get`, `update` and `delete` take the resource `uuid`; `list` takes the
+endpoint's filters, including `q`; `create` and `update` take the fields of
+the resource itself. Read-only fields, such as `project_id`, are not
+arguments — the API fills them in.
+
+### Generic tools
+
+Everything the resource tools do not cover is reachable through these.
+
 | Tool | Purpose |
 | --- | --- |
 | `list_endpoints` | Lists `METHOD path - summary` lines, filtered by an optional `search` substring. |
 | `describe_endpoint` | Returns the OpenAPI operation for `method` and a path template, with all `$ref`s resolved. |
 | `call_api` | Calls `method` on a concrete `/v1/...` `path` with optional `query` and JSON `body`, and returns the HTTP status and response body. |
 
-The endpoint list comes from the same OpenAPI document as the
-[User API reference](../openapi/openapi_user.md).
+The endpoint list and the resource tools' schemas come from the same OpenAPI
+document as the [User API reference](../openapi/openapi_user.md), so they
+cannot drift from the API.
 
-The first `list_endpoints` or `describe_endpoint` call in each worker builds
-the document, which takes a few seconds.
+The first `tools/list`, `list_endpoints` or `describe_endpoint` call in each
+worker builds the document, which takes a few seconds.
 
 ## Connecting clients
 

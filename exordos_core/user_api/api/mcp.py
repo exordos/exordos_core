@@ -30,6 +30,7 @@ session inside another one.
 
 import json
 import urllib.parse
+import uuid as uuid_module
 
 import webob
 from webob import dec
@@ -49,11 +50,15 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 
-# What a replayed call takes from the MCP request: credentials and what the
-# API derives the caller's address and its own URL from.
+# What a replayed call takes from the MCP request: credentials, the proofs the
+# security rule verifiers look for, and what the API derives the caller's
+# address and its own URL from.
 FORWARDED_HEADERS = (
     "HTTP_AUTHORIZATION",
     "HTTP_X_OTP",
+    "HTTP_X_FIREBASE_APPCHECK",
+    "HTTP_X_GOOG_FIREBASE_APPCHECK",
+    "HTTP_X_CAPTCHA",
     "HTTP_X_FORWARDED_FOR",
     "HTTP_X_FORWARDED_HOST",
     "HTTP_X_FORWARDED_PORT",
@@ -66,11 +71,42 @@ FORWARDED_HEADERS = (
 )
 
 INSTRUCTIONS = (
-    "Tools for the Exordos Core User API. Find an endpoint with "
-    "list_endpoints, read its parameters and body schema with "
-    "describe_endpoint, then call it with call_api. Calls run with your "
-    "credentials and permissions."
+    "Tools for the Exordos Core User API. The resources you will reach for "
+    "most have their own tools, named <verb>_<resource>, with the fields "
+    "spelled out. Anything else: find an endpoint with list_endpoints, read "
+    "its parameters and body schema with describe_endpoint, then call it "
+    "with call_api. Calls run with your credentials and permissions."
 )
+
+# Resources that get their own tools, as (name, collection, path parameter).
+# Every one of these is a plain REST collection: GET and POST on the
+# collection, GET, PUT and DELETE on the item.
+RESOURCES = (
+    ("node", "/v1/compute/nodes/", "NodeUuid"),
+    ("node_set", "/v1/compute/sets/", "NodeSetUuid"),
+    ("config", "/v1/config/configs/", "ConfigUuid"),
+    ("value", "/v1/vs/values/", "ValueUuid"),
+    ("secret", "/v1/secret/secrets/", "SecretUuid"),
+    ("element", "/v1/em/elements/", "ElementUuid"),
+    ("user", "/v1/iam/users/", "UserUuid"),
+    ("project", "/v1/iam/projects/", "ProjectUuid"),
+    ("organization", "/v1/iam/organizations/", "OrganizationUuid"),
+    ("role", "/v1/iam/roles/", "RoleUuid"),
+)
+
+OPERATIONS = ("list", "get", "create", "update", "delete")
+
+# Tool name -> (operation, collection, path parameter). The schemas come from
+# the OpenAPI document and are built with it; only this part is static.
+CURATED = {
+    (f"list_{name}s" if operation == "list" else f"{operation}_{name}"): (
+        operation,
+        collection,
+        parameter,
+    )
+    for name, collection, parameter in RESOURCES
+    for operation in OPERATIONS
+}
 
 TOOLS = [
     {
@@ -149,8 +185,14 @@ TOOLS = [
 
 TOOLS_BY_NAME = {tool["name"]: tool for tool in TOOLS}
 
-# The JSON types the tool input schemas above use.
-JSON_TYPES = {"string": str, "object": dict}
+JSON_TYPES = {
+    "string": str,
+    "object": dict,
+    "array": list,
+    "boolean": bool,
+    "integer": int,
+    "number": (int, float),
+}
 
 
 class ToolError(Exception):
@@ -161,6 +203,7 @@ class McpMiddleware:
     def __init__(self, application):
         self.application = application
         self._specification = None
+        self._curated_tools = None
 
     @dec.wsgify
     def __call__(self, req):
@@ -217,18 +260,25 @@ class McpMiddleware:
         if method == "ping":
             return _result(msg_id, {})
         if method == "tools/list":
-            return _result(msg_id, {"tools": TOOLS})
+            curated = list(self._get_curated_tools().values())
+            return _result(msg_id, {"tools": TOOLS + curated})
         if method == "tools/call":
             name = params.get("name")
-            if not isinstance(name, str) or name not in TOOLS_BY_NAME:
+            if not isinstance(name, str) or not (
+                name in TOOLS_BY_NAME or name in CURATED
+            ):
                 return _error(msg_id, INVALID_PARAMS, f"Unknown tool: {name}")
             arguments = params.get("arguments", {})
             if not isinstance(arguments, dict):
                 return _error(msg_id, INVALID_PARAMS, "arguments must be an object")
             try:
-                _check_arguments(TOOLS_BY_NAME[name], arguments)
-                handler = getattr(self, f"_tool_{name}")
-                text, is_error = handler(req, **arguments)
+                if name in CURATED:
+                    _check_arguments(self._get_curated_tools()[name], arguments)
+                    text, is_error = self._call_curated(req, name, arguments)
+                else:
+                    _check_arguments(TOOLS_BY_NAME[name], arguments)
+                    handler = getattr(self, f"_tool_{name}")
+                    text, is_error = handler(req, **arguments)
             except ToolError as e:
                 text, is_error = str(e), True
             return _result(
@@ -242,6 +292,30 @@ class McpMiddleware:
         if self._specification is None:
             self._specification = openapi.build(openapi.USER_API)
         return self._specification
+
+    def _get_curated_tools(self):
+        """Tool name -> tool; built with the specification, on first use."""
+        if self._curated_tools is None:
+            self._curated_tools = {
+                tool["name"]: tool
+                for tool in _build_curated_tools(self._get_specification())
+            }
+        return self._curated_tools
+
+    def _call_curated(self, req, name, arguments):
+        operation, collection, _ = CURATED[name]
+        arguments = dict(arguments)
+        path = collection
+        if operation in ("get", "update", "delete"):
+            path += _identifier(arguments.pop("uuid"))
+        if operation == "list":
+            return self._tool_call_api(req, "GET", path, query=arguments)
+        if operation == "get":
+            return self._tool_call_api(req, "GET", path)
+        if operation == "delete":
+            return self._tool_call_api(req, "DELETE", path)
+        method = "POST" if operation == "create" else "PUT"
+        return self._tool_call_api(req, method, path, body=arguments)
 
     def _operations(self):
         for path, item in self._get_specification()["paths"].items():
@@ -308,9 +382,105 @@ def _check_arguments(tool, arguments):
         if name not in arguments:
             raise ToolError(f"Missing argument: {name}")
     for name, value in arguments.items():
-        expected = properties[name]["type"]
+        # A generated property need not say what it holds; then anything goes.
+        expected = properties[name].get("type")
+        if expected is None:
+            continue
         if not isinstance(value, JSON_TYPES[expected]):
             raise ToolError(f"Argument {name} must be of type {expected}")
+        # bool is an int in Python, but not in JSON.
+        if expected in ("integer", "number") and isinstance(value, bool):
+            raise ToolError(f"Argument {name} must be of type {expected}")
+
+
+def _identifier(value):
+    """Check a UUID before it becomes part of a path, so none can escape it."""
+    try:
+        uuid_module.UUID(value)
+    except ValueError:
+        raise ToolError(f"uuid must be a UUID: {value}")
+    return value
+
+
+def _build_curated_tools(spec):
+    """Build the per-resource tools from the OpenAPI document.
+
+    Deriving the schemas rather than writing them out keeps the tools from
+    drifting away from the API they call.
+    """
+    tools = []
+    for tool_name, (operation, collection, parameter) in CURATED.items():
+        item = f"{collection.rstrip('/')}/{{{parameter}}}"
+        label = tool_name.split("_", 1)[1].replace("_", " ")
+        required = []
+        if operation == "list":
+            properties = _query_properties(spec, collection)
+            description = f"List {label}. Narrow the list with the filters."
+        else:
+            properties, description = {}, ""
+            if operation in ("get", "update", "delete"):
+                properties["uuid"] = {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": f"UUID of the {label}.",
+                }
+                required.append("uuid")
+            if operation in ("create", "update"):
+                path, method = (
+                    (collection, "post") if operation == "create" else (item, "put")
+                )
+                body, body_required = _body_properties(spec, path, method)
+                properties.update(body)
+                required.extend(body_required)
+            description = {
+                "get": f"Return one {label} by UUID.",
+                "create": f"Create a {label}.",
+                "update": f"Update a {label}. Pass only the fields to change.",
+                "delete": f"Delete a {label}.",
+            }[operation]
+        tool = {
+            "name": tool_name,
+            "description": description,
+            "inputSchema": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            },
+        }
+        if operation in ("list", "get"):
+            tool["annotations"] = {"readOnlyHint": True}
+        elif operation in ("update", "delete"):
+            tool["annotations"] = {"destructiveHint": True}
+        tools.append(tool)
+    return tools
+
+
+def _query_properties(spec, collection):
+    properties = {}
+    for parameter in _resolve(
+        spec, spec["paths"][collection]["get"].get("parameters", []), ()
+    ):
+        schema = dict(parameter["schema"])
+        # A field is read-only on the resource but still a filter here.
+        schema.pop("readOnly", None)
+        if parameter.get("description"):
+            schema["description"] = parameter["description"]
+        properties[parameter["name"]] = schema
+    return properties
+
+
+def _body_properties(spec, path, method):
+    body = _resolve(spec, spec["paths"][path][method]["requestBody"], ())
+    schema = body["content"]["application/json"]["schema"]
+    properties = {
+        name: value
+        for name, value in schema["properties"].items()
+        if not value.get("readOnly")
+    }
+    # The document marks some fields required and read-only at once, project_id
+    # among them; asking for one the caller cannot set would block every call.
+    required = [name for name in schema.get("required", []) if name in properties]
+    return properties, required
 
 
 def _json_response(body, status=200):
