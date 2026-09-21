@@ -49,7 +49,6 @@ from restalchemy.tests.functional import consts as ra_consts
 from exordos_core.common import constants as c
 from exordos_core.compute.dm import models
 
-
 BOOT_API_STARTUP_TIMEOUT = 60.0
 
 
