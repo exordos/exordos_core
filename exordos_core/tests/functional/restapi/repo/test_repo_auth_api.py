@@ -96,7 +96,9 @@ class TestRepoAuth:
         )
         assert repo.project_id == project_id
         assert repo.driver_spec.kind == "internal"
-        assert repo.driver_spec.url == f"http://{core_ip}/repo/{project_id}/"
+        assert repo.driver_spec.url == (
+            f"http://{core_ip}/repo/{project_id}/exordos-elements/"
+        )
         # A second push reuses it.
         assert _auth_status(client, "MKCOL", f"/repo/{project_id}/x/") == 200
 

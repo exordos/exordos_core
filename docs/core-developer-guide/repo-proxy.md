@@ -170,7 +170,7 @@ request, see `exordos_core/repo/internal.py`:
 
 Core creates the repository on the project's first authorized write, with a
 UUID derived from the project, `sync_mode: copy` and
-`url: http://<core_ip>/repo/<project_id>/`.
+`url: http://<core_ip>/repo/<project_id>/exordos-elements/`.
 
 ### BootstrapDriverSpec (`kind: "bootstrap"`)
 

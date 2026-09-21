@@ -174,7 +174,7 @@ LB ядра отдаёт `/repo/<project_id>/` с узла ядра по WebDAV 
 
 Ядро создаёт репозиторий при первой разрешённой записи проекта, с UUID,
 выведенным из проекта, `sync_mode: copy` и
-`url: http://<core_ip>/repo/<project_id>/`.
+`url: http://<core_ip>/repo/<project_id>/exordos-elements/`.
 
 ### BootstrapDriverSpec (`kind: "bootstrap"`)
 

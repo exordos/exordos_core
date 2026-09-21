@@ -33,6 +33,8 @@ from exordos_core.repo.dm import models
 from exordos_core.vs.dm import models as vs_models
 
 URL_PREFIX = "/repo/"
+# The CLI pushes elements under this dir of the project's repo.
+ELEMENTS_DIR = "exordos-elements/"
 READ_METHODS = frozenset({"GET", "HEAD"})
 # MOVE and COPY are left out: their target comes in the Destination
 # header, which the project check below never sees.
@@ -90,7 +92,7 @@ def ensure_repository(project_id: sys_uuid.UUID) -> None:
         project_id=project_id,
         sync_mode=models.SyncMode.COPY.value,
         driver_spec=models.InternalDriverSpec(
-            url=f"http://{core_ip}{URL_PREFIX}{project_id}/"
+            url=f"http://{core_ip}{URL_PREFIX}{project_id}/{ELEMENTS_DIR}"
         ),
     )
     try:
