@@ -163,7 +163,7 @@ request, see `exordos_core/repo/internal.py`:
 - `GET`/`HEAD` from a realm subnet or loopback pass without a token;
 - `GET`/`HEAD` from elsewhere need `repo.repository.read`, and
   `PUT`/`DELETE`/`MKCOL` need `repo.repository.upload`, in a token scoped
-  to that very project;
+  to that very project or in one without a project (an admin's);
 - any other method (`MOVE` and `COPY` included, whose `Destination` is not
   checked) and any URI that nginx could normalize into another project's
   path are refused.

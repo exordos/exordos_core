@@ -99,7 +99,8 @@ class RepoAuthController(
     Called by nginx ``auth_request`` for every ``/repo/<project_id>/...``
     request, which it describes in the ``X-Original-*`` headers; only the
     status code matters. Reads from the realm's own networks pass without
-    a token, everything else needs a token of that very project.
+    a token, everything else needs the permission in a token of that very
+    project, or in a token without a project (an admin's).
     """
 
     __policy_service_name__ = "repo"
@@ -118,9 +119,11 @@ class RepoAuthController(
 
         if "Authorization" not in headers:
             raise iam_exc.Unauthorized()
-        self._enforce("read" if is_read else "upload")
-        if self._ctx_project_id != project_id:
-            raise iam_exc.Forbidden()
+        # Permissions come from the bindings of the token's project, so an
+        # admin's unscoped token is the one that holds them.
+        self._enforce_and_authorize_project_id(
+            "read" if is_read else "upload", project_id
+        )
 
         if not is_read:
             internal.ensure_repository(project_id)

@@ -102,6 +102,19 @@ class TestRepoAuth:
         # A second push reuses it.
         assert _auth_status(client, "MKCOL", f"/repo/{project_id}/x/") == 200
 
+    def test_an_unscoped_admin_pushes_to_any_project(
+        self, user_api_client, auth_user_admin, core_ip
+    ):
+        client = user_api_client(auth_user_admin)
+        project_id = sys_uuid.uuid4()
+        uri = f"/repo/{project_id}/core/1.0.0/inventory.json"
+
+        assert _auth_status(client, "PUT", uri) == 200
+        repo = repo_models.Repository.objects.get_one(
+            filters={"uuid": dm_filters.EQ(internal.repository_uuid(project_id))}
+        )
+        assert repo.project_id == project_id
+
     def test_another_projects_path_is_forbidden(self, owner):
         client, _ = owner
         uri = f"/repo/{sys_uuid.uuid4()}/core/1.0.0/inventory.json"
