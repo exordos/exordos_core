@@ -33,6 +33,8 @@ from exordos_core.repo.dm import models
 from exordos_core.vs.dm import models as vs_models
 
 URL_PREFIX = "/repo/"
+# Where the core LB stores /repo/ on the core node (`core_lb_repo_route`).
+REPO_DIR = "/var/www/repo"
 # The CLI pushes elements under this dir of the project's repo.
 ELEMENTS_DIR = "exordos-elements/"
 READ_METHODS = frozenset({"GET", "HEAD"})

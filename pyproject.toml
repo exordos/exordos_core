@@ -176,6 +176,7 @@ NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
 DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
+InternalProxyRepoDriver = "exordos_core.repo.drivers.internal:InternalProxyRepoDriver"
 
 [project.entry-points."gcl_sdk_event_payloads"]
 IamUserRegistration = "exordos_core.events.payloads:RegistrationEventPayload"

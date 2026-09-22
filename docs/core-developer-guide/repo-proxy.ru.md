@@ -159,7 +159,11 @@ JSONB-колонке `driver_spec`. Каждая спецификация име
 
 ### InternalDriverSpec (`kind: "internal"`)
 
-Собственный репозиторий проекта внутри реалма, с полями и драйвером `nginx`.
+Собственный репозиторий проекта внутри реалма, с полями `nginx`. Его
+`InternalProxyRepoDriver` читает элементы и артефакты по HTTP, как драйвер
+nginx, но строит индекс репозитория из `inventory.json` каждого элемента в
+`/var/www/repo/<project_id>/exordos-elements/` на узле ядра, так что
+одновременные push не теряют записи друг друга.
 LB ядра отдаёт `/repo/<project_id>/` с узла ядра по WebDAV и спрашивает
 `GET /v1/repo/auth/` (nginx `auth_request`) о каждом запросе, см.
 `exordos_core/repo/internal.py`:
@@ -217,6 +221,7 @@ NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
 DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
+InternalProxyRepoDriver = "exordos_core.repo.drivers.internal:InternalProxyRepoDriver"
 ```
 
 ### Абстрактный интерфейс

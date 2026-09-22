@@ -155,8 +155,11 @@ are fetched from `{url}/{name}/{version}/manifests/{name}.yaml` and
 
 ### InternalDriverSpec (`kind: "internal"`)
 
-A project's own repository inside the realm, with the fields and driver of
-`nginx`. The core LB serves `/repo/<project_id>/` from the core node as
+A project's own repository inside the realm, with the fields of `nginx`.
+Its `InternalProxyRepoDriver` reads elements and artifacts over HTTP like
+the nginx driver, but builds the repository index from the per-element
+`inventory.json` files under `/var/www/repo/<project_id>/exordos-elements/`
+on the core node, so concurrent pushes cannot drop each other's entries. The core LB serves `/repo/<project_id>/` from the core node as
 WebDAV and asks `GET /v1/repo/auth/` (nginx `auth_request`) about every
 request, see `exordos_core/repo/internal.py`:
 
@@ -212,6 +215,7 @@ NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
 DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
+InternalProxyRepoDriver = "exordos_core.repo.drivers.internal:InternalProxyRepoDriver"
 ```
 
 ### Abstract interface
