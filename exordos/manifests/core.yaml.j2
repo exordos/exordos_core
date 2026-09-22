@@ -1067,7 +1067,7 @@ resources:
             regex: "^/api/core/v1/iam/clients/default(.*)"
             replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
     # Projects' internal element repos, written over WebDAV by `exordos
-    # push --realm-repo`; core's /v1/repo/auth/ decides on every request.
+    # push --internal-repo`; core's /v1/repo/auth/ decides on every request.
     core_lb_repo_route:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
