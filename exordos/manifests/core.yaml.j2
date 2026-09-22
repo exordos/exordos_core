@@ -954,6 +954,15 @@ resources:
         kind: "A"
         name: "core"
         address: $core.vs.variables.$core_ip_address:value
+    local_oidc_record:
+      uuid: "cb5464d9-f59b-4a68-8b3e-508aa17a3660"
+      domain: "$core.dns.domains.$local_domain:uuid"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type: "A"
+      record:
+        kind: "A"
+        name: "oidc"
+        address: $core.network.lb.$core_lb:index(ipsv4, 0)
 
 # Core LB
   $core.network.lb:
@@ -988,6 +997,17 @@ resources:
       protocol: http
       port: 80
   $core.network.lb.$core_lb.vhosts.$core_lb_core_http.routes:
+    core_lb_oidc_ui_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
+      condition:
+        kind: prefix
+        value: /
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: local_dir_download
+            url: "{{ repository | default('https://repo.exordos.com') }}/exordos-oidc-ui/0.0.2/dist.tar.gz"
     core_lb_core_route:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
