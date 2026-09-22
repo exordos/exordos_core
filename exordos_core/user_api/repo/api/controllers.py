@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from gcl_iam import exceptions as iam_exc
 from gcl_iam.api import controllers as iam_controllers
 from packaging.version import InvalidVersion
 from packaging.version import parse as parse_version
@@ -26,6 +27,7 @@ from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as c
 from exordos_core.common import exceptions as common_exc
+from exordos_core.repo import internal
 from exordos_core.repo.dm import models
 
 
@@ -86,6 +88,46 @@ class RepositoryController(
         self._enforce("upload")
         resource.upload(element_name, element_version, manifest, description)
         return resource
+
+
+class RepoAuthController(
+    iam_controllers.PolicyBasedControllerMixin,
+    controllers.Controller,
+):
+    """Decide whether the core LB may pass a request to an internal repo.
+
+    Called by nginx ``auth_request`` for every ``/repo/<project_id>/...``
+    request, which it describes in the ``X-Original-*`` headers; only the
+    status code matters. Reads from the realm's own networks pass without
+    a token, everything else needs the permission in a token of that very
+    project, or in a token without a project (an admin's).
+    """
+
+    __policy_service_name__ = "repo"
+    __policy_name__ = "repository"
+
+    def filter(self, filters, **kwargs):
+        headers = self._req.headers
+        method = headers.get("X-Original-Method", "")
+        project_id = internal.parse_project_id(headers.get("X-Original-URI", ""))
+        is_read = method in internal.READ_METHODS
+        if project_id is None or not (is_read or method in internal.WRITE_METHODS):
+            raise iam_exc.Forbidden()
+
+        if is_read and internal.is_realm_address(headers.get("X-Original-Addr", "")):
+            return {}
+
+        if "Authorization" not in headers:
+            raise iam_exc.Unauthorized()
+        # Permissions come from the bindings of the token's project, so an
+        # admin's unscoped token is the one that holds them.
+        self._enforce_and_authorize_project_id(
+            "read" if is_read else "upload", project_id
+        )
+
+        if not is_read:
+            internal.ensure_repository(project_id)
+        return {}
 
 
 class StoreControllerMixin(iam_controllers.PolicyBasedWithoutProjectController):

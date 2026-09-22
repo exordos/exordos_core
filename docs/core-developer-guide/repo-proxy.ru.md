@@ -157,6 +157,29 @@ JSONB-колонке `driver_spec`. Каждая спецификация име
 `{url}/{name}/{version}/manifests/{name}.yaml` и
 `{url}/{name}/{version}/inventory.json`.
 
+### InternalDriverSpec (`kind: "internal"`)
+
+Собственный репозиторий проекта внутри реалма, с полями `nginx`. Его
+`InternalProxyRepoDriver` читает элементы и артефакты по HTTP, как драйвер
+nginx, но строит индекс репозитория из `inventory.json` каждого элемента в
+`/var/www/repo/<project_id>/exordos-elements/` на узле ядра, так что
+одновременные push не теряют записи друг друга.
+LB ядра отдаёт `/repo/<project_id>/` с узла ядра по WebDAV и спрашивает
+`GET /v1/repo/auth/` (nginx `auth_request`) о каждом запросе, см.
+`exordos_core/repo/internal.py`:
+
+- `GET`/`HEAD` из подсети реалма или с loopback проходят без токена;
+- `GET`/`HEAD` извне требуют `repo.repository.read`, а
+  `PUT`/`DELETE`/`MKCOL` — `repo.repository.upload`, в токене именно этого
+  проекта или в токене без проекта (у администратора);
+- любой другой метод (включая `MOVE` и `COPY`, чей `Destination` не
+  проверяется) и любой URI, который nginx может нормализовать в путь другого
+  проекта, отклоняются.
+
+Ядро создаёт репозиторий при первой разрешённой записи проекта, с UUID,
+выведенным из проекта, именем `internal-<первые 8 символов ID проекта>`, `sync_mode: copy` и
+`url: http://<core_ip>/repo/<project_id>/exordos-elements/`.
+
 ### BootstrapDriverSpec (`kind: "bootstrap"`)
 
 Для локальных файловых репозиториев, используемых при начальной загрузке
@@ -198,6 +221,7 @@ NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
 DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
+InternalProxyRepoDriver = "exordos_core.repo.drivers.internal:InternalProxyRepoDriver"
 ```
 
 ### Абстрактный интерфейс
@@ -387,6 +411,7 @@ User API обслуживается по пути `/v1/repo/` и определ�
 | POST | `/v1/repo/elements/{uuid}/actions/uninstall/invoke` | Удалить установку элемента |
 | POST | `/v1/repo/elements/{uuid}/actions/upgrade/invoke` | Обновить элемент |
 | POST | `/v1/repo/elements/{uuid}/actions/edit/invoke` | Редактировать манифест |
+| GET | `/v1/repo/auth/` | Авторизовать запрос LB ядра к внутреннему репозиторию |
 
 ### Права доступа к полям
 

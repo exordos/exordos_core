@@ -114,6 +114,13 @@ class StoreRoute(routes.Route):
     latest_stable_elements = routes.route(LatestStableElementsRoute)
 
 
+class RepoAuthRoute(routes.Route):
+    """Handler for /v1/repo/auth/ endpoint"""
+
+    __controller__ = controllers.RepoAuthController
+    __allow_methods__ = [routes.FILTER]
+
+
 class RepoArtifactRoute(routes.Route):
     """Handler for /v1/repo/artifacts/ endpoint"""
 
@@ -131,3 +138,4 @@ class RepoRoute(routes.Route):
     elements = routes.route(RepoElementRoute)
     artifacts = routes.route(RepoArtifactRoute)
     store = routes.route(StoreRoute)
+    auth = routes.route(RepoAuthRoute)

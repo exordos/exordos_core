@@ -153,6 +153,29 @@ The inventory file is fetched from `{url}/inventory.json`. Individual elements
 are fetched from `{url}/{name}/{version}/manifests/{name}.yaml` and
 `{url}/{name}/{version}/inventory.json`.
 
+### InternalDriverSpec (`kind: "internal"`)
+
+A project's own repository inside the realm, with the fields of `nginx`.
+Its `InternalProxyRepoDriver` reads elements and artifacts over HTTP like
+the nginx driver, but builds the repository index from the per-element
+`inventory.json` files under `/var/www/repo/<project_id>/exordos-elements/`
+on the core node, so concurrent pushes cannot drop each other's entries. The core LB serves `/repo/<project_id>/` from the core node as
+WebDAV and asks `GET /v1/repo/auth/` (nginx `auth_request`) about every
+request, see `exordos_core/repo/internal.py`:
+
+- `GET`/`HEAD` from a realm subnet or loopback pass without a token;
+- `GET`/`HEAD` from elsewhere need `repo.repository.read`, and
+  `PUT`/`DELETE`/`MKCOL` need `repo.repository.upload`, in a token scoped
+  to that very project or in one without a project (an admin's);
+- any other method (`MOVE` and `COPY` included, whose `Destination` is not
+  checked) and any URI that nginx could normalize into another project's
+  path are refused.
+
+Core creates the repository on the project's first authorized write, with a
+UUID derived from the project, the name `internal-<first 8 characters of
+the project ID>`, `sync_mode: copy` and
+`url: http://<core_ip>/repo/<project_id>/exordos-elements/`.
+
 ### BootstrapDriverSpec (`kind: "bootstrap"`)
 
 For local filesystem repositories used during bootstrap. Reads YAML manifests
@@ -193,6 +216,7 @@ NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"
 DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoDriver"
+InternalProxyRepoDriver = "exordos_core.repo.drivers.internal:InternalProxyRepoDriver"
 ```
 
 ### Abstract interface
@@ -384,6 +408,7 @@ The User API is served under `/v1/repo/` and defined in
 | POST | `/v1/repo/elements/{uuid}/actions/uninstall/invoke` | Uninstall element |
 | POST | `/v1/repo/elements/{uuid}/actions/upgrade/invoke` | Upgrade element |
 | POST | `/v1/repo/elements/{uuid}/actions/edit/invoke` | Edit manifest |
+| GET | `/v1/repo/auth/` | Authorize a core LB request to an internal repository |
 
 ### Field permissions
 

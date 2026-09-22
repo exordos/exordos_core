@@ -176,6 +176,14 @@ class BackendPool(ChildModel):
                         raise ex_exceptions.ValidateException(
                             err="Backend pool in use, remove route first"
                         )
+                for modifier in getattr(r.condition, "modifiers", []):
+                    if (
+                        modifier.kind == "auth_request"
+                        and modifier.pool.uuid == self.uuid
+                    ):
+                        raise ex_exceptions.ValidateException(
+                            err="Backend pool in use, remove route first"
+                        )
         return super().delete(session=session, **kwargs)
 
 
@@ -378,10 +386,23 @@ class AllowedPathType(types.BaseCompiledRegExpTypeFromAttr):
     pattern = re.compile(r"^(?!.*\/\.\.(?:\/.*|$))\/var\/www\/.*$")
 
 
+class DavMethods(str, enum.Enum):
+    PUT = "PUT"
+    DELETE = "DELETE"
+    MKCOL = "MKCOL"
+    COPY = "COPY"
+    MOVE = "MOVE"
+
+
 class RuleStaticKind(AbstractRuleKind):
     KIND = "local_dir"
     path = properties.property(AllowedPathType(), required=True)
     is_spa = properties.property(types.Boolean(), default=True)
+    # Makes the dir writable over WebDAV; guard it with `auth_request`.
+    dav_methods = properties.property(
+        types.TypedList(types.Enum([m.value for m in DavMethods])),
+        default=lambda: [],
+    )
 
 
 class ArchivedTarUrl(types.Url):
@@ -484,6 +505,28 @@ class ModifierRewriteUrlKind(AbstractModifierKind):
     replacement = properties.property(types.String(min_length=1, max_length=10000))
 
 
+class UriPathType(types.BaseCompiledRegExpTypeFromAttr):
+    # Rendered unquoted into the nginx config by the LB agent.
+    pattern = re.compile(r"^/[A-Za-z0-9._~/-]*$")
+
+
+# The LB agent's default prefix of the internal auth_request locations.
+AUTH_LOCATION_PREFIX = "/_exordos_auth_"
+
+
+class ModifierAuthRequestKind(AbstractModifierKind):
+    """Let the route pass only when `pool` answers `path` with 2xx.
+
+    The pool gets the original request as X-Original-Method,
+    X-Original-URI and X-Original-Addr headers, plus its own headers.
+    """
+
+    KIND = "auth_request"
+    pool = relationships.relationship(BackendPool, required=True)
+    path = properties.property(UriPathType(), required=True)
+    location_prefix = properties.property(types.AllowNone(UriPathType()), default=None)
+
+
 # class ConnectionUrlCodeKind(ConnectionUrlKind):
 #     KIND = "url"
 
@@ -540,6 +583,7 @@ class AbstractHTTPRouteCondKind(AbstractRouteCondKind):
                 types_dynamic.KindModelType(ModifierSetHeaderKind),
                 types_dynamic.KindModelType(ModifierSetRespHeaderKind),
                 types_dynamic.KindModelType(ModifierRewriteUrlKind),
+                types_dynamic.KindModelType(ModifierAuthRequestKind),
             )
         ),
         default=lambda: [],
@@ -605,6 +649,12 @@ class Route(ChildModel):
             if self.condition.kind == RouteRawConditionKind.KIND:
                 raise ex_exceptions.ValidateException(
                     err="L7 protocols can't have `raw` routes."
+                )
+            if self.condition.kind != RouteRegexConditionKind.KIND and str(
+                self.condition.value
+            ).startswith(AUTH_LOCATION_PREFIX):
+                raise ex_exceptions.ValidateException(
+                    err=f"Paths under {AUTH_LOCATION_PREFIX} are reserved."
                 )
         else:
             if self.condition.kind != RouteRawConditionKind.KIND:
