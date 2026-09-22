@@ -18,6 +18,7 @@ from gcl_iam import middlewares as iam_mw
 from restalchemy.api import applications
 from restalchemy.api import middlewares
 from restalchemy.api import routes
+from restalchemy.api.middlewares import cors as cors_mw
 from restalchemy.api.middlewares import logging as logging_mw
 from restalchemy.openapi import engines as openapi_engines
 from restalchemy.openapi import structures as openapi_structures
@@ -85,7 +86,7 @@ def build_wsgi_application(
     if cors_allowed_origins:
         middlewares_list.append(
             middlewares.configure_middleware(
-                user_api_mw.CorsMiddleware,
+                cors_mw.CorsMiddleware,
                 allowed_origins=cors_allowed_origins,
             )
         )
