@@ -49,6 +49,11 @@ def repository_uuid(project_id: sys_uuid.UUID) -> sys_uuid.UUID:
     return sys_uuid.uuid5(_NS_INTERNAL_REPO, str(project_id))
 
 
+def repository_name(project_id: sys_uuid.UUID) -> str:
+    # Unique per project: a project user also sees the admin project's one.
+    return f"internal-{str(project_id)[:8]}"
+
+
 def parse_project_id(uri: str) -> tp.Optional[sys_uuid.UUID]:
     """Return the project a ``/repo/<project_id>/...`` URI belongs to.
 
@@ -89,7 +94,7 @@ def ensure_repository(project_id: sys_uuid.UUID) -> None:
     ).value
     repository = models.Repository(
         uuid=repo_uuid,
-        name="internal",
+        name=repository_name(project_id),
         description="Elements pushed to this realm by the project",
         project_id=project_id,
         sync_mode=models.SyncMode.COPY.value,

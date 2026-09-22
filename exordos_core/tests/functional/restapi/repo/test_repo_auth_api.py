@@ -95,6 +95,7 @@ class TestRepoAuth:
             filters={"uuid": dm_filters.EQ(internal.repository_uuid(project_id))}
         )
         assert repo.project_id == project_id
+        assert repo.name == f"internal-{str(project_id)[:8]}"
         assert repo.driver_spec.kind == "internal"
         assert repo.driver_spec.url == (
             f"http://{core_ip}/repo/{project_id}/exordos-elements/"

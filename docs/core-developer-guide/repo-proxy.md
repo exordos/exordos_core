@@ -172,7 +172,8 @@ request, see `exordos_core/repo/internal.py`:
   path are refused.
 
 Core creates the repository on the project's first authorized write, with a
-UUID derived from the project, `sync_mode: copy` and
+UUID derived from the project, the name `internal-<first 8 characters of
+the project ID>`, `sync_mode: copy` and
 `url: http://<core_ip>/repo/<project_id>/exordos-elements/`.
 
 ### BootstrapDriverSpec (`kind: "bootstrap"`)

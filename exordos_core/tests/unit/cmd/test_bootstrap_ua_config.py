@@ -158,9 +158,7 @@ def _run_core_agent(tmp_path):
     data_path = tmp_path / "data" / "core_agent.conf"
     with (
         mock.patch.object(bootstrap, "CORE_AGENT_CONFIG_PATH", str(etc_path)),
-        mock.patch.object(
-            bootstrap, "CORE_AGENT_CONFIG_DATA_PATH", str(data_path)
-        ),
+        mock.patch.object(bootstrap, "CORE_AGENT_CONFIG_DATA_PATH", str(data_path)),
         mock.patch.object(bootstrap.subprocess, "run") as run,
     ):
         bootstrap._ensure_core_agent_config_current()
@@ -236,12 +234,9 @@ def test_upgrades_core_agent_config(tmp_path):
     etc_path, data_path, run = _run_core_agent(tmp_path)
 
     content = etc_path.read_text(encoding="utf-8")
+    assert "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp" in content
     assert (
-        "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp" in content
-    )
-    assert (
-        "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142"
-        in content
+        "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142" in content
     )
     assert (
         "em_core_vs_profiles = exordos_core.vs.dm.models:Profile\n"
@@ -313,30 +308,19 @@ def test_noop_on_unfiltered_secret_core_agent_config(tmp_path):
 
 
 def test_noop_on_template_core_agent_config(tmp_path):
-    template = (
-        pathlib.Path(__file__).parents[4] / "etc/exordos_core/core_agent.conf.j2"
-    )
+    template = pathlib.Path(__file__).parents[4] / "etc/exordos_core/core_agent.conf.j2"
     etc_path = tmp_path / "core_agent.conf"
     etc_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
 
     etc_path, data_path, run = _run_core_agent(tmp_path)
 
-    assert etc_path.read_text(encoding="utf-8") == template.read_text(
-        encoding="utf-8"
-    )
+    assert etc_path.read_text(encoding="utf-8") == template.read_text(encoding="utf-8")
     run.assert_not_called()
 
 
 def test_ensure_section_sets_and_removes_keys():
     content = (
-        "[a]\n"
-        "# keep = me\n"
-        "same=1\n"
-        "changed = old\n"
-        "dropped = x\n"
-        "\n"
-        "[b]\n"
-        "dropped = x\n"
+        "[a]\n# keep = me\nsame=1\nchanged = old\ndropped = x\n\n[b]\ndropped = x\n"
     )
 
     result = bootstrap._ensure_section(
@@ -346,14 +330,7 @@ def test_ensure_section_sets_and_removes_keys():
     )
 
     assert result == (
-        "[a]\n"
-        "# keep = me\n"
-        "same=1\n"
-        "changed = new\n"
-        "added = 2\n"
-        "\n"
-        "[b]\n"
-        "dropped = x\n"
+        "[a]\n# keep = me\nsame=1\nchanged = new\nadded = 2\n\n[b]\ndropped = x\n"
     )
 
 
