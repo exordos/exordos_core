@@ -33,6 +33,7 @@ is defined in `exordos/manifests/specification/full_spec.yaml`.
 | [`$core.iam.projects`](#coreiamprojects) | IAM projects |
 | [`$core.iam.users`](#coreiamusers) | IAM users |
 | [`$core.iam.role_bindings`](#coreiamrole_bindings) | IAM role bindings |
+| [`$core.iam.tokens`](#coreiamtokens) | IAM access tokens that renew themselves |
 
 ---
 
@@ -1126,6 +1127,65 @@ resources:
   (`726f6c65-0000-0000-0000-000000000002`, full administrative privileges within a project, assigned
   automatically on project creation). See the [IAM Permissions](../iam/permissions_overview.md) page for
   the role/permission model.
+
+---
+
+## $core.iam.tokens
+
+An access token for a user, signed by an IAM client. The platform renews it before it expires, so an
+element can hand a service a credential that keeps working without anyone logging in.
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `user` | uuid | The user the token authenticates. **Required.** |
+| `iam_client` | uuid | The IAM client that signs the token. **Required.** The default client is `00000000-0000-0000-0000-000000000000`, or link a client the manifest declares: `$core.iam.clients.$my_client:uuid`. |
+| `scope` | string | Token scope, e.g. `project:<uuid>` to scope the token to a project. |
+| `expiration_delta` | integer | Lifetime in seconds, at least 60 (default: 3600). |
+| `auto_renew` | boolean | Keep the token alive past its expiration (default: `true`). With `false` the token is spent when it expires. |
+| `audience` | string | The `aud` claim. Unset, it is the `client_id` of the current client. |
+| `issuer` | string | The `iss` claim. Unset, it is the URL of the current client. |
+
+### Example
+
+```yaml
+resources:
+  $core.iam.tokens:
+    exporter_token:
+      user: $core.iam.users.$exporter:uuid
+      iam_client: "00000000-0000-0000-0000-000000000000"
+      scope: "project:12345678-c625-4fee-81d5-f691897b8142"
+      expiration_delta: 604800
+```
+
+### Notes
+
+- Reference the signed token with the `:access_token` link parameter, for example
+  `f"{$core.iam.tokens.$exporter_token:access_token}"` in a config body. The user API answers with the
+  signed token once, on the create that issues it, and never again: a read and a list leave it out, so
+  an account that loses it issues another token.
+- `POST /v1/iam/tokens/<uuid>/actions/regenerate/invoke` signs a new token in place of the one handed
+  out so far and answers with it, once, the same way a create does. The token keeps its uuid, so
+  everything rendering `:access_token` follows it, and the lifetime starts again from that moment.
+  The previous token stops working at once: unlike a renewal, a regeneration refuses it. Regenerate a
+  token that has leaked, and `iam.token.update` is what it takes.
+- Once half the lifetime has passed the platform extends a token with `auto_renew` by
+  `expiration_delta`. The access token changes, and every resource rendering `:access_token` is updated. The previous access token
+  stays valid until the expiration signed into it, so consumers have the other half of the lifetime
+  to pick up the new one.
+- Choose a lifetime long enough that renewals are rare: each one rewrites everything that renders the
+  token.
+- Changing `scope` moves the token to the new project, and changing `expiration_delta` starts a new
+  lifetime from that moment. Whether a token renews is fixed when it is issued: `auto_renew` cannot be
+  changed afterwards, so a token issued for a fixed term cannot become a standing one.
+- The token carries the permissions of its user in the project from `scope`, so bind the user a role
+  in that project.
+- Through `/v1/iam/tokens/` an account manages the tokens of its own: `iam.token.create`, `read`,
+  `update` and `delete` are bound to the `owner` role, and each is scoped to the account asking. The
+  tokens of other accounts take `iam.token.read_all`, and issuing a token for somebody else takes
+  `iam.token.create_all`; only admin holds either. A manifest declares a token for any user, since it
+  goes through the platform rather than the API.
 
 ---
 

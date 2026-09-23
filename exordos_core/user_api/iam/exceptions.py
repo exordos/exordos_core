@@ -286,6 +286,17 @@ class ServiceAccountUuidRequiredError(exceptions.CommonValueErrorException):
     __template__ = "service_account_uuid is required"
 
 
+class CanNotIssueTokenForAnotherUser(
+    exceptions.CommonForbiddenException,
+    iam_exc.Forbidden,
+):
+    __template__ = (
+        "The current user is not permitted to issue a token for another"
+        " user. This action requires the `{rule}` permission, which has not"
+        " been granted."
+    )
+
+
 class ProjectScopeRequiredError(exceptions.CommonValueErrorException):
     """Exception raised when project scope is required but not provided."""
 
