@@ -16,7 +16,8 @@
 
 """A project scoped user reads the repositories of their project and of the
 admin project, which holds the realm's shared ones, but writes only their
-own."""
+own. repo.repository.refresh_all is the one exception: it refreshes a shared
+repository too."""
 
 import uuid as sys_uuid
 
@@ -64,6 +65,20 @@ def client(user_api_client, auth_test1_p1_user):
     return user_api_client(auth_test1_p1_user)
 
 
+@pytest.fixture
+def refresh_all_client(user_api_client, auth_test1_p1_user):
+    # The core manifest binds refresh_all to the owner role. The test
+    # database is built from the migrations, which seed no such binding,
+    # so the permission is granted here instead.
+    # The role is bound in the project the token is scoped to: introspection
+    # collects the permissions of that project's role bindings only.
+    return user_api_client(
+        auth_test1_p1_user,
+        permissions=["repo.repository.refresh_all"],
+        project_id=auth_test1_p1_user.project_id,
+    )
+
+
 def _uuids(response):
     return {r["uuid"] for r in response.json()}
 
@@ -107,6 +122,34 @@ class TestRepositoryVisibility:
             }
 
         assert _status(client.post, url, json=body) == 403
+
+    def test_refresh_all_refreshes_an_admin_repository(self, refresh_all_client, repos):
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repos["admin"].uuid), "actions/refresh/invoke"]
+        )
+
+        assert _status(refresh_all_client.post, url, json={}) == 200
+
+    def test_refresh_all_grants_no_upload(self, refresh_all_client, repos):
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repos["admin"].uuid), "actions/upload/invoke"]
+        )
+        body = {
+            "element_name": "e",
+            "element_version": "1.0.0",
+            "manifest": {"name": "e", "version": "1.0.0", "resources": {}},
+        }
+
+        assert _status(refresh_all_client.post, url, json=body) == 403
+
+    def test_refresh_all_reaches_no_invisible_repository(
+        self, refresh_all_client, repos
+    ):
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repos["other"].uuid), "actions/refresh/invoke"]
+        )
+
+        assert _status(refresh_all_client.post, url, json={}) == 404
 
     def test_own_repository_can_still_be_refreshed(self, client, repos):
         url = client.build_resource_uri(

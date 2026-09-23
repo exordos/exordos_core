@@ -404,6 +404,12 @@ realm's shared ones; filtering by any other project is forbidden. Writes
 (`update`, `delete`, `refresh`, `upload`) stay limited to the caller's own
 project. An unscoped caller with the permission reads and writes all.
 
+`repo.repository.refresh_all` lifts that limit for `refresh` alone: the
+holder refreshes a shared repository of the admin project too, which
+re-reads the upstream inventory without writing any content. The owner role
+holds it. No permission widens `refresh` beyond what the caller reads, so a
+third project's repository stays unreachable.
+
 ## Inventory Format
 
 The inventory is a JSON document served by the repository driver. It lists all

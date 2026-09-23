@@ -17,6 +17,7 @@
 import uuid as sys_uuid
 
 from gcl_iam import exceptions as iam_exc
+from gcl_iam import rules as iam_rules
 from gcl_iam.api import controllers as iam_controllers
 from packaging.version import InvalidVersion
 from packaging.version import parse as parse_version
@@ -106,7 +107,17 @@ class RepositoryController(
     @actions.post
     def refresh(self, resource: models.Repository):
         self._enforce("refresh")
-        self._authorize_write(resource)
+        # refresh_all also refreshes a repository the caller only reads,
+        # which is the admin project's shared ones: get() resolves nothing
+        # else. Refreshing re-reads the upstream, it writes no content.
+        if not self._enforcer.enforce(
+            iam_rules.Rule(
+                self.__policy_service_name__,
+                self.__policy_name__,
+                "refresh_all",
+            )
+        ):
+            self._authorize_write(resource)
         resource.refresh()
         return resource
 
