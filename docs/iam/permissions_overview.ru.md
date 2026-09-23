@@ -225,6 +225,8 @@ Authorization: Bearer <token>
 ```
 
 Возвращает разрешения, привязанные к роли через `Permission Binding`.
+Требует `iam.role.read`, `iam.permission_binding.read` и
+`iam.permission.read`.
 
 ### 2.5. Проекты и область действия ролей/разрешений
 

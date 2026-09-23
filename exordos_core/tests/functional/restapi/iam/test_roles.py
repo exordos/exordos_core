@@ -166,3 +166,44 @@ class TestRoles(base.BaseIamResourceTest):
                     ["iam/roles", role["uuid"], "actions/get_permissions"]
                 ),
             )
+
+    def test_get_role_permissions_by_user_reading_roles_only(
+        self, user_api_client, auth_user_admin, auth_test1_user
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        role = admin_client.create_role(name="test_role_permissions_role_read_only")
+        client = user_api_client(auth_test1_user, permissions=["iam.role.read"])
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.get(
+                client.build_resource_uri(
+                    ["iam/roles", role["uuid"], "actions/get_permissions"]
+                ),
+            )
+
+    def test_get_role_permissions_by_user_reading_permissions(
+        self, user_api_client, auth_user_admin, auth_test1_user
+    ):
+        admin_client = user_api_client(auth_user_admin)
+        role = admin_client.create_role(name="test_role_permissions_allowed")
+        permission = admin_client.create_permission(name="iam.test.permission_read")
+        admin_client.create_permission_binding(
+            permission_uuid=permission["uuid"],
+            role_uuid=role["uuid"],
+        )
+        client = user_api_client(
+            auth_test1_user,
+            permissions=[
+                "iam.role.read",
+                "iam.permission_binding.read",
+                "iam.permission.read",
+            ],
+        )
+
+        permissions = client.get(
+            client.build_resource_uri(
+                ["iam/roles", role["uuid"], "actions/get_permissions"]
+            ),
+        ).json()
+
+        assert [p["uuid"] for p in permissions] == [permission["uuid"]]
