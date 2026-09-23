@@ -330,8 +330,17 @@ class Repository(
             Created RepoElement instance
 
         Raises:
-            ValidateException: If upload is not supported by driver
+            ValidateException: If the repository is not ACTIVE yet, or if
+                upload is not supported by driver
         """
+        # The inventory is built while the repository is provisioned, so an
+        # upload before that races the repository builder.
+        if self.status != RepositoryStatus.ACTIVE:
+            raise common_exc.ValidateException(
+                err=f"Repository is {self.status}, upload is allowed only "
+                "when the repository is ACTIVE"
+            )
+
         driver = self.load_driver()
 
         # Check if driver supports upload

@@ -25,6 +25,7 @@ from restalchemy.dm import filters as dm_filters
 import yaml
 
 from exordos_core.common import constants as c
+from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.builders import element as element_builder
 from exordos_core.repo.builders import repository as repo_builder
 from exordos_core.repo.dm import models as repo_models
@@ -196,15 +197,10 @@ class TestRepoProxyBuilderService:
         for elem in elements:
             assert elem.manifest == {}
 
-    def test_new_repository_iteration_keeps_uploaded_elements(self, user_api):
-        """_iteration should activate a database repository with an upload.
-
-        The database driver builds its inventory from the stored elements, so
-        an element uploaded before the first iteration must not be inserted
-        again.
-        """
+    def test_upload_is_rejected_while_repository_is_not_active(self, user_api):
+        """upload should refuse a repository that is still provisioning."""
         repo = repo_builder.Repository(
-            name="test-repo-database",
+            name="test-repo-provisioning",
             description="Test database repository",
             project_id=c.ZERO_UUID,
             status=ua_c.InstanceStatus.NEW.value,
@@ -212,19 +208,9 @@ class TestRepoProxyBuilderService:
             driver_spec=repo_models.DatabaseDriverSpec(),
         )
         repo.insert()
-        uploaded = repo.upload("core", "1.0.0", _make_manifest("core", "1.0.0"))
 
-        self._service._iteration()
-
-        updated = repo_models.Repository.objects.get_one(
-            filters={"uuid": dm_filters.EQ(repo.uuid)},
-        )
-        assert updated.status == repo_models.RepositoryStatus.ACTIVE.value
-
-        elements = repo_models.RepoElement.objects.get_all(
-            filters={"repository": repo.uuid},
-        )
-        assert [e.uuid for e in elements] == [uploaded.uuid]
+        with pytest.raises(common_exc.ValidateException):
+            repo.upload("core", "1.0.0", _make_manifest("core", "1.0.0"))
 
     def test_iteration_sets_next_refresh(self, manifests_dir, user_api):
         """_iteration should set next_refresh when refresh_rate is configured."""
