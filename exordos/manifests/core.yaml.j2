@@ -1054,6 +1054,14 @@ resources:
           host: 127.0.0.1
           port: 11110
           weight: 1
+    core_lb_mcp_backend_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb:uuid
+      endpoints:
+        - kind: host
+          host: 127.0.0.1
+          port: 11014
+          weight: 1
   $core.network.lb.$core_lb.vhosts:
     core_lb_core_http:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
@@ -1074,6 +1082,30 @@ resources:
         actions:
           - kind: backend
             pool: $core.network.lb.$core_lb.backend_pools.$core_lb_core_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: rewrite_url
+            regex: "^/api/core/(.*)"
+            replacement: "/$1"
+    core_lb_mcp_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb.vhosts.$core_lb_core_http:uuid
+      condition:
+        kind: prefix
+        value: /api/core/v1/mcp
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$core_lb.backend_pools.$core_lb_mcp_backend_http:uuid
             protocol:
               kind: http
         modifiers:

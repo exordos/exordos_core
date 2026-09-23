@@ -18,11 +18,13 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
 import typing as tp
 from typing import Any
 from typing import Generator
 from urllib.parse import urlparse
 import uuid as sys_uuid
+from wsgiref import simple_server as wsgiref_simple_server
 
 import bazooka
 from gcl_iam import tokens
@@ -53,6 +55,8 @@ from exordos_core.compute.node_set.dm import models as node_set_models
 from exordos_core.config import constants as cc
 from exordos_core.config.dm import models as conf_models
 from exordos_core.elements.dm import utils as element_utils
+from exordos_core.mcp_api.api import app as mcp_app
+from exordos_core.mcp_api.api import mcp
 from exordos_core.secret import constants as sc
 from exordos_core.secret.builders import service as secret_service
 from exordos_core.secret.dm import models as secret_models
@@ -470,6 +474,32 @@ def user_api_noauth_client(user_api):
     return lambda: iam_clients.GenesisCoreTestNoAuthRESTClient(
         f"{user_api.get_endpoint()}v1/"
     )
+
+
+@pytest.fixture(scope="session")
+def mcp_api(user_api_service: test_utils.RestServiceTestCase):
+    """The MCP service, calling the User API over HTTP as it does in a stand.
+
+    It holds no database and no credentials of its own, so nothing here is
+    reset between tests.
+    """
+    endpoint = user_api_service.get_endpoint().rstrip("/")
+    server = wsgiref_simple_server.make_server(
+        "127.0.0.1",
+        0,
+        mcp_app.build_wsgi_application(user_api_url=endpoint),
+        handler_class=_QuietWsgiHandler,
+    )
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    yield f"http://127.0.0.1:{server.server_address[1]}{mcp.MCP_PATH}"
+
+    server.shutdown()
+
+
+class _QuietWsgiHandler(wsgiref_simple_server.WSGIRequestHandler):
+    def log_message(self, *args):
+        pass
 
 
 @pytest.fixture

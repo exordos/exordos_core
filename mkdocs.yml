@@ -144,6 +144,7 @@ nav:
     - Admin Guide: usage/admin-guide.md
     - Support: usage/support-lifecycle.md
     - Security: usage/security.md
+    - MCP Server: usage/mcp.md
     - Troubleshooting: usage/troubleshooting.md
     - Wizard: usage/wizard.md
     - Functional Characteristics: usage/functional-characteristics.md
