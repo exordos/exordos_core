@@ -641,6 +641,7 @@ class ProjectController(controllers.BaseResourceControllerPaginated, EnforceMixi
 class RoleController(
     iam_controllers.PolicyBasedWithoutProjectController,
     controllers.BaseResourceControllerPaginated,
+    EnforceMixin,
 ):
     __resource__ = resources.ResourceByRAModel(
         models.Role,
@@ -649,6 +650,16 @@ class RoleController(
 
     __policy_service_name__ = "iam"
     __policy_name__ = "role"
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_GET_ROLE_PERMISSIONS)
+    @actions.get
+    def get_permissions(self, resource):
+        # Reading the role is not enough: the answer is read out of the
+        # permission bindings and carries whole permissions, so it needs the
+        # read rule of both.
+        self.enforce(c.PERMISSION_PERMISSION_BINDING_READ, do_raise=True)
+        self.enforce(c.PERMISSION_PERMISSION_READ, do_raise=True)
+        return resource.get_permissions().get_response_body()
 
 
 class RoleBindingController(

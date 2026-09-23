@@ -216,6 +216,17 @@ the project:
 ]
 ```
 
+#### Get Role Permissions
+
+```http
+GET /v1/iam/roles/6b2c3d4e-5f67-789a-bcde-f01234567890/actions/get_permissions
+Authorization: Bearer <token>
+```
+
+Returns the permissions bound to the role via `Permission Binding`.
+Requires `iam.role.read`, `iam.permission_binding.read` and
+`iam.permission.read`.
+
 ### 2.5. Projects and Role/Permission Scope
 
 In IAM, roles can be assigned as:
