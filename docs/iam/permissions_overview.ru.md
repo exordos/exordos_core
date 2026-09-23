@@ -217,6 +217,17 @@ Authorization: Bearer <token>
 ]
 ```
 
+#### Получение разрешений роли
+
+```http
+GET /v1/iam/roles/6b2c3d4e-5f67-789a-bcde-f01234567890/actions/get_permissions
+Authorization: Bearer <token>
+```
+
+Возвращает разрешения, привязанные к роли через `Permission Binding`.
+Требует `iam.role.read`, `iam.permission_binding.read` и
+`iam.permission.read`.
+
 ### 2.5. Проекты и область действия ролей/разрешений
 
 В IAM роли могут быть назначены:
