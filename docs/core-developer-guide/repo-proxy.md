@@ -398,6 +398,12 @@ Both controllers use `PolicyBasedController` with policy service name `repo`.
 Repository resources use policy name `repository`; element resources use
 policy name `element`.
 
+A project scoped caller reads the repositories of their project and of the
+admin project (`00000000-0000-0000-0000-000000000000`), which holds the
+realm's shared ones; filtering by any other project is forbidden. Writes
+(`update`, `delete`, `refresh`, `upload`) stay limited to the caller's own
+project. An unscoped caller with the permission reads and writes all.
+
 ## Inventory Format
 
 The inventory is a JSON document served by the repository driver. It lists all
