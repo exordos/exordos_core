@@ -14,6 +14,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import uuid as sys_uuid
+
+from gcl_iam import exceptions as iam_exc
 from gcl_iam.api import controllers as iam_controllers
 from packaging.version import InvalidVersion
 from packaging.version import parse as parse_version
@@ -54,22 +57,56 @@ class RepositoryController(
         hidden_fields=["next_refresh"],
     )
 
+    def _visible_projects(self):
+        """Projects a project scoped caller reads: theirs and the admin one.
+
+        The admin project holds the realm's shared repositories.
+        """
+        return [c.ZERO_UUID, self._ctx_project_id]
+
     def get(self, uuid, **kwargs):
-        repository = super().get(uuid=uuid, **kwargs)
+        # Actions load their resource through here, so they check the
+        # project themselves: reading an admin repository is not writing it.
+        self._enforce("read")
+        if self._ctx_project_id:
+            kwargs["project_id"] = dm_filters.In(self._visible_projects())
+        repository = controllers.BaseResourceControllerPaginated.get(
+            self, uuid=uuid, **kwargs
+        )
         if repository.driver_spec is not None:
             repository.driver_spec.sanitize_in_place()
         return repository
 
-    def filter(self, filters, **kwargs):
-        repositories = super().filter(filters, **kwargs)
+    def filter(self, filters, order_by=None):
+        self._enforce("read")
+        if self._ctx_project_id:
+            if "project_id" in filters:
+                wanted = filters["project_id"]
+                if isinstance(wanted, dm_filters.AbstractClause):
+                    wanted = wanted.value
+                if not isinstance(wanted, (list, tuple, set)):
+                    wanted = [wanted]
+                visible = self._visible_projects()
+                if any(sys_uuid.UUID(str(p)) not in visible for p in wanted):
+                    raise iam_exc.Forbidden()
+            else:
+                filters["project_id"] = dm_filters.In(self._visible_projects())
+        repositories = controllers.BaseResourceControllerPaginated.filter(
+            self, filters, order_by=order_by
+        )
         for repository in repositories:
             if repository.driver_spec is not None:
                 repository.driver_spec.sanitize_in_place()
         return repositories
 
+    def _authorize_write(self, resource: models.Repository):
+        if self._ctx_project_id:
+            self._force_project_id(resource.project_id)
+
     @actions.post
     def refresh(self, resource: models.Repository):
         self._enforce("refresh")
+        self._authorize_write(resource)
         resource.refresh()
         return resource
 
@@ -84,6 +121,7 @@ class RepositoryController(
     ):
         # TODO(slashburygin):upload() saves a stable element with latest=False without invoking the builder recomputation, so first/newer stable uploads can be absent from latest_stable_elements
         self._enforce("upload")
+        self._authorize_write(resource)
         resource.upload(element_name, element_version, manifest, description)
         return resource
 
