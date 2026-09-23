@@ -982,6 +982,23 @@ resources:
       setter:
         kind: selector
         selector_strategy: latest
+    # Public hostname the OIDC UI vhost matches on (nginx server_name).
+    # Override at runtime to bind it to an operator-owned external domain,
+    # e.g. "oidc.example.com" -- DNS itself is managed outside Exordos.
+    oidc_ui_domain:
+      uuid: "fec2d2ad-d1c1-4e9f-8739-d85342586219"
+      name: "oidc_ui_domain"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+
+  $core.vs.values:
+    oidc_ui_domain:
+      name: "OIDC UI domain"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      value: "oidc.local.genesis-core.tech"
+      variable: $core.vs.variables.$oidc_ui_domain:uuid
 
   $core.compute.sets:
     core_set:
@@ -1020,6 +1037,19 @@ resources:
         serial: 0
         refresh: 10800
         primary_dns: "a.misconfigured.dns.server.invalid"
+    local_oidc_record:
+      uuid: "cb5464d9-f59b-4a68-8b3e-508aa17a3660"
+      domain: "$core.dns.domains.$local_domain:uuid"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type: "A"
+      record:
+        kind: "A"
+        # Backstops the oidc_ui_domain default (see below) so a fresh
+        # install resolves without any operator action. Left unused,
+        # harmlessly, once oidc_ui_domain is overridden to a real
+        # external domain the operator manages in their own DNS.
+        name: "oidc"
+        address: $core.vs.variables.$core_ip_address:value
     local_core_record:
       uuid: "6de6aa08-f229-4b81-bf4a-9207ebe2dac4"
       domain: "$core.dns.domains.$local_domain:uuid"
@@ -1034,6 +1064,11 @@ resources:
   $core.network.lb:
     core_lb:
       name: core_lb
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type:
+        kind: core_agent
+    oidc_lb:
+      name: oidc_lb
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       type:
         kind: core_agent
@@ -1142,6 +1177,129 @@ resources:
             regex: "^/api/core/v1/iam/clients/default(.*)"
             replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
 
+# OIDC UI LB. A dedicated core_agent LB (shares the core node's nginx
+# dataplane with core_lb, just another vhost/server block) so the UI is
+# only served on its own domain and never on core_lb's catch-all "_"
+# vhost, which any other hostname pointed at the core node can hit.
+  $core.network.lb.$oidc_lb.backend_pools:
+    oidc_lb_core_backend_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb:uuid
+      endpoints:
+        - kind: host
+          host: 127.0.0.1
+          port: 11010
+          weight: 1
+    oidc_lb_iam_cache_backend_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb:uuid
+      endpoints:
+        - kind: host
+          host: 127.0.0.1
+          port: 11110
+          weight: 1
+  $core.network.lb.$oidc_lb.vhosts:
+    oidc_lb_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb:uuid
+      domains:
+        - $core.vs.variables.$oidc_ui_domain:value
+      protocol: http
+      port: 80
+  $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http.routes:
+    oidc_lb_ui_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      condition:
+        kind: prefix
+        value: /
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: local_dir_download
+            # A separate var from `repository`: that one is the elements
+            # root (.../exordos-elements, see the core image URL above),
+            # while exordos-oidc-ui is published at the repo host's root.
+            url: "{{ oidc_ui_repository | default('https://repo.exordos.com') }}/exordos-oidc-ui/0.0.2/dist.tar.gz"
+    oidc_lb_core_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      condition:
+        kind: prefix
+        value: /api/core/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$oidc_lb.backend_pools.$oidc_lb_core_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: rewrite_url
+            regex: "^/api/core/(.*)"
+            replacement: "/$1"
+    oidc_lb_iam_clients:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      condition:
+        kind: prefix
+        value: /api/core/v1/iam/clients/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$oidc_lb.backend_pools.$oidc_lb_iam_cache_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: rewrite_url
+            regex: "^/api/core/(.*)"
+            replacement: "/$1"
+    oidc_lb_iam_default_client:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      condition:
+        kind: prefix
+        value: /api/core/v1/iam/clients/default
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$oidc_lb.backend_pools.$oidc_lb_iam_cache_backend_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - 'Host'
+              - 'X-Forwarded-For'
+              - 'X-Forwarded-Port'
+              - 'X-Forwarded-Proto'
+              - 'X-Forwarded-Prefix'
+          - kind: set_header
+            name: X-Client-Id
+            value: $core.vs.variables.$iam_default_client_id:value
+          - kind: set_header
+            name: X-Client-Secret
+            value: $core.vs.variables.$iam_default_client_secret:value
+          - kind: rewrite_url
+            regex: "^/api/core/v1/iam/clients/default(.*)"
+            replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
+
 exports:
   local_domain:
     link: "$core.dns.domains.$local_domain"
@@ -1163,6 +1321,12 @@ exports:
     link: "$core.vs.variables.$iam_default_client_id"
   var_iam_default_client_uuid:
     link: "$core.vs.variables.$iam_default_client_uuid"
+  var_oidc_ui_domain:
+    link: "$core.vs.variables.$oidc_ui_domain"
+  oidc_lb:
+    link: "$core.network.lb.$oidc_lb"
+  oidc_lb_http_vhost:
+    link: "$core.network.lb.$oidc_lb.vhosts.$oidc_lb_http"
   profile_develop:
     link: "$core.vs.profiles.$develop"
   profile_small:
