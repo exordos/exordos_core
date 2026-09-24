@@ -110,6 +110,21 @@ class Domain(
 #    __tablename__ = "domainmetadata"
 
 
+class RecordName(types_network.RecordNameWithWildcard):
+    """A record name relative to its zone, including the zone's own wildcard.
+
+    `*` is what `*.<zone>` is called from inside `<zone>`, the same way `@`
+    is what the zone itself is called. The library type spells the first
+    one `*.<label>` and has no case for the bare form, so a wildcard could
+    only be written from a zone above -- where a longer zone shadows it and
+    it never answers. Drop this once the library accepts `*`.
+    """
+
+    pattern = re.compile(
+        r"^(@|\*|(\*\.){0,1}([a-zA-Z0-9_-]{1,61}\.{0,1}){0,30})$",
+    )
+
+
 class AbstractRecord(types_dynamic.AbstractKindModel):
     def get_name(self, domain) -> str:
         return (".").join((self.name, domain.name)) if self.name else domain.name
@@ -122,7 +137,7 @@ class ARecord(AbstractRecord):
     KIND = "A"
 
     name = properties.property(
-        types_network.RecordNameWithWildcard(),
+        RecordName(),
         required=True,
     )
     address = properties.property(
@@ -138,7 +153,7 @@ class SOARecord(AbstractRecord):
     KIND = "SOA"
 
     name = properties.property(
-        types_network.RecordNameWithWildcard(),
+        RecordName(),
         required=True,
     )
     primary_dns = properties.property(
@@ -159,7 +174,7 @@ class TXTRecord(AbstractRecord):
     KIND = "TXT"
 
     name = properties.property(
-        types_network.RecordNameWithWildcard(),
+        RecordName(),
         required=True,
     )
     content = properties.property(
@@ -173,7 +188,7 @@ class NSRecord(AbstractRecord):
     KIND = "NS"
 
     name = properties.property(
-        types_network.RecordNameWithWildcard(),
+        RecordName(),
         required=True,
     )
     content = properties.property(
@@ -182,7 +197,12 @@ class NSRecord(AbstractRecord):
     )
 
 
-class Record(CommonModel, models.ModelWithProject, ua_models.TargetResourceMixin):
+class Record(
+    CommonModel,
+    models.ModelWithProject,
+    models.ModelWithTags,
+    ua_models.TargetResourceMixin,
+):
     __tablename__ = "dns_records"
     domain = relationships.relationship(Domain, required=True)
     domain_id = properties.property(types.Integer())
