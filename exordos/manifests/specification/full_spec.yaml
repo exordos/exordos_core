@@ -1062,6 +1062,18 @@ components:
                 - core_agent
                 type: string
             type: object
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - node
+                type: string
+              node:
+                example: 00000000-0000-0000-0000-000000000000
+                format: uuid
+                type: string
+            type: object
           type: object
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
