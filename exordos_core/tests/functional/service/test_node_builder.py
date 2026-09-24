@@ -37,7 +37,7 @@ class TestNodeBuilderService:
             cores=1,
             ram=1024,
             disk_spec=sdk_models.DisksSpec(disks=disks),
-            project_id=c.ZERO_UUID,
+            project_id=c.ADMIN_PROJECT_UUID,
         )
         node.insert()
         return node
