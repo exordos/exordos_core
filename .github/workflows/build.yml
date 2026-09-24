@@ -7,6 +7,15 @@ on:
       - 'mkdocs.yml'
       - '.markdownlint.yaml'
       - '*.md'
+  # Only on open: a branch in this repository is already covered by `push`, so
+  # reacting to every update as well would build and upgrade twice per commit.
+  pull_request:
+    types: [opened]
+    paths-ignore:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.markdownlint.yaml'
+      - '*.md'
 
 env:
   ARTIFACTS_PATH: artifacts
@@ -20,13 +29,26 @@ env:
 jobs:
   Build:
     runs-on: [ self-hosted, vm ]
-    if: ${{ github.actor != 'dependabot[bot]' }}
+    # A pull request from a fork carries untrusted code, and this job runs on
+    # our own machine with the push credentials. Everything downstream needs
+    # the artifacts it produces, so skipping it here skips the whole workflow.
+    if: >-
+      ${{ github.actor != 'dependabot[bot]'
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository) }}
     strategy:
       fail-fast: true
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 50
+          # The version is derived from the nearest reachable tag, so an
+          # incomplete tag set silently mislabels the artifact — and this job
+          # runs on a self-hosted runner whose working directory outlives the
+          # run, where a shallow, tagless fetch leaves whatever tags happened
+          # to be there before. A build two commits past 0.2.10 was published
+          # as 0.2.5-dev this way. Fetch everything, like `UpgradeE2E` does:
+          # the version and the tag list have to come from the same history.
+          fetch-depth: 0
       - name: Build Exordos Core
         env:
           PUSH_CFG: ${{ secrets.PUSH_CFG }}
@@ -117,6 +139,95 @@ jobs:
           exordos e e show core
           exordos compute nodes list
           exordos compute hypervisors list
+      - name: Setup upterm session
+        uses: owenthereal/action-upterm@v1
+        if: ${{ failure() }}
+        with:
+          limit-access-to-actor: true
+          wait-timeout-minutes: 30
+  UpgradeE2E:
+    # Bootstraps the previous release, loads it, upgrades the core to the
+    # version this run built, and asserts the installation both survived and
+    # converged. `FuncTests` proves a fresh installation works; this job is the
+    # only thing that proves an existing one is not broken by the upgrade.
+    needs: Build
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-24.04
+    # Must exceed the sum of the scripts' own timeouts: a job killed by GitHub
+    # loses both the diagnosis and the uploaded snapshots.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The base release is the newest release tag, so the tags have to be
+          # there.
+          fetch-depth: 0
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+        with:
+          version: ${{ env.PACKER_VERSION }}
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install --yes jq postgresql-client
+      - name: Install exordos
+        run: curl -fsSL https://repo.exordos.com/install.sh | sh
+      - name: set exordos config
+        run: |
+          exordos settings set-realm default --endpoint $CORE_ENDPOINT_URL
+          exordos settings set-context default --name default --user $CORE_USERNAME --password $CORE_PASSWORD
+      - name: Install hypervisor
+        run: |
+          EXORDOS_BIN=$(which exordos)
+          sudo $EXORDOS_BIN compute hypervisors init
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build_artifacts
+          path: artifacts/
+      - name: Resolve the version pair
+        id: versions
+        run: tools/ci/upgrade/resolve-versions.sh artifacts/version.txt
+      - name: Bootstrap the previous release
+        run: |
+          exordos bootstrap -i ${{ steps.versions.outputs.prev }} -f -m core \
+            --admin-password $CORE_PASSWORD --cidr 10.20.0.0/22
+      - name: Wait for the previous release to settle
+        timeout-minutes: 20
+        run: |
+          set -eux
+          for i in {1..20}; do
+            if exordos ready_api; then break; fi
+            echo "Waiting for Exordos Core API... ($i/20)"
+            sleep 5
+          done
+          while [ "$(exordos ee l -o json -f name=core | jq -r '.[0].status')" != "ACTIVE" ]; do
+            sleep 2
+          done
+          exordos e e show core
+      - name: Seed the workload
+        run: tools/ci/upgrade/workload.sh seed
+      - name: Snapshot the installation before the upgrade
+        run: tools/ci/upgrade/snapshot.sh upgrade-e2e/before
+      - name: Check convergence before the upgrade
+        # A baseline: without it, a divergence found afterwards cannot be
+        # blamed on the upgrade.
+        run: tools/ci/upgrade/check-convergence.sh upgrade-e2e/before/divergences.json
+      - name: Upgrade the core
+        run: tools/ci/upgrade/upgrade-core.sh ${{ steps.versions.outputs.new }}
+      - name: Snapshot the installation after the upgrade
+        run: tools/ci/upgrade/snapshot.sh upgrade-e2e/after
+      - name: Check convergence after the upgrade
+        run: tools/ci/upgrade/check-convergence.sh upgrade-e2e/after/divergences.json
+      - name: Compare the snapshots
+        run: tools/ci/upgrade/compare-snapshots.sh upgrade-e2e/before upgrade-e2e/after
+      - name: Verify the workload survived
+        run: tools/ci/upgrade/workload.sh verify
+      - name: Upload the upgrade snapshots
+        uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: upgrade_e2e_snapshots
+          path: upgrade-e2e/
+          if-no-files-found: ignore
       - name: Setup upterm session
         uses: owenthereal/action-upterm@v1
         if: ${{ failure() }}
