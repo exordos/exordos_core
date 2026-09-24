@@ -15,6 +15,7 @@
 #    under the License.
 
 import typing as tp
+import uuid as sys_uuid
 
 from bazooka import exceptions as bazooka_exc
 import pytest
@@ -171,6 +172,55 @@ class TestLBApi:
         url = client.build_resource_uri(["network", "lb", lb["uuid"]])
         with pytest.raises(bazooka_exc.NotFoundError):
             client.get(url)
+
+    def test_create_lb_on_node(
+        self, user_api_client, auth_user_admin, lb_factory, node_factory
+    ):
+        client = user_api_client(auth_user_admin)
+        node = node_factory()
+        response = client.post(
+            client.build_collection_uri(["compute", "nodes"]), json=node
+        )
+        assert response.status_code == 201
+
+        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        response = client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+
+        assert response.status_code == 201
+        assert response.json()["type"] == {"kind": "node", "node": node["uuid"]}
+
+    def test_create_lb_on_node_of_other_project(
+        self, user_api_client, auth_user_admin, lb_factory, node_factory
+    ):
+        client = user_api_client(auth_user_admin)
+        node = node_factory(project_id=sys_uuid.uuid4())
+        response = client.post(
+            client.build_collection_uri(["compute", "nodes"]), json=node
+        )
+        assert response.status_code == 201
+
+        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
+            client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+        assert "is not found in the LB project" in str(
+            exc_info.value.cause.response.text
+        )
+
+    def test_update_lb_to_unknown_node(
+        self, user_api_client, auth_user_admin, lb_factory
+    ):
+        client = user_api_client(auth_user_admin)
+        lb = lb_factory()
+        response = client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+        assert response.status_code == 201
+
+        url = client.build_resource_uri(["network", "lb", lb["uuid"]])
+        update = {"type": {"kind": "node", "node": str(sys_uuid.uuid4())}}
+        with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
+            client.put(url, json=update)
+        assert "is not found in the LB project" in str(
+            exc_info.value.cause.response.text
+        )
 
     def test_creates_vhost(
         self, user_api_client, auth_user_admin, lb_factory_with_model, vhost_factory

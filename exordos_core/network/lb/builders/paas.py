@@ -73,6 +73,16 @@ class LBBuilder(builder.PaaSBuilder):
                         backend_pools=backend_pools,
                     )
                 )
+        elif instance.type.kind == "node":
+            # The LB uuid, not the node's: several LBs may share one node.
+            actual_resources.append(
+                models.PaasLBNode(
+                    uuid=instance.uuid,
+                    agent_uuid=instance.type.node,
+                    vhosts=vhosts,
+                    backend_pools=backend_pools,
+                )
+            )
         elif instance.type.kind == "core_agent":
             actual_resources.append(
                 models.PaasLBAgent(
