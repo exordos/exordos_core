@@ -118,7 +118,8 @@ class RepositoryController(
             )
         ):
             self._authorize_write(resource)
-        resource.refresh()
+        # get() redacted driver_spec in place: refresh an unredacted copy
+        models.Repository.objects.get_one(filters={"uuid": resource.uuid}).refresh()
         return resource
 
     @actions.post

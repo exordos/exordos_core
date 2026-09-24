@@ -30,13 +30,13 @@ from exordos_core.repo.dm import models as repo_models
 REPOS = ["repo", "repositories"]
 
 
-def _repository(project_id, name):
+def _repository(project_id, name, **spec):
     # driver_spec is unique across repositories.
     uid = sys_uuid.uuid4()
     repo = repo_models.Repository(
         name=f"{name}-{uid}",
         project_id=project_id,
-        driver_spec=repo_models.NginxDriverSpec(url=f"http://repo.test/{uid}/"),
+        driver_spec=repo_models.NginxDriverSpec(url=f"http://repo.test/{uid}/", **spec),
         refresh_rate=3600,
     )
     repo.insert()
@@ -129,6 +129,22 @@ class TestRepositoryVisibility:
         )
 
         assert _status(refresh_all_client.post, url, json={}) == 200
+
+    def test_refresh_keeps_the_stored_credentials(self, refresh_all_client):
+        # get() redacts driver_spec on the loaded model, and an update writes
+        # every data property back, so a refresh must not persist the "***".
+        repo = _repository(
+            c.ZERO_UUID, "admin-with-credentials", username="admin", password="s3cret"
+        )
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repo.uuid), "actions/refresh/invoke"]
+        )
+
+        assert _status(refresh_all_client.post, url, json={}) == 200
+
+        stored = repo_models.Repository.objects.get_one(filters={"uuid": repo.uuid})
+        assert stored.driver_spec.username == "admin"
+        assert stored.driver_spec.password == "s3cret"
 
     def test_refresh_all_grants_no_upload(self, refresh_all_client, repos):
         url = refresh_all_client.build_resource_uri(
