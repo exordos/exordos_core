@@ -95,7 +95,10 @@ Key methods:
   installed elements depend on it (checked via `RepoElementDepsBinding`).
 - **`upgrade(target)`** — swaps installation state from the current element to a
   target element (same name, different version). The runtime EM Element UUID is
-  transferred.
+  transferred, and the target element is the return value: after the upgrade the
+  installed element is the target one, so `uninstall()` must be invoked on its
+  UUID. The `element` link of the old record is kept until the builder releases
+  it, together with the `RepoElementDepsBinding` records.
 - **`edit(manifest)`** — replaces the manifest dict. Validates that `name` and
   `version` in the new manifest match the element's fields.
 - **`from_inventory(repository, inventory)`** (classmethod) — creates a
@@ -333,6 +336,10 @@ Upgrades are handled carefully to avoid gaps in EM:
 - `update_instance_derivatives` returns the new derivative for installation,
   then on the next iteration returns an empty collection for the old element,
   triggering its deletion.
+- While releasing the old element, `_hand_over_deps_bindings` drops its
+  `RepoElementDepsBinding` records — the new element already has its own, built
+  from its actual requirements — and repoints the bindings that referenced the
+  old element to the new one.
 
 ### RepoElementAgentService
 

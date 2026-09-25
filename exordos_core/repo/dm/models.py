@@ -556,6 +556,23 @@ class RepoElement(
         return self
 
     def upgrade(self, target: str) -> "RepoElement":
+        """Move the installation to another version of the same element.
+
+        The target element becomes INSTALLED and takes over the runtime
+        element UUID, while this element becomes UNINSTALLED. The builder
+        releases this element and hands the dependency bindings over once the
+        target is actually installed.
+
+        Args:
+            target: UUID of the uninstalled element with the same name
+
+        Returns:
+            The target element, which is the installed one after the upgrade
+
+        Raises:
+            ValidateException: If this element is not installed or the target
+                element is not uninstalled
+        """
         if self.element is None:
             raise common_exc.ValidateException(
                 err="Element must be installed to upgrade"
@@ -579,7 +596,7 @@ class RepoElement(
         target_element.installation_state = RepoElementInstallationState.INSTALLED.value
         target_element.element = runtime_element
         target_element.update()
-        return self
+        return target_element
 
     def edit(self, manifest: dict) -> "RepoElement":
         """Edit element manifest.
