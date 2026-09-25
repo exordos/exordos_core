@@ -171,8 +171,14 @@ class BackendPool(ChildModel):
         # TODO: optimize this "foreign key" check
         for v in Vhost.objects.get_all(filters={"parent": dm_filters.EQ(self.parent)}):
             for r in Route.objects.get_all(filters={"parent": dm_filters.EQ(v.uuid)}):
-                for action in r.condition.actions:
-                    if action.kind == "backend" and action.pool.uuid == self.uuid:
+                for action in (
+                    *r.condition.actions,
+                    *getattr(r.condition, "modifiers", ()),
+                ):
+                    if (
+                        action.kind in ("backend", "auth_request")
+                        and action.pool.uuid == self.uuid
+                    ):
                         raise ex_exceptions.ValidateException(
                             err="Backend pool in use, remove route first"
                         )
@@ -378,10 +384,22 @@ class AllowedPathType(types.BaseCompiledRegExpTypeFromAttr):
     pattern = re.compile(r"^(?!.*\/\.\.(?:\/.*|$))\/var\/www\/.*$")
 
 
+class DavMethods(str, enum.Enum):
+    # COPY/MOVE take their target from the `Destination` header, which the
+    # auth_request check never sees; MKCOL is covered by create_full_put_path.
+    PUT = "PUT"
+    DELETE = "DELETE"
+
+
 class RuleStaticKind(AbstractRuleKind):
     KIND = "local_dir"
     path = properties.property(AllowedPathType(), required=True)
     is_spa = properties.property(types.Boolean(), default=True)
+    # Makes the dir writable over WebDAV; guard it with an auth_request.
+    dav_methods = properties.property(
+        types.TypedList(types.Enum([m.value for m in DavMethods])),
+        default=lambda: [],
+    )
 
 
 class ArchivedTarUrl(types.Url):
@@ -484,6 +502,24 @@ class ModifierRewriteUrlKind(AbstractModifierKind):
     replacement = properties.property(types.String(min_length=1, max_length=10000))
 
 
+class AuthRequestPathType(types.BaseCompiledRegExpTypeFromAttr):
+    # The data plane renders it unquoted into nginx config.
+    pattern = re.compile(r"^/[A-Za-z0-9._~/-]*$")
+
+
+class ModifierAuthRequestKind(AbstractModifierKind):
+    """Authorize every request of the route by a subrequest to `pool`+`path`.
+
+    The backend answers 2xx to allow and 401/403 to deny; it gets the
+    original method, URI and `Authorization` but not the body. Core serves
+    such a check for element repositories at `/v1/repo/upload_auth<prefix>`.
+    """
+
+    KIND = "auth_request"
+    pool = relationships.relationship(BackendPool, required=True)
+    path = properties.property(AuthRequestPathType(), required=True)
+
+
 # class ConnectionUrlCodeKind(ConnectionUrlKind):
 #     KIND = "url"
 
@@ -540,6 +576,7 @@ class AbstractHTTPRouteCondKind(AbstractRouteCondKind):
                 types_dynamic.KindModelType(ModifierSetHeaderKind),
                 types_dynamic.KindModelType(ModifierSetRespHeaderKind),
                 types_dynamic.KindModelType(ModifierRewriteUrlKind),
+                types_dynamic.KindModelType(ModifierAuthRequestKind),
             )
         ),
         default=lambda: [],
@@ -611,6 +648,24 @@ class Route(ChildModel):
                 raise ex_exceptions.ValidateException(
                     err="L4 protocols can have only `raw` routes."
                 )
+
+        auth_requests = [
+            m
+            for m in getattr(self.condition, "modifiers", ())
+            if m.kind == ModifierAuthRequestKind.KIND
+        ]
+        # nginx refuses a second auth_request in one location.
+        if len(auth_requests) > 1:
+            raise ex_exceptions.ValidateException(
+                err="A route can have only one `auth_request` modifier."
+            )
+        if not auth_requests and any(
+            a.kind == RuleStaticKind.KIND and a.dav_methods
+            for a in self.condition.actions
+        ):
+            raise ex_exceptions.ValidateException(
+                err="A writable `local_dir` needs an `auth_request` modifier."
+            )
 
     def insert(self, session=None):
         self._validate()

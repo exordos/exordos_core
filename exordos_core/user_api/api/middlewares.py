@@ -15,8 +15,11 @@
 #    under the License.
 
 import dataclasses
+import urllib.parse
+import uuid as sys_uuid
 
 from gcl_iam import exceptions as gcl_iam_exceptions
+from gcl_iam import rules
 from restalchemy.api import middlewares as ra_middlewares
 from restalchemy.common import contexts as ra_contexts
 from restalchemy.dm import filters as ra_filters
@@ -86,3 +89,77 @@ class SecurityRulesMiddleware(ra_middlewares.Middleware):
 
     def _raise_error_answer(self):
         raise security_exceptions.ActionNotAllowed()
+
+
+REPO_UPLOAD_AUTH_PATH = "/v1/repo/upload_auth"
+
+
+class RepoUploadAuthMiddleware(ra_middlewares.Middleware):
+    """Answer the nginx `auth_request` subrequests of an element repository.
+
+    An LB route serving a writable `local_dir` at `<prefix>/<project_id>/`
+    asks `/v1/repo/upload_auth<prefix>` about every request, passing the
+    original method and URI in `X-Original-Method` / `X-Original-URI` and
+    the caller's `Authorization`. The subrequest keeps the original method,
+    so this is a middleware rather than a resource route.
+
+    Reads are open: hypervisors and the repo proxy fetch without a token.
+    A write needs a token scoped to the project the path names and the
+    `repo.repository.upload` permission. Anything else is refused.
+    """
+
+    READ_METHODS = frozenset(("GET", "HEAD"))
+    WRITE_METHODS = frozenset(("PUT", "DELETE"))
+
+    def process_request(self, req):
+        path = req.path
+        if path != REPO_UPLOAD_AUTH_PATH and not path.startswith(
+            REPO_UPLOAD_AUTH_PATH + "/"
+        ):
+            return None
+        prefix = path[len(REPO_UPLOAD_AUTH_PATH) :]
+        return req.ResponseClass(status=self._decide(req, prefix))
+
+    @staticmethod
+    def _path_project(uri, prefix):
+        """Return the project a request URI writes into, or None.
+
+        nginx serves the percent-decoded, normalized URI but passes the raw
+        one here, so any `.`/`..`/empty segment or backslash is refused
+        rather than resolved: what is checked must be what gets written.
+        """
+        path = urllib.parse.unquote(uri.split("?", 1)[0])
+        prefix = prefix.rstrip("/") + "/"
+        if "\\" in path or not path.startswith(prefix):
+            return None
+        segments = path[len(prefix) :].split("/")
+        if any(s in ("", ".", "..") for s in segments[:-1]) or segments[-1] in (
+            ".",
+            "..",
+        ):
+            return None
+        try:
+            return sys_uuid.UUID(segments[0])
+        except ValueError:
+            return None
+
+    def _decide(self, req, prefix):
+        method = req.headers.get("X-Original-Method", "")
+        if method in self.READ_METHODS:
+            return 204
+        if method not in self.WRITE_METHODS:
+            return 403
+
+        context = ra_contexts.get_context()
+        project_id = context.iam_context.get_introspection_info().project_id
+        if project_id is None:
+            return 401
+
+        target = self._path_project(req.headers.get("X-Original-URI", ""), prefix)
+        if target is None or target != sys_uuid.UUID(str(project_id)):
+            return 403
+
+        allowed = context.iam_context.enforcer.enforce(
+            rules.Rule("repo", "repository", "upload"), do_raise=False
+        )
+        return 204 if allowed else 403
