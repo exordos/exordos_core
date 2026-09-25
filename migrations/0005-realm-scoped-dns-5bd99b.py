@@ -54,7 +54,7 @@ FROM public.dns_records
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0002-add-repo-element-version-flags-24310b.py"]
+        self._depends = ["0004-add-opaque-secrets-362f6d21.py"]
 
     @property
     def migration_id(self):
