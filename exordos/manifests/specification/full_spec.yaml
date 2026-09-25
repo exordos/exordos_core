@@ -1,9 +1,7 @@
 components:
   schemas:
     BackendPool_Create:
-      $ref: '#/components/schemas/BackendPool_Get'
       path: /v1/network/lb/{LBUuid}/backend_pools/
-    BackendPool_Get:
       properties:
         balance:
           default: roundrobin
@@ -65,7 +63,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: ACTIVE
@@ -94,9 +91,7 @@ components:
       - endpoints
       type: object
     Border_Create:
-      $ref: '#/components/schemas/Border_Get'
       path: /v1/network/border/
-    Border_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -141,7 +136,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         snat_rules:
           default: []
@@ -218,9 +212,7 @@ components:
       - project_id
       type: object
     Certificate_Create:
-      $ref: '#/components/schemas/Certificate_Get'
       path: /v1/secret/certificates/
-    Certificate_Get:
       properties:
         cert:
           example: any_string
@@ -305,7 +297,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: NEW
@@ -342,9 +333,7 @@ components:
       - domains
       type: object
     Config_Create:
-      $ref: '#/components/schemas/Config_Get'
       path: /v1/config/configs/
-    Config_Get:
       properties:
         body:
           example:
@@ -456,7 +445,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: NEW
@@ -523,9 +511,7 @@ components:
       - body
       type: object
     Domain_Create:
-      $ref: '#/components/schemas/Domain_Get'
       path: /v1/dns/domains/
-    Domain_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -540,7 +526,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         sync_to_ecosystem:
           default: false
@@ -976,9 +961,7 @@ components:
       - from_resource
       type: object
     LB_Create:
-      $ref: '#/components/schemas/LB_Get'
       path: /v1/network/lb/
-    LB_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -1010,7 +993,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: NEW
@@ -1363,9 +1345,7 @@ components:
       - driver_spec
       type: object
     Manifest_Create:
-      $ref: '#/components/schemas/Manifest_Get'
       path: /v1/em/manifests/
-    Manifest_Get:
       properties:
         api_version:
           example: any_string
@@ -1481,16 +1461,13 @@ components:
           example: any_string
           maxLength: 64
           minLength: 5
-          readOnly: true
           type: string
       required:
       - name
       - version
       type: object
     NodeSet_Create:
-      $ref: '#/components/schemas/NodeSet_Get'
       path: /v1/compute/sets/
-    NodeSet_Get:
       properties:
         cores:
           example: 2048
@@ -1621,7 +1598,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         ram:
           example: 0
@@ -1678,9 +1654,7 @@ components:
       - disk_spec
       type: object
     Node_Create:
-      $ref: '#/components/schemas/Node_Get'
       path: /v1/compute/nodes/
-    Node_Get:
       properties:
         cores:
           example: 2048
@@ -1814,7 +1788,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         ram:
           example: 1
@@ -1945,9 +1918,7 @@ components:
       - name
       type: object
     Password_Create:
-      $ref: '#/components/schemas/Password_Get'
       path: /v1/secret/passwords/
-    Password_Get:
       properties:
         constructor:
           default:
@@ -1998,7 +1969,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: NEW
@@ -2128,9 +2098,7 @@ components:
       - name
       type: object
     Profile_Create:
-      $ref: '#/components/schemas/Profile_Get'
       path: /v1/vs/profiles/
-    Profile_Get:
       properties:
         active:
           default: false
@@ -2163,7 +2131,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: ACTIVE
@@ -2235,9 +2202,7 @@ components:
       - organization
       type: object
     QuotaLimit_Create:
-      $ref: '#/components/schemas/QuotaLimit_Get'
       path: /v1/quota/limits/
-    QuotaLimit_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2258,7 +2223,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         resource_name:
           example: any_string
@@ -2282,9 +2246,7 @@ components:
       - limit
       type: object
     RSAKey_Create:
-      $ref: '#/components/schemas/RSAKey_Get'
       path: /v1/secret/rsa_keys/
-    RSAKey_Get:
       properties:
         bitness:
           default: 2048
@@ -2334,7 +2296,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         public_key:
           example: any_string
@@ -2377,9 +2338,7 @@ components:
       - public_key
       type: object
     Record_Create:
-      $ref: '#/components/schemas/Record_Get'
       path: /v1/dns/domains/{DomainUuid}/records/
-    Record_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2404,7 +2363,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         record:
           example:
@@ -2514,7 +2472,6 @@ components:
           - SOA
           - TXT
           example: A
-          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2535,9 +2492,7 @@ components:
       - record
       type: object
     Repository_Create:
-      $ref: '#/components/schemas/Repository_Get'
       path: /v1/repo/repositories/
-    Repository_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -2619,7 +2574,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         refresh_rate:
           default: 3600
@@ -2805,9 +2759,7 @@ components:
       - name
       type: object
     Route_Create:
-      $ref: '#/components/schemas/Route_Get'
       path: /v1/network/lb/{LBUuid}/vhosts/{VhostUuid}/routes/
-    Route_Get:
       properties:
         condition:
           example:
@@ -3489,7 +3441,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: ACTIVE
@@ -3708,9 +3659,7 @@ components:
       - action
       type: object
     SSHKey_Create:
-      $ref: '#/components/schemas/SSHKey_Get'
       path: /v1/secret/ssh_keys/
-    SSHKey_Get:
       properties:
         authorized_keys:
           default: .ssh/authorized_keys
@@ -3753,7 +3702,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: NEW
@@ -3916,9 +3864,7 @@ components:
       - project_id
       type: object
     Service_Create:
-      $ref: '#/components/schemas/Service_Get'
       path: /v1/em/services/
-    Service_Get:
       properties:
         after:
           default: []
@@ -4021,7 +3967,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         service_type:
           example:
@@ -4150,9 +4095,7 @@ components:
       - service_type
       type: object
     UniversalAgent_Create:
-      $ref: '#/components/schemas/UniversalAgent_Get'
       path: /v1/ua/agents/
-    UniversalAgent_Get:
       properties:
         capabilities:
           additionalProperties:
@@ -4219,7 +4162,6 @@ components:
         uuid:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
       required:
       - uuid
@@ -4415,9 +4357,7 @@ components:
       - email
       type: object
     Value_Create:
-      $ref: '#/components/schemas/Value_Get'
       path: /v1/vs/values/
-    Value_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -4443,7 +4383,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         read_only:
           default: false
@@ -4491,9 +4430,7 @@ components:
       - project_id
       type: object
     Variable_Create:
-      $ref: '#/components/schemas/Variable_Get'
       path: /v1/vs/variables/
-    Variable_Get:
       properties:
         created_at:
           default: '2006-01-02T15:04:05.000576Z'
@@ -4515,7 +4452,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         setter:
           example:
@@ -4616,9 +4552,7 @@ components:
       - setter
       type: object
     Vhost_Create:
-      $ref: '#/components/schemas/Vhost_Get'
       path: /v1/network/lb/{LBUuid}/vhosts/
-    Vhost_Get:
       properties:
         cert:
           example:
@@ -4723,7 +4657,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         protocol:
           default: http
@@ -4765,9 +4698,7 @@ components:
       - project_id
       type: object
     Volume_Create:
-      $ref: '#/components/schemas/Volume_Get'
       path: /v1/compute/volumes/
-    Volume_Get:
       properties:
         boot:
           default: true
@@ -4810,7 +4741,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         size:
           example: 500000
