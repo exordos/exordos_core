@@ -58,6 +58,9 @@ graph TD
 - Конфигурацией типа:
     - `core` — VM-based LB
     - `core_agent` — LB будет запущен на самом экземпляре exordos_core
+    - `node` — LB будет запущен на существующем узле проекта LB (`node: <uuid>`);
+      образ узла должен содержать nginx и универсальный агент с
+      `LBCapabilityDriver`, например узел управляемого realm
 
 ### Vhost
 

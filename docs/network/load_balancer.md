@@ -58,6 +58,9 @@ The main load balancer entity that manages:
 - Type configuration:
     - `core` - VM-based LB
     - `core_agent` - LB will be run on exordos_core instance itself
+    - `node` - LB will be run on an existing node of the LB project (`node: <uuid>`);
+      the node's image must ship nginx and the universal agent with
+      `LBCapabilityDriver`, e.g. a managed realm node
 
 ### Vhost
 
