@@ -754,7 +754,7 @@ requires-dist = [
     { name = "pytest-timer", marker = "extra == 'test'", specifier = ">=1.0.0,<2.0.0" },
     { name = "pytest-xdist", extras = ["psutil"], marker = "extra == 'test'", specifier = ">=3.6.1,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0,<7.0.0" },
-    { name = "restalchemy", specifier = ">=16.0.4,<17.0.0" },
+    { name = "restalchemy", specifier = ">=16.1.0,<17.0.0" },
     { name = "ruamel-yaml", marker = "extra == 'docs'", specifier = "==0.19.1" },
     { name = "ruamel-yaml", marker = "extra == 'test'", specifier = "==0.19.1" },
     { name = "ruff", marker = "extra == 'ruff'" },
@@ -2583,7 +2583,7 @@ wheels = [
 
 [[package]]
 name = "restalchemy"
-version = "16.0.4"
+version = "16.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "email-validator" },
@@ -2596,9 +2596,9 @@ dependencies = [
     { name = "requests" },
     { name = "webob" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/90/ee6644d0f3c8f19bc0fe735659839446095e275641c794f0c92aed765648/restalchemy-16.0.4.tar.gz", hash = "sha256:e57845077d559dae23dfd770cd8f0dd43a5a16a83a54403cb5f76539bfb8cab3", size = 634164, upload-time = "2026-09-09T12:55:18.771Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/a2/d759898b509adb729f83363d3201b5d5cda10ee4fc82d9a346ed60a743a7/restalchemy-16.1.0.tar.gz", hash = "sha256:700e38930b4dab3ae1d34fa4b075510f9bfae92f74dd9617c6f7b46aebad768e", size = 641956, upload-time = "2026-09-22T13:41:51.245Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/32/fe5f6250460b17b0f6e912d6f3641d5fcf57fcfe3b4aa9a340c32c6f896c/restalchemy-16.0.4-py3-none-any.whl", hash = "sha256:32059d5d2ab884d6d5fc27ab1443e3c93e6d9bacc4df1917a5113188a1be6e8f", size = 674892, upload-time = "2026-09-09T12:55:15.918Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/29/e9c2b700d7b3e944f360ead6f4c2b06a9087f2527312839f9e9535c61720/restalchemy-16.1.0-py3-none-any.whl", hash = "sha256:f8f9988ae3fcb0f159695ced1ccecdd072681153ce94d016f619a90bc4467f7c", size = 681157, upload-time = "2026-09-22T13:41:49.39Z" },
 ]
 
 [[package]]
