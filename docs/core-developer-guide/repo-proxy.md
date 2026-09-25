@@ -404,6 +404,25 @@ realm's shared ones; filtering by any other project is forbidden. Writes
 (`update`, `delete`, `refresh`, `upload`) stay limited to the caller's own
 project. An unscoped caller with the permission reads and writes all.
 
+### Upload check for LB-served repositories
+
+An element repository can be served by an LB route: a writable `local_dir`
+(`dav_methods: [PUT, DELETE]`) at `<prefix>/<project_id>/`, guarded by an
+`auth_request` modifier whose pool points at this User API and whose path
+is `/v1/repo/upload_auth<prefix>` (e.g. `/v1/repo/upload_auth/repo` for a
+route at `/repo/`). `RepoUploadAuthMiddleware` answers those subrequests:
+
+| `X-Original-Method` | Answer |
+|---|---|
+| `GET`, `HEAD` | `204`: reads are open, hypervisors and the repo proxy fetch without a token |
+| `PUT`, `DELETE`, no project scoped token | `401` |
+| `PUT`, `DELETE` into `<prefix>/<token project>/...` with `repo.repository.upload` | `204` |
+| anything else | `403` |
+
+nginx serves the decoded, normalized URI but passes the raw
+`X-Original-URI`, so a path with a `.`, `..` or empty segment (percent
+encoded or not) or a backslash is refused rather than resolved.
+
 ## Inventory Format
 
 The inventory is a JSON document served by the repository driver. It lists all
