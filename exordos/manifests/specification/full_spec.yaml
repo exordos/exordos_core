@@ -3777,9 +3777,7 @@ components:
       - target
       type: object
     Secret_Create:
-      $ref: '#/components/schemas/Secret_Get'
       path: /v1/secret/secrets/
-    Secret_Get:
       properties:
         constructor:
           default:
@@ -3822,7 +3820,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          readOnly: true
           type: string
         status:
           default: NEW
