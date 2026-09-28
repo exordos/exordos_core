@@ -15,11 +15,14 @@
 #    under the License.
 
 import typing as tp
+import uuid as sys_uuid
 
 from bazooka import exceptions as bazooka_exc
 import pytest
+from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import exceptions as ex_exceptions
+from exordos_core.compute.dm import models as compute_models
 from exordos_core.user_api.network.dm import models as nm
 
 
@@ -171,6 +174,76 @@ class TestLBApi:
         url = client.build_resource_uri(["network", "lb", lb["uuid"]])
         with pytest.raises(bazooka_exc.NotFoundError):
             client.get(url)
+
+    def test_create_lb_on_node(
+        self, user_api_client, auth_user_admin, lb_factory, node_factory
+    ):
+        client = user_api_client(auth_user_admin)
+        node = node_factory()
+        response = client.post(
+            client.build_collection_uri(["compute", "nodes"]), json=node
+        )
+        assert response.status_code == 201
+
+        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        response = client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+
+        assert response.status_code == 201
+        assert response.json()["type"] == {"kind": "node", "node": node["uuid"]}
+
+    def test_create_lb_on_node_of_other_project(
+        self, user_api_client, auth_user_admin, lb_factory, node_factory
+    ):
+        client = user_api_client(auth_user_admin)
+        node = node_factory(project_id=sys_uuid.uuid4())
+        response = client.post(
+            client.build_collection_uri(["compute", "nodes"]), json=node
+        )
+        assert response.status_code == 201
+
+        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
+            client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+        assert "is not found in the LB project" in str(
+            exc_info.value.cause.response.text
+        )
+
+    def test_update_lb_to_unknown_node(
+        self, user_api_client, auth_user_admin, lb_factory
+    ):
+        client = user_api_client(auth_user_admin)
+        lb = lb_factory()
+        response = client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+        assert response.status_code == 201
+
+        url = client.build_resource_uri(["network", "lb", lb["uuid"]])
+        update = {"type": {"kind": "node", "node": str(sys_uuid.uuid4())}}
+        with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
+            client.put(url, json=update)
+        assert "is not found in the LB project" in str(
+            exc_info.value.cause.response.text
+        )
+
+    def test_lb_on_a_gone_node_still_saves(
+        self, user_api_client, auth_user_admin, lb_factory, node_factory
+    ):
+        # Builders save the LB on every iteration; the node is only checked
+        # when the placement changes, so a gone node must not block them.
+        client = user_api_client(auth_user_admin)
+        node = node_factory()
+        client.post(client.build_collection_uri(["compute", "nodes"]), json=node)
+        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        client.post(client.build_collection_uri(["network", "lb"]), json=lb)
+
+        compute_models.Node.objects.get_one(
+            filters={"uuid": dm_filters.EQ(sys_uuid.UUID(node["uuid"]))}
+        ).delete()
+
+        url = client.build_resource_uri(["network", "lb", lb["uuid"]])
+        response = client.put(url, json={"name": "renamed"})
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "renamed"
 
     def test_creates_vhost(
         self, user_api_client, auth_user_admin, lb_factory_with_model, vhost_factory

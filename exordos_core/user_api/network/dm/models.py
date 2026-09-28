@@ -32,6 +32,7 @@ from restalchemy.storage.sql import orm
 
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import utils as u
+from exordos_core.compute.dm import models as compute_models
 from exordos_core.quota.dm.models import QuotaModelMixin
 from exordos_core.secret import utils as su
 
@@ -64,6 +65,18 @@ class LBTypeCoreAgentKind(types_dynamic.AbstractKindModel, models.SimpleViewMixi
     KIND = "core_agent"
 
 
+class LBTypeNodeKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+    """An LB served by an existing compute node of the LB's project.
+
+    The node must ship nginx and the universal agent with LBCapabilityDriver
+    (paas_lb_node capability), e.g. a managed realm node.
+    """
+
+    KIND = "node"
+
+    node = properties.property(types.UUID(), required=True)
+
+
 # A `core_agent` LB renders into the core node's nginx, shared by the LBs of
 # every project: a writable dir there, behind an auth check its owner picks,
 # would reach the other projects' files. `core` LBs get VMs of their own.
@@ -94,14 +107,42 @@ class LB(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(LBTypeCoreKind),
             types_dynamic.KindModelType(LBTypeCoreAgentKind),
+            types_dynamic.KindModelType(LBTypeNodeKind),
         ),
         default=LBTypeCoreKind(),
         required=True,
     )
 
+    def _validate_node(self, session=None):
+        # The LB dataplane runs as root on the node, so it may only be
+        # placed on a node of the LB's own project.
+        if self.type.kind != LBTypeNodeKind.KIND:
+            return
+        nodes = compute_models.Node.objects.get_all(
+            filters={
+                "uuid": dm_filters.EQ(self.type.node),
+                "project_id": dm_filters.EQ(self.project_id),
+            },
+            limit=1,
+            session=session,
+        )
+        if not nodes:
+            raise ex_exceptions.ValidateException(
+                err=f"Node {self.type.node} is not found in the LB project."
+            )
+
+    def insert(self, session=None):
+        self._validate_node(session=session)
+        super().insert(session=session)
+
     def update(self, session=None, force=False):
+        # Builders save the LB on every iteration; check the placement only
+        # when it changes, so a gone node doesn't block status updates.
+        props = self.properties.properties
+        if props["type"].is_dirty() or props["project_id"].is_dirty():
+            self._validate_node(session=session)
         if (
-            self.properties.properties["type"].is_dirty()
+            props["type"].is_dirty()
             and self.type.kind == LBTypeCoreAgentKind.KIND
             and self._has_writable_routes(session=session)
         ):
