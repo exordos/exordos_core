@@ -407,16 +407,19 @@ project. An unscoped caller with the permission reads and writes all.
 ### Upload check for LB-served repositories
 
 An element repository can be served by an LB route: a writable `local_dir`
-(`dav_methods: [PUT, DELETE]`) at `<prefix>/<project_id>/`, guarded by an
-`auth_request` modifier whose pool points at this User API and whose path
-is `/v1/repo/upload_auth<prefix>` (e.g. `/v1/repo/upload_auth/repo` for a
-route at `/repo/`). `RepoUploadAuthMiddleware` answers those subrequests:
+(`dav_methods: [PUT, DELETE]`) laid out as `/<prefix>/<project_id>/...`
+with a single-segment prefix (e.g. `/repo/`), guarded by an `auth_request`
+modifier whose pool points at this User API and whose path is the IAM
+client action
+`/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/authorize_repo_upload`.
+nginx sends it a `GET` with the original method and URI in
+`X-Original-Method` / `X-Original-URI`:
 
 | `X-Original-Method` | Answer |
 |---|---|
-| `GET`, `HEAD` | `204`: reads are open, hypervisors and the repo proxy fetch without a token |
+| `GET`, `HEAD` | `200`: reads are open, hypervisors and the repo proxy fetch without a token |
 | `PUT`, `DELETE`, no project scoped token | `401` |
-| `PUT`, `DELETE` into `<prefix>/<token project>/...` with `repo.repository.upload` | `204` |
+| `PUT`, `DELETE` into `/<prefix>/<token project>/...` with `repo.repository.upload` | `200` |
 | anything else | `403` |
 
 nginx serves the decoded, normalized URI but passes the raw

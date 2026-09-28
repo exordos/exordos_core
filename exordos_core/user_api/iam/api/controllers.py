@@ -52,6 +52,30 @@ from exordos_core.user_api.iam.dm import models
 LOG = logging.getLogger(__name__)
 
 
+def _repo_path_project(uri):
+    """Return the project an element repo URI `/<prefix>/<project>/...` names.
+
+    nginx serves the percent-decoded, normalized URI but passes the raw
+    one, so any `.`/`..`/empty segment or a backslash is refused rather
+    than resolved: the path checked must be the path written.
+    """
+    path = urllib_parse.unquote(uri.split("?", 1)[0])
+    if not path.startswith("/") or "\\" in path:
+        return None
+    segments = path[1:].split("/")
+    if len(segments) < 3:
+        return None
+    if any(s in ("", ".", "..") for s in segments[:-1]) or segments[-1] in (
+        ".",
+        "..",
+    ):
+        return None
+    try:
+        return sys_uuid.UUID(segments[1])
+    except ValueError:
+        return None
+
+
 class EnforceMixin:
     def enforce(self, rule, do_raise=False, exc=None):
         ctx = contexts.get_context()
@@ -1102,6 +1126,34 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
     @actions.get
     def userinfo(self, resource):
         return resource.userinfo().get_response_body()
+
+    @actions.get
+    def authorize_repo_upload(self, resource):
+        """Answer the `auth_request` of an LB route serving an element repo.
+
+        The route serves a writable `local_dir` laid out as
+        `/<prefix>/<project_id>/...` and asks here about every request;
+        nginx passes the method in `X-Original-Method`, the URI in
+        `X-Original-URI` and the caller's `Authorization`. Reads are open:
+        hypervisors and the repo proxy fetch without a token. A write needs
+        a token of the project the path names and `repo.repository.upload`.
+        """
+        method = self._req.headers.get("X-Original-Method", "")
+        if method in ("GET", "HEAD"):
+            return {}
+        if method not in ("PUT", "DELETE"):
+            raise gcl_iam_e.Forbidden()
+
+        info = contexts.get_context().iam_context.get_introspection_info()
+        if info.project_id is None:
+            raise gcl_iam_e.Unauthorized()
+
+        target = _repo_path_project(self._req.headers.get("X-Original-URI", ""))
+        if target is None or target != sys_uuid.UUID(str(info.project_id)):
+            raise gcl_iam_e.Forbidden()
+        if not self.enforce(rules.Rule("repo", "repository", "upload")):
+            raise gcl_iam_e.Forbidden()
+        return {}
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_SEND_RESET_PASSWORD_CODE)
     @actions.post

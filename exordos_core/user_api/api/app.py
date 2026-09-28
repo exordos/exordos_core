@@ -67,7 +67,6 @@ def build_wsgi_application(
     cors_allowed_origins=None,
 ):
     middlewares_list = [
-        user_api_mw.RepoUploadAuthMiddleware,
         user_api_mw.SecurityRulesMiddleware,
         middlewares.configure_middleware(
             iam_mw.GenesisCoreAuthMiddleware,
