@@ -556,6 +556,18 @@ def set_realm_secret_var(spec: dict[str, tp.Any]) -> bool:
     return True
 
 
+def set_realm_repo_url_var(spec: dict[str, tp.Any]) -> bool:
+    """Set the base URL of the realm's element repository, if it has one."""
+    repo_url = spec.get("repo_url")
+    if not repo_url:
+        return True
+    return set_var(
+        "realm_repo_url",
+        repo_url if repo_url.endswith("/") else f"{repo_url}/",
+        c.VAR_REALM_REPO_URL_UUID,
+    )
+
+
 def set_realm_access_token_var(spec: dict[str, tp.Any]) -> bool:
     val_uuid = sys_uuid.UUID("2e0a0f6f-0568-4804-91d2-1f68f43afda9")
     existing_value = vs_models.Value.objects.get_one_or_none(
