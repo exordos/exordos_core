@@ -25,6 +25,7 @@ from restalchemy.dm import filters as dm_filters
 import yaml
 
 from exordos_core.common import constants as c
+from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.builders import element as element_builder
 from exordos_core.repo.builders import repository as repo_builder
 from exordos_core.repo.dm import models as repo_models
@@ -195,6 +196,21 @@ class TestRepoProxyBuilderService:
         # In LAZY mode, manifests should be empty
         for elem in elements:
             assert elem.manifest == {}
+
+    def test_upload_is_rejected_while_repository_is_not_active(self, user_api):
+        """upload should refuse a repository that is still provisioning."""
+        repo = repo_builder.Repository(
+            name="test-repo-provisioning",
+            description="Test database repository",
+            project_id=c.ZERO_UUID,
+            status=ua_c.InstanceStatus.NEW.value,
+            sync_mode=repo_models.SyncMode.LAZY.value,
+            driver_spec=repo_models.DatabaseDriverSpec(),
+        )
+        repo.insert()
+
+        with pytest.raises(common_exc.ValidateException):
+            repo.upload("core", "1.0.0", _make_manifest("core", "1.0.0"))
 
     def test_iteration_sets_next_refresh(self, manifests_dir, user_api):
         """_iteration should set next_refresh when refresh_rate is configured."""

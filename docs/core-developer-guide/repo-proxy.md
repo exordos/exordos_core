@@ -62,7 +62,8 @@ Key methods:
   specification, inventory) and replaces artifacts in the database.
 - **`refresh()`** — sets `next_refresh` to now, triggering an early refresh.
 - **`upload(name, version, manifest)`** — uploads an element to the repository
-  if the driver supports it.
+  if the driver supports it. The repository must be `ACTIVE`: until the builder
+  has provisioned it and built its inventory, the upload is rejected.
 
 ### RepoElement
 
