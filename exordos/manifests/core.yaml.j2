@@ -885,6 +885,66 @@ resources:
     binding_owner_vs_variable_select_value:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$vs_variable_select_value:uuid"
+    binding_owner_compute_core_repo_repository_read:
+      uuid: "c56310f1-c6a1-5892-a252-6ebf58d54ea0"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_repository_create:
+      uuid: "b0730d72-3bdc-52cd-96c8-23e918c54176"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_create:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_repository_update:
+      uuid: "f7e158cd-5b69-5585-be41-164ed22c33e1"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_update:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_repository_delete:
+      uuid: "cfc45a5c-cd68-577e-9b14-bca39cd673d7"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_repository_refresh:
+      uuid: "d559cd17-ccf0-5259-be60-4cb573e6c6eb"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_refresh:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_repository_upload:
+      uuid: "4f9e3cc4-bbe1-5dcf-a4e4-1edd5ecf7358"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_upload:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_element_read:
+      uuid: "6c398ec1-ebee-5deb-a785-a3ef65dfe8cb"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_element_read:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_element_delete:
+      uuid: "26525bdf-7548-5f75-bee0-d455c6be80b8"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_element_delete:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_element_install:
+      uuid: "e8dab112-d909-5b79-a5d6-b0689d9dbc0d"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_element_install:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_element_uninstall:
+      uuid: "9794284c-324b-5d9d-9a00-d99f52475b67"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_element_uninstall:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_element_upgrade:
+      uuid: "7907daa6-9739-51a3-97f7-aebc31837a0e"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_element_upgrade:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_core_repo_element_edit:
+      uuid: "4315c4ee-8746-5939-8d2b-95b9d6784cf2"
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_element_edit:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
 
   $core.vs.profiles:
     develop:
