@@ -42,6 +42,7 @@ from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.openapi import utils as oa_utils
 from restalchemy.storage import exceptions as ra_storage_exc
+from restalchemy.storage.sql import engines as ra_engines
 
 from exordos_core.common import constants as common_c
 from exordos_core.repo.dm import models as repo_models
@@ -109,11 +110,31 @@ def _ensure_realm_repository(project_id: sys_uuid.UUID) -> None:
             url=f"{var.value}{project_id}/{common_c.ELEMENTS_PATH}/"
         ),
     )
+    # A session of its own: a conflict aborts the transaction it runs in,
+    # which mustn't be the request's.
+    session = ra_engines.engine_factory.get_engine().get_session()
     try:
-        repository.insert()
+        repository.insert(session=session)
+        session.commit()
     except ra_storage_exc.ConflictRecords:
-        # Registered meanwhile, or by hand under this name or URL.
+        session.rollback()
+        # Registered meanwhile, or by hand under this name or URL. Another
+        # project can hold the URL only if it registered it first.
+        if not repo_models.Repository.objects.get_one_or_none(
+            filters={
+                "project_id": ra_filters.EQ(project_id),
+                "name": ra_filters.EQ(repository.name),
+            }
+        ):
+            LOG.warning(
+                "Realm repository %s of project %s is registered by another "
+                "repository; its elements won't be installable here",
+                repository.driver_spec.url,
+                project_id,
+            )
         return
+    finally:
+        session.close()
     LOG.info("Registered realm repository %s of project %s", repo_uuid, project_id)
 
 
