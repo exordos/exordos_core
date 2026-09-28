@@ -179,8 +179,50 @@ class TestRepoRoute:
 
         assert lb.client.put(lb_url, json=update).status_code == 200
 
-    def test_writable_dir_needs_a_prefix_ending_in_a_slash(self, lb, route_factory):
-        # `location /repo` aliases `/repo<x>/...` to `<path>/<x>/...`.
-        url, route = _route(lb, route_factory, value="/repo")
+    # `location /repo` aliases `/repo<x>/...` to `<path>/<x>/...`, and the
+    # upload check takes the segment after the prefix as the project.
+    @pytest.mark.parametrize("value", ["/repo", "/repo/v1/", "/"])
+    def test_writable_dir_needs_a_one_segment_prefix(self, lb, route_factory, value):
+        url, route = _route(lb, route_factory, value=value)
 
-        assert "ending in `/`" in _error(lb.client.post, url, json=route)
+        assert "one-segment prefix" in _error(lb.client.post, url, json=route)
+
+    @pytest.mark.parametrize("lb", [nm.LBTypeCoreKind(nodes_number=2)], indirect=True)
+    def test_multi_node_lb_cant_have_a_writable_dir(self, lb, route_factory):
+        # Every node keeps its own /var/www: a write would reach only one.
+        url, route = _route(lb, route_factory)
+
+        assert "single node" in _error(lb.client.post, url, json=route)
+
+    def test_lb_with_a_writable_dir_cant_get_more_nodes(self, lb, route_factory):
+        url, route = _route(lb, route_factory)
+        lb.client.post(url, json=route)
+
+        lb_url = lb.client.build_resource_uri(["network", "lb", lb.uuid])
+        update = {"type": {"kind": "core", "nodes_number": 2}}
+
+        assert "single node" in _error(lb.client.put, lb_url, json=update)
+
+    def test_auth_request_pool_must_belong_to_the_lb(
+        self,
+        lb,
+        route_factory,
+        lb_factory_with_model,
+        backend_pool_factory_with_model,
+    ):
+        other, other_model = lb_factory_with_model(type=nm.LBTypeCoreKind())
+        lb.client.post(lb.client.build_collection_uri(["network", "lb"]), json=other)
+        pool, pool_model = backend_pool_factory_with_model(
+            other_model,
+            endpoints=[nm.BackendHostKind(host="192.168.100.3", port=11010)],
+        )
+        lb.client.post(
+            lb.client.build_collection_uri(
+                ["network", "lb", other["uuid"], "backend_pools"]
+            ),
+            json=pool,
+        )
+        url, route = _route(lb, route_factory)
+        route["condition"]["modifiers"][0]["pool"] = pool["uuid"]
+
+        assert "belong to the route's LB" in _error(lb.client.post, url, json=route)
