@@ -56,3 +56,12 @@ def test_node_lb_needs_no_infra():
     builder = lb_iaas.LBBuilder(lb_models.IaasLB, project_id=sys_uuid.uuid4())
 
     assert builder.create_infra(_node_lb(sys_uuid.uuid4())) == []
+
+
+def test_switching_to_node_drops_the_old_vm_addresses():
+    builder = lb_iaas.LBBuilder(lb_models.IaasLB, project_id=sys_uuid.uuid4())
+    inst = _node_lb(sys_uuid.uuid4())
+    inst.ipsv4 = ["10.0.0.5"]
+
+    assert builder.actualize_infra(inst, mock.MagicMock()) == tuple()
+    assert inst.ipsv4 == []

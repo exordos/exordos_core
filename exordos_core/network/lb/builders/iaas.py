@@ -74,6 +74,8 @@ class LBBuilder(builder.CoreInfraBuilder):
         infra: builder.InfraCollection,
     ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
         if instance.type.kind != "core":
+            # No VMs of its own; one switched from `core` keeps none of theirs.
+            instance.ipsv4 = []
             return tuple()
         nodeset = None
         tgt_nodeset = None
