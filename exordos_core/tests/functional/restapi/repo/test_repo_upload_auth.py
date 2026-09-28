@@ -16,8 +16,9 @@
 
 """The check an element repository LB route asks before serving a request.
 
-Requests are shaped like nginx's `auth_request` subrequest: the original
-method, `X-Original-Method` / `X-Original-URI` and the caller's token.
+Requests are shaped like nginx's `auth_request` subrequest: always a GET,
+with the original method and URI in `X-Original-Method` / `X-Original-URI`
+and the caller's token.
 """
 
 import uuid as sys_uuid
@@ -26,16 +27,15 @@ from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
 import pytest
 
-AUTH_PATH = "repo/upload_auth/repo"
+from exordos_core.common import constants as c
+
+AUTH_PATH = f"iam/clients/{c.ZERO_UUID}/actions/authorize_repo_upload"
 
 
 def _ask(client, method, uri):
     url = f"{client.endpoint}{AUTH_PATH}"
-    call = {"GET": client.get, "PUT": client.put, "DELETE": client.delete}.get(
-        method, client.get
-    )
     try:
-        return call(
+        return client.get(
             url, headers={"X-Original-Method": method, "X-Original-URI": uri}
         ).status_code
     except bazooka_exc.BaseHTTPException as e:
@@ -57,8 +57,8 @@ class TestRepoUploadAuth:
     def test_owner_writes_into_own_project(self, owner, project):
         uri = f"/repo/{project}/app/1.0.0/images/app.raw.zst"
 
-        assert _ask(owner, "PUT", uri) == 204
-        assert _ask(owner, "DELETE", f"/repo/{project}/app/1.0.0/") == 204
+        assert _ask(owner, "PUT", uri) == 200
+        assert _ask(owner, "DELETE", f"/repo/{project}/app/1.0.0/") == 200
 
     def test_write_into_another_project_is_refused(self, owner):
         assert _ask(owner, "PUT", f"/repo/{sys_uuid.uuid4()}/app/1.0.0/x") == 403
@@ -79,6 +79,18 @@ class TestRepoUploadAuth:
 
         assert _ask(owner, "PUT", uri) == 403
 
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "/a/b/{project}/app/x",  # the project must be the second segment
+            "/{project}/app/x",
+            "/repo/{project}",
+            "repo/{project}/app/x",
+        ],
+    )
+    def test_the_layout_is_prefix_then_project(self, owner, project, uri):
+        assert _ask(owner, "PUT", uri.format(project=project)) == 403
+
     @pytest.mark.parametrize("method", ["MOVE", "COPY", "MKCOL", "POST"])
     def test_other_methods_are_refused(self, owner, project, method):
         assert _ask(owner, method, f"/repo/{project}/app/x") == 403
@@ -87,8 +99,8 @@ class TestRepoUploadAuth:
         anon = user_api_noauth_client()
         uri = f"/repo/{project}/app/1.0.0/inventory.json"
 
-        assert _ask(anon, "GET", uri) == 204
-        assert _ask(anon, "HEAD", uri) == 204
+        assert _ask(anon, "GET", uri) == 200
+        assert _ask(anon, "HEAD", uri) == 200
 
     def test_anonymous_write_needs_a_token(self, user_api_noauth_client, project):
         anon = user_api_noauth_client()
@@ -117,8 +129,3 @@ class TestRepoUploadAuth:
         )
 
         assert _ask(member, "PUT", f"/repo/{project}/app/x") == 403
-
-    def test_other_paths_are_left_alone(self, owner):
-        # Only /v1/repo/upload_auth... is answered here.
-        url = owner.build_collection_uri(["repo", "repositories"])
-        assert owner.get(url).status_code == 200

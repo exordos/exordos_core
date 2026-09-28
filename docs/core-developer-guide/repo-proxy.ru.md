@@ -420,16 +420,19 @@ User API обслуживается по пути `/v1/repo/` и определ�
 ### Проверка загрузки для репозиториев за LB
 
 Репозиторий элементов может отдаваться маршрутом LB: `local_dir` с записью
-(`dav_methods: [PUT, DELETE]`) по пути `<prefix>/<project_id>/`, защищённый
-модификатором `auth_request`, чей пул указывает на этот User API, а путь —
-`/v1/repo/upload_auth<prefix>` (например, `/v1/repo/upload_auth/repo` для
-маршрута `/repo/`). На эти подзапросы отвечает `RepoUploadAuthMiddleware`:
+(`dav_methods: [PUT, DELETE]`) с раскладкой `/<prefix>/<project_id>/...`,
+где префикс — один сегмент (например, `/repo/`), защищённый модификатором
+`auth_request`, чей пул указывает на этот User API, а путь — действие
+IAM-клиента
+`/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/authorize_repo_upload`.
+nginx отправляет на него `GET`, передавая исходные метод и URI в
+`X-Original-Method` / `X-Original-URI`:
 
 | `X-Original-Method` | Ответ |
 |---|---|
-| `GET`, `HEAD` | `204`: чтение открыто, гипервизоры и repo proxy скачивают без токена |
+| `GET`, `HEAD` | `200`: чтение открыто, гипервизоры и repo proxy скачивают без токена |
 | `PUT`, `DELETE` без токена проекта | `401` |
-| `PUT`, `DELETE` в `<prefix>/<проект токена>/...` с правом `repo.repository.upload` | `204` |
+| `PUT`, `DELETE` в `/<prefix>/<проект токена>/...` с правом `repo.repository.upload` | `200` |
 | остальное | `403` |
 
 nginx отдаёт декодированный и нормализованный URI, а в `X-Original-URI`
