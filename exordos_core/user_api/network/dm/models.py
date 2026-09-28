@@ -64,6 +64,12 @@ class LBTypeCoreAgentKind(types_dynamic.AbstractKindModel, models.SimpleViewMixi
     KIND = "core_agent"
 
 
+# A `core_agent` LB renders into the core node's nginx, shared by the LBs of
+# every project: a writable dir there, behind an auth check its owner picks,
+# would reach the other projects' files. `core` LBs get VMs of their own.
+WRITABLE_ON_CORE_AGENT = "A `core_agent` LB can't have a writable `local_dir`."
+
+
 class LB(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
@@ -92,6 +98,27 @@ class LB(
         default=LBTypeCoreKind(),
         required=True,
     )
+
+    def update(self, session=None, force=False):
+        if (
+            self.properties.properties["type"].is_dirty()
+            and self.type.kind == LBTypeCoreAgentKind.KIND
+            and self._has_writable_routes(session=session)
+        ):
+            raise ex_exceptions.ValidateException(err=WRITABLE_ON_CORE_AGENT)
+        super().update(session=session, force=force)
+
+    def _has_writable_routes(self, session=None):
+        vhosts = Vhost.objects.get_all(
+            filters={"parent": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if not vhosts:
+            return False
+        routes = Route.objects.get_all(
+            filters={"parent": dm_filters.In([v.uuid for v in vhosts])},
+            session=session,
+        )
+        return any(r.is_writable() for r in routes)
 
     def delete(self, session=None, **kwargs):
         u.remove_nested_dm(Vhost, "parent", self, session=session)
@@ -512,7 +539,8 @@ class ModifierAuthRequestKind(AbstractModifierKind):
 
     The backend answers 2xx to allow and 401/403 to deny; it gets the
     original method, URI and `Authorization` but not the body. Core serves
-    such a check for element repositories at `/v1/repo/upload_auth<prefix>`.
+    such a check for element repositories as the IAM client action
+    `authorize_repo_upload`.
     """
 
     KIND = "auth_request"
@@ -659,13 +687,26 @@ class Route(ChildModel):
             raise ex_exceptions.ValidateException(
                 err="A route can have only one `auth_request` modifier."
             )
-        if not auth_requests and any(
-            a.kind == RuleStaticKind.KIND and a.dav_methods
-            for a in self.condition.actions
-        ):
+        if not self.is_writable():
+            return
+        if not auth_requests:
             raise ex_exceptions.ValidateException(
                 err="A writable `local_dir` needs an `auth_request` modifier."
             )
+        # nginx rewrites before the auth check, which authorizes the
+        # original URI: a rewrite could move the write elsewhere.
+        if any(m.kind == ModifierRewriteUrlKind.KIND for m in self.condition.modifiers):
+            raise ex_exceptions.ValidateException(
+                err="A writable `local_dir` can't have a `rewrite_url` modifier."
+            )
+        if self.parent.parent.type.kind == LBTypeCoreAgentKind.KIND:
+            raise ex_exceptions.ValidateException(err=WRITABLE_ON_CORE_AGENT)
+
+    def is_writable(self):
+        return any(
+            a.kind == RuleStaticKind.KIND and a.dav_methods
+            for a in self.condition.actions
+        )
 
     def insert(self, session=None):
         self._validate()

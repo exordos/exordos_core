@@ -24,11 +24,14 @@ import pytest
 
 from exordos_core.user_api.network.dm import models as nm
 
-AUTH_PATH = "/v1/repo/upload_auth/repo"
+AUTH_PATH = (
+    "/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/authorize_repo_upload"
+)
 
 
 @pytest.fixture
 def lb(
+    request,
     user_api_client,
     auth_user_admin,
     lb_factory_with_model,
@@ -36,7 +39,10 @@ def lb(
     backend_pool_factory_with_model,
 ):
     client = user_api_client(auth_user_admin)
-    lb, lb_model = lb_factory_with_model()
+    # `core` unless a test asks for another type with indirect parametrization.
+    lb, lb_model = lb_factory_with_model(
+        type=getattr(request, "param", None) or nm.LBTypeCoreKind()
+    )
     client.post(client.build_collection_uri(["network", "lb"]), json=lb)
 
     pool, pool_model = backend_pool_factory_with_model(
@@ -65,7 +71,7 @@ def lb(
     )
 
 
-def _route(lb, route_factory, dav_methods=("PUT", "DELETE"), auth=1):
+def _route(lb, route_factory, dav_methods=("PUT", "DELETE"), auth=1, extra=()):
     condition = nm.RoutePrefixConditionKind(
         value="/repo/",
         actions=[
@@ -74,7 +80,8 @@ def _route(lb, route_factory, dav_methods=("PUT", "DELETE"), auth=1):
         modifiers=[
             nm.ModifierAuthRequestKind(pool=lb.pool_model, path=AUTH_PATH)
             for _ in range(auth)
-        ],
+        ]
+        + list(extra),
     )
     url = lb.client.build_collection_uri(
         ["network", "lb", lb.uuid, "vhosts", lb.vhost["uuid"], "routes"]
@@ -134,3 +141,38 @@ class TestRepoRoute:
             ["network", "lb", lb.uuid, "backend_pools", lb.pool["uuid"]]
         )
         assert "Backend pool in use" in _error(lb.client.delete, pool_url)
+
+    def test_writable_dir_cant_be_rewritten(self, lb, route_factory):
+        # nginx rewrites before the auth check, which sees the original URI.
+        rewrite = nm.ModifierRewriteUrlKind(regex="^/repo/(.*)$", replacement="/x/$1")
+        url, route = _route(lb, route_factory, extra=[rewrite])
+
+        assert "`rewrite_url`" in _error(lb.client.post, url, json=route)
+
+    def test_plain_dir_keeps_its_rewrite(self, lb, route_factory):
+        rewrite = nm.ModifierRewriteUrlKind(regex="^/repo/(.*)$", replacement="/x/$1")
+        url, route = _route(lb, route_factory, dav_methods=(), extra=[rewrite])
+
+        assert lb.client.post(url, json=route).status_code == 201
+
+    @pytest.mark.parametrize("lb", [nm.LBTypeCoreAgentKind()], indirect=True)
+    def test_core_agent_lb_cant_have_a_writable_dir(self, lb, route_factory):
+        # Its nginx is shared by the LBs of every project.
+        url, route = _route(lb, route_factory)
+
+        assert "`core_agent` LB" in _error(lb.client.post, url, json=route)
+
+    def test_lb_with_a_writable_dir_cant_become_core_agent(self, lb, route_factory):
+        url, route = _route(lb, route_factory)
+        lb.client.post(url, json=route)
+
+        lb_url = lb.client.build_resource_uri(["network", "lb", lb.uuid])
+        update = {"type": {"kind": "core_agent"}}
+
+        assert "`core_agent` LB" in _error(lb.client.put, lb_url, json=update)
+
+    def test_lb_without_a_writable_dir_can_become_core_agent(self, lb):
+        lb_url = lb.client.build_resource_uri(["network", "lb", lb.uuid])
+        update = {"type": {"kind": "core_agent"}}
+
+        assert lb.client.put(lb_url, json=update).status_code == 200
