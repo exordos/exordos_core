@@ -71,9 +71,11 @@ def lb(
     )
 
 
-def _route(lb, route_factory, dav_methods=("PUT", "DELETE"), auth=1, extra=()):
+def _route(
+    lb, route_factory, dav_methods=("PUT", "DELETE"), auth=1, extra=(), value="/repo/"
+):
     condition = nm.RoutePrefixConditionKind(
-        value="/repo/",
+        value=value,
         actions=[
             nm.RuleStaticKind(path="/var/www/repo", dav_methods=list(dav_methods))
         ],
@@ -176,3 +178,9 @@ class TestRepoRoute:
         update = {"type": {"kind": "core_agent"}}
 
         assert lb.client.put(lb_url, json=update).status_code == 200
+
+    def test_writable_dir_needs_a_prefix_ending_in_a_slash(self, lb, route_factory):
+        # `location /repo` aliases `/repo<x>/...` to `<path>/<x>/...`.
+        url, route = _route(lb, route_factory, value="/repo")
+
+        assert "ending in `/`" in _error(lb.client.post, url, json=route)

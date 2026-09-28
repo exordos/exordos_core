@@ -746,6 +746,14 @@ class Route(ChildModel):
             )
         if self.parent.parent.type.kind == LBTypeCoreAgentKind.KIND:
             raise ex_exceptions.ValidateException(err=WRITABLE_ON_CORE_AGENT)
+        # nginx aliases a slash-less prefix, so `/repo<x>/...` lands in
+        # `<path>/<x>/...`, a path the upload check never sees.
+        if self.condition.kind != RoutePrefixConditionKind.KIND or not (
+            self.condition.value.endswith("/")
+        ):
+            raise ex_exceptions.ValidateException(
+                err="A writable `local_dir` needs a prefix route ending in `/`."
+            )
 
     def is_writable(self):
         return any(
