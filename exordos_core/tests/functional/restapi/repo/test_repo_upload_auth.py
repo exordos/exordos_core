@@ -200,3 +200,23 @@ class TestRealmRepositoryRegistration:
     def test_realm_without_a_repository_registers_nothing(self, owner, project):
         assert _ask(owner, "PUT", f"/repo/{project}/app/x") == 200
         assert _realm_repos(project) == []
+
+    def test_url_held_by_another_project_is_left_alone(
+        self, owner, project, realm_repo_url
+    ):
+        # Another project registered this project's URL first: the upload
+        # still goes through, and the other project's row is not touched.
+        other = sys_uuid.uuid4()
+        repo_models.Repository(
+            name="squatter",
+            project_id=other,
+            refresh_rate=60,
+            sync_mode=repo_models.SyncMode.COPY.value,
+            driver_spec=repo_models.NginxDriverSpec(
+                url=f"{REPO_URL}{project}/exordos-elements/"
+            ),
+        ).insert()
+
+        assert _ask(owner, "PUT", f"/repo/{project}/app/x") == 200
+        assert _realm_repos(project) == []
+        assert [r.name for r in _realm_repos(other)] == ["squatter"]

@@ -81,6 +81,8 @@ class LBTypeNodeKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
 # every project: a writable dir there, behind an auth check its owner picks,
 # would reach the other projects' files. `core` LBs get VMs of their own.
 WRITABLE_ON_CORE_AGENT = "A `core_agent` LB can't have a writable `local_dir`."
+# Each LB node keeps `/var/www` on its own disk: a write would reach one.
+WRITABLE_ON_MANY_NODES = "A writable `local_dir` needs an LB with a single node."
 
 
 class LB(
@@ -141,13 +143,19 @@ class LB(
         props = self.properties.properties
         if props["type"].is_dirty() or props["project_id"].is_dirty():
             self._validate_node(session=session)
-        if (
-            props["type"].is_dirty()
-            and self.type.kind == LBTypeCoreAgentKind.KIND
-            and self._has_writable_routes(session=session)
-        ):
-            raise ex_exceptions.ValidateException(err=WRITABLE_ON_CORE_AGENT)
+        if props["type"].is_dirty():
+            err = self.writable_dir_error()
+            if err and self._has_writable_routes(session=session):
+                raise ex_exceptions.ValidateException(err=err)
         super().update(session=session, force=force)
+
+    def writable_dir_error(self):
+        """Why this LB can't serve a writable `local_dir`, if it can't."""
+        if self.type.kind == LBTypeCoreAgentKind.KIND:
+            return WRITABLE_ON_CORE_AGENT
+        if self.type.kind == LBTypeCoreKind.KIND and self.type.nodes_number > 1:
+            return WRITABLE_ON_MANY_NODES
+        return None
 
     def _has_writable_routes(self, session=None):
         vhosts = Vhost.objects.get_all(
@@ -452,6 +460,10 @@ class AllowedPathType(types.BaseCompiledRegExpTypeFromAttr):
     pattern = re.compile(r"^(?!.*\/\.\.(?:\/.*|$))\/var\/www\/.*$")
 
 
+# `/<prefix>/<project_id>/...` is the layout the upload check authorizes.
+WRITABLE_PREFIX = re.compile(r"/[^/]+/")
+
+
 class DavMethods(str, enum.Enum):
     # COPY/MOVE take their target from the `Destination` header, which the
     # auth_request check never sees; MKCOL is covered by create_full_put_path.
@@ -728,6 +740,13 @@ class Route(ChildModel):
             raise ex_exceptions.ValidateException(
                 err="A route can have only one `auth_request` modifier."
             )
+        # The LB's data plane gets only its own pools.
+        if auth_requests and auth_requests[0].pool.parent.uuid != (
+            self.parent.parent.uuid
+        ):
+            raise ex_exceptions.ValidateException(
+                err="The `auth_request` pool must belong to the route's LB."
+            )
         if not self.is_writable():
             return
         if not auth_requests:
@@ -740,15 +759,18 @@ class Route(ChildModel):
             raise ex_exceptions.ValidateException(
                 err="A writable `local_dir` can't have a `rewrite_url` modifier."
             )
-        if self.parent.parent.type.kind == LBTypeCoreAgentKind.KIND:
-            raise ex_exceptions.ValidateException(err=WRITABLE_ON_CORE_AGENT)
+        err = self.parent.parent.writable_dir_error()
+        if err:
+            raise ex_exceptions.ValidateException(err=err)
         # nginx aliases a slash-less prefix, so `/repo<x>/...` lands in
-        # `<path>/<x>/...`, a path the upload check never sees.
+        # `<path>/<x>/...`, a path the upload check never sees; and the check
+        # takes the segment after a one-segment prefix as the project.
         if self.condition.kind != RoutePrefixConditionKind.KIND or not (
-            self.condition.value.endswith("/")
+            WRITABLE_PREFIX.fullmatch(self.condition.value)
         ):
             raise ex_exceptions.ValidateException(
-                err="A writable `local_dir` needs a prefix route ending in `/`."
+                err="A writable `local_dir` needs a one-segment prefix route "
+                "like `/repo/`."
             )
 
     def is_writable(self):
