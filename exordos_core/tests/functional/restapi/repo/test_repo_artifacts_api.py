@@ -27,6 +27,19 @@ from exordos_core.repo.dm import models as repo_models
 REPO_ARTIFACTS_READ = "repo.artifact.read"
 
 
+def _activate_repository(repo_uuid):
+    """Mark a repository ACTIVE.
+
+    The API tests run without the repository builder, so a created
+    repository stays NEW, and uploads are rejected until it is ACTIVE.
+    """
+    repository = repo_models.Repository.objects.get_one(
+        filters={"uuid": dm_filters.EQ(repo_uuid)}
+    )
+    repository.status = repo_models.RepositoryStatus.ACTIVE.value
+    repository.update()
+
+
 class TestRepoArtifacts:
     """REST API tests for the repo artifacts endpoint."""
 
@@ -50,7 +63,9 @@ class TestRepoArtifacts:
                 "driver_spec": driver_spec or {"kind": "database"},
             },
         )
-        return response.json()
+        repository = response.json()
+        _activate_repository(repository["uuid"])
+        return repository
 
     def _create_element(
         self, user_api_client, auth, repo_uuid, name="test-element", version="1.0.0"

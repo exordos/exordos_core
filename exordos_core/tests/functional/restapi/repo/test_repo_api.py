@@ -24,6 +24,19 @@ from exordos_core.common import constants as c
 from exordos_core.repo.dm import models as repo_models
 
 
+def _activate_repository(repo_uuid):
+    """Mark a repository ACTIVE.
+
+    The API tests run without the repository builder, so a created
+    repository stays NEW, and uploads are rejected until it is ACTIVE.
+    """
+    repository = repo_models.Repository.objects.get_one(
+        filters={"uuid": dm_filters.EQ(repo_uuid)}
+    )
+    repository.status = repo_models.RepositoryStatus.ACTIVE.value
+    repository.update()
+
+
 class TestRepoElements:
     """REST API tests for repo elements endpoints."""
 
@@ -52,7 +65,9 @@ class TestRepoElements:
                 "driver_spec": driver_spec or {"kind": "database"},
             },
         )
-        return response.json()
+        repository = response.json()
+        _activate_repository(repository["uuid"])
+        return repository
 
     def _create_element(
         self,
