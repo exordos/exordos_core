@@ -418,9 +418,12 @@ nginx sends it a `GET` with the original method and URI in
 | `X-Original-Method` | Answer |
 |---|---|
 | `GET`, `HEAD` | `200`: reads are open, hypervisors and the repo proxy fetch without a token |
-| `PUT`, `DELETE`, no project scoped token | `401` |
+| `PUT`, `DELETE` without a token | `401` |
 | `PUT`, `DELETE` into `/<prefix>/<token project>/...` with `repo.repository.upload` | `200` |
+| `PUT`, `DELETE` into any project with an unscoped token carrying `repo.repository.upload` (e.g. the admin's) | `200` |
 | anything else | `403` |
+
+Project owners get `repo.repository.upload` through the `owner` role.
 
 nginx serves the decoded, normalized URI but passes the raw
 `X-Original-URI`, so a path with a `.`, `..` or empty segment (percent

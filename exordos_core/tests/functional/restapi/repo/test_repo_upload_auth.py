@@ -107,6 +107,23 @@ class TestRepoUploadAuth:
 
         assert _ask(anon, "PUT", f"/repo/{project}/app/x") == 401
 
+    def test_unscoped_admin_writes_into_any_project(
+        self, user_api_client, auth_user_admin, project
+    ):
+        # A project scoped token doesn't carry the admin's permissions.
+        admin = user_api_client(auth_user_admin)
+
+        assert _ask(admin, "PUT", f"/repo/{project}/app/x") == 200
+        assert _ask(admin, "PUT", f"/repo/{sys_uuid.uuid4()}/app/x") == 200
+        assert _ask(admin, "PUT", f"/repo/{project}/../{project}/x") == 403
+
+    def test_unscoped_user_without_upload_is_refused(
+        self, user_api_client, auth_test1_user, project
+    ):
+        user = user_api_client(auth_test1_user)
+
+        assert _ask(user, "PUT", f"/repo/{project}/app/x") == 403
+
     def test_project_member_without_upload_is_refused(
         self,
         user_api_client,
