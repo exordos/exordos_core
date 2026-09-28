@@ -326,6 +326,18 @@ class TestList:
         assert len(result) == 1
         assert result[0].element is None
 
+    def test_element_without_manifest_skipped(self):
+        """Should skip legacy elements that have no manifest link."""
+        client = self._make_client()
+        em_manifest = self._make_em_manifest()
+        legacy = self._make_em_element(em_manifest)
+        legacy.manifest = None
+
+        result = self._list(client, [em_manifest], [legacy])
+
+        assert len(result) == 1
+        assert result[0].element is None
+
 
 class TestRepoElementCapabilityDriver:
     """Tests for RepoElementCapabilityDriver."""

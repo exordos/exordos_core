@@ -227,6 +227,7 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
         em_elements = {
             e.manifest.uuid: e
             for e in em_models.Element.objects.get_all(session=session)
+            if e.manifest is not None
         }
 
         installed = []
