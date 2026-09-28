@@ -437,6 +437,16 @@ nginx serves the decoded, normalized URI but passes the raw
 `X-Original-URI`, so a path with a `.`, `..` or empty segment (percent
 encoded or not) or a backslash is refused rather than resolved.
 
+On a managed realm the core also knows where that repository is: bootstrap
+sets the `realm_repo_url` values store variable from the realm spec's
+`repo_url` (e.g. `http://10.40.0.1:8081/repo/`). The first upload a project
+is allowed then registers the project's repository here: an nginx
+repository `realm-<project prefix>` in that project, at
+`<realm_repo_url><project_id>/exordos-elements/`, copy mode, refreshed every
+minute, so pushed elements become installable without further steps. It is
+registered once (a deterministic uuid per project); a repository already
+registered by hand for the same URL or name is left as it is.
+
 ## Inventory Format
 
 The inventory is a JSON document served by the repository driver. It lists all

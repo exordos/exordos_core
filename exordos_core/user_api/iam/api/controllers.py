@@ -41,13 +41,16 @@ from restalchemy.common import exceptions as ra_e
 from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.openapi import utils as oa_utils
+from restalchemy.storage import exceptions as ra_storage_exc
 
 from exordos_core.common import constants as common_c
+from exordos_core.repo.dm import models as repo_models
 from exordos_core.user_api.iam import constants as c
 from exordos_core.user_api.iam import exceptions as iam_e
 from exordos_core.user_api.iam.api import openapi_specs as oa_specs
 from exordos_core.user_api.iam.clients import idp
 from exordos_core.user_api.iam.dm import models
+from exordos_core.vs.dm import models as vs_models
 
 LOG = logging.getLogger(__name__)
 
@@ -74,6 +77,44 @@ def _repo_path_project(uri):
         return sys_uuid.UUID(segments[1])
     except ValueError:
         return None
+
+
+def _ensure_realm_repository(project_id: sys_uuid.UUID) -> None:
+    """Register a project's part of the realm's element repository.
+
+    A managed realm knows where its repository is (`realm_repo_url`, set at
+    bootstrap from the realm spec), so the project's first upload is enough
+    for its elements to become installable here. Idempotent.
+    """
+    var = vs_models.Variable.objects.get_one_or_none(
+        filters={"uuid": ra_filters.EQ(common_c.VAR_REALM_REPO_URL_UUID)}
+    )
+    if var is None or not var.value:
+        return
+
+    repo_uuid = sys_uuid.uuid5(project_id, "realm-repository")
+    if repo_models.Repository.objects.get_one_or_none(
+        filters={"uuid": ra_filters.EQ(repo_uuid)}
+    ):
+        return
+
+    repository = repo_models.Repository(
+        uuid=repo_uuid,
+        name=f"realm-{str(project_id)[:8]}",
+        description="The realm's element repository of this project",
+        project_id=project_id,
+        refresh_rate=60,
+        sync_mode=repo_models.SyncMode.COPY.value,
+        driver_spec=repo_models.NginxDriverSpec(
+            url=f"{var.value}{project_id}/{common_c.ELEMENTS_PATH}/"
+        ),
+    )
+    try:
+        repository.insert()
+    except ra_storage_exc.ConflictRecords:
+        # Registered meanwhile, or by hand under this name or URL.
+        return
+    LOG.info("Registered realm repository %s of project %s", repo_uuid, project_id)
 
 
 class EnforceMixin:
@@ -1159,6 +1200,7 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
             raise gcl_iam_e.Forbidden()
         if not self.enforce(rules.Rule("repo", "repository", "upload")):
             raise gcl_iam_e.Forbidden()
+        _ensure_realm_repository(target)
         return {}
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_SEND_RESET_PASSWORD_CODE)
