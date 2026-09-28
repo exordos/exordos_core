@@ -566,6 +566,10 @@ resources:
       uuid: "37ee8a65-ca05-54b2-a603-831511c01b3c"
       name: "repo.artifact.read"
       description: "List and read repository artifacts"
+    repo_repository_upload:
+      uuid: "757fa24f-d3bb-41f7-afdc-9ba1868a6aaf"
+      name: "repo.repository.upload"
+      description: "Upload elements to own repositories"
     vs_profile_activate:
       uuid: "019108e8-9b47-410a-8114-74a55d75b722"
       name: "vs.profile.activate"
@@ -864,6 +868,9 @@ resources:
     binding_owner_repo_artifact_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$repo_artifact_read:uuid"
+    binding_owner_repo_repository_upload:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_upload:uuid"
     binding_owner_secret_secret_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$secret_secret_read:uuid"

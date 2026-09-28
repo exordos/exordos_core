@@ -1136,7 +1136,9 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
         nginx passes the method in `X-Original-Method`, the URI in
         `X-Original-URI` and the caller's `Authorization`. Reads are open:
         hypervisors and the repo proxy fetch without a token. A write needs
-        a token of the project the path names and `repo.repository.upload`.
+        `repo.repository.upload` in a token scoped to the project the path
+        names, or in an unscoped token (e.g. the admin's, whose permissions a
+        project scoped token doesn't carry), which may write into any project.
         """
         method = self._req.headers.get("X-Original-Method", "")
         if method in ("GET", "HEAD"):
@@ -1144,12 +1146,16 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
         if method not in ("PUT", "DELETE"):
             raise gcl_iam_e.Forbidden()
 
-        info = contexts.get_context().iam_context.get_introspection_info()
-        if info.project_id is None:
+        if not self._req.headers.get("Authorization"):
             raise gcl_iam_e.Unauthorized()
-
         target = _repo_path_project(self._req.headers.get("X-Original-URI", ""))
-        if target is None or target != sys_uuid.UUID(str(info.project_id)):
+        if target is None:
+            raise gcl_iam_e.Forbidden()
+
+        info = contexts.get_context().iam_context.get_introspection_info()
+        if info.project_id is not None and target != sys_uuid.UUID(
+            str(info.project_id)
+        ):
             raise gcl_iam_e.Forbidden()
         if not self.enforce(rules.Rule("repo", "repository", "upload")):
             raise gcl_iam_e.Forbidden()
