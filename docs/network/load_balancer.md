@@ -93,7 +93,9 @@ Routing rules that define how traffic is handled:
     - `redirect` - return http redirect
     - `local_dir` - serve static from local dir on LB; `dav_methods` (`PUT`,
       `DELETE`) makes it writable over WebDAV and needs an `auth_request`
-      modifier on the route
+      modifier on the route; not on `core_agent` LBs (their nginx is shared
+      by every project) and not together with `rewrite_url` (nginx rewrites
+      before the auth check)
     - `local_dir_download` - download tar.gz/zstd on LB itself, unpack it and serve data from local dir
 - Modifiers (headers, rewrite rules)
     - `headers` - modify headers
