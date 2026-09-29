@@ -54,9 +54,10 @@ spelled out in the tool's input schema. The resources are nodes, node sets,
 configs, values, secrets, elements, users, projects, organizations and roles.
 
 `get`, `update` and `delete` take the resource `uuid`; `list` takes the
-endpoint's filters, including `q`; `create` and `update` take the fields of
-the resource itself. Read-only fields, such as `project_id`, are not
-arguments — the API fills them in.
+endpoint's filters, including `q`, whose syntax the server sends once in
+its instructions (timestamps are filtered through `q` alone); `create` and
+`update` take the fields of the resource itself. Read-only fields, such as
+`project_id`, are not arguments — the API fills them in.
 
 ### Generic tools
 
@@ -70,7 +71,10 @@ Everything the resource tools do not cover is reachable through these.
 
 The endpoint list and the resource tools' schemas come from the same OpenAPI
 document as the [User API reference](../openapi/openapi_user.md), so they
-cannot drift from the API.
+cannot drift from the API. The resource tools leave out what only documents
+a field — examples, titles, string lengths and patterns; the API still
+checks them. `disk_spec` of nodes and node sets offers the root disk alone;
+several disks go through `call_api`.
 
 The first `tools/list`, `list_endpoints` or `describe_endpoint` call in each
 worker builds the document, which takes a few seconds.

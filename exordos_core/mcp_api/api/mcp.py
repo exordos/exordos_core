@@ -41,6 +41,7 @@ import uuid as uuid_module
 
 import bazooka
 from bazooka import exceptions as bazooka_exc
+from restalchemy.openapi import utils as ra_openapi_utils
 import webob
 from webob import dec
 
@@ -89,8 +90,35 @@ INSTRUCTIONS = (
     "most have their own tools, named <verb>_<resource>, with the fields "
     "spelled out. Anything else: find an endpoint with list_endpoints, read "
     "its parameters and body schema with describe_endpoint, then call it "
-    "with call_api. Calls run with your credentials and permissions."
+    "with call_api. Calls run with your credentials and permissions.\n\n"
+    # Every list tool takes `q`; the grammar is told once, here.
+    "The `q` argument of the list tools is a filter expression.\n"
+    + ra_openapi_utils.FILTER_LANG_DESCRIPTION
 )
+
+# Offered to the list tools with a line of its own; the grammar is in
+# INSTRUCTIONS rather than repeated in every tool.
+Q_FILTER = {
+    "type": "string",
+    "description": 'Filter expression, e.g. name = "vm1" AND cores > 2.',
+}
+
+# Filters left out of the list tools. An exact timestamp is no use as a
+# filter, `q` compares them; the users' secrets the API hides, but the
+# document lists as filters all the same.
+SKIPPED_FILTERS = frozenset(("created_at", "updated_at"))
+HIDDEN_FILTERS = {
+    "/v1/iam/users/": frozenset(
+        (
+            "salt",
+            "secret_hash",
+            "password",
+            "otp_secret",
+            "confirmation_code",
+            "confirmation_code_made_at",
+        )
+    ),
+}
 
 # Resources that get their own tools, as (name, collection, path parameter).
 # Every one of these is a plain REST collection: GET and POST on the
@@ -120,6 +148,50 @@ CURATED = {
     )
     for name, collection, parameter in RESOURCES
     for operation in OPERATIONS
+}
+
+# Schema keywords that document the API rather than help to call it; the
+# per-resource tools leave them out, and every "x-" extension with them.
+DOC_KEYWORDS = frozenset(("example", "title", "minLength", "maxLength", "pattern"))
+
+# Keywords whose value is a schema or a list of them, as opposed to data.
+SUBSCHEMA_KEYWORDS = frozenset(
+    ("items", "additionalProperties", "oneOf", "anyOf", "allOf", "not")
+)
+
+# How the document spells a value of any JSON type; it says no more than
+# the "object" it stands in, so it is left out.
+ANY_VALUE = {
+    "oneOf": [
+        {"type": "string"},
+        {"type": "integer"},
+        {"type": "boolean"},
+        {"type": "object"},
+        {"type": "array", "items": {}},
+    ]
+}
+
+# Body fields whose generated schema costs more to read than it is worth,
+# written out for the common case; call_api still takes the rest.
+FIELD_OVERRIDES = {
+    "disk_spec": {
+        "type": "object",
+        "description": (
+            "Root disk. For several disks, call the endpoint with call_api "
+            "and kind 'disks'; describe_endpoint shows that schema."
+        ),
+        "properties": {
+            "kind": {"type": "string", "enum": ["root_disk"]},
+            "image": {"type": "string", "description": "URL of the disk image."},
+            "size": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 10,
+                "description": "Size in GiB.",
+            },
+        },
+        "required": ["kind", "image"],
+    },
 }
 
 TOOLS = [
@@ -448,11 +520,7 @@ def _build_curated_tools(spec):
         else:
             properties, description = {}, ""
             if operation in ("get", "update", "delete"):
-                properties["uuid"] = {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": f"UUID of the {label}.",
-                }
+                properties["uuid"] = {"type": "string", "format": "uuid"}
                 required.append("uuid")
             if operation in ("create", "update"):
                 path, method = (
@@ -471,14 +539,18 @@ def _build_curated_tools(spec):
                 "update": f"Update a {label}. Pass only the fields to change.",
                 "delete": f"Delete a {label}.",
             }[operation]
+        input_schema = {
+            "type": "object",
+            "properties": {
+                name: _compact(schema) for name, schema in properties.items()
+            },
+        }
+        if required:
+            input_schema["required"] = required
         tool = {
             "name": tool_name,
             "description": description,
-            "inputSchema": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            },
+            "inputSchema": input_schema,
         }
         if operation in ("list", "get"):
             tool["annotations"] = {"readOnlyHint": True}
@@ -490,12 +562,20 @@ def _build_curated_tools(spec):
 
 def _query_properties(spec, collection):
     properties = {}
+    skipped = SKIPPED_FILTERS | HIDDEN_FILTERS.get(collection, frozenset())
     for parameter in _resolve(
         spec, spec["paths"][collection]["get"].get("parameters", []), ()
     ):
+        if parameter["name"] in skipped:
+            continue
+        if parameter["name"] == "q":
+            properties["q"] = Q_FILTER
+            continue
         schema = dict(parameter["schema"])
-        # A field is read-only on the resource but still a filter here.
+        # A field is read-only on the resource but still a filter here, and
+        # the resource's default is no default of the filter.
         schema.pop("readOnly", None)
+        schema.pop("default", None)
         if parameter.get("description"):
             schema["description"] = parameter["description"]
         properties[parameter["name"]] = schema
@@ -506,7 +586,7 @@ def _body_properties(spec, path, method):
     body = _resolve(spec, spec["paths"][path][method]["requestBody"], ())
     schema = body["content"]["application/json"]["schema"]
     properties = {
-        name: value
+        name: FIELD_OVERRIDES.get(name, value)
         for name, value in schema["properties"].items()
         if not value.get("readOnly")
     }
@@ -515,6 +595,34 @@ def _body_properties(spec, path, method):
     # and read-only on an update, where the API sets it itself.
     required = [name for name in schema.get("required", []) if name in properties]
     return properties, required
+
+
+def _compact(schema):
+    """Drop what documents a schema, keeping what a request is built from.
+
+    A tool's schema is read on every turn it is offered in, so examples,
+    titles and string limits cost more than they help a model; the API
+    still checks the limits.
+    """
+    if isinstance(schema, list):
+        return [_compact(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    compact = {}
+    for key, value in schema.items():
+        if key in DOC_KEYWORDS or key.startswith("x-"):
+            continue
+        # An empty default is what leaving the field out gives anyway.
+        if key == "default" and value in ("", [], {}):
+            continue
+        if key == "additionalProperties" and value == ANY_VALUE:
+            continue
+        if key == "properties":
+            value = {name: _compact(item) for name, item in value.items()}
+        elif key in SUBSCHEMA_KEYWORDS:
+            value = _compact(value)
+        compact[key] = value
+    return compact
 
 
 def _json_response(body, status=200):

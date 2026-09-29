@@ -521,3 +521,106 @@ class TestCuratedTools:
 
         assert is_error
         assert "cores must be of type integer" in text
+
+    def test_schemas_leave_out_documentation(self, application):
+        """Examples, titles and string limits are not sent to the model."""
+
+        def keywords(node):
+            if isinstance(node, list):
+                for item in node:
+                    yield from keywords(item)
+            elif isinstance(node, dict):
+                for key, value in node.items():
+                    yield key
+                    yield from keywords(value)
+
+        for tool in application._get_curated_tools().values():
+            found = set(keywords(tool["inputSchema"]))
+            assert not found & mcp.DOC_KEYWORDS, tool["name"]
+            assert not [key for key in found if key.startswith("x-")], tool["name"]
+
+    def test_schemas_keep_what_a_request_is_built_from(self, application):
+        properties = application._get_curated_tools()["create_node"]["inputSchema"][
+            "properties"
+        ]
+
+        assert properties["cores"] == {"type": "integer", "minimum": 1, "maximum": 4096}
+        assert properties["node_type"]["enum"] == ["HW", "VM"]
+        assert properties["node_type"]["default"] == "VM"
+        assert properties["hostname"]["nullable"] is True
+        assert properties["project_id"]["format"] == "uuid"
+
+    def test_compact_keeps_properties_named_like_keywords(self):
+        schema = {
+            "type": "object",
+            "example": {"pattern": "x"},
+            "properties": {"pattern": {"type": "string", "pattern": "^a$"}},
+        }
+
+        assert mcp._compact(schema) == {
+            "type": "object",
+            "properties": {"pattern": {"type": "string"}},
+        }
+
+    @pytest.mark.parametrize(
+        "tool", ["create_node", "update_node", "create_node_set", "update_node_set"]
+    )
+    def test_disk_spec_describes_the_root_disk(self, application, tool):
+        schema = application._get_curated_tools()[tool]["inputSchema"]
+
+        assert schema["properties"]["disk_spec"] == mcp.FIELD_OVERRIDES["disk_spec"]
+
+    def test_list_filters_have_no_defaults(self, application):
+        """A resource's default is not the filter's: status NEW is no filter."""
+        for name, tool in application._get_curated_tools().items():
+            if name.startswith("list_"):
+                for schema in tool["inputSchema"]["properties"].values():
+                    assert "default" not in schema, name
+
+    def test_list_filters_leave_out_timestamps(self, application):
+        properties = application._get_curated_tools()["list_nodes"]["inputSchema"][
+            "properties"
+        ]
+
+        assert "created_at" not in properties
+        assert "updated_at" not in properties
+        assert properties["q"] == mcp.Q_FILTER
+
+    def test_list_users_does_not_filter_by_secrets(self, application):
+        properties = application._get_curated_tools()["list_users"]["inputSchema"][
+            "properties"
+        ]
+
+        assert not set(properties) & mcp.HIDDEN_FILTERS["/v1/iam/users/"]
+        assert "email" in properties
+
+    def test_filter_grammar_is_in_the_instructions(self, application):
+        result = post(
+            application,
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        ).json["result"]
+
+        assert "AIP-160" in result["instructions"]
+
+    def test_compact_drops_empty_defaults_and_any_value(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "default": ""},
+                "mode": {"type": "string", "default": "0644"},
+                "variables": {
+                    "type": "object",
+                    "additionalProperties": mcp.ANY_VALUE,
+                    "default": {},
+                },
+            },
+        }
+
+        assert mcp._compact(schema) == {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "mode": {"type": "string", "default": "0644"},
+                "variables": {"type": "object"},
+            },
+        }
