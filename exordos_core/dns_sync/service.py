@@ -29,6 +29,7 @@ from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as c
+
 from exordos_core.user_api.dns.dm import models as dns_models
 from exordos_core.vs.dm import models as vs_models
 
@@ -615,7 +616,10 @@ class DNSSyncService(basic.BasicService):
         """Write local DNS domains to the file consumed by dnsdist-public."""
         # Fetch only domain names, not full models
         with dns_models.Domain._get_engine().session_manager() as session:
-            rows = session.execute("SELECT name FROM dns_domains").fetchall()
+            # Skip domains of the elements (EM) project
+            rows = session.execute(
+                f"SELECT name FROM dns_domains WHERE project_id <> '{c.EM_PROJECT_ID}'"
+            ).fetchall()
         names = sorted({row["name"].strip().rstrip(".").lower() for row in rows})
         # Suffix matching already covers subdomains, so keep only top-level ones
         name_set = set(names)
