@@ -18,13 +18,12 @@ from unittest import mock
 
 import pytest
 
-from exordos_core.common import constants as c
 from exordos_core.dns_sync import service as dns_sync_service
 
 
 @pytest.fixture
 def domains_file(tmp_path, monkeypatch):
-    path = tmp_path / "etc" / "dnsdist" / "privatedns-domains.txt"
+    path = tmp_path / "etc" / "dnsdist" / "publicdns-domains.txt"
     monkeypatch.setattr(dns_sync_service, "DNSDIST_DOMAINS_FILE", str(path))
     return path
 
@@ -69,14 +68,15 @@ def test_names_are_normalized(svc, domains_file, monkeypatch):
     assert domains_file.read_text() == "exordos.io\nmetronom.su\n"
 
 
-def test_em_project_is_excluded_in_query(svc, domains_file, monkeypatch):
+def test_public_tag_is_required_in_query(svc, domains_file, monkeypatch):
     session = _mock_domains(monkeypatch, ["exordos.io"])
 
     svc._write_dnsdist_domains()
 
-    query = session.execute.call_args.args[0]
-    assert str(c.EM_PROJECT_ID) in query
-    assert "<>" in query
+    query, params = session.execute.call_args.args
+    assert "tags @> %s::text[]" in query
+    assert "project_id" not in query
+    assert params == (["public"],)
 
 
 def test_unchanged_content_is_not_rewritten(svc, domains_file, monkeypatch):

@@ -40,7 +40,7 @@ DNS_SYNC_POOL_SIZE = 1
 FULL_SYNC_INTERVAL = 60
 # dnsdist-public.conf re-reads this file and routes the listed domains
 # to the "privatedns" pool.
-DNSDIST_DOMAINS_FILE = "/etc/dnsdist/privatedns-domains.txt"
+DNSDIST_DOMAINS_FILE = "/etc/dnsdist/publicdns-domains.txt"
 
 # Unsupported expressions return 400; older field filters return
 # KeyError('q') with 500. Other server failures must remain errors.
@@ -616,9 +616,10 @@ class DNSSyncService(basic.BasicService):
         """Write local DNS domains to the file consumed by dnsdist-public."""
         # Fetch only domain names, not full models
         with dns_models.Domain._get_engine().session_manager() as session:
-            # Skip domains of the elements (EM) project
+            # Select domains tagged public
             rows = session.execute(
-                f"SELECT name FROM dns_domains WHERE project_id <> '{c.EM_PROJECT_ID}'"
+                "SELECT name FROM dns_domains WHERE tags @> %s::text[]",
+                (["public"],),
             ).fetchall()
         names = sorted({row["name"].strip().rstrip(".").lower() for row in rows})
         # Suffix matching already covers subdomains, so keep only top-level ones
