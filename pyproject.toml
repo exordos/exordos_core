@@ -74,7 +74,7 @@ mypy = [
     "mypy",
 ]
 ruff = [
-    "ruff",
+    "ruff>=0.16.0,<0.17.0",  # MIT License
 ]
 shellcheck = [
     "shellcheck-py",
@@ -123,7 +123,7 @@ line-length = 88
 indent-width = 4
 # Assume Python 3.10
 target-version = "py310"
-[lint]
+[tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
 select = ["E4", "E7", "E9", "F"]
 ignore = []
@@ -132,7 +132,7 @@ fixable = ["ALL"]
 unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-[format]
+[tool.ruff.format]
 # Like Black, use double quotes for strings.
 quote-style = "double"
 # Like Black, indent with spaces, rather than tabs.
