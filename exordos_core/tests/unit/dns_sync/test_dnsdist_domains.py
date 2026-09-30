@@ -74,9 +74,9 @@ def test_em_project_is_excluded_in_query(svc, domains_file, monkeypatch):
 
     svc._write_dnsdist_domains()
 
-    query = session.execute.call_args.args[0]
-    assert str(c.EM_PROJECT_ID) in query
-    assert "<>" in query
+    query, params = session.execute.call_args.args
+    assert "project_id <> %s" in query
+    assert params == (str(c.EM_PROJECT_ID),)
 
 
 def test_unchanged_content_is_not_rewritten(svc, domains_file, monkeypatch):

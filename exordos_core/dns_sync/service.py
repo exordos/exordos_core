@@ -470,7 +470,8 @@ class DNSSyncService(basic.BasicService):
         with dns_models.Domain._get_engine().session_manager() as session:
             # Skip domains of the elements (EM) project
             rows = session.execute(
-                f"SELECT name FROM dns_domains WHERE project_id <> '{c.EM_PROJECT_ID}'"
+                "SELECT name FROM dns_domains WHERE project_id <> %s",
+                (str(c.EM_PROJECT_ID),),
             ).fetchall()
         names = sorted({row["name"].strip().rstrip(".").lower() for row in rows})
         # Suffix matching already covers subdomains, so keep only top-level ones
