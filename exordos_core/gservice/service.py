@@ -47,6 +47,8 @@ from exordos_core.dns_sync import service as dns_sync_service
 from exordos_core.elements.builders import service as service_builder_svc
 from exordos_core.elements.services import builders as em_builders
 from exordos_core.janitor import service as janitor_service
+from exordos_core.metrics import opts as metrics_opts
+from exordos_core.metrics import service as metrics_service
 from exordos_core.network import service as n_network_service
 from exordos_core.network.border.builders import iaas as net_border_iaas
 from exordos_core.network.border.builders import paas as net_border_paas
@@ -227,6 +229,15 @@ class GeneralService(basic.BasicService):
             iter_min_period=iter_min_period * 2,
         )
 
+        # Platform state metrics for the observability dashboards
+        if CONF[metrics_opts.DOMAIN].enabled:
+            state_metrics = metrics_service.StateMetricsService(
+                textfile_path=CONF[metrics_opts.DOMAIN].textfile_path,
+                iter_min_period=CONF[metrics_opts.DOMAIN].period,
+            )
+        else:
+            state_metrics = None
+
         self._services = [
             vs_builder_service,
             set_builder,
@@ -254,6 +265,8 @@ class GeneralService(basic.BasicService):
             janitor,
             telemetry,
         ]
+        if state_metrics is not None:
+            self._services.append(state_metrics)
         if event_sender is not None:
             self._services.append(event_sender)
         self._next_run_times = {id(s): 0 for s in self._services}

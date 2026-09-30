@@ -25,6 +25,7 @@ from restalchemy.storage.sql import engines
 from exordos_core.common import config
 from exordos_core.common import log as infra_log
 from exordos_core.gservice.service import GeneralService
+from exordos_core.metrics import opts as metrics_opts
 
 DOMAIN = "gservice"
 
@@ -51,6 +52,7 @@ ra_config_opts.register_posgresql_db_opts(CONF)
 sdk_opts.register_event_opts(CONF)
 
 CONF.register_cli_opts(cli_opts, DOMAIN)
+metrics_opts.register_state_metrics_opts(CONF)
 
 
 def main():
