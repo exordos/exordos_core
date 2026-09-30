@@ -310,9 +310,7 @@ CORE_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/exordos_core.con
 UA_CONFIG_DATA_PATH = (
     "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
 )
-CORE_AGENT_CONFIG_DATA_PATH = (
-    "/var/lib/exordos/data/etc/exordos_core/core_agent.conf"
-)
+CORE_AGENT_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/core_agent.conf"
 
 _LAUNCHPAD_SECTION = """\
 [launchpad]
