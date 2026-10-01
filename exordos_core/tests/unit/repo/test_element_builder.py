@@ -132,6 +132,11 @@ class TestVersionKey:
 
 
 class TestVersionSortKey:
+    def test_latest_sorts_after_concrete_versions(self):
+        assert builder_element._version_sort_key("0.0.0-dev") < (
+            builder_element._version_sort_key("latest")
+        )
+
     def test_release_sorts_before_dev(self):
         """Release versions should sort before dev versions (lower key = higher priority)."""
         release_key = builder_element._version_sort_key("1.0.0")
