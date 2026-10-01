@@ -147,7 +147,7 @@ class RepoElement(models.RepoElement, ua_models.InstanceWithDerivativesMixin):
 
 
 def _parse_version(version: str) -> tuple[int, int, int, bool, str]:
-    match = _VERSION_RE.match(version)
+    match = _VERSION_RE.match(version.split("+", 1)[0])
     if not match:
         raise ValueError(f"Invalid version format: {version}")
     major = int(match.group("major"))
