@@ -615,6 +615,8 @@ installations remain part of bootstrap. Names already installed in the admin pro
 including installations still in progress. For each remaining name, bootstrap
 selects a new or available element in the admin project using the dependency selection
 order: higher repository priority, release versions, then higher version numbers.
+Within the same repository priority, the floating `latest` alias is a fallback
+after concrete release and development versions.
 Bootstrap marks a selected new element available as part of the installation
 request; the element builder still resolves dependencies and creates resources.
 If an element is missing or installation fails, the existing bootstrap retry
