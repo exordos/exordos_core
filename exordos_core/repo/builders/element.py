@@ -162,7 +162,10 @@ def _version_key(version: str) -> tuple[int, int, int, bool, str]:
     return _parse_version(version)
 
 
-def _version_sort_key(version: str) -> tuple[bool, int, int, int, str]:
+def _version_sort_key(version: str) -> tuple[int, int, int, int, str]:
+    # Prefer concrete versions to the repository's floating alias.
+    if version == "latest":
+        return (2, 0, 0, 0, "")
     major, minor, patch, is_release, suffix = _parse_version(version)
     return (not is_release, -major, -minor, -patch, suffix)
 
