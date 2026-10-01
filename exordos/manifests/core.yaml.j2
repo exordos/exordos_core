@@ -518,6 +518,14 @@ resources:
       uuid: "3e2c70c3-6355-531d-bb59-a5727b777d3b"
       name: "repo.repository.read"
       description: "List and read repositories"
+    repo_repository_refresh:
+      uuid: "7591152b-8930-5263-b7f1-1aa1eee1d124"
+      name: "repo.repository.refresh"
+      description: "Refresh repositories"
+    repo_repository_refresh_all:
+      uuid: "ec009821-6d32-5b10-a1ac-ec0892c500d7"
+      name: "repo.repository.refresh_all"
+      description: "Refresh the shared repositories of the admin project"
     repo_element_read:
       uuid: "553648f2-0dbc-55bf-80d4-79a6938c0ebf"
       name: "repo.element.read"
@@ -818,6 +826,12 @@ resources:
     binding_owner_repo_repository_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$repo_repository_read:uuid"
+    binding_owner_repo_repository_refresh:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_refresh:uuid"
+    binding_owner_repo_repository_refresh_all:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$repo_repository_refresh_all:uuid"
     binding_owner_repo_element_read:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$repo_element_read:uuid"

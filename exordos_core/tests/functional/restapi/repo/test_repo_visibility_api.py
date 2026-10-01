@@ -16,7 +16,8 @@
 
 """A project scoped user reads the repositories of their project and of the
 admin project, which holds the realm's shared ones, but writes only their
-own."""
+own. repo.repository.refresh_all is the one exception: it refreshes a shared
+repository too."""
 
 import uuid as sys_uuid
 
@@ -29,13 +30,13 @@ from exordos_core.repo.dm import models as repo_models
 REPOS = ["repo", "repositories"]
 
 
-def _repository(project_id, name):
+def _repository(project_id, name, **spec):
     # driver_spec is unique across repositories.
     uid = sys_uuid.uuid4()
     repo = repo_models.Repository(
         name=f"{name}-{uid}",
         project_id=project_id,
-        driver_spec=repo_models.NginxDriverSpec(url=f"http://repo.test/{uid}/"),
+        driver_spec=repo_models.NginxDriverSpec(url=f"http://repo.test/{uid}/", **spec),
         refresh_rate=3600,
     )
     repo.insert()
@@ -62,6 +63,20 @@ def repos(auth_test1_p1_user):
 def client(user_api_client, auth_test1_p1_user):
     # The project's creator holds the owner role, which grants repo.*.
     return user_api_client(auth_test1_p1_user)
+
+
+@pytest.fixture
+def refresh_all_client(user_api_client, auth_test1_p1_user):
+    # The core manifest binds refresh_all to the owner role. The test
+    # database is built from the migrations, which seed no such binding,
+    # so the permission is granted here instead.
+    # The role is bound in the project the token is scoped to: introspection
+    # collects the permissions of that project's role bindings only.
+    return user_api_client(
+        auth_test1_p1_user,
+        permissions=["repo.repository.refresh_all"],
+        project_id=auth_test1_p1_user.project_id,
+    )
 
 
 def _uuids(response):
@@ -107,6 +122,50 @@ class TestRepositoryVisibility:
             }
 
         assert _status(client.post, url, json=body) == 403
+
+    def test_refresh_all_refreshes_an_admin_repository(self, refresh_all_client, repos):
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repos["admin"].uuid), "actions/refresh/invoke"]
+        )
+
+        assert _status(refresh_all_client.post, url, json={}) == 200
+
+    def test_refresh_keeps_the_stored_credentials(self, refresh_all_client):
+        # get() redacts driver_spec on the loaded model, and an update writes
+        # every data property back, so a refresh must not persist the "***".
+        repo = _repository(
+            c.ZERO_UUID, "admin-with-credentials", username="admin", password="s3cret"
+        )
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repo.uuid), "actions/refresh/invoke"]
+        )
+
+        assert _status(refresh_all_client.post, url, json={}) == 200
+
+        stored = repo_models.Repository.objects.get_one(filters={"uuid": repo.uuid})
+        assert stored.driver_spec.username == "admin"
+        assert stored.driver_spec.password == "s3cret"
+
+    def test_refresh_all_grants_no_upload(self, refresh_all_client, repos):
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repos["admin"].uuid), "actions/upload/invoke"]
+        )
+        body = {
+            "element_name": "e",
+            "element_version": "1.0.0",
+            "manifest": {"name": "e", "version": "1.0.0", "resources": {}},
+        }
+
+        assert _status(refresh_all_client.post, url, json=body) == 403
+
+    def test_refresh_all_reaches_no_invisible_repository(
+        self, refresh_all_client, repos
+    ):
+        url = refresh_all_client.build_resource_uri(
+            REPOS + [str(repos["other"].uuid), "actions/refresh/invoke"]
+        )
+
+        assert _status(refresh_all_client.post, url, json={}) == 404
 
     def test_own_repository_can_still_be_refreshed(self, client, repos):
         url = client.build_resource_uri(
