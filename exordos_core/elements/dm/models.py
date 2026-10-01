@@ -1155,6 +1155,17 @@ class ElementEngine:
         if not self.full_schema:
             self.full_schema = utils.load_full_manifest_schema()
 
+    def load_elements(self) -> None:
+        """Load only the elements, leaving their namespaces empty.
+
+        Enough to tell which element provides a resource, at a fraction of
+        the cost of `load_from_database`, which reads every resource too.
+        """
+        self._namespaces = {}
+        self._resource_exports = {}
+        for element in Element.objects.get_all():
+            self.add_element(element)
+
     def get_namespace(self, name: str) -> Namespace:
         try:
             return self._namespaces[name]
