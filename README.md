@@ -44,6 +44,10 @@ curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 
 Then follow the instructions in the terminal, or refer to the [documentation](https://exordos.github.io/exordos_core/) for a full setup guide.
 
+Bootstrap also installs elements named in the spec's `elements` list, for example
+`"elements": ["dbaas", "s3aas"]`, from the connected repositories. Elements
+already installed are skipped. See [bootstrap element installation](docs/core-developer-guide/repo-proxy.md#bootstrap-element-installation).
+
 # 💡 Contributing
 
 Contributing to the project is highly appreciated! However, some rules should be followed for successful inclusion of new changes in the project:
