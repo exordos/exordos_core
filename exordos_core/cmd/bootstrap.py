@@ -865,6 +865,7 @@ def _install_elements_from_spec(spec: dict[str, tp.Any]) -> None:
         installed = repo_models.RepoElement.objects.get_all(
             filters={
                 "name": dm_filters.EQ(name),
+                "project_id": dm_filters.EQ(c.ZERO_UUID),
                 "installation_state": dm_filters.EQ(
                     repo_models.RepoElementInstallationState.INSTALLED.value
                 ),
