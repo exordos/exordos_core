@@ -58,6 +58,9 @@ def test_skips_installed_element():
         objects.get_all.return_value = [element]
         bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
     assert objects.get_all.call_count == 1
+    assert objects.get_all.call_args.kwargs["filters"][
+        "project_id"
+    ] == bootstrap.dm_filters.EQ(bootstrap.c.ZERO_UUID)
     element.install.assert_not_called()
 
 
@@ -113,3 +116,13 @@ def test_install_failure_propagates_for_bootstrap_retry():
         objects.get_all.side_effect = [[], [element]]
         with pytest.raises(RuntimeError, match="install failed"):
             bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
+
+
+def test_lower_priority_build_metadata_does_not_block_installation():
+    preferred = _element("2.0.0", 2048)
+    other = _element("1.0.0+build.123", 1024)
+    with mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as objects:
+        objects.get_all.side_effect = [[], [other, preferred]]
+        bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
+    preferred.install.assert_called_once_with()
+    other.install.assert_not_called()
