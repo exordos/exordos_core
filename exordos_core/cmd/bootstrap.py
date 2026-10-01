@@ -41,6 +41,7 @@ from exordos_core.common import exceptions as common_exc
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
+from exordos_core.repo.builders import element as repo_element_builder
 from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
@@ -858,6 +859,43 @@ def _ensure_repositories_from_spec(spec: dict[str, tp.Any]) -> None:
             LOG.exception("Failed to ensure repository %s (%s)", repo_name, repo_url)
 
 
+def _install_elements_from_spec(spec: dict[str, tp.Any]) -> None:
+    """Idempotently install named elements from the connected repositories."""
+    for name in spec.get("elements", []):
+        installed = repo_models.RepoElement.objects.get_all(
+            filters={
+                "name": dm_filters.EQ(name),
+                "installation_state": dm_filters.EQ(
+                    repo_models.RepoElementInstallationState.INSTALLED.value
+                ),
+            }
+        )
+        if installed:
+            LOG.info("Element %s already installed, skipping", name)
+            continue
+
+        candidates = repo_models.RepoElement.objects.get_all(
+            filters={
+                "name": dm_filters.EQ(name),
+                "project_id": dm_filters.EQ(c.ZERO_UUID),
+                "status": dm_filters.In(
+                    [
+                        repo_models.RepoElementStatus.NEW,
+                        repo_models.RepoElementStatus.AVAILABLE,
+                    ]
+                ),
+            }
+        )
+        if not candidates:
+            raise RuntimeError(f"Unable to find available element {name}")
+
+        element = min(candidates, key=repo_element_builder._element_sort_key)
+        if element.status == repo_models.RepoElementStatus.NEW:
+            element.status = repo_models.RepoElementStatus.AVAILABLE.value
+        element.install()
+        LOG.info("Requested installation of element %s (%s)", name, element.version)
+
+
 def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
     """Idempotent element manifest installation."""
     migration_repo = repo_models.Repository.objects.get_one_or_none(
@@ -1011,6 +1049,7 @@ def main() -> None:
             _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
             _set_defaults_vs(spec)
+            _install_elements_from_spec(spec)
             return
         except Exception:
             LOG.exception("Unable to perform bootstrap, retrying...")

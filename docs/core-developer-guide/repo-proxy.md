@@ -28,6 +28,29 @@ process, which hosts three services:
 3. **RepoElementAgentService** — universal agent that translates
    `repo_proxy_installed_element` resources into EM manifests and elements.
 
+## Bootstrap element installation
+
+The bootstrap spec (`/mnt/cdrom/spec.json`) may include an optional list of
+element names:
+
+```json
+{
+    "elements": ["dbaas", "s3aas"]
+}
+```
+
+Bootstrap installs these elements after connecting the repositories from the
+spec and setting the core defaults. The built-in `core` and `ecosystem_realm`
+installations remain part of bootstrap. Already installed names are skipped,
+including installations still in progress. For each remaining name, bootstrap
+selects a new or available element in the admin project using the dependency selection
+order: higher repository priority, release versions, then higher version numbers.
+Bootstrap marks a selected new element available as part of the installation
+request; the element builder still resolves dependencies and creates resources.
+If an element is missing or installation fails, the existing bootstrap retry
+loop retries according to `retry_on_error`. Installation is asynchronous; bootstrap
+requests installation without waiting for the element's resources to become active.
+
 ## Data Models
 
 All models are defined in `exordos_core/repo/dm/models.py` and persisted in
