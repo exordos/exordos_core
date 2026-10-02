@@ -687,7 +687,13 @@ class Resource(
 
         result_value = self.get_actual_state_safe()
         for part in resource_parameter_path:
-            result_value = result_value[part]
+            try:
+                result_value = result_value[part]
+            except KeyError:
+                raise KeyError(
+                    f"`{self.link}:{':'.join(resource_parameter_path)}`"
+                    f" has no field `{part}`"
+                )
         return result_value
 
     def get_actual_state_safe(self):
@@ -857,9 +863,9 @@ class Resource(
             target_state = self.render_target_state()
         except KeyError as e:
             LOG.warning(
-                "Target state is not available for resource %s by reason: %r",
+                "Target state is not available for resource %s by reason: %s",
                 self,
-                str(e),
+                e.args[0] if e.args else repr(e),
             )
             return
         self.actual_resource = self._find_actual_resource()
