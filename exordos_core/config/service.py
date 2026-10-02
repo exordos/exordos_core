@@ -24,6 +24,7 @@ from gcl_looper.services import basic
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage import exceptions as storage_exc
 from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.common import constants as c
@@ -114,12 +115,6 @@ class ConfigServiceBuilder(basic.BasicService):
         if len(target_nodes) == 0:
             return
 
-        agents = ua_models.UniversalAgent.objects.get_all(
-            filters={"uuid": dm_filters.In(str(node.uuid) for node in target_nodes)}
-        )
-        if {agent.uuid for agent in agents} != {node.uuid for node in target_nodes}:
-            return
-
         config_resource = config.to_ua_resource(cc.CONFIG_KIND)
         config_resource.insert()
 
@@ -171,6 +166,19 @@ class ConfigServiceBuilder(basic.BasicService):
             try:
                 with sql_utils.savepoint():
                     self._actualize_new_config(config, target_nodes)
+            except storage_exc.ConflictRecords as exc:
+                db_error = getattr(exc.__context__, "__context__", None)
+                diag = getattr(db_error, "diag", None)
+                if (
+                    getattr(db_error, "sqlstate", None) == "23503"
+                    and getattr(diag, "constraint_name", None)
+                    == "ua_target_resources_agent_fkey"
+                ):
+                    LOG.debug(
+                        "Config %s is waiting for agent registration", config.uuid
+                    )
+                else:
+                    LOG.exception("Error actualizing config %s", config.uuid)
             except Exception:
                 LOG.exception("Error actualizing config %s", config.uuid)
 
