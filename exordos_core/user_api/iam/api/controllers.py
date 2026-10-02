@@ -1005,7 +1005,7 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                     ctx.get_user_ip(),
                 )
                 raise
-            LOG.info(
+            LOG.debug(
                 "IAM AUDIT: login success user=%s uuid=%s wildcard=%s ip=%s",
                 token.user.name,
                 token.user.uuid,
@@ -1026,7 +1026,7 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                     ctx.get_user_ip(),
                 )
                 raise
-            LOG.info(
+            LOG.debug(
                 "IAM AUDIT: login success user=%s uuid=%s wildcard=%s ip=%s",
                 token.user.name,
                 token.user.uuid,
@@ -1046,7 +1046,7 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                     ctx.get_user_ip(),
                 )
                 raise
-            LOG.info(
+            LOG.debug(
                 "IAM AUDIT: login success user=%s uuid=%s wildcard=%s ip=%s",
                 token.user.name,
                 token.user.uuid,
