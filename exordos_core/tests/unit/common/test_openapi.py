@@ -74,7 +74,9 @@ class TestBuildSpecification:
 
     def test_leaves_the_element_engine_alone(self):
         loader = element_models.element_engine.load_from_database
+        elements_loader = element_models.element_engine.load_elements
 
         openapi.build(openapi.STATUS_API)
 
         assert element_models.element_engine.load_from_database == loader
+        assert element_models.element_engine.load_elements == elements_loader

@@ -131,12 +131,15 @@ def _spec_build_environment() -> tp.Iterator[None]:
 
     element_engine = element_models.element_engine
     load_from_database = element_engine.load_from_database
+    load_elements = element_engine.load_elements
     element_engine.load_from_database = lambda: None
+    element_engine.load_elements = lambda: None
     try:
         with context.context_manager():
             yield
     finally:
         element_engine.load_from_database = load_from_database
+        element_engine.load_elements = load_elements
 
 
 def _build_request(application: tp.Any) -> webob.Request:
