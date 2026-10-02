@@ -429,7 +429,6 @@ class RepoElement(
         ra_types.Boolean(),
         default=False,
     )
-
     latest = properties.property(
         ra_types.Boolean(),
         default=False,

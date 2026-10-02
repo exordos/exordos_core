@@ -527,6 +527,17 @@ components:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
           type: string
+        realm_id:
+          example: ^[a-z0-9]{1,63}$
+          nullable: true
+          pattern: ^[a-z0-9]{1,63}$
+          readOnly: true
+          type: string
+        sync_only:
+          default: false
+          example: true
+          readOnly: true
+          type: boolean
         sync_to_ecosystem:
           default: false
           example: true
@@ -1060,6 +1071,18 @@ components:
               kind:
                 enum:
                 - core_agent
+                type: string
+            type: object
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - node
+                type: string
+              node:
+                example: 00000000-0000-0000-0000-000000000000
+                format: uuid
                 type: string
             type: object
           type: object
@@ -2353,6 +2376,10 @@ components:
           type: boolean
         domain:
           type: string
+        full_name:
+          example: any_string
+          readOnly: true
+          type: string
         name:
           example: any_string
           readOnly: true
@@ -2833,6 +2860,17 @@ components:
                   - example:
                       key: value
                     properties:
+                      dav_methods:
+                        default: []
+                        example:
+                        - PUT
+                        items:
+                          enum:
+                          - DELETE
+                          - PUT
+                          example: PUT
+                          type: string
+                        type: array
                       is_spa:
                         default: true
                         example: true
@@ -2964,6 +3002,20 @@ components:
                         minLength: 1
                         type: string
                     type: object
+                  - example:
+                      key: value
+                    properties:
+                      kind:
+                        enum:
+                        - auth_request
+                        type: string
+                      path:
+                        example: ^/[A-Za-z0-9._~/-]*$
+                        pattern: ^/[A-Za-z0-9._~/-]*$
+                        type: string
+                      pool:
+                        type: string
+                    type: object
                   type: object
                 type: array
               value:
@@ -3039,6 +3091,17 @@ components:
                   - example:
                       key: value
                     properties:
+                      dav_methods:
+                        default: []
+                        example:
+                        - PUT
+                        items:
+                          enum:
+                          - DELETE
+                          - PUT
+                          example: PUT
+                          type: string
+                        type: array
                       is_spa:
                         default: true
                         example: true
@@ -3170,6 +3233,20 @@ components:
                         minLength: 1
                         type: string
                     type: object
+                  - example:
+                      key: value
+                    properties:
+                      kind:
+                        enum:
+                        - auth_request
+                        type: string
+                      path:
+                        example: ^/[A-Za-z0-9._~/-]*$
+                        pattern: ^/[A-Za-z0-9._~/-]*$
+                        type: string
+                      pool:
+                        type: string
+                    type: object
                   type: object
                 type: array
               value:
@@ -3245,6 +3322,17 @@ components:
                   - example:
                       key: value
                     properties:
+                      dav_methods:
+                        default: []
+                        example:
+                        - PUT
+                        items:
+                          enum:
+                          - DELETE
+                          - PUT
+                          example: PUT
+                          type: string
+                        type: array
                       is_spa:
                         default: true
                         example: true

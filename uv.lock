@@ -766,7 +766,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.0,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.6.1,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.6.4,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -869,7 +869,7 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.6.1"
+version = "3.6.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -883,9 +883,9 @@ dependencies = [
     { name = "restalchemy" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/94/1f/4019cc7476e279435c0f81561028539cb8afc8fc98a20957a81d3624e571/gcl_sdk-3.6.1.tar.gz", hash = "sha256:677982e095acfc5eb1a34817e7c2dd4f525f027e6a0a9360597c99d78dcd2abc", size = 363481, upload-time = "2026-09-09T10:07:51.55Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/52/7b752796520148bc52d7ae00c4f41307e74c974682b1ae2d769cb89adac5/gcl_sdk-3.6.4.tar.gz", hash = "sha256:7f30b378df4a05a85185884780d6aace0959f2252014517fe9099c302a84022a", size = 373166, upload-time = "2026-09-25T09:38:17.03Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/c4/b2f455c71a03d47e347f88aa97dd393bedff2ec0427a569bb99d4a47dd82/gcl_sdk-3.6.1-py3-none-any.whl", hash = "sha256:3cb0fa077a0e7c20c28f8f2db6aa0e77cb77c8a926bc9722f28e139e21375d2d", size = 316725, upload-time = "2026-09-09T10:07:49.749Z" },
+    { url = "https://files.pythonhosted.org/packages/17/7b/480f3e2b47b227cc746afe5dacd735a6db02e1f7e352616a3e9e16d9628b/gcl_sdk-3.6.4-py3-none-any.whl", hash = "sha256:f9c1154686404596fb1ef60a53f0bc266e5dbbf7389d9e500ae9236203cc0b58", size = 328828, upload-time = "2026-09-25T09:38:15.497Z" },
 ]
 
 [package.optional-dependencies]

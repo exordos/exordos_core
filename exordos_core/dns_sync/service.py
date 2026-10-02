@@ -38,7 +38,7 @@ FULL_SYNC_INTERVAL = 60
 
 
 class DNSSyncService(basic.BasicService):
-    """Periodically syncs local DNS records to the ecosystem."""
+    """Publishes realm-scoped logical DNS records through Ecosystem."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -46,11 +46,10 @@ class DNSSyncService(basic.BasicService):
         self._executor = futures.ThreadPoolExecutor(max_workers=DNS_SYNC_POOL_SIZE)
         self._pending_future = None
         self._initialized = False
-        self._last_full_sync_at = FULL_SYNC_INTERVAL + 1  # sync immediately on start
-        self._last_fast_sync_dt = None
+        self._last_full_sync_at = FULL_SYNC_INTERVAL + 1
+        self._last_sync_dt = None
 
     def _get_variable_value(self, var_uuid):
-        """Read variable value from ValuesStore by UUID."""
         variable = vs_models.Variable.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(var_uuid)}
         )
@@ -59,132 +58,109 @@ class DNSSyncService(basic.BasicService):
         return variable.value
 
     def _get_ecosystem_credentials(self):
-        """Read ecosystem endpoint, stand UUID, secret and token from VS."""
         endpoint = self._get_variable_value(c.VAR_ECOSYSTEM_ENDPOINT_UUID)
         realm_uuid = self._get_variable_value(c.VAR_REALM_UUID_UUID)
         realm_secret = self._get_variable_value(c.VAR_REALM_SECRET_UUID)
-        access_token = self._get_variable_value(c.VAR_REALM_ACCESS_TOKEN_UUID)
-        if not all([endpoint, realm_uuid, realm_secret, access_token]):
+        if not all([endpoint, realm_uuid, realm_secret]):
             return None
-        return endpoint, realm_uuid, realm_secret, access_token
-
-    def _make_basic_auth(self, realm_uuid, realm_secret):
-        return requests_auth.HTTPBasicAuth(realm_uuid, realm_secret)
+        return endpoint, realm_uuid, realm_secret
 
     @staticmethod
-    def _bearer_headers(access_token):
-        return {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
-
-    # ------------------------------------------------------------------
-    # Ecosystem HTTP helpers
-    # ------------------------------------------------------------------
+    def _make_basic_auth(realm_uuid, realm_secret):
+        return requests_auth.HTTPBasicAuth(realm_uuid, realm_secret)
 
     def _eco_get_realm(self, endpoint, realm_uuid, auth):
-        """GET /api/ecosystem/v1/realms/{realm_uuid} -> realm dict."""
         url = f"{endpoint}/api/ecosystem/v1/realms/{realm_uuid}"
-        resp = self._client.get(url, auth=auth)
-        return resp.json()
+        return self._client.get(url, auth=auth).json()
 
-    def _eco_list_domains(self, endpoint, headers):
-        """GET /api/core/v1/dns/domains/ -> list of domains."""
-        url = f"{endpoint}/api/core/v1/dns/domains/"
-        resp = self._client.get(url, headers=headers)
-        return resp.json()
-
-    def _eco_create_domain(self, endpoint, headers, name):
-        """POST /api/core/v1/dns/domains/"""
-        url = f"{endpoint}/api/core/v1/dns/domains/"
-        resp = self._client.post(
-            url,
-            json={"name": name},
-            headers=headers,
-        )
-        return resp.json()
-
-    def _eco_list_records(self, endpoint, headers, eco_domain_uuid):
-        """GET /api/core/v1/dns/domains/{uuid}/records/"""
-        url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
-        resp = self._client.get(url, headers=headers)
-        return resp.json()
-
-    def _eco_create_record(self, endpoint, headers, eco_domain_uuid, record_data):
-        """POST /api/core/v1/dns/domains/{uuid}/records/"""
-        url = f"{endpoint}/api/core/v1/dns/domains/{eco_domain_uuid}/records/"
+    def _eco_sync_domain(self, endpoint, realm_uuid, auth, domain, records):
+        url = f"{endpoint}/api/ecosystem/v1/realms/{realm_uuid}/actions/sync_dns/invoke"
         self._client.post(
             url,
-            json=record_data,
-            headers=headers,
+            auth=auth,
+            json={
+                "domain": {
+                    "name": domain.name,
+                    "realm_id": domain.realm_id,
+                },
+                "records": records,
+            },
         )
 
-    def _eco_update_record(
-        self, endpoint, headers, eco_domain_uuid, record_uuid, record_data
-    ):
-        """PUT /api/core/v1/dns/domains/{uuid}/records/{rid}"""
-        url = (
-            f"{endpoint}/api/core/v1"
-            f"/dns/domains/{eco_domain_uuid}/records/{record_uuid}"
+    def _realm_domains(self):
+        domains = dns_models.Domain.objects.get_all(
+            filters={"sync_to_ecosystem": dm_filters.EQ(True)}
         )
-        self._client.put(
-            url,
-            json=record_data,
-            headers=headers,
-        )
+        return [domain for domain in domains if domain.realm_id is not None]
 
-    def _eco_delete_record(self, endpoint, headers, eco_domain_uuid, record_uuid):
-        """DELETE /api/core/v1/dns/domains/{uuid}/records/{rid}"""
-        url = (
-            f"{endpoint}/api/core/v1"
-            f"/dns/domains/{eco_domain_uuid}/records/{record_uuid}"
-        )
-        self._client.delete(url, headers=headers)
+    def _ensure_realm_domain(self, endpoint, realm_uuid, auth):
+        domains = self._realm_domains()
+        if domains:
+            return True
 
-    # ------------------------------------------------------------------
-    # Initialization: fetch realm domain, mark local domain for sync
-    # ------------------------------------------------------------------
-
-    def _ensure_realm_domain(self, endpoint, realm_uuid, basic_auth):
-        """Fetch realm domain from ecosystem and ensure it exists locally
-        with sync_to_ecosystem=True.
-        """
-        realm = self._eco_get_realm(endpoint, realm_uuid, basic_auth)
-        realm_domain_name = realm.get("domain")
-        if not realm_domain_name:
-            LOG.warning("Realm has no domain field, skipping init")
+        realm = self._eco_get_realm(endpoint, realm_uuid, auth)
+        realm_id = realm.get("realm_id")
+        realm_domain = (realm.get("domain") or "").lower().rstrip(".")
+        if not realm_id or not realm_domain:
+            LOG.warning("Realm has no realm_id/domain DNS contract")
             return False
 
-        LOG.info("Realm domain: %s", realm_domain_name)
+        prefix = f"{realm_id}."
+        if not realm_domain.startswith(prefix):
+            raise ValueError("Ecosystem realm domain does not match realm_id")
+        domain_name = realm_domain.removeprefix(prefix)
 
         domain = dns_models.Domain.objects.get_one_or_none(
-            filters={"name": dm_filters.EQ(realm_domain_name)}
+            filters={"name": dm_filters.EQ(domain_name)}
         )
         if domain is None:
-            LOG.info(
-                "Creating local domain %s for ecosystem sync",
-                realm_domain_name,
+            legacy_domain = dns_models.Domain.objects.get_one_or_none(
+                filters={"name": dm_filters.EQ(realm_domain)}
             )
+            if legacy_domain is not None:
+                if not (
+                    legacy_domain.realm_id is None
+                    and not legacy_domain.sync_only
+                    and legacy_domain.sync_to_ecosystem
+                ):
+                    raise ValueError(
+                        "Legacy local DNS domain conflicts with the realm DNS contract"
+                    )
+
+                legacy_domain.name = domain_name
+                legacy_domain.realm_id = realm_id
+                legacy_domain.sync_only = True
+                legacy_domain.update()
+                for record in dns_models.Record.objects.get_all(
+                    filters={"domain": dm_filters.EQ(legacy_domain)}
+                ):
+                    if record.type == "SOA":
+                        record.delete(force=True)
+                    else:
+                        record.update()
+                LOG.info("Migrated legacy realm DNS domain to %s", domain_name)
+                return True
+
             domain = dns_models.Domain(
-                name=realm_domain_name,
-                project_id=c.ZERO_UUID,
+                name=domain_name,
+                realm_id=realm_id,
+                sync_only=True,
                 sync_to_ecosystem=True,
+                project_id=c.ZERO_UUID,
             )
-            domain.save()
-        elif not domain.sync_to_ecosystem:
-            LOG.info("Marking domain %s for ecosystem sync", realm_domain_name)
-            domain.sync_to_ecosystem = True
-            domain.update()
+            domain.insert()
+            return True
 
+        if not (
+            domain.realm_id == realm_id
+            and domain.sync_only
+            and domain.sync_to_ecosystem
+        ):
+            raise ValueError("Local DNS domain conflicts with the realm DNS contract")
         return True
-
-    # ------------------------------------------------------------------
-    # Record sync logic
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _build_record_data(record):
-        """Convert a local Record to the dict sent to ecosystem."""
         record_prop = record.properties.properties["record"]
         record_type = record_prop.get_property_type()
         return {
@@ -193,297 +169,90 @@ class DNSSyncService(basic.BasicService):
             "ttl": record.ttl,
             "disabled": record.disabled,
             "record": record_type.to_simple_type(record.record),
+            "full_name": record.full_name,
         }
 
-    # ------------------------------------------------------------------
-    # Fast path: push only new / updated records since last cycle
-    # ------------------------------------------------------------------
-
-    def _fast_sync(self, endpoint, headers, since_dt):
-        """Query all recently changed records, push them to ecosystem.
-
-        Records are selected globally by updated_at, then grouped by
-        domain.  Only domains with sync_to_ecosystem=True are processed.
-
-        New vs existing is determined by created_at: if the record was
-        created after since_dt it is new, otherwise it is an update.
-        This avoids fetching ecosystem records on each fast cycle.
-        """
-        recent_records = dns_models.Record.objects.get_all(
-            filters={
-                "updated_at": dm_filters.GE(since_dt),
-                "type": dm_filters.NE("SOA"),
-            }
-        )
-        if not recent_records:
-            return
-
-        # Group records by domain, keep only sync-enabled domains
-        by_domain = {}
-        for rec in recent_records:
-            domain = rec.domain
-            if not domain.sync_to_ecosystem:
-                continue
-            by_domain.setdefault(domain, []).append(rec)
-
-        if not by_domain:
-            return
-
-        # Fetch ecosystem domain list once for all domains
-        eco_domains = self._eco_list_domains(endpoint, headers)
-        eco_domain_map = {ed.get("name"): ed["uuid"] for ed in eco_domains}
-
-        for domain, records in by_domain.items():
-            eco_domain_uuid = eco_domain_map.get(domain.name)
-            if eco_domain_uuid is None:
-                LOG.debug(
-                    "Fast sync: domain %s not yet in ecosystem, "
-                    "skipping until full sync",
-                    domain.name,
-                )
-                continue
-
-            for rec in records:
-                data = self._build_record_data(rec)
-                try:
-                    if rec.created_at >= since_dt:
-                        LOG.debug(
-                            "Fast sync: creating record %s %s in %s",
-                            rec.type,
-                            rec.name,
-                            domain.name,
-                        )
-                        self._eco_create_record(
-                            endpoint,
-                            headers,
-                            eco_domain_uuid,
-                            data,
-                        )
-                    else:
-                        LOG.debug(
-                            "Fast sync: updating record %s %s in %s",
-                            rec.type,
-                            rec.name,
-                            domain.name,
-                        )
-                        self._eco_update_record(
-                            endpoint,
-                            headers,
-                            eco_domain_uuid,
-                            str(rec.uuid),
-                            data,
-                        )
-                except Exception:
-                    LOG.exception(
-                        "Fast sync: failed to push record %s %s",
-                        rec.type,
-                        rec.name,
-                    )
-
-    # ------------------------------------------------------------------
-    # Full reconciliation: build diff, create / delete
-    # ------------------------------------------------------------------
-
-    def _full_sync_domain(self, domain, endpoint, headers, eco_domain_uuid):
-        """Full diff-based sync for a single domain."""
-        domain_name = domain.name
-
-        # Get local records (skip SOA)
-        local_records = dns_models.Record.objects.get_all(
+    def _domain_records(self, domain):
+        records = dns_models.Record.objects.get_all(
             filters={
                 "domain": dm_filters.EQ(domain),
                 "type": dm_filters.NE("SOA"),
             }
         )
+        return [self._build_record_data(record) for record in records]
 
-        # Get ecosystem records
-        eco_records = self._eco_list_records(endpoint, headers, eco_domain_uuid)
-        eco_records = [r for r in eco_records if r.get("type") != "SOA"]
+    def _has_recent_changes(self, since_dt):
+        records = dns_models.Record.objects.get_all(
+            filters={
+                "updated_at": dm_filters.GE(since_dt),
+                "type": dm_filters.NE("SOA"),
+            }
+        )
+        return any(record.domain.realm_id is not None for record in records)
 
-        # Build UUID-keyed maps
-        local_map = {str(r.uuid): r for r in local_records}
-        eco_map = {r["uuid"]: r for r in eco_records if r.get("uuid")}
-
-        local_uuids = set(local_map.keys())
-        eco_uuids = set(eco_map.keys())
-
-        # Create missing
-        for uid in local_uuids - eco_uuids:
-            rec = local_map[uid]
-            LOG.info(
-                "Creating record %s %s in ecosystem domain %s",
-                rec.type,
-                rec.name,
-                domain_name,
-            )
-            try:
-                self._eco_create_record(
-                    endpoint,
-                    headers,
-                    eco_domain_uuid,
-                    self._build_record_data(rec),
-                )
-            except Exception:
-                LOG.exception(
-                    "Failed to create record %s %s in ecosystem",
-                    rec.type,
-                    rec.name,
-                )
-
-        # Update existing only if content differs
-        compare_keys = ("type", "ttl", "disabled", "record")
-        for uid in local_uuids & eco_uuids:
-            rec = local_map[uid]
-            local_data = self._build_record_data(rec)
-            eco_rec = eco_map[uid]
-            if all(local_data.get(k) == eco_rec.get(k) for k in compare_keys):
-                continue
-            try:
-                self._eco_update_record(
-                    endpoint,
-                    headers,
-                    eco_domain_uuid,
-                    uid,
-                    local_data,
-                )
-            except Exception:
-                LOG.exception(
-                    "Failed to update record %s %s in ecosystem",
-                    rec.type,
-                    rec.name,
-                )
-
-        # Delete extra
-        for uid in eco_uuids - local_uuids:
-            eco_rec = eco_map[uid]
-            LOG.info(
-                "Deleting record %s %s from ecosystem domain %s",
-                eco_rec.get("type"),
-                eco_rec.get("name"),
-                domain_name,
-            )
-            try:
-                self._eco_delete_record(
-                    endpoint,
-                    headers,
-                    eco_domain_uuid,
-                    uid,
-                )
-            except Exception:
-                LOG.exception(
-                    "Failed to delete record %s %s from ecosystem",
-                    eco_rec.get("type"),
-                    eco_rec.get("name"),
-                )
-
-    # ------------------------------------------------------------------
-    # Orchestration: decide fast path vs full reconciliation
-    # ------------------------------------------------------------------
-
-    def _sync_all_domains(self, endpoint, realm_uuid, realm_secret, access_token):
-        """Sync all local domains marked for ecosystem sync."""
-        basic_auth = self._make_basic_auth(realm_uuid, realm_secret)
-        headers = self._bearer_headers(access_token)
-
-        # Initialize on first successful call
+    def _sync_all_domains(self, endpoint, realm_uuid, realm_secret):
+        auth = self._make_basic_auth(realm_uuid, realm_secret)
         if not self._initialized:
             try:
-                initialized = self._ensure_realm_domain(
-                    endpoint, realm_uuid, basic_auth
-                )
+                initialized = self._ensure_realm_domain(endpoint, realm_uuid, auth)
             except bazooka_exc.ForbiddenError:
-                LOG.warning("Not authorized to fetch realm, skipping")
+                LOG.warning("Not authorized to fetch realm, skipping DNS sync")
                 return
-            except Exception:
-                LOG.exception("Failed to initialize realm domain")
-                return
-
             if not initialized:
                 return
             self._initialized = True
 
         now = time.monotonic()
         need_full = (now - self._last_full_sync_at) >= FULL_SYNC_INTERVAL
+        if (
+            not need_full
+            and self._last_sync_dt is not None
+            and not self._has_recent_changes(self._last_sync_dt)
+        ):
+            return
+
+        domains = self._realm_domains()
+        for domain in domains:
+            records = self._domain_records(domain)
+            try:
+                self._eco_sync_domain(
+                    endpoint,
+                    realm_uuid,
+                    auth,
+                    domain,
+                    records,
+                )
+            except Exception:
+                LOG.exception("DNS sync failed for realm domain %s", domain.name)
 
         if need_full:
-            domains = dns_models.Domain.objects.get_all(
-                filters={"sync_to_ecosystem": dm_filters.EQ(True)}
-            )
-            if not domains:
-                LOG.debug("No domains marked for ecosystem sync")
-                return
-
-            LOG.debug("Running full DNS reconciliation")
-            eco_domains = self._eco_list_domains(endpoint, headers)
-            eco_domain_map = {ed.get("name"): ed["uuid"] for ed in eco_domains}
-
-            for domain in domains:
-                try:
-                    eco_domain_uuid = eco_domain_map.get(domain.name)
-                    if eco_domain_uuid is None:
-                        LOG.info(
-                            "Creating domain %s in ecosystem",
-                            domain.name,
-                        )
-                        eco_domain = self._eco_create_domain(
-                            endpoint, headers, domain.name
-                        )
-                        eco_domain_uuid = eco_domain["uuid"]
-
-                    self._full_sync_domain(
-                        domain,
-                        endpoint,
-                        headers,
-                        eco_domain_uuid,
-                    )
-                except Exception:
-                    LOG.exception("Full sync failed for domain %s", domain.name)
             self._last_full_sync_at = now
-            self._last_fast_sync_dt = datetime.datetime.now(datetime.timezone.utc)
-        else:
-            since_dt = self._last_fast_sync_dt
-            if since_dt is None:
-                return
-            LOG.debug("Running fast DNS sync (since %s)", since_dt)
-            self._fast_sync(endpoint, headers, since_dt)
-            self._last_fast_sync_dt = datetime.datetime.now(datetime.timezone.utc)
-
-    # ------------------------------------------------------------------
-    # Service loop
-    # ------------------------------------------------------------------
+        self._last_sync_dt = datetime.datetime.now(datetime.timezone.utc)
 
     def _check_pending_future(self):
-        """Clear completed future to allow the next submission."""
         if self._pending_future is not None and self._pending_future.done():
             self._pending_future = None
 
     def _iteration(self):
         self._check_pending_future()
-
         if self._pending_future is not None:
             LOG.debug("Previous DNS sync request still pending, skipping")
             return
 
         with contexts.Context().session_manager():
-            creds = self._get_ecosystem_credentials()
-            if creds is None:
+            credentials = self._get_ecosystem_credentials()
+            if credentials is None:
                 LOG.debug("DNS sync variables are not configured, skipping")
                 return
 
-            endpoint, realm_uuid, realm_secret, access_token = creds
-
         self._pending_future = self._executor.submit(
             self._do_sync,
-            endpoint,
-            realm_uuid,
-            realm_secret,
-            access_token,
+            *credentials,
         )
 
-    def _do_sync(self, endpoint, realm_uuid, realm_secret, access_token):
-        """Run the full sync inside a DB session (executed in thread)."""
+    def _do_sync(self, endpoint, realm_uuid, realm_secret):
         try:
             with contexts.Context().session_manager():
-                self._sync_all_domains(endpoint, realm_uuid, realm_secret, access_token)
+                self._sync_all_domains(endpoint, realm_uuid, realm_secret)
         except Exception:
             LOG.exception("DNS sync iteration failed")
