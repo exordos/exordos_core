@@ -826,3 +826,38 @@ class TestManifestUpgrade:
         manifest.upgrade()
 
         assert element.status == Status.IN_PROGRESS.value
+
+
+class TestElementEngineLoadElements:
+    """Tests for ElementEngine.load_elements()."""
+
+    def test_loads_elements_without_their_resources(self, monkeypatch):
+        engine = ElementEngine()
+        element = Element(name="dbaas", version="0.2.2")
+        queried = []
+
+        def fake_get_all(self, *args, **kwargs):
+            queried.append(self.model_cls)
+            return [element] if self.model_cls is Element else []
+
+        from restalchemy.storage.sql import orm
+
+        monkeypatch.setattr(orm.ObjectCollection, "get_all", fake_get_all)
+
+        engine.load_elements()
+
+        assert queried == [Element]
+        assert engine.get_element("$dbaas") is element
+        assert engine.get_resources() == []
+
+    def test_drops_previously_loaded_elements(self, monkeypatch):
+        engine = ElementEngine()
+        engine.add_element(Element(name="stale", version="0.1.0"))
+
+        from restalchemy.storage.sql import orm
+
+        monkeypatch.setattr(orm.ObjectCollection, "get_all", lambda *a, **kw: [])
+
+        engine.load_elements()
+
+        assert engine.get_elements() == []

@@ -186,7 +186,9 @@ class ElementResourceController(
     )
 
     def __init__(self, *args, **kwargs):
-        models.element_engine.load_from_database()
+        # NOTE: `kind` of a resource needs only the provider element, so
+        # loading every resource of every element per request is not needed.
+        models.element_engine.load_elements()
         super().__init__(*args, **kwargs)
 
 
@@ -222,7 +224,7 @@ class ResourceAllController(iam_controllers.PolicyBasedController):
     )
 
     def __init__(self, *args, **kwargs):
-        models.element_engine.load_from_database()
+        models.element_engine.load_elements()
         super().__init__(*args, **kwargs)
 
 
@@ -236,20 +238,12 @@ class ElementExportController(
         convert_underscore=False,
     )
 
-    def __init__(self, *args, **kwargs):
-        models.element_engine.load_from_database()
-        super().__init__(*args, **kwargs)
-
 
 class ExportAllController(iam_controllers.PolicyBasedController):
     """Controller for /v1/exports/ endpoint"""
 
     # NOTE(slashburygin): we need it here because in restalchemy we can add model to resources only once
     __resource__ = resources.ResourceMap.model_type_to_resource[models.Export]
-
-    def __init__(self, *args, **kwargs):
-        models.element_engine.load_from_database()
-        super().__init__(*args, **kwargs)
 
 
 class ElementImportController(
@@ -262,20 +256,12 @@ class ElementImportController(
         convert_underscore=False,
     )
 
-    def __init__(self, *args, **kwargs):
-        models.element_engine.load_from_database()
-        super().__init__(*args, **kwargs)
-
 
 class ImportAllController(iam_controllers.PolicyBasedController):
     """Controller for /v1/imports/ endpoint"""
 
     # NOTE(slashburygin): we need it here because in restalchemy we can add model to resources only once
     __resource__ = resources.ResourceMap.model_type_to_resource[models.Import]
-
-    def __init__(self, *args, **kwargs):
-        models.element_engine.load_from_database()
-        super().__init__(*args, **kwargs)
 
 
 class ServicesController(iam_controllers.PolicyBasedController):
