@@ -72,7 +72,15 @@ class TestParseVersion:
 
     def test_dev_version_with_build(self):
         result = builder_element._parse_version("1.0.0-rc1+build.123")
-        assert result == (1, 0, 0, False, "rc1+build.123")
+        assert result == (1, 0, 0, False, "rc1")
+
+    def test_release_version_with_build(self):
+        assert builder_element._parse_version("1.0.0+build.123") == (1, 0, 0, True, "")
+
+    def test_build_metadata_does_not_change_version_precedence(self):
+        assert builder_element._version_sort_key("1.0.0+build.123") == (
+            builder_element._version_sort_key("1.0.0+other.456")
+        )
 
     def test_zero_version(self):
         result = builder_element._parse_version("0.0.0")
@@ -124,6 +132,11 @@ class TestVersionKey:
 
 
 class TestVersionSortKey:
+    def test_latest_sorts_after_concrete_versions(self):
+        assert builder_element._version_sort_key("0.0.0-dev") < (
+            builder_element._version_sort_key("latest")
+        )
+
     def test_release_sorts_before_dev(self):
         """Release versions should sort before dev versions (lower key = higher priority)."""
         release_key = builder_element._version_sort_key("1.0.0")
@@ -481,6 +494,17 @@ class TestCreateInstanceHooks:
         result = self._service.create_instance_derivatives(element)
 
         assert list(result) == [manifest]
+
+    def test_create_derivatives_installs_available_pending_element(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+        element.status = models.RepoElementStatus.AVAILABLE.value
+        manifest = object()
+        monkeypatch.setattr(self._service, "_install_manifest", lambda i: manifest)
+
+        assert list(self._service.create_instance_derivatives(element)) == [manifest]
 
     def test_create_derivatives_empty_for_uninstalled_element(self):
         element = FakeElement(
