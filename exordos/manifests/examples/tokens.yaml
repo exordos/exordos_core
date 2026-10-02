@@ -1,0 +1,99 @@
+name: "tokens_example"
+uuid: "6b0f1e5a-9c2d-4e7b-a3f8-2d51c47e9b60"
+description: "Exordos IAM tokens example"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.compute.nodes:
+    exporter_node:
+      name: "exporter-node"
+      description: "Node running a service that calls the platform API"
+      cores: 1
+      ram: 768
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      disk_spec:
+        kind: "root_disk"
+        size: 10
+        image: "https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst"
+
+  # The key the client below signs its tokens with
+  $core.secret.passwords:
+    exporter_signing_key:
+      name: "exporter-signing-key"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      method: "AUTO_HEX"
+      constructor:
+        kind: plain
+      default_length: 32
+
+  # The client that signs the token. The default client
+  # (00000000-0000-0000-0000-000000000000) works too.
+  # The platform only creates clients in the service project.
+  $core.iam.clients:
+    exporter_client:
+      name: "exporter-client"
+      description: "Signs the exporter token"
+      client_id: "exporter"
+      secret: "exporter-client-secret"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      registration_auto_provision: false
+      signature_algorithm:
+        kind: HS256
+        secret_uuid: $core.secret.passwords.$exporter_signing_key:uuid
+        previous_secret_uuid: null
+
+  # The project the token is scoped to
+  $core.iam.organizations:
+    exporter_org:
+      name: "exporter-org"
+      description: "Organization of the exporter"
+
+  $core.iam.projects:
+    exporter_project:
+      name: "exporter-project"
+      description: "Project the exporter works in"
+      organization: $core.iam.organizations.$exporter_org:uuid
+
+  # A service account the token authenticates as. `password` is required
+  # by the users API even for a service account, which never keeps one.
+  $core.iam.users:
+    exporter:
+      username: "exporter"
+      email: "exporter@example.com"
+      type: "service"
+      password: "unused-by-a-service-account"
+
+  # The token carries the permissions its user has in the scoped project
+  $core.iam.role_bindings:
+    exporter_role:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      user: $core.iam.users.$exporter:uuid
+      project: $core.iam.projects.$exporter_project:uuid
+
+  $core.iam.tokens:
+    # The platform renews the token once half its lifetime has passed.
+    # Everything rendering `:access_token` picks up the new value.
+    exporter_token:
+      user: $core.iam.users.$exporter:uuid
+      iam_client: $core.iam.clients.$exporter_client:uuid
+      scope: f"project:{$core.iam.projects.$exporter_project:uuid}"
+      expiration_delta: 604800
+
+  # Deliver the token to the node. The file is rewritten on every renewal.
+  $core.config.configs:
+    exporter_token_file:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exporter/token
+      mode: "0600"
+      target:
+        kind: node
+        node: "$core.compute.nodes.$exporter_node:uuid"
+      body:
+        kind: text
+        content: f"{$core.iam.tokens.$exporter_token:access_token}"

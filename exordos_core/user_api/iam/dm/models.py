@@ -1631,6 +1631,20 @@ class Token(
         ra_types.String(max_length=256),
         default=None,
     )
+    # Set on the tokens a manifest or the tokens API manages, which are
+    # the only ones the tokens API serves. A login session is not one.
+    managed = properties.property(
+        ra_types.Boolean(),
+        default=False,
+    )
+    # Whether the platform keeps the token alive. A managed token that
+    # renews itself outlives its own expiration; one that does not is
+    # spent when it expires, which is what a token issued for a fixed
+    # term is. A login session never renews.
+    auto_renew = properties.property(
+        ra_types.Boolean(),
+        default=False,
+    )
 
     def __init__(self, user=None, scope="", project=None, **kwargs):
         user = user or User.me()
@@ -1746,11 +1760,20 @@ class Token(
                 return True
         return False
 
-    def get_response_body(self):
-        now = datetime.datetime.now(datetime.timezone.utc)
-        algorithm = self.iam_client.get_token_algorithm()
+    def needs_renewal(self, now: datetime.datetime) -> bool:
+        # Renew once half the lifetime is gone: the previous access token
+        # stays valid for the other half while its consumers pick up the
+        # new one.
+        return self.expiration_at - now < self.expiration_delta / 2
 
-        access_token_info = {
+    def renew(self, now: datetime.datetime) -> None:
+        # The token keeps its uuid, so the old access token stays valid
+        # until the expiration signed into it.
+        self.expiration_at = now + self.expiration_delta
+        self.update()
+
+    def _get_access_token_info(self):
+        return {
             "exp": int(self.expiration_at.timestamp()),
             "iat": int(self.created_at.timestamp()),
             "auth_time": int(self.created_at.timestamp()),
@@ -1761,7 +1784,12 @@ class Token(
             "typ": self.typ,
             "otp": self.user.otp_enabled,
         }
-        access_token = algorithm.encode(access_token_info)
+
+    def get_response_body(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        algorithm = self.iam_client.get_token_algorithm()
+
+        access_token = algorithm.encode(self._get_access_token_info())
 
         id_token_info = {
             "exp": int(self.expiration_at.timestamp()),
@@ -1833,6 +1861,78 @@ class Token(
             permissions=[v.permission for v in values],
             otp_verified=otp_verified,
         )
+
+
+class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomPropertiesMixin):
+    """A token declared by a manifest or created through the tokens API.
+
+    It reports its signed access token, so an element renders it with
+    `:access_token` and the account that issues one is shown it once.
+    The token is derived from the record and the key of its client, so
+    it is never stored: `access_token` is a custom property the model
+    signs on the spot.
+    """
+
+    # The signed token. It is derived rather than stored, so it is a
+    # custom property: the view a manifest reads carries it, and the
+    # tokens API answers with it on a create and never again.
+    __custom_properties__ = {
+        "access_token": ra_types.String(max_length=8192),
+    }
+
+    managed = properties.property(
+        ra_types.Boolean(),
+        default=True,
+    )
+    # A token issued for a fixed term says so by turning this off, and
+    # is spent when it expires.
+    auto_renew = properties.property(
+        ra_types.Boolean(),
+        default=True,
+    )
+    # A renewal runs every few seconds, so a shorter lifetime would renew
+    # the token, and rewrite everything rendering it, on every iteration.
+    expiration_delta = properties.property(
+        types.Seconds(min_value=60),
+        default=Token.get_default_expiration_delta,
+    )
+    # Unset claims follow the client that signs the token, so switching
+    # the client does not leave the claims of the previous one behind.
+    issuer = properties.property(
+        ra_types.AllowNone(ra_types.String(max_length=256)),
+        default=None,
+    )
+    audience = properties.property(
+        ra_types.AllowNone(ra_types.String(max_length=64)),
+        default=None,
+    )
+
+    def update(self, session=None, force=False):
+        # The project follows the scope, and a new lifetime starts now.
+        # Both are derived at creation, so an update has to derive them
+        # again or they keep the values of the old scope and lifetime.
+        if self.properties["scope"].is_dirty():
+            self.project = self._get_project_by_scope(self.user, self.scope)
+        if self.properties["expiration_delta"].is_dirty():
+            now = datetime.datetime.now(datetime.timezone.utc)
+            self.expiration_at = now + self.expiration_delta
+        super().update(session=session, force=force)
+
+    def _get_access_token_info(self):
+        info = super()._get_access_token_info()
+        if self.issuer is None:
+            info["iss"] = f"{c.DEFAULT_ROOT_ENDPOINT}iam/clients/{self.iam_client.uuid}"
+        if self.audience is None:
+            info["aud"] = self.iam_client.client_id
+        return info
+
+    @property
+    def access_token(self) -> str:
+        algorithm = self.iam_client.get_token_algorithm()
+        return algorithm.encode(self._get_access_token_info())
+
+    def get_access_token(self) -> str:
+        return self.access_token
 
 
 class Idp(
