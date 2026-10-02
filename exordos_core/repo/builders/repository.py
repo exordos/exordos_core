@@ -269,7 +269,24 @@ class RepoProxyBuilderService(
                 "Refreshing repository %s",
                 instance.name,
             )
-            self._refresh_repository(instance)
+            try:
+                self._refresh_repository(instance)
+            except Exception:
+                # A failed refresh must not become a retry storm.
+                LOG.exception(
+                    "Repository %s refresh failed; retrying in %ss",
+                    instance.name,
+                    instance.refresh_rate,
+                )
+                instance.status = models.RepositoryStatus.ERROR.value
+                instance.next_refresh = datetime.datetime.now(
+                    datetime.timezone.utc
+                ) + datetime.timedelta(seconds=instance.refresh_rate)
+            else:
+                # A successful refresh clears a previous failure. Only
+                # clear ERROR so a user-set DISABLED is left untouched.
+                if instance.status == models.RepositoryStatus.ERROR.value:
+                    instance.status = models.RepositoryStatus.ACTIVE.value
 
     def can_actualize_outdated_instance_resource(
         self, instance: ua_models.InstanceMixin

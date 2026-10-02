@@ -17,6 +17,7 @@
 import datetime
 import os
 import tempfile
+from unittest import mock
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal import constants as ua_c
@@ -447,6 +448,66 @@ class TestRepoProxyBuilderService:
         # ... and the greatest version still on offer takes its place.
         assert by_version["1.0.0"].latest is True
         assert by_version["1.0.0"].stable is True
+
+    def test_post_update_refresh_failure_degrades_to_error(self, bootstrap_repo):
+        """A failed refresh marks ERROR and defers next_refresh, not a storm.
+
+        Regression: the core advanced ``next_refresh`` only on success, so
+        an unreachable upstream was re-fetched on every reconcile tick.
+        The failure must be swallowed, the repo marked ERROR, and the next
+        attempt pushed out by the configured rate.
+        """
+        refresh_started_at = datetime.datetime(
+            2026, 10, 2, 10, 0, tzinfo=datetime.timezone.utc
+        )
+        refresh_failed_at = refresh_started_at + datetime.timedelta(seconds=90)
+        bootstrap_repo.status = repo_models.RepositoryStatus.ACTIVE.value
+        bootstrap_repo.refresh_rate = 60
+        bootstrap_repo.next_refresh = refresh_started_at - datetime.timedelta(
+            seconds=1
+        )
+        bootstrap_repo.update()
+
+        datetime_module_mock = mock.Mock(
+            datetime=mock.Mock(),
+            timedelta=datetime.timedelta,
+            timezone=datetime.timezone,
+        )
+        datetime_module_mock.datetime.now.side_effect = (
+            refresh_started_at,
+            refresh_failed_at,
+        )
+        with (
+            mock.patch.object(repo_builder, "datetime", datetime_module_mock),
+            mock.patch.object(
+                repo_models.Repository,
+                "iter_elements_in_inventory",
+                side_effect=ConnectionError("upstream unreachable"),
+            ),
+        ):
+            # Must not propagate to the builder's update path.
+            self._service.post_update_instance_resource(
+                bootstrap_repo, mock.MagicMock()
+            )
+
+        assert bootstrap_repo.status == repo_models.RepositoryStatus.ERROR.value
+        # Deferred by the configured rate, not left in the past.
+        assert bootstrap_repo.next_refresh == refresh_failed_at + datetime.timedelta(
+            seconds=bootstrap_repo.refresh_rate
+        )
+
+    def test_post_update_refresh_success_clears_error(self, bootstrap_repo):
+        """A successful refresh after a failure returns the repo to ACTIVE."""
+        bootstrap_repo.status = repo_models.RepositoryStatus.ERROR.value
+        bootstrap_repo.refresh_rate = 60
+        bootstrap_repo.next_refresh = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(seconds=1)
+        bootstrap_repo.update()
+
+        self._service.post_update_instance_resource(bootstrap_repo, mock.MagicMock())
+
+        assert bootstrap_repo.status == repo_models.RepositoryStatus.ACTIVE.value
 
     def test_check_refresh_skips_without_refresh_rate(self, bootstrap_repo):
         """_check_refresh should skip repositories without refresh_rate."""
