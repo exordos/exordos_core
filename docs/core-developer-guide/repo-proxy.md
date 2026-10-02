@@ -405,6 +405,41 @@ realm's shared ones; filtering by any other project is forbidden. Writes
 (`update`, `delete`, `refresh`, `upload`) stay limited to the caller's own
 project. An unscoped caller with the permission reads and writes all.
 
+### Upload check for LB-served repositories
+
+An element repository can be served by an LB route: a writable `local_dir`
+(`dav_methods: [PUT, DELETE]`) laid out as `/<prefix>/<project_id>/...`
+with a single-segment prefix (e.g. `/repo/`), guarded by an `auth_request`
+modifier whose pool points at this User API and whose path is the IAM
+client action
+`/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/authorize_repo_upload`.
+nginx sends it a `GET` with the original method and URI in
+`X-Original-Method` / `X-Original-URI`:
+
+| `X-Original-Method` | Answer |
+|---|---|
+| `GET`, `HEAD` | `200`: reads are open, hypervisors and the repo proxy fetch without a token |
+| `PUT`, `DELETE` without a token | `401` |
+| `PUT`, `DELETE` into `/<prefix>/<token project>/...` with `repo.repository.upload` | `200` |
+| `PUT`, `DELETE` into any project with an unscoped token carrying `repo.repository.upload` (e.g. the admin's) | `200` |
+| anything else | `403` |
+
+Project owners get `repo.repository.upload` through the `owner` role.
+
+nginx serves the decoded, normalized URI but passes the raw
+`X-Original-URI`, so a path with a `.`, `..` or empty segment (percent
+encoded or not) or a backslash is refused rather than resolved.
+
+On a managed realm the core also knows where that repository is: bootstrap
+sets the `realm_repo_url` values store variable from the realm spec's
+`repo_url` (e.g. `http://10.40.0.1:8081/repo/`). The first upload a project
+is allowed then registers the project's repository here: an nginx
+repository `realm-<project prefix>` in that project, at
+`<realm_repo_url><project_id>/exordos-elements/`, copy mode, refreshed every
+minute, so pushed elements become installable without further steps. It is
+registered once (a deterministic uuid per project); a repository already
+registered by hand for the same URL or name is left as it is.
+
 ## Inventory Format
 
 The inventory is a JSON document served by the repository driver. It lists all
