@@ -24,6 +24,7 @@ from gcl_looper.services import basic
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.common import constants as c
 from exordos_core.compute.dm import models as node_models
@@ -113,6 +114,12 @@ class ConfigServiceBuilder(basic.BasicService):
         if len(target_nodes) == 0:
             return
 
+        agents = ua_models.UniversalAgent.objects.get_all(
+            filters={"uuid": dm_filters.In(str(node.uuid) for node in target_nodes)}
+        )
+        if {agent.uuid for agent in agents} != {node.uuid for node in target_nodes}:
+            return
+
         config_resource = config.to_ua_resource(cc.CONFIG_KIND)
         config_resource.insert()
 
@@ -162,7 +169,8 @@ class ConfigServiceBuilder(basic.BasicService):
             # Collect all available nodes for the config
             target_nodes = tuple(nodes[n] for n in config.target_nodes() if n in nodes)
             try:
-                self._actualize_new_config(config, target_nodes)
+                with sql_utils.savepoint():
+                    self._actualize_new_config(config, target_nodes)
             except Exception:
                 LOG.exception("Error actualizing config %s", config.uuid)
 
