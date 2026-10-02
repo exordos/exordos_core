@@ -1148,6 +1148,8 @@ class Namespace:
 
 
 class ElementEngine:
+    RESOURCE_PAGE_SIZE = 200
+
     def __init__(self):
         super().__init__()
         self._namespaces: tp.Dict[str, Namespace] = {}
@@ -1170,6 +1172,42 @@ class ElementEngine:
     def get_elements(self) -> tp.List["Element"]:
         return [namespace.element for namespace in self._namespaces.values()]
 
+    def _get_engine_element(self, element: "Element") -> "Element":
+        namespace = self._namespaces.get(element.link)
+        return element if namespace is None else namespace.element
+
+    def _share_element(self, resource: "Resource") -> "Resource":
+        # NOTE: Every loaded row carries its own copy of the prefetched
+        # element with its whole manifest, which adds up to hundreds of MB
+        # across all resources. Restore the resource around the element the
+        # engine already holds instead of assigning it: the relationship
+        # keeps its first value for dirty tracking and would retain the copy.
+        element = self._get_engine_element(resource.element)
+        if element is resource.element:
+            return resource
+        shared = Resource.restore(**{**dict(resource), "element": element})
+        shared._saved = True
+        return shared
+
+    def _iter_resources(self) -> tp.Iterator["Resource"]:
+        # Load resources page by page so only one page of element copies is
+        # alive at a time.
+        last_uuid = None
+        while True:
+            filters = {}
+            if last_uuid is not None:
+                filters["uuid"] = ra_filters.GT(last_uuid)
+            page = Resource.objects.get_all(
+                filters=filters,
+                limit=self.RESOURCE_PAGE_SIZE,
+                order_by={"uuid": "asc"},
+            )
+            for resource in page:
+                yield self._share_element(resource)
+            if len(page) < self.RESOURCE_PAGE_SIZE:
+                return
+            last_uuid = page[-1].uuid
+
     def load_from_database(self) -> None:
         self._namespaces = {}
         self._resource_exports = {}
@@ -1179,8 +1217,8 @@ class ElementEngine:
         for import_ in Import.objects.get_all():
             if import_.kind == ImportEnum.RESOURCE.value:
                 resource = ImportedResource(
-                    element=import_.element,
-                    resource=import_.from_resource,
+                    element=self._get_engine_element(import_.element),
+                    resource=self._share_element(import_.from_resource),
                     import_name=import_.name,
                 )
                 self.add_resource(resource)
@@ -1191,7 +1229,7 @@ class ElementEngine:
                     f"imports are currently supported."
                 )
 
-        for resource in Resource.objects.get_all():
+        for resource in self._iter_resources():
             self.add_resource(resource)
 
         for export in Export.objects.get_all():

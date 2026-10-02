@@ -24,6 +24,8 @@ from exordos_core.elements.dm.models import Element
 from exordos_core.elements.dm.models import ElementEngine
 from exordos_core.elements.dm.models import ElementIncorrectStatusesView
 from exordos_core.elements.dm.models import Export
+from exordos_core.elements.dm.models import Import
+from exordos_core.elements.dm.models import ImportedResource
 from exordos_core.elements.dm.models import Manifest
 from exordos_core.elements.dm.models import Resource
 from exordos_core.elements.dm.models import Status
@@ -826,3 +828,106 @@ class TestManifestUpgrade:
         manifest.upgrade()
 
         assert element.status == Status.IN_PROGRESS.value
+
+
+class TestElementEngineLoadFromDatabase:
+    """Tests for load_from_database sharing elements between resources."""
+
+    ELEMENT_UUID = sys_uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+    def _element(self) -> Element:
+        return Element(
+            uuid=self.ELEMENT_UUID,
+            name="dbaas",
+            version="0.2.2",
+            link="$dbaas",
+        )
+
+    def _resource(self, number: int) -> Resource:
+        # Every row restores its own copy of the element, like the ORM does.
+        return Resource(
+            uuid=sys_uuid.UUID(int=number),
+            name=f"res_{number}",
+            element=self._element(),
+            resource_link_prefix="$dbaas.types.postgres.instances",
+            value={"name": f"res_{number}"},
+        )
+
+    def test_resources_share_engine_element(self, monkeypatch):
+        engine = ElementEngine()
+        monkeypatch.setattr(engine, "RESOURCE_PAGE_SIZE", 2)
+        element = self._element()
+        rows = [self._resource(number) for number in range(1, 6)]
+        get_all_calls = []
+
+        def fake_get_all(self, filters=None, limit=None, order_by=None, **kwargs):
+            if self.model_cls is Element:
+                return [element]
+            if self.model_cls is Resource:
+                get_all_calls.append(filters)
+                start = 0
+                if filters:
+                    last_uuid = filters["uuid"].value
+                    start = next(
+                        i for i, row in enumerate(rows) if row.uuid == last_uuid
+                    )
+                    start += 1
+                return rows[start : start + limit]
+            return []
+
+        from restalchemy.storage.sql import orm
+
+        monkeypatch.setattr(orm.ObjectCollection, "get_all", fake_get_all)
+
+        engine.load_from_database()
+
+        resources = engine.get_resources()
+        assert [r.uuid for r in resources] == [r.uuid for r in rows]
+        assert all(r.element is element for r in resources)
+        assert not any(r.is_dirty() for r in resources)
+        assert all(r._saved for r in resources)
+        # 5 rows with a page of 2 are read in 3 pages.
+        assert len(get_all_calls) == 3
+        assert get_all_calls[0] == {}
+
+    def test_imported_resources_share_engine_elements(self, monkeypatch):
+        engine = ElementEngine()
+        provider = self._element()
+        consumer = Element(
+            uuid=sys_uuid.UUID("22222222-2222-2222-2222-222222222222"),
+            name="app",
+            version="0.1.0",
+            link="$app",
+        )
+        # Every row restores its own copies of the elements, like the ORM does.
+        import_ = Import(
+            name="pg",
+            element=Element(
+                uuid=consumer.uuid,
+                name=consumer.name,
+                version=consumer.version,
+                link=consumer.link,
+            ),
+            from_element=self._element(),
+            from_resource=self._resource(1),
+        )
+
+        def fake_get_all(self, filters=None, limit=None, order_by=None, **kwargs):
+            if self.model_cls is Element:
+                return [provider, consumer]
+            if self.model_cls is Import:
+                return [import_]
+            return []
+
+        from restalchemy.storage.sql import orm
+
+        monkeypatch.setattr(orm.ObjectCollection, "get_all", fake_get_all)
+
+        engine.load_from_database()
+
+        imported = engine.get_resource_by_link(consumer, "$app.imports.$pg")
+        assert isinstance(imported, ImportedResource)
+        assert imported.element is consumer
+        assert imported._resource.element is provider
+        assert not imported._resource.is_dirty()
+        assert imported._resource._saved
