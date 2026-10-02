@@ -287,8 +287,15 @@ class RepoElementController(
     def get(self, uuid, **kwargs):
         repo_element = super().get(uuid=uuid, **kwargs)
 
-        # Actualize element if manifest is empty (lazy repository)
-        if not repo_element.manifest:
+        # Actualize element if manifest is empty (lazy repository).
+        # Installed elements are skipped: their version may already be
+        # removed from the remote repository (e.g. pruned dev builds), which
+        # would otherwise break upgrade/uninstall with a 404.
+        if (
+            not repo_element.manifest
+            and repo_element.installation_state
+            != models.RepoElementInstallationState.INSTALLED.value
+        ):
             repo_element.repository.actualize_element(repo_element)
 
         return repo_element
