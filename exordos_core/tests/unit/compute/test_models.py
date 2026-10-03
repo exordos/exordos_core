@@ -17,7 +17,10 @@ from unittest.mock import patch
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.infra import constants as ic
 from gcl_sdk.infra.dm import models as infra_models
+import pytest
+from restalchemy.common import exceptions
 
 from exordos_core.compute.dm import models
 
@@ -43,3 +46,34 @@ class TestNodeInsert:
             node.insert()
 
         get_or_create.assert_called_once_with(node.uuid, session=None)
+
+
+class TestVolumeSpeedEphemeralReadOnly:
+    """Changing a disk's speed/ephemeral tier after creation would mean
+    migrating it to a different storage pool, which isn't implemented -
+    review feedback on PR #623 (akremenetsky) asked for this to fail
+    loudly instead of being silently accepted with no actual effect.
+    """
+
+    def test_speed_and_ephemeral_are_settable_at_creation(self):
+        volume = models.Volume(
+            size=10,
+            project_id=sys_uuid.uuid4(),
+            speed=ic.DiskSpeed.HOT.value,
+            ephemeral=True,
+        )
+
+        assert volume.speed == ic.DiskSpeed.HOT.value
+        assert volume.ephemeral is True
+
+    def test_speed_cannot_be_changed_after_creation(self):
+        volume = models.Volume(size=10, project_id=sys_uuid.uuid4())
+
+        with pytest.raises(exceptions.ReadOnlyProperty):
+            volume.speed = ic.DiskSpeed.HOT.value
+
+    def test_ephemeral_cannot_be_changed_after_creation(self):
+        volume = models.Volume(size=10, project_id=sys_uuid.uuid4())
+
+        with pytest.raises(exceptions.ReadOnlyProperty):
+            volume.ephemeral = True
