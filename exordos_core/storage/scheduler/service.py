@@ -19,6 +19,7 @@ import random
 import typing as tp
 
 from gcl_looper.services import basic
+from gcl_sdk.agents.universal import utils as ua_utils
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
@@ -35,8 +36,7 @@ class StorageClusterSchedulerService(basic.BasicService):
 
     Much simpler than compute's pool scheduling (see
     SchedulerService._schedule_pools): a storage cluster is never
-    node-pinned, so any agent advertising the "storage_cluster"
-    capability is eligible - no filters/weighters needed.
+    hosted by the core universal agent advertising "storage_cluster".
     """
 
     def _get_cluster_builders(
@@ -76,7 +76,13 @@ class StorageClusterSchedulerService(basic.BasicService):
                 return
 
             agents = ua_models.UniversalAgent.have_capabilities((STORAGE_CLUSTER_CAP,))
-            available_agents = agents.get(STORAGE_CLUSTER_CAP, [])
+            # MDS runs on this core, where the advertised endpoint points.
+            core_node = ua_utils.system_uuid()
+            available_agents = [
+                agent
+                for agent in agents.get(STORAGE_CLUSTER_CAP, [])
+                if agent.node == core_node
+            ]
             if not available_agents:
                 LOG.warning(
                     "No storage cluster agents found to schedule clusters %s",
