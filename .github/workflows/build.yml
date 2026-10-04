@@ -122,7 +122,7 @@ jobs:
           exordos compute nodes list
           exordos compute hypervisors list
       - name: Setup upterm session
-        uses: owenthereal/action-upterm@v1
+        uses: owenthereal/action-upterm@v2
         if: ${{ failure() }}
         with:
           limit-access-to-actor: true
