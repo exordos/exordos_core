@@ -1229,40 +1229,6 @@ components:
                 example: 00000000-0000-0000-0000-000000000000
                 format: uuid
                 type: string
-              rawstor_pools:
-                default: []
-                example:
-                - ephemeral: true
-                  location: any_string
-                  name: any_string
-                  speed: COLD
-                items:
-                  example:
-                    ephemeral: true
-                    location: any_string
-                    name: any_string
-                    speed: COLD
-                  properties:
-                    ephemeral:
-                      example: true
-                      type: boolean
-                    location:
-                      example: any_string
-                      maxLength: 2048
-                      type: string
-                    name:
-                      example: any_string
-                      maxLength: 255
-                      type: string
-                    speed:
-                      enum:
-                      - COLD
-                      - HOT
-                      - WARM
-                      example: COLD
-                      type: string
-                  type: object
-                type: array
               storage_pool:
                 default: []
                 example:
@@ -1576,7 +1542,7 @@ components:
               key: value
             properties:
               ephemeral:
-                default: false
+                default: true
                 example: true
                 type: boolean
               image:
@@ -1789,7 +1755,7 @@ components:
               key: value
             properties:
               ephemeral:
-                default: false
+                default: true
                 example: true
                 type: boolean
               image:
@@ -4259,6 +4225,11 @@ components:
                 - rawstor
                 type: string
               location:
+                example: any_string
+                maxLength: 2048
+                type: string
+              ost_endpoint:
+                default: ''
                 example: any_string
                 maxLength: 2048
                 type: string

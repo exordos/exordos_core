@@ -44,6 +44,23 @@ curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 
 Then follow the instructions in the terminal, or refer to the [documentation](https://exordos.github.io/exordos_core/) for a full setup guide.
 
+## Rawstor storage
+
+The core image includes librawstor, rawstor-mds and Python bindings from
+[GitHub Actions run 37203739770](https://github.com/rawstor/librawstor/actions/runs/37203739770).
+The Debian version is `99.0.0`; the bindings are `99.0.0+0.5ab494a`.
+Artifacts and their SHA256 checksums are bundled under `exordos/images/rawstor`.
+Set `RAWSTOR_VERSION` during the image build to use a GitHub release instead.
+Build this branch with `LOCAL_GENESIS_SDK_PATH` pointing to the matching
+`gcl_sdk` checkout on `feat/rawstor`.
+
+`exordos storages add` runs on an OST host. The core universal agent reconciles
+`storage_cluster` resources into `rawstor-mds@<storage-uuid>.service`, each with
+its own topology and SQLite index on the persistent core data disk. The first MDS uses port 7776; subsequent
+storages require an unused MDS port. Disks use `mds://<core-ip>:<port>/`.
+Capacity is read through MDS. Unregistering a storage stops its MDS and retains
+the SQLite index and OST data; registered MDS and OST endpoints cannot be changed.
+
 # 💡 Contributing
 
 Contributing to the project is highly appreciated! However, some rules should be followed for successful inclusion of new changes in the project:
