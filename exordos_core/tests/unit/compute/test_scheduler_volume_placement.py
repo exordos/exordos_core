@@ -71,7 +71,9 @@ def _requested_volume(image, size, speed, ephemeral):
     )
 
 
-def _storage_cluster(name, speed, ephemeral, capacity_usable, endpoint="ost://cl:7777"):
+def _storage_cluster(
+    name, speed, ephemeral, capacity_usable, endpoint="mds://core:7776/"
+):
     from gcl_sdk.agents.universal.drivers import pool as pool_base
 
     cluster = storage_models.StorageCluster(
@@ -288,7 +290,7 @@ class TestPlaceVolumeIntoPoolWithClusters:
         result = scheduler._place_volume_into_pool(requested, pool)
 
         assert result.storage_pool == "big-cluster"
-        assert result.storage_location == "ost://cl:7777"
+        assert result.storage_location == "mds://core:7776/"
 
     def test_a_local_pool_is_used_when_no_cluster_fits(self, scheduler, monkeypatch):
         local_pool = _storage_pool(
@@ -321,4 +323,4 @@ class TestPlaceVolumeIntoPoolWithClusters:
         result = scheduler._place_volume_into_pool(requested, pool)
 
         assert result.storage_pool == "only-cluster"
-        assert result.storage_location == "ost://cl:7777"
+        assert result.storage_location == "mds://core:7776/"
