@@ -28,4 +28,10 @@ set -o pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+if [[ -n "${LOCAL_GENESIS_SDK_PATH:-}" ]]; then
+    # Resolve before tox changes its working directory; preserve spaces in paths.
+    LOCAL_GENESIS_SDK_PATH="$(cd "$LOCAL_GENESIS_SDK_PATH" && pwd)"
+    export LOCAL_GENESIS_SDK_PATH
+fi
+
 tox -e openapi_artifacts
