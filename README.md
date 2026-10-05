@@ -47,8 +47,8 @@ Then follow the instructions in the terminal, or refer to the [documentation](ht
 ## Rawstor storage
 
 The core image includes librawstor, rawstor-mds and Python bindings from
-[GitHub Actions run 37239522275](https://github.com/rawstor/librawstor/actions/runs/37239522275).
-The Debian version is `99.0.0`; the bindings are `99.0.0+0.4e3d1f3`.
+[GitHub Actions run 37329790134](https://github.com/rawstor/librawstor/actions/runs/37329790134).
+The Debian version is `99.0.0`; the bindings are `99.0.0+0.fe3340e`.
 Artifacts and their SHA256 checksums are bundled under `exordos/images/rawstor`.
 Set `RAWSTOR_VERSION` during the image build to use a GitHub release instead.
 Build this branch with `LOCAL_GENESIS_SDK_PATH` pointing to the matching
@@ -108,3 +108,10 @@ policy fields, restores single local-pool names, and invalidates resource hashes
 for rebuilding by the previous release. A local hypervisor with multiple pools
 cannot be represented by the old schema; downgrade refuses that configuration
 rather than silently discarding pool assignments.
+
+OST and MDS instances use the rawstor package's systemd templates and per-instance
+configs under `/etc/rawstor/ost` and `/etc/rawstor/mds`. `storages nodes init`
+installs ZFS support; select an existing native backing with
+`nodes add --location zfs://POOL/DATASET`. Pools and datasets are provisioned
+separately. See the Rawstor storage guide above for service permissions and
+capacity isolation.
