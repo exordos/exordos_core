@@ -160,6 +160,6 @@ The default Debian version is `99.0.0`, with Python binding
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
-binding version differs. `nodes init --rawstor-version VERSION` overrides the
+binding version differs. `nodes init --version VERSION` overrides the
 release used for OST and binding installation. Build core with `LOCAL_GENESIS_SDK_PATH`
 pointing to the matching `gcl_sdk` checkout on `feat/rawstor`.
