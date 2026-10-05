@@ -17,7 +17,6 @@
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
-from gcl_sdk.infra import constants as ic
 import pytest
 from restalchemy.dm import filters as dm_filters
 
@@ -29,10 +28,7 @@ def _cluster(**overrides):
         uuid=sys_uuid.uuid4(),
         name="cluster1",
         driver_spec=ua_pool.RawstorStorageClusterDriverSpec(
-            location="file:///var/lib/rawstor",
-            endpoint="ost://10.0.0.5:7777",
-            speed=ic.DiskSpeed.HOT.value,
-            ephemeral=False,
+            endpoint="mds://core:7776/",
         ),
     )
     kwargs.update(overrides)
@@ -47,6 +43,10 @@ class TestStorageCluster:
         assert cluster.storage_pools == []
         assert cluster.agent is None
         assert cluster.builder is None
+        assert cluster.driver_spec.dump_to_simple_view() == {
+            "kind": "rawstor",
+            "endpoint": "mds://core:7776/",
+        }
 
     def test_rejects_a_missing_driver_spec(self):
         with pytest.raises(Exception):

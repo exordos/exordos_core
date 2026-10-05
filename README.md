@@ -79,3 +79,8 @@ installs ZFS support; select an existing native backing with
 `nodes add --location zfs://POOL/DATASET`. Pools and datasets are provisioned
 separately. See the Rawstor storage guide above for service permissions and
 capacity isolation.
+
+The public cluster `driver_spec` contains only `kind` and `endpoint`; nodes and
+pool policies are managed through their separate storage resources. Core builds
+their agent snapshot at delivery time. The old `ost_endpoint` field is removed
+from the cluster API.

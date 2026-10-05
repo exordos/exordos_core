@@ -52,7 +52,7 @@ def collect_storage_pool_candidates(
     """
     candidates: tp.List[PoolCandidate] = [(p, None) for p in local_pools]
     for cluster in _active_clusters():
-        if cluster.driver_spec.pools:
+        if cluster.storage_pools:
             info = cluster.capacity_info
             if time.time() - info.get("reported_at", 0) > 60:
                 continue
