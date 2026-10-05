@@ -39,6 +39,11 @@ def test_mds_cluster_is_scheduled_only_to_an_agent_on_the_core():
             "have_capabilities",
             return_value={"storage_cluster": [ost_agent, core_agent]},
         ),
+        patch.object(
+            service.storage_models.StorageNode,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
         patch.object(service.ua_utils, "system_uuid", return_value=core),
         patch.object(service.contexts, "Context"),
         patch.object(
@@ -51,3 +56,31 @@ def test_mds_cluster_is_scheduled_only_to_an_agent_on_the_core():
     assert cluster.agent == core_agent.uuid
     assert cluster.builder == builder.uuid
     cluster.update.assert_called_once()
+
+
+def test_ost_is_scheduled_to_builder_even_without_an_mds_agent():
+    node = MagicMock()
+    chosen_agent = node.agent
+    builder = SimpleNamespace(uuid=sys_uuid.uuid4())
+    scheduler = service.StorageClusterSchedulerService.__new__(
+        service.StorageClusterSchedulerService
+    )
+    with (
+        patch.object(scheduler, "_get_unscheduled_clusters", return_value=[]),
+        patch.object(scheduler, "_get_cluster_builders", return_value=[builder]),
+        patch.object(
+            service.storage_models.StorageNode,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[node])),
+        ),
+        patch.object(
+            service.storage_models.StorageCluster,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        patch.object(service.contexts, "Context"),
+    ):
+        scheduler._iteration()
+    assert node.builder == builder.uuid
+    assert node.agent == chosen_agent
+    node.update.assert_called_once()
