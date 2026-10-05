@@ -41,6 +41,7 @@ sudo apt update
 sudo apt install \
   yq curl \
   libev-dev libvirt-dev \
+  libjemalloc2 \
   postgresql-common postgresql-"$PG_VERSION" \
   tftpd-hpa nginx-full isc-dhcp-server iptables-persistent \
   pdns-backend-pgsql pdns-server dnsdist \

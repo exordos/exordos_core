@@ -7,6 +7,8 @@ TimeoutStopSec=5
 Restart=always
 RestartSec=5s
 KillSignal=SIGINT
+# Use jemalloc to avoid glibc arena retention/fragmentation
+Environment=LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 ExecStart=ec-boot-api --config-file /etc/exordos_core/exordos_core.conf --config-dir /etc/exordos_core/exordos_core.d
 
 [Install]
