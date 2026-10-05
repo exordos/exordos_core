@@ -120,6 +120,40 @@ class StorageNode(
         types.String(max_length=255), required=True
     )
     weight = properties.property(types.Float(min_value=0.000001), default=1.0)
+    agent = properties.property(types.AllowNone(types.UUID()), default=None)
+    builder = properties.property(types.AllowNone(types.UUID()), default=None)
+    location = properties.property(types.String(max_length=2048), default="")
+    bind_address = properties.property(types.String(max_length=255), default="")
+    status = properties.property(
+        types.Enum(["NEW", "IN_PROGRESS", "ACTIVE", "ERROR"]), default="NEW"
+    )
+
+
+class Node(
+    StorageNode,
+    ua_models.InstanceMixin,
+    pool_models.SchedulableToAgentFromAgentFieldMixin,
+):
+    @classmethod
+    def get_resource_kind(cls) -> str:
+        return "storage_node"
+
+    @classmethod
+    def get_filter_clause(cls, builder, **kwargs):
+        return {"builder": dm_filters.EQ(str(builder))}
+
+    def get_resource_target_fields(self):
+        return frozenset(
+            (
+                "uuid",
+                "cluster",
+                "agent",
+                "endpoint",
+                "location",
+                "bind_address",
+                "failure_domain_path",
+            )
+        )
 
 
 class StoragePool(
