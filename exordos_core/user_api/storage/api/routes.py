@@ -25,6 +25,14 @@ class StorageClusterRoute(routes.Route):
     __controller__ = controllers.StorageClustersController
 
 
+class StorageNodeRoute(routes.Route):
+    __controller__ = controllers.StorageNodesController
+
+
+class StoragePoolRoute(routes.Route):
+    __controller__ = controllers.StoragePoolsController
+
+
 class StorageRoute(routes.Route):
     """Handler for /v1/storage/ endpoint"""
 
@@ -32,3 +40,5 @@ class StorageRoute(routes.Route):
     __controller__ = controllers.StorageController
 
     clusters = routes.route(StorageClusterRoute)
+    nodes = routes.route(StorageNodeRoute)
+    pools = routes.route(StoragePoolRoute)
