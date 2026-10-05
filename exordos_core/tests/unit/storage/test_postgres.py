@@ -399,6 +399,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
     with (
         contexts.Context().session_manager(),
         patch.object(rawstor_node, "OST_UNIT_DIR", tmp_path / "units"),
+        patch.object(rawstor_node, "OST_CONFIG_DIR", tmp_path / "config"),
     ):
         cluster = cluster_api.create(
             name="cluster",
