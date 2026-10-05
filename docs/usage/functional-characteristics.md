@@ -82,6 +82,9 @@ realm mark through the upstream DNS API, preserving their other tags. A UUID or
 matching content alone does not establish ownership. Older upstream APIs without
 tag support accept new unmarked records, but existing records are not updated or
 removed until the upstream is upgraded and those records are explicitly marked.
+When tag filtering is unavailable, the mirror reads the whole zone and still
+checks record ownership if the response supports tags. Filter refusal alone does
+not disable marking, updating, or cleanup.
 The mirror retries an unsupported tag filter after one hour; unrelated server
 errors remain failures. Record listing supports `q=tags:"realm:<realm_uuid>"`;
 unknown field parameters and invalid typed values return HTTP 400. A bare `*`
