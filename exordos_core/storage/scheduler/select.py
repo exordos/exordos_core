@@ -14,11 +14,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import time
 import typing as tp
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.agents.universal.drivers import storage_capacity
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.compute.dm import models as compute_models
 from exordos_core.storage.dm import models as storage_models
 
 # A pool paired with the StorageCluster it belongs to, or None for a
@@ -39,6 +42,7 @@ def _active_clusters() -> tp.List[storage_models.StorageCluster]:
 
 def collect_storage_pool_candidates(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
+    staged=None,
 ) -> tp.List[PoolCandidate]:
     """Pair every candidate pool with the StorageCluster that owns it.
 
@@ -48,6 +52,36 @@ def collect_storage_pool_candidates(
     """
     candidates: tp.List[PoolCandidate] = [(p, None) for p in local_pools]
     for cluster in _active_clusters():
+        if cluster.driver_spec.pools:
+            info = cluster.capacity_info
+            if time.time() - info.get("reported_at", 0) > 60:
+                continue
+            volumes = compute_models.MachineVolume.objects.get_all(
+                filters={
+                    "storage_location": dm_filters.EQ(cluster.driver_spec.endpoint)
+                }
+            )
+            promised = {str(v.uuid): v.size << 30 for v in volumes}
+            promised.update((staged or {}).get(str(cluster.uuid), {}))
+            observed = info.get("objects", {})
+            pending = [
+                max(0, size - observed.get(uuid, 0)) for uuid, size in promised.items()
+            ]
+            for pool in cluster.storage_pools:
+                policy = {
+                    "mirrors": pool.mirrors,
+                    "chunk_size": pool.chunk_size,
+                    "failure_domain": pool.failure_domain,
+                }
+                available = (
+                    storage_capacity.available_by_policy(
+                        info.get("nodes", []), policy, pending
+                    )
+                    >> 30
+                )
+                pool.capacity_usable = available
+                pool.capacity_provisioned = 0
+                pool.available_actual = available
         candidates.extend((p, cluster) for p in cluster.storage_pools)
     return candidates
 
@@ -58,12 +92,13 @@ def select_storage_pool_with_clusters(
     ephemeral: bool,
     size: int,
     assigned_name: tp.Optional[str] = None,
+    staged=None,
 ) -> tp.Optional[PoolCandidate]:
     """Like `ua_pool.select_storage_pool`, but drawing from local pools
     and active StorageClusters' pools together (see
     `collect_storage_pool_candidates`).
     """
-    candidates = collect_storage_pool_candidates(local_pools)
+    candidates = collect_storage_pool_candidates(local_pools, staged)
     owner_by_id = {id(pool): owner for pool, owner in candidates}
 
     selected = ua_pool.select_storage_pool(
@@ -78,6 +113,7 @@ def select_storage_pool_with_clusters(
 def find_storage_pool_by_name_with_clusters(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     name: str,
+    location: tp.Optional[str] = None,
 ) -> tp.Optional[PoolCandidate]:
     """Find a pool already assigned to a volume by name.
 
@@ -88,6 +124,7 @@ def find_storage_pool_by_name_with_clusters(
         (pool, owner)
         for pool, owner in collect_storage_pool_candidates(local_pools)
         if pool.name == name
+        and (owner.driver_spec.endpoint if owner else None) == location
     ]
 
     if not matches:

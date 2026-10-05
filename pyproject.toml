@@ -89,6 +89,7 @@ docs = [
 
 [tool.ruff]
 exclude = [
+    ".claude",
     ".bzr",
     ".direnv",
     ".eggs",

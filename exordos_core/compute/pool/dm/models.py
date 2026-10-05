@@ -142,6 +142,7 @@ class MachineVolume(
                 "ephemeral",
                 "storage_pool",
                 "storage_location",
+                "storage_policy",
                 "project_id",
             )
         )

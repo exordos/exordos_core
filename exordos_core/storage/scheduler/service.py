@@ -25,6 +25,7 @@ from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
+from exordos_core.storage import state
 from exordos_core.storage.dm import models as storage_models
 
 LOG = logging.getLogger(__name__)
@@ -61,7 +62,10 @@ class StorageClusterSchedulerService(basic.BasicService):
         )
 
     def _iteration(self):
-        with contexts.Context().session_manager():
+        with contexts.Context().session_manager() as session:
+            state.lock(session)
+            for cluster in storage_models.StorageCluster.objects.get_all():
+                state.sync_cluster(cluster)
             unscheduled = self._get_unscheduled_clusters()
             if not unscheduled:
                 LOG.debug("Nothing to schedule, no unscheduled storage clusters")
