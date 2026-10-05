@@ -4251,61 +4251,9 @@ components:
                 example: any_string
                 maxLength: 2048
                 type: string
-              ephemeral:
-                default: false
-                example: true
-                type: boolean
               kind:
                 enum:
                 - rawstor
-                type: string
-              location:
-                default: ''
-                example: any_string
-                maxLength: 2048
-                type: string
-              managed:
-                default: false
-                example: true
-                type: boolean
-              nodes:
-                additionalProperties:
-                  oneOf:
-                  - type: string
-                  - type: integer
-                  - type: boolean
-                  - type: object
-                  - items: {}
-                    type: array
-                default: {}
-                example:
-                  key: value
-                type: object
-              ost_endpoint:
-                default: ''
-                example: any_string
-                maxLength: 2048
-                type: string
-              pools:
-                additionalProperties:
-                  oneOf:
-                  - type: string
-                  - type: integer
-                  - type: boolean
-                  - type: object
-                  - items: {}
-                    type: array
-                default: {}
-                example:
-                  key: value
-                type: object
-              speed:
-                default: HOT
-                enum:
-                - COLD
-                - HOT
-                - WARM
-                example: COLD
                 type: string
             type: object
           type: object
