@@ -21,6 +21,7 @@ from gcl_sdk.agents.universal.clients.orch import base as orch_base
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 
+from exordos_core.storage import state
 from exordos_core.storage.dm import models as storage_models
 
 
@@ -61,6 +62,8 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
 
         The result is a dictionary that is passed to the iteration context.
         """
+        with storage_models.StorageCluster._get_engine().session_manager() as session:
+            state.lock(session)
         return {"clause_filters": {"builder": self.ua_service_spec.uuid}}
 
     def actualize_outdated_instance(
@@ -70,4 +73,5 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
     ) -> None:
         """Sync the capacity the cluster's own agent reported."""
         current_instance.storage_pools = actual_instance.storage_pools
+        current_instance.capacity_info = actual_instance.capacity_info
         current_instance.status = actual_instance.status
