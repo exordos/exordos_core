@@ -172,6 +172,12 @@ def _build_template_context(spec: dict[str, tp.Any]) -> dict[str, str]:
 
     main_network = ipaddress.ip_network(stand["network"]["cidr"])
     boot_network = ipaddress.ip_network(stand["boot_network"]["cidr"])
+    # Overlapping networks put the same subnet on both interfaces, so the
+    # kernel routes replies through the wrong one and the node is unreachable.
+    if main_network.overlaps(boot_network):
+        raise ValueError(
+            f"Boot network {boot_network} overlaps main network {main_network}"
+        )
     boot_ip = boot_port.get("ip") or str(boot_network.network_address + 2)
 
     return {
