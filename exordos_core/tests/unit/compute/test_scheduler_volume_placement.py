@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import time
+from unittest.mock import MagicMock
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
@@ -80,14 +82,22 @@ def _storage_cluster(
         uuid=sys_uuid.uuid4(),
         name=name,
         driver_spec=pool_base.RawstorStorageClusterDriverSpec(
-            location="file:///var/lib/rawstor",
             endpoint=endpoint,
-            speed=speed,
-            ephemeral=ephemeral,
         ),
         status=ua_pool.MachinePoolStatus.ACTIVE.value,
         agent=sys_uuid.uuid4(),
         storage_pools=[_storage_pool(name, speed, ephemeral, capacity_usable)],
+        capacity_info={
+            "reported_at": time.time(),
+            "objects": {},
+            "nodes": [
+                {
+                    "uuid": str(sys_uuid.uuid4()),
+                    "failure_domain_path": "server1",
+                    "available": capacity_usable << 30,
+                }
+            ],
+        },
     )
     cluster.save = lambda: None
     return cluster
@@ -101,6 +111,9 @@ def no_storage_clusters(monkeypatch):
     override this explicitly.
     """
     monkeypatch.setattr(storage_select, "_active_clusters", lambda: [])
+    monkeypatch.setattr(
+        models.MachineVolume, "objects", MagicMock(get_all=MagicMock(return_value=[]))
+    )
 
 
 @pytest.fixture

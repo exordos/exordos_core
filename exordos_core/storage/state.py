@@ -16,6 +16,7 @@
 
 """Storage policy/topology snapshots sent to the core agent."""
 
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool
 from restalchemy.dm import filters
 
@@ -29,7 +30,7 @@ def lock(session):
     session.execute("SELECT pg_advisory_xact_lock(%s)", (STORAGE_LOCK,))
 
 
-def sync_cluster(cluster):
+def agent_driver_spec(cluster):
     nodes = models.StorageNode.objects.get_all(
         filters={"cluster": filters.EQ(cluster.uuid)}
     )
@@ -61,11 +62,19 @@ def sync_cluster(cluster):
         }
         for policy in policies
     }
-    # Migrate away from the singleton OST after its separate resource exists.
-    if nodes:
-        spec["ost_endpoint"] = ""
-    driver_spec = pool.RawstorStorageClusterDriverSpec.restore_from_simple_view(**spec)
-    if cluster.driver_spec != driver_spec:
-        cluster.driver_spec = driver_spec
+    return pool.RawstorStorageClusterAgentSpec.restore_from_simple_view(**spec)
+
+
+def sync_cluster(cluster):
+    # The builder regenerates the agent snapshot from nodes/pools. Never persist
+    # that snapshot in the public cluster configuration.
+    targets = ua_models.TargetResource.objects.get_all(
+        filters={
+            "uuid": filters.EQ(cluster.uuid),
+            "kind": filters.EQ("storage_cluster"),
+        }
+    )
+    snapshot = agent_driver_spec(cluster).dump_to_simple_view()
+    if not targets or targets[0].value.get("driver_spec") != snapshot:
         cluster.status = pool.MachinePoolStatus.IN_PROGRESS.value
         cluster.update()
