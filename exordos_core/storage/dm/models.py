@@ -95,6 +95,24 @@ class Cluster(
         """
         return {"builder": dm_filters.EQ(str(builder))}
 
+    def get_ua_all_and_target_values(self):
+        from exordos_core.storage import state
+
+        value, target = super().get_ua_all_and_target_values()
+        snapshot = state.agent_driver_spec(self).dump_to_simple_view()
+        value["driver_spec"] = snapshot
+        target["driver_spec"] = snapshot
+        return value, target
+
+    @classmethod
+    def from_ua_resource(cls, resource):
+        # The agent reports its enriched snapshot; the SQL/API model contains
+        # only the public cluster configuration.
+        value = dict(resource.value)
+        spec = value["driver_spec"]
+        value["driver_spec"] = {"kind": spec["kind"], "endpoint": spec["endpoint"]}
+        return cls.restore_from_simple_view(skip_unknown_fields=True, **value)
+
     def get_resource_target_fields(self) -> tp.Collection[str]:
         """Return the collection of target fields.
 
