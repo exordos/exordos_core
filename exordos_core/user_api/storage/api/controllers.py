@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import uuid as sys_uuid
 
 from gcl_iam.api import controllers as iam_controllers
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.drivers import storage_capacity
 from restalchemy.api import constants as ra_c
@@ -137,6 +138,14 @@ class StorageClustersController(
                 raise storage_exc.ConflictRecords(
                     model="StorageCluster", msg="Remove storage nodes first"
                 )
+            if any(
+                str(resource.value.get("cluster")) == str(cluster.uuid)
+                for resource in _node_resources()
+            ):
+                raise storage_exc.ConflictRecords(
+                    model="StorageCluster",
+                    msg="Wait for storage node removal to reconcile",
+                )
             for policy in models.StoragePool.objects.get_all(
                 filters={"cluster": dm_filters.EQ(cluster.uuid)}
             ):
@@ -205,6 +214,14 @@ def _require_no_disks(cluster, pool_uuid=None):
         )
 
 
+def _node_resources():
+    # Actual resources reserve their ports until the host acknowledges stopping.
+    for model in (ua_models.TargetResource, ua_models.Resource):
+        yield from model.objects.get_all(
+            filters={"kind": dm_filters.EQ("storage_node")}
+        )
+
+
 class ClusterMemberController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
@@ -260,10 +277,55 @@ class StorageNodesController(ClusterMemberController):
         model_class=models.StorageNode,
         process_filters=True,
         convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "builder": {ra_c.ALL: field_p.Permissions.RO},
+                "status": {ra_c.ALL: field_p.Permissions.RO},
+            },
+        ),
     )
+
+    def create(self, **kwargs):
+        kwargs.setdefault("uuid", sys_uuid.uuid4())
+        kwargs.setdefault("location", f"file:///var/lib/rawstor/{kwargs['uuid']}")
+        endpoint = _validate_endpoint(kwargs["endpoint"], "ost")
+        kwargs.setdefault("bind_address", f"0.0.0.0:{endpoint.port}")
+        kwargs["status"] = "NEW"
+        return super().create(**kwargs)
+
+    def update(self, uuid, **kwargs):
+        # The API marks changed endpoint/bind configuration as not yet ready.
+        if any(field in kwargs for field in ("endpoint", "bind_address")):
+            kwargs["status"] = "IN_PROGRESS"
+        return super().update(uuid, **kwargs)
 
     def validate_member(self, data, cluster, existing=None):
         _validate_endpoint(data["endpoint"], "ost")
+        agent_uuid = data.get("agent")
+        if agent_uuid is None and existing is None:
+            raise InvalidRawstorEndpoint(msg="An OST agent is required")
+        if existing and (
+            str(existing.agent) != str(agent_uuid)
+            or existing.location != data.get("location", "")
+        ):
+            raise storage_exc.ConflictRecords(
+                model="StorageNode", msg="OST agent and backing location cannot change"
+            )
+        if agent_uuid is not None:
+            try:
+                storage_capacity.validate_ost_configuration(
+                    data["location"], data["bind_address"]
+                )
+            except (ValueError, TypeError) as error:
+                raise InvalidRawstorEndpoint(msg=str(error))
+            agent = ua_models.UniversalAgent.objects.get_one(
+                filters={"uuid": dm_filters.EQ(agent_uuid)}
+            )
+            if "storage_node" not in agent.list_capabilities:
+                raise InvalidRawstorEndpoint(
+                    msg="Agent does not support storage_node; run storages nodes init"
+                )
         weight = data.get("weight", 1)
         if not math.isfinite(weight) or weight <= 0:
             raise InvalidRawstorEndpoint(msg="OST weight must be finite and positive")
@@ -276,12 +338,29 @@ class StorageNodesController(ClusterMemberController):
             raise InvalidRawstorEndpoint(
                 msg="Failure domain path must be dc/row/rack/server (1 to 4 components)"
             )
-        if existing and existing.endpoint != data["endpoint"]:
+        if existing and (
+            existing.endpoint != data["endpoint"]
+            or existing.bind_address != data.get("bind_address", "")
+        ):
             _require_no_disks(cluster)
         # The SQL unique constraint also protects endpoint/name races.
         for node in models.StorageNode.objects.get_all():
             if existing and node.uuid == existing.uuid:
                 continue
+            if agent_uuid is not None and node.agent is not None:
+                other_agent = ua_models.UniversalAgent.objects.get_one(
+                    filters={"uuid": dm_filters.EQ(node.agent)}
+                )
+                if other_agent.node == agent.node:
+                    if (
+                        node.location == data["location"]
+                        or urlparse("ost://" + node.bind_address).port
+                        == urlparse("ost://" + data["bind_address"]).port
+                    ):
+                        raise storage_exc.ConflictRecords(
+                            model="StorageNode",
+                            msg="OST backing location or bind port already used on this host",
+                        )
             if node.endpoint.rstrip("/") == data["endpoint"].rstrip("/"):
                 raise storage_exc.ConflictRecords(
                     model="StorageNode", msg="OST already registered"
@@ -290,10 +369,45 @@ class StorageNodesController(ClusterMemberController):
                 raise storage_exc.ConflictRecords(
                     model="StorageNode", msg="Node name already used in cluster"
                 )
+        for resource in _node_resources():
+            if existing and resource.uuid == existing.uuid:
+                continue
+            value = resource.value
+            if str(resource.uuid) == str(data.get("uuid")) or value["endpoint"].rstrip(
+                "/"
+            ) == data["endpoint"].rstrip("/"):
+                raise storage_exc.ConflictRecords(
+                    model="StorageNode",
+                    msg="OST endpoint or identity is still reconciled; wait for removal",
+                )
+            previous_agent = value.get("agent") or resource.agent
+            if agent_uuid is not None and previous_agent is not None:
+                other_agent = ua_models.UniversalAgent.objects.get_one(
+                    filters={"uuid": dm_filters.EQ(previous_agent)}
+                )
+                if other_agent.node == agent.node and (
+                    value["location"] == data["location"]
+                    or urlparse("ost://" + value["bind_address"]).port
+                    == urlparse("ost://" + data["bind_address"]).port
+                ):
+                    raise storage_exc.ConflictRecords(
+                        model="StorageNode",
+                        msg="OST backing location or port is still reconciled on this host; wait for removal",
+                    )
 
     def validate_delete(self, member, cluster):
         # No new writes may race an OST removal. Also protect unmanaged objects.
         _require_no_disks(cluster)
+        if member.agent is not None and member.status != "ACTIVE":
+            actual = ua_models.Resource.objects.get_all(
+                filters={
+                    "uuid": dm_filters.EQ(member.uuid),
+                    "kind": dm_filters.EQ("storage_node"),
+                }
+            )
+            if not actual:
+                # A never-ready OST has not been admitted into the MDS topology.
+                return
         import rawstor
 
         if next(iter(rawstor.Location(member.endpoint)), None) is not None:

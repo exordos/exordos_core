@@ -45,6 +45,7 @@ def sync_cluster(cluster):
             "failure_domain_path": node.failure_domain_path,
         }
         for node in nodes
+        if node.agent is None or node.status == "ACTIVE"
     }
     spec["pools"] = {
         str(policy.uuid): {

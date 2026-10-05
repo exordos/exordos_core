@@ -18,6 +18,7 @@ import typing as tp
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.clients.orch import base as orch_base
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 
@@ -26,14 +27,11 @@ from exordos_core.storage.dm import models as storage_models
 
 
 class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService):
-    """Builder for StorageCluster resources.
+    """Reconcile MDS clusters and OST nodes on their assigned agents.
 
-    Much simpler than PoolBuilderService: a storage cluster has no
-    machine/volume derivatives to create or update - it only ever needs
-    its reported capacity synced from the agent, so every hook besides
-    `prepare_iteration`/`actualize_outdated_instance` uses the base
-    class's sensible defaults (always creatable/updatable, no
-    derivatives).
+    Ready OST reports update MDS topology. Removed OSTs remain running until
+    MDS has acknowledged the new topology. Storage operations share the same
+    transaction lock as disk admission.
     """
 
     def __init__(
@@ -51,7 +49,7 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
         )
 
         super().__init__(
-            instance_models=(storage_models.Cluster,),
+            instance_models=(storage_models.Cluster, storage_models.Node),
             service_spec=svc_spec,
             iter_min_period=iter_min_period,
             iter_pause=iter_pause,
@@ -68,10 +66,48 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
 
     def actualize_outdated_instance(
         self,
-        current_instance: storage_models.Cluster,
-        actual_instance: storage_models.Cluster,
+        current_instance: storage_models.Cluster | storage_models.Node,
+        actual_instance: storage_models.Cluster | storage_models.Node,
     ) -> None:
-        """Sync the capacity the cluster's own agent reported."""
+        """Sync cluster capacity or admit an OST with matching ready configuration."""
+        if isinstance(current_instance, storage_models.Node):
+            matches = all(
+                getattr(current_instance, field) == getattr(actual_instance, field)
+                for field in current_instance.get_resource_target_fields()
+            )
+            current_instance.status = (
+                actual_instance.status if matches else "IN_PROGRESS"
+            )
+            current_instance.update()
+            cluster = storage_models.StorageCluster.objects.get_one(
+                filters={"uuid": current_instance.cluster}
+            )
+            state.sync_cluster(cluster)
+            return
         current_instance.storage_pools = actual_instance.storage_pools
         current_instance.capacity_info = actual_instance.capacity_info
         current_instance.status = actual_instance.status
+
+    def can_delete_instance_resource(self, resource):
+        if resource.kind != "storage_node":
+            return super().can_delete_instance_resource(resource)
+        # Keep the OST running until the MDS has acknowledged its removal.
+        actual = ua_models.Resource.objects.get_all(
+            filters={"uuid": resource.value["cluster"], "kind": "storage_cluster"}
+        )
+        target = ua_models.TargetResource.objects.get_all(
+            filters={"uuid": resource.value["cluster"], "kind": "storage_cluster"}
+        )
+        return (
+            bool(actual)
+            and bool(target)
+            and actual[0].hash == target[0].hash
+            and str(resource.uuid)
+            not in target[0].value["driver_spec"].get("nodes", {})
+        )
+
+    def _model_iteration(self):
+        # Collection builders open a separate transaction for each model.
+        with storage_models.StorageCluster._get_engine().session_manager() as session:
+            state.lock(session)
+            super()._model_iteration()

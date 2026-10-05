@@ -29,6 +29,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 import uuid
 
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as sdk_pool
 import psycopg
 from psycopg import sql
@@ -82,6 +83,11 @@ def empty_database():
 @pytest.fixture
 def database(empty_database):
     uri = empty_database
+    import gcl_sdk.migrations as sdk_migrations
+    from restalchemy.storage.sql import migrations
+
+    engine = migrations.MigrationEngine(str(Path(sdk_migrations.__file__).parent))
+    engine.apply_migration(engine.get_latest_migration())
     with psycopg.connect(uri) as connection:
         for statement in migration("0000-squashed-current-7f2e4a.py").SCHEMA_STATEMENTS:
             if statement.startswith("CREATE TABLE public.compute_machine_volumes"):
@@ -94,6 +100,9 @@ def database(empty_database):
         )
         migration("0004-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
         migration("0005-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
+            connection
+        )
+        migration("0007-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
     return uri
@@ -121,19 +130,37 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
         )
         assert len(cluster.driver_spec.pools) == 2
         assert cluster.driver_spec.nodes == {}
+        agents = []
+        for index in range(2):
+            agent = ua_models.UniversalAgent(
+                uuid=uuid.uuid4(),
+                node=uuid.uuid4(),
+                name=f"ost-agent{index}",
+                capabilities={"capabilities": ["storage_node"]},
+                facts={"facts": []},
+            )
+            agent.insert()
+            agents.append(agent)
         first = node_api.create(
             name="ost1",
+            agent=agents[0].uuid,
             cluster=cluster.uuid,
             endpoint="ost://host1:7777",
             failure_domain_path="dc1/row1/rack1/host1",
         )
         second = node_api.create(
             name="ost2",
+            agent=agents[1].uuid,
             cluster=cluster.uuid,
             endpoint="ost://host2:7777",
             failure_domain_path="dc1/row1/rack2/host2",
         )
         cluster = cluster_api.get(uuid=cluster.uuid)
+        assert cluster.driver_spec.nodes == {}  # Not admitted until the OST answers.
+        for node in (first, second):
+            node.status = "ACTIVE"
+            node.update()
+        state.sync_cluster(cluster)
         assert set(cluster.driver_spec.nodes) == {str(first.uuid), str(second.uuid)}
         node_api.update(second.uuid, weight=2.0)
         cluster = cluster_api.get(uuid=cluster.uuid)
@@ -296,6 +323,12 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
             (cluster_uuid, json.dumps(spec), json.dumps(policy)),
         )
         step.upgrade(connection)
+        migration("0007-managed-storage-nodes-934dc2.py").migration_step.upgrade(
+            connection
+        )
+        assert connection.execute(
+            "SELECT agent,status FROM storage_nodes"
+        ).fetchone() == (None, "ACTIVE")
         assert connection.execute(
             "SELECT uuid,endpoint,failure_domain_path FROM storage_nodes"
         ).fetchone() == (cluster_uuid, "ost://host:7777", str(cluster_uuid))
@@ -347,3 +380,128 @@ def test_full_migration_graph_applies_from_empty_database(
             "secret_secrets",
             "storage_secrets",
         } <= tables
+
+
+def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
+    database, tmp_path
+):
+    from gcl_sdk.agents.universal.drivers import rawstor_node
+
+    from exordos_core.storage.builders import cluster as cluster_builder
+
+    cluster_api = controller(controllers.StorageClustersController)
+    node_api = controller(controllers.StorageNodesController)
+    service = cluster_builder.StorageClusterBuilderService.__new__(
+        cluster_builder.StorageClusterBuilderService
+    )
+    driver = rawstor_node.StorageNodeAgentDriver(meta_file=str(tmp_path / "meta.json"))
+    driver.start()
+    with (
+        contexts.Context().session_manager(),
+        patch.object(rawstor_node, "OST_UNIT_DIR", tmp_path / "units"),
+    ):
+        cluster = cluster_api.create(
+            name="cluster",
+            driver_spec={"kind": "rawstor", "endpoint": "mds://core:7776/"},
+        )
+        agent = ua_models.UniversalAgent(
+            uuid=uuid.uuid4(),
+            node=uuid.uuid4(),
+            name="storage-agent",
+            capabilities={"capabilities": ["storage_node"]},
+            facts={"facts": []},
+        )
+        agent.insert()
+        node = node_api.create(
+            name="ost",
+            cluster=cluster.uuid,
+            agent=agent.uuid,
+            endpoint="ost://host:7777",
+            location=f"file://{tmp_path}/data",
+            failure_domain_path="dc/row/rack/server",
+        )
+        assert node.status == "NEW"
+        assert cluster_api.get(uuid=cluster.uuid).driver_spec.nodes == {}
+        current = models.Node.restore_from_simple_view(**node.dump_to_simple_view())
+        desired = current.to_ua_resource()
+        desired.agent = agent.uuid
+        desired.insert()
+        with patch.object(rawstor_node.subprocess, "run"), patch("rawstor.Location"):
+            actual = driver.create(desired)
+        assert actual.hash == desired.hash  # Real CP/DP serialization contract.
+        assert actual.status == "ACTIVE"
+        actual.agent = agent.uuid
+        actual.insert()
+        driver.finalize()
+        service.actualize_outdated_instance(
+            current, models.Node.from_ua_resource(actual)
+        )
+        cluster = cluster_api.get(uuid=cluster.uuid)
+        assert str(node.uuid) in cluster.driver_spec.nodes
+        mds_target = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        ).to_ua_resource()
+        mds_target.insert()
+        mds_actual = ua_models.Resource(
+            uuid=cluster.uuid,
+            kind="storage_cluster",
+            res_uuid=mds_target.res_uuid,
+            hash=mds_target.hash,
+            value=mds_target.value,
+        )
+        mds_actual.insert()
+        # The API removes desired membership, while the OST stays alive.
+        with patch("rawstor.Location") as location:
+            location.return_value.__iter__.return_value = iter([])
+            node_api.delete(node.uuid)
+        cluster = cluster_api.get(uuid=cluster.uuid)
+        removed = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        ).to_ua_resource()
+        mds_target.value = removed.value
+        mds_target.hash = removed.hash
+        mds_target.update()
+        assert not service.can_delete_instance_resource(desired)
+        mds_actual.value = removed.value
+        mds_actual.hash = removed.hash
+        mds_actual.update()
+        assert service.can_delete_instance_resource(desired)
+        desired.delete()  # Host payload no longer contains the OST.
+        from restalchemy.storage import exceptions
+
+        with pytest.raises(exceptions.ConflictRecords):
+            node_api.create(
+                name="replacement",
+                cluster=cluster.uuid,
+                agent=agent.uuid,
+                endpoint=node.endpoint,
+                failure_domain_path="server",
+            )
+        with pytest.raises(exceptions.ConflictRecords):
+            cluster_api.delete(cluster.uuid)  # Still awaiting the host's stop report.
+        backing = tmp_path / "data"
+        backing.mkdir()
+        (backing / "keep").write_text("data")
+        with (
+            patch.object(rawstor_node.subprocess, "run") as run,
+            patch("rawstor.Location"),
+        ):
+            driver.delete(desired)
+        assert [
+            "systemctl",
+            "disable",
+            "--now",
+            f"rawstor-ost@{node.uuid}.service",
+        ] in [c.args[0] for c in run.call_args_list]
+        assert not (tmp_path / "units" / f"rawstor-ost@{node.uuid}.service").exists()
+        assert (backing / "keep").read_text() == "data"
+        actual.delete()  # Host acknowledges deletion through the status API.
+        replacement = node_api.create(
+            name="replacement",
+            cluster=cluster.uuid,
+            agent=agent.uuid,
+            endpoint=node.endpoint,
+            failure_domain_path="server",
+        )
+        assert replacement.uuid != node.uuid
+        driver.finalize()

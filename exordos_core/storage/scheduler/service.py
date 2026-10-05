@@ -33,12 +33,7 @@ STORAGE_CLUSTER_CAP = "storage_cluster"
 
 
 class StorageClusterSchedulerService(basic.BasicService):
-    """Schedules StorageCluster resources onto builders/agents.
-
-    Much simpler than compute's pool scheduling (see
-    SchedulerService._schedule_pools): a storage cluster is never
-    hosted by the core universal agent advertising "storage_cluster".
-    """
+    """Schedule MDS clusters to core and OST nodes to their selected host agents."""
 
     def _get_cluster_builders(
         self, limit: int = nc.DEF_SQL_LIMIT
@@ -67,7 +62,13 @@ class StorageClusterSchedulerService(basic.BasicService):
             for cluster in storage_models.StorageCluster.objects.get_all():
                 state.sync_cluster(cluster)
             unscheduled = self._get_unscheduled_clusters()
-            if not unscheduled:
+            nodes = storage_models.StorageNode.objects.get_all(
+                filters={
+                    "builder": dm_filters.Is(None),
+                    "agent": dm_filters.IsNot(None),
+                }
+            )
+            if not unscheduled and not nodes:
                 LOG.debug("Nothing to schedule, no unscheduled storage clusters")
                 return
 
@@ -79,6 +80,12 @@ class StorageClusterSchedulerService(basic.BasicService):
                 )
                 return
 
+            for node in nodes:
+                node.builder = random.choice(builders).uuid
+                node.update()
+
+            if not unscheduled:
+                return
             agents = ua_models.UniversalAgent.have_capabilities((STORAGE_CLUSTER_CAP,))
             # MDS runs on this core, where the advertised endpoint points.
             core_node = ua_utils.system_uuid()

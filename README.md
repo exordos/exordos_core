@@ -57,7 +57,9 @@ that same checkout through tox; rebuilding an
 SDK elsewhere does not change the SDK locked inside tox.
 
 `exordos storages clusters add` starts a per-cluster MDS on core. Initialize
-and register OSTs through `storages nodes init/add`. Each cluster creates WARM
+hosts with `storages nodes init`, then create OST resources through
+`storages nodes add --agent AGENT_UUID`. Host agents start OSTs; core adds ready
+OSTs to MDS topology. Each cluster creates WARM
 persistent (two mirrors) and ephemeral (one mirror) pools with a shared capacity
 budget. Local qcow2 disks default to HOT ephemeral.
 See [Rawstor storage](docs/usage/rawstor.md) for topology, policy CRUD and admission.
