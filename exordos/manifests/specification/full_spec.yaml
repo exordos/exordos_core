@@ -4435,6 +4435,22 @@ components:
       path: /v1/storage/nodes/
     StorageNode_Get:
       properties:
+        agent:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        bind_address:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        builder:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          readOnly: true
+          type: string
         cluster:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
@@ -4465,10 +4481,25 @@ components:
           - rawstor
           example: rawstor
           type: string
+        location:
+          default: ''
+          example: any_string
+          maxLength: 2048
+          type: string
         name:
           default: ''
           example: any_string
           maxLength: 255
+          type: string
+        status:
+          default: NEW
+          enum:
+          - ACTIVE
+          - ERROR
+          - IN_PROGRESS
+          - NEW
+          example: NEW
+          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'
