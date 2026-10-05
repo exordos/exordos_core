@@ -69,7 +69,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: sudo apt update && sudo apt install --yes libev-dev libvirt-dev pdns-server pdns-backend-pgsql
+        run: sudo apt update && sudo apt install --yes libev-dev libvirt-dev pdns-server pdns-backend-pgsql libjemalloc2
       - name: Install uv
         uses: astral-sh/setup-uv@v7
       - name: Install tox-uv
@@ -80,6 +80,8 @@ jobs:
       - name: Functional tests
         env:
           DATABASE_URI: "postgresql://exordos_core:exordos_core@localhost:5432/exordos_core"
+          # Run functional tests under jemalloc like production services
+          LD_PRELOAD: /usr/lib/x86_64-linux-gnu/libjemalloc.so.2
         run: |
           tox -e ${{ matrix.python-version }}-functional
   Coverage:

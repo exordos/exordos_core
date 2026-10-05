@@ -6,6 +6,8 @@ After=network-online.target
 Restart=always
 RestartSec=5s
 TimeoutStopSec=5
+# Use jemalloc to avoid glibc arena retention/fragmentation
+Environment=LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 ExecStart=exordos-universal-agent --config-file /etc/exordos_universal_agent/exordos_universal_agent.conf
 
 [Install]
