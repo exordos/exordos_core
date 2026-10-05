@@ -79,6 +79,7 @@ def dns_sync():
     sync = service.DNSSyncService.__new__(service.DNSSyncService)
     sync._client = mock.Mock()
     sync._filter_lang_refused = {}
+    sync._tags_unsupported = set()
     sync._eco_create_record = mock.Mock()
     sync._eco_update_record = mock.Mock()
     sync._eco_delete_record = mock.Mock()
@@ -101,7 +102,7 @@ def _run(sync, domain, eco_records, local_records=(), refused=False):
     def list_records(endpoint, *args):
         if refused:
             sync._filter_lang_refused[endpoint] = 0
-        return eco_records
+        return sync._observe_record_tags(endpoint, eco_records)
 
     with (
         mock.patch.object(service.dns_models, "Record", record_model),
@@ -168,14 +169,18 @@ class TestFullSyncDeletes:
         assert dns_sync._eco_delete_record.call_count == 1
         assert dns_sync._eco_delete_record.call_args[0][3] == "a1"
 
-    def test_nothing_is_removed_where_records_cannot_be_marked(self, dns_sync, domain):
-        # An ecosystem that refuses the tag filter has no tags on records:
-        # nothing there carries a mark, so nothing is this mirror's to
-        # remove.
+    def test_filter_refusal_preserves_tagged_record_cleanup(self, dns_sync, domain):
         mine = _eco_record("a1", "www", [MINE])
+        foreign = _eco_record("a2", "foreign", [OTHER_REALM])
+        _run(dns_sync, domain, [mine, foreign], refused=True)
+        dns_sync._eco_delete_record.assert_called_once_with(
+            ENDPOINT, HEADERS, DOMAIN_UUID, "a1"
+        )
 
-        _run(dns_sync, domain, [mine], refused=True)
-
+    def test_legacy_records_without_tags_are_not_deleted(self, dns_sync, domain):
+        legacy = _eco_record("a1", "www", [])
+        del legacy["tags"]
+        _run(dns_sync, domain, [legacy], refused=True)
         dns_sync._eco_delete_record.assert_not_called()
 
 
@@ -201,10 +206,25 @@ class TestMarking:
     def test_no_tags_are_sent_where_records_cannot_hold_them(self, dns_sync, domain):
         local = _local_record("a1", "www", tags=["env:prod"])
 
-        _run(dns_sync, domain, [], local_records=[local], refused=True)
+        legacy = _eco_record("soa", "", [])
+        del legacy["tags"]
+        legacy["type"] = "SOA"
+        _run(dns_sync, domain, [legacy], local_records=[local], refused=True)
 
         data = dns_sync._eco_create_record.call_args[0][3]
         assert "tags" not in data
+
+    def test_filter_refusal_still_marks_new_records(self, dns_sync, domain):
+        local = _local_record("a1", "www")
+        _run(dns_sync, domain, [], local_records=[local], refused=True)
+        assert dns_sync._eco_create_record.call_args[0][3]["tags"] == [MINE]
+
+    def test_filter_refusal_still_updates_owned_records(self, dns_sync, domain):
+        local = _local_record("a1", "www")
+        owned = _eco_record("a1", "www", [MINE])
+        owned["ttl"] = 600
+        _run(dns_sync, domain, [owned], local_records=[local], refused=True)
+        dns_sync._eco_update_record.assert_called_once()
 
     def test_the_mark_is_not_doubled(self):
         local = _local_record("a1", "www", tags=[MINE, "env:prod"])

@@ -74,9 +74,9 @@ class DNSSyncService(basic.BasicService):
         # When each endpoint refused the filter expression, so a mirror
         # talking to an older one does not ask on every pass -- and one
         # that moves to, or is upgraded into, a newer one is not stuck
-        # with the answer the old one gave. An ecosystem that cannot filter
-        # by tags predates tags on records too, so nothing is marked there.
+        # with the answer the old one gave.
         self._filter_lang_refused = {}
+        self._tags_unsupported = set()
 
     def _get_variable_value(self, var_uuid):
         """Read variable value from ValuesStore by UUID."""
@@ -135,7 +135,7 @@ class DNSSyncService(basic.BasicService):
 
     def _mark_for(self, endpoint, tag):
         """The mark to write to `endpoint`: none where it cannot hold one."""
-        return None if endpoint in self._filter_lang_refused else tag
+        return None if endpoint in self._tags_unsupported else tag
 
     def _filter_refused(self, endpoint):
         refused_at = self._filter_lang_refused.get(endpoint)
@@ -143,6 +143,7 @@ class DNSSyncService(basic.BasicService):
             return False
         if time.monotonic() - refused_at >= FILTER_REFUSAL_TTL:
             del self._filter_lang_refused[endpoint]
+            self._tags_unsupported.discard(endpoint)
             return False
         return True
 
@@ -176,7 +177,8 @@ class DNSSyncService(basic.BasicService):
                     except ValueError:
                         raise e
                     if not isinstance(error, dict) or (
-                        error.get("type"), error.get("message")
+                        error.get("type"),
+                        error.get("message"),
                     ) != ("KeyError", "'q'"):
                         raise
                 resp = self._client.get(url, headers=headers)
@@ -188,9 +190,17 @@ class DNSSyncService(basic.BasicService):
                     endpoint,
                 )
                 self._filter_lang_refused[endpoint] = time.monotonic()
-                return records
+                return self._observe_record_tags(endpoint, records)
         resp = self._client.get(url, headers=headers)
-        return resp.json()
+        return self._observe_record_tags(endpoint, resp.json())
+
+    def _observe_record_tags(self, endpoint, records):
+        if records:
+            if any("tags" in record for record in records):
+                self._tags_unsupported.discard(endpoint)
+            else:
+                self._tags_unsupported.add(endpoint)
+        return records
 
     def _eco_create_record(self, endpoint, headers, eco_domain_uuid, record_data):
         """POST /api/core/v1/dns/domains/{uuid}/records/
@@ -454,8 +464,7 @@ class DNSSyncService(basic.BasicService):
             if not tag or _realm_marks(eco_rec) != {tag}:
                 continue
             if all(local_data.get(k) == eco_rec.get(k) for k in compare_keys) and (
-                not tag
-                or sorted(local_data["tags"]) == sorted(eco_rec.get("tags") or [])
+                sorted(local_data["tags"]) == sorted(eco_rec.get("tags") or [])
             ):
                 continue
             try:
