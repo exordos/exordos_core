@@ -45,6 +45,7 @@ class RepositoryController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Repository,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -148,6 +149,7 @@ class LatestStableElementsController(
 ):
     __resource__ = resources.ResourceByRAModel(
         models.RepoElement,
+        process_filters=True,
         convert_underscore=False,
         hidden_fields=["installation_state"],
     )
@@ -252,6 +254,7 @@ class RepoArtifactController(
 
     __resource__ = resources.ResourceByRAModel(
         models.RepoArtifact,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -272,6 +275,7 @@ class RepoElementController(
 
     __resource__ = resources.ResourceByRAModel(
         models.RepoElement,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
