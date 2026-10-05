@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 import uuid as sys_uuid
@@ -112,3 +113,23 @@ def test_cluster_rejects_node_and_pool_settings(field, value):
         controllers.InvalidRawstorEndpoint, match="configure nodes and pools separately"
     ):
         _validate(spec, [])
+
+
+@pytest.mark.parametrize("weight", [0, 1.5, float("inf"), 1 << 64])
+def test_node_rejects_weights_that_cannot_be_parsed_by_mds(weight):
+    controller = controllers.StorageNodesController.__new__(
+        controllers.StorageNodesController
+    )
+    with pytest.raises(
+        controllers.InvalidRawstorEndpoint, match="positive uint64 integer"
+    ):
+        controller.validate_member(
+            {
+                "endpoint": "ost://host:7777",
+                "agent": None,
+                "location": "",
+                "weight": weight,
+            },
+            _cluster(_spec()),
+            existing=SimpleNamespace(agent=None, location=""),
+        )
