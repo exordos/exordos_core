@@ -3,7 +3,7 @@
 ## Create a cluster
 
 ```bash
-exordos storages clusters add --type rawstor --name storage1 --mds-host 10.100.0.2
+exordos storages clusters add --type rawstor --name storage1 --host 10.100.0.2
 ```
 
 The core agent starts a separate `rawstor-mds@UUID.service` with its own
@@ -11,7 +11,7 @@ persistent SQLite index and topology. The agent uses the package's template
 and writes `/etc/rawstor/mds/UUID.conf` and `UUID.topology`; new databases live
 under `/var/lib/rawstor-mds/UUID/`. Existing Exordos MDS databases stay at their
 original paths through a config override. The first MDS defaults to port 7776.
-For subsequent clusters specify `--mds-port` or enter an unused port when prompted.
+For subsequent clusters specify `--port` or enter an unused port when prompted.
 The cluster endpoint is `mds://<core-ip>:<port>/`.
 
 Each new cluster has two policies sharing the same OST capacity:
