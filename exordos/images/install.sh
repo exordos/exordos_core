@@ -65,7 +65,7 @@ if [[ "$RAWSTOR_VERSION" != "99.0.0" ]]; then
 else
     (cd "$RAWSTOR_ART_DIR" && sha256sum -c SHA256SUMS)
 fi
-sudo apt-get install -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
+sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
     "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
 # Clusters have individual MDS units, provisioned by the universal agent.
 sudo systemctl disable --now rawstor-mds.service
