@@ -20,7 +20,6 @@ from unittest.mock import patch
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
-from gcl_sdk.infra import constants as ic
 import pytest
 
 from exordos_core.storage.builders import cluster as cluster_builder
@@ -32,10 +31,7 @@ def _cluster(**overrides):
         uuid=sys_uuid.uuid4(),
         name="cluster1",
         driver_spec=ua_pool.RawstorStorageClusterDriverSpec(
-            location="file:///var/lib/rawstor",
-            endpoint="ost://10.0.0.5:7777",
-            speed=ic.DiskSpeed.HOT.value,
-            ephemeral=False,
+            endpoint="mds://core:7776/",
         ),
         status=ua_pool.MachinePoolStatus.DISABLED.value,
     )
