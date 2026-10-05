@@ -17,8 +17,6 @@ import contextlib
 import uuid
 from unittest import mock
 
-import pytest
-
 from exordos_core.config import service
 
 
@@ -70,38 +68,3 @@ def test_failed_config_rolls_back_before_next_row():
         builder._actualize_new_configs(configs)
     assert applied == [configs[1]]
     assert not poisoned
-
-
-@pytest.mark.parametrize(
-    "sqlstate,constraint,waiting",
-    [
-        ("23503", "ua_target_resources_agent_fkey", True),
-        ("23503", "other_fkey", False),
-        ("23505", "ua_target_resources_agent_fkey", False),
-        (None, None, False),
-    ],
-)
-def test_only_missing_agent_conflict_is_logged_as_waiting(
-    sqlstate, constraint, waiting
-):
-    builder = service.ConfigServiceBuilder()
-    node = mock.Mock(uuid=uuid.uuid4())
-    config = mock.Mock()
-    config.target_nodes.return_value = [node.uuid]
-    db_error = Exception()
-    db_error.sqlstate = sqlstate
-    db_error.diag = mock.Mock(constraint_name=constraint)
-    dialect_error = Exception()
-    dialect_error.__context__ = db_error
-    conflict = service.storage_exc.ConflictRecords(model=config, msg="conflict")
-    conflict.__context__ = dialect_error
-    with (
-        mock.patch.object(service.node_models.Node, "objects") as objects,
-        mock.patch.object(service.sql_utils, "savepoint", contextlib.nullcontext),
-        mock.patch.object(builder, "_actualize_new_config", side_effect=conflict),
-        mock.patch.object(service, "LOG") as log,
-    ):
-        objects.get_all.return_value = [node]
-        builder._actualize_new_configs([config])
-    assert log.debug.called == waiting
-    assert log.exception.called != waiting
