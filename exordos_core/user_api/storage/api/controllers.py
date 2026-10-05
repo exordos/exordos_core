@@ -320,8 +320,14 @@ class StorageNodesController(ClusterMemberController):
                     msg="Agent does not support storage_node; run storages nodes init"
                 )
         weight = data.get("weight", 1)
-        if not math.isfinite(weight) or weight <= 0:
-            raise InvalidRawstorEndpoint(msg="OST weight must be finite and positive")
+        if (
+            not math.isfinite(weight)
+            or not 1 <= weight <= (1 << 64) - 1
+            or weight != int(weight)
+        ):
+            raise InvalidRawstorEndpoint(
+                msg="OST weight must be a positive uint64 integer"
+            )
         path = data["failure_domain_path"]
         if (
             not 1 <= len(path.split("/")) <= 4
