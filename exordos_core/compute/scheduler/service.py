@@ -28,6 +28,7 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler.driver import base
+from exordos_core.storage import state as storage_state
 from exordos_core.storage.scheduler import select as storage_select
 
 LOG = logging.getLogger(__name__)
@@ -194,7 +195,11 @@ class SchedulerService(basic.BasicService):
         speed/ephemeral match with a capacity fallback).
         """
         result = storage_select.select_storage_pool_with_clusters(
-            pool.pool.storage_pools, volume.speed, volume.ephemeral, size
+            pool.pool.storage_pools,
+            volume.speed,
+            volume.ephemeral,
+            size,
+            staged=getattr(self, "_storage_reservations", {}),
         )
         if result is not None:
             return result
@@ -204,10 +209,10 @@ class SchedulerService(basic.BasicService):
         )
 
     def _find_storage_pool_by_name(
-        self, pool: base.MachinePoolBundle, name: str
+        self, pool: base.MachinePoolBundle, name: str, location=None
     ) -> storage_select.PoolCandidate:
         result = storage_select.find_storage_pool_by_name_with_clusters(
-            pool.pool.storage_pools, name
+            pool.pool.storage_pools, name, location
         )
         if result is None:
             raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
@@ -219,8 +224,19 @@ class SchedulerService(basic.BasicService):
     ) -> models.MachineVolume:
         storage_pool, cluster = self._select_storage_pool(pool, volume, volume.size)
         storage_pool.allocate_capacity(volume.size)
+        policy = {}
         if cluster is not None:
-            cluster.save()
+            if not hasattr(self, "_storage_reservations"):
+                self._storage_reservations = {}
+            self._storage_reservations.setdefault(str(cluster.uuid), {})[
+                str(volume.uuid)
+            ] = volume.size << 30
+            policy = {
+                "pool_uuid": str(storage_pool.uuid),
+                "mirrors": storage_pool.mirrors,
+                "chunk_size": storage_pool.chunk_size,
+                "failure_domain": storage_pool.failure_domain,
+            }
 
         pool_volume = models.MachineVolume(
             uuid=volume.uuid,
@@ -235,6 +251,7 @@ class SchedulerService(basic.BasicService):
             ephemeral=volume.ephemeral,
             storage_pool=storage_pool.name,
             storage_location=cluster.driver_spec.endpoint if cluster else None,
+            storage_policy=policy,
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
@@ -249,7 +266,9 @@ class SchedulerService(basic.BasicService):
             return None
 
         try:
-            return self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
+            return self._find_storage_pool_by_name(
+                pool, pool_volume.storage_pool, pool_volume.storage_location
+            )
         except ValueError:
             return None
 
@@ -271,6 +290,8 @@ class SchedulerService(basic.BasicService):
         volumes = []
         exact_volumes = []
         for pool_volume in pool.volumes:
+            if pool_volume.storage_location:
+                continue
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
             # volumes. Is the size is a target or actual field?
@@ -681,7 +702,9 @@ class SchedulerService(basic.BasicService):
                 continue
 
     def _iteration(self):
-        with contexts.Context().session_manager():
+        with contexts.Context().session_manager() as session:
+            storage_state.lock(session)
+            self._storage_reservations = {}
             pool_builders = self._get_pool_builders()
             pools = self._get_pools()
 

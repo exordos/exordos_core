@@ -55,6 +55,7 @@ class StorageCluster(
         ),
         required=True,
     )
+    capacity_info = properties.property(types.Dict(), default=dict)
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     status = properties.property(
@@ -100,3 +101,42 @@ class Cluster(
         Refer to the Resource model for more details about target fields.
         """
         return frozenset(("uuid", "driver_spec"))
+
+
+class StorageNode(
+    ra_models.ModelWithUUID,
+    ra_models.ModelWithNameDesc,
+    ra_models.ModelWithTimestamp,
+    orm.SQLStorableMixin,
+    ra_models.SimpleViewMixin,
+):
+    """An OST endpoint belonging to exactly one storage cluster."""
+
+    __tablename__ = "storage_nodes"
+    cluster = properties.property(types.UUID(), required=True)
+    kind = properties.property(types.Enum(["rawstor"]), default="rawstor")
+    endpoint = properties.property(types.String(max_length=2048), required=True)
+    failure_domain_path = properties.property(
+        types.String(max_length=255), required=True
+    )
+    weight = properties.property(types.Float(min_value=0.000001), default=1.0)
+
+
+class StoragePool(
+    ra_models.ModelWithUUID,
+    ra_models.ModelWithNameDesc,
+    ra_models.ModelWithTimestamp,
+    orm.SQLStorableMixin,
+    ra_models.SimpleViewMixin,
+):
+    """A disk creation policy sharing the cluster's physical OST capacity."""
+
+    __tablename__ = "storage_pools"
+    cluster = properties.property(types.UUID(), required=True)
+    speed = properties.property(types.Enum(["COLD", "WARM", "HOT"]), default="WARM")
+    ephemeral = properties.property(types.Boolean(), default=False)
+    mirrors = properties.property(types.Integer(min_value=1, max_value=255), default=2)
+    chunk_size = properties.property(types.Integer(min_value=1), default=1 << 30)
+    failure_domain = properties.property(
+        types.Enum(["ost", "server", "rack", "row", "dc"]), default="server"
+    )

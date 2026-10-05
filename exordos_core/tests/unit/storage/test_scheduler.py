@@ -41,6 +41,11 @@ def test_mds_cluster_is_scheduled_only_to_an_agent_on_the_core():
         ),
         patch.object(service.ua_utils, "system_uuid", return_value=core),
         patch.object(service.contexts, "Context"),
+        patch.object(
+            service.storage_models.StorageCluster,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
     ):
         scheduler._iteration()
     assert cluster.agent == core_agent.uuid

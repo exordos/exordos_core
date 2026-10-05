@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from unittest.mock import patch
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
@@ -47,7 +48,8 @@ class TestStorageClusterBuilderService:
         )
         service._service_spec = type("Spec", (), {"uuid": builder_uuid})()
 
-        context = service.prepare_iteration()
+        with patch.object(models.StorageCluster, "_get_engine"):
+            context = service.prepare_iteration()
 
         assert context == {"clause_filters": {"builder": builder_uuid}}
 
