@@ -38,7 +38,7 @@ Run initialization once on each storage host:
 
 ```bash
 LOCAL_GENESIS_SDK_PATH=/path/to/gcl_sdk \
-  exordos storages nodes init --type rawstor --agent-name universal_agent
+  exordos storages nodes init --type rawstor --agent universal_agent
 ```
 
 `init` installs librawstor, OST, Python bindings and ZFS support (utilities,
@@ -48,7 +48,7 @@ feature branch, `LOCAL_GENESIS_SDK_PATH` selects the matching SDK checkout for
 the agent's virtualenv. Omit it once a compatible SDK release is available.
 The command prints the agent UUID to use with `add`. Re-running `init` preserves
 the agent identity and merges the driver into an existing agent for the same core.
-A separate `--agent-name` creates an isolated service with its own identity.
+A separate `--agent` creates an isolated service with its own identity.
 
 Declare each OST through the core API:
 
