@@ -26,12 +26,10 @@ from exordos_core.storage.dm import models
 from exordos_core.user_api.storage.api import controllers
 
 
-def _spec(port=7776, ost="ost://host:7777", core="core"):
+def _spec(port=7776, core="core"):
     return {
         "kind": "rawstor",
-        "location": "file:///data",
         "endpoint": f"mds://{core}:{port}/",
-        "ost_endpoint": ost,
     }
 
 
@@ -59,16 +57,11 @@ def _validate(spec, clusters, exclude_uuid=None):
 
 def test_rejects_duplicate_mds_port_even_with_another_core_hostname():
     with pytest.raises(storage_exc.ConflictRecords):
-        _validate(_spec(core="10.20.0.2", ost="ost://other:7777"), [_cluster(_spec())])
+        _validate(_spec(core="10.20.0.2"), [_cluster(_spec())])
 
 
-def test_rejects_duplicate_ost_with_another_mds_port():
-    with pytest.raises(storage_exc.ConflictRecords):
-        _validate(_spec(7778), [_cluster(_spec())])
-
-
-def test_accepts_distinct_mds_ports_and_osts():
-    _validate(_spec(7778, ost="ost://other:7777"), [_cluster(_spec())])
+def test_accepts_distinct_mds_ports():
+    _validate(_spec(7778), [_cluster(_spec())])
 
 
 def test_update_excludes_its_own_endpoints():
@@ -98,3 +91,24 @@ def test_invalid_endpoint_returns_validation_error(field, value):
     with pytest.raises(controllers.InvalidRawstorEndpoint) as error:
         _validate(spec, [])
     assert error.value.code == 400
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("ost_endpoint", "ost://host:7777"),
+        ("location", "file:///data"),
+        ("nodes", {}),
+        ("pools", {}),
+        ("managed", True),
+        ("speed", "HOT"),
+        ("ephemeral", False),
+    ],
+)
+def test_cluster_rejects_node_and_pool_settings(field, value):
+    spec = _spec()
+    spec[field] = value
+    with pytest.raises(
+        controllers.InvalidRawstorEndpoint, match="configure nodes and pools separately"
+    ):
+        _validate(spec, [])

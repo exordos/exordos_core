@@ -153,18 +153,20 @@ class StorageClustersController(
             return super().delete(uuid)
 
     def _validate_driver_spec_uniqueness(self, kwargs: dict, exclude_uuid=None) -> None:
-        """Validate MDS ports and OST addresses before scheduling a cluster."""
+        """Validate the public cluster configuration and unique MDS port."""
         driver_spec = kwargs["driver_spec"]
         if not isinstance(driver_spec, dict):
             driver_spec = driver_spec.dump_to_simple_view()
+        unknown = set(driver_spec) - {"kind", "endpoint"}
+        if unknown:
+            raise InvalidRawstorEndpoint(
+                msg=f"Unsupported cluster settings: {', '.join(sorted(unknown))}; configure nodes and pools separately"
+            )
         endpoint = driver_spec.get("endpoint")
         if endpoint is None:
             return
-        ost_endpoint = driver_spec.get("ost_endpoint", "")
         if driver_spec.get("kind") == "rawstor":
             mds = _validate_endpoint(endpoint, "mds")
-            if ost_endpoint:
-                _validate_endpoint(ost_endpoint, "ost")
         else:
             mds = urlparse(endpoint)
         # JSONB field filtering is not yet supported by restalchemy.
@@ -172,13 +174,10 @@ class StorageClustersController(
         for cluster in existing_clusters:
             if str(cluster.uuid) == str(exclude_uuid):
                 # Existing disks and chunk maps still use these addresses.
-                if (
-                    cluster.driver_spec.endpoint != endpoint
-                    or cluster.driver_spec.ost_endpoint != ost_endpoint
-                ):
+                if cluster.driver_spec.endpoint != endpoint:
                     raise storage_exc.ConflictRecords(
                         model="StorageCluster",
-                        msg="Registered MDS and OST endpoints cannot be changed",
+                        msg="Registered MDS endpoint cannot be changed",
                     )
                 continue
             if cluster.driver_spec.KIND != driver_spec["kind"]:
@@ -191,12 +190,6 @@ class StorageClustersController(
             ):
                 raise storage_exc.ConflictRecords(
                     model="StorageCluster", msg=f"MDS port={mds.port}"
-                )
-            if ost_endpoint and cluster.driver_spec.ost_endpoint.rstrip(
-                "/"
-            ) == ost_endpoint.rstrip("/"):
-                raise storage_exc.ConflictRecords(
-                    model="StorageCluster", msg=f"ost_endpoint={ost_endpoint}"
                 )
 
 

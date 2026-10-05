@@ -105,6 +105,9 @@ def database(empty_database):
         migration("0007-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
+        migration("0008-storage-cluster-config-6ab127.py").migration_step.upgrade(
+            connection
+        )
     return uri
 
 
@@ -128,8 +131,17 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             name="cluster1",
             driver_spec={"kind": "rawstor", "endpoint": "mds://core:7776/"},
         )
-        assert len(cluster.driver_spec.pools) == 2
-        assert cluster.driver_spec.nodes == {}
+        assert cluster.driver_spec.dump_to_simple_view() == {
+            "kind": "rawstor",
+            "endpoint": "mds://core:7776/",
+        }
+        assert len(state.agent_driver_spec(cluster).pools) == 2
+        initial_target = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        ).to_ua_resource()
+        assert len(initial_target.value["driver_spec"]["pools"]) == 2
+        assert initial_target.value["driver_spec"]["nodes"] == {}
+        assert state.agent_driver_spec(cluster).nodes == {}
         agents = []
         for index in range(2):
             agent = ua_models.UniversalAgent(
@@ -156,21 +168,52 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             failure_domain_path="dc1/row1/rack2/host2",
         )
         cluster = cluster_api.get(uuid=cluster.uuid)
-        assert cluster.driver_spec.nodes == {}  # Not admitted until the OST answers.
+        assert (
+            state.agent_driver_spec(cluster).nodes == {}
+        )  # Not admitted until the OST answers.
         for node in (first, second):
             node.status = "ACTIVE"
             node.update()
         state.sync_cluster(cluster)
-        assert set(cluster.driver_spec.nodes) == {str(first.uuid), str(second.uuid)}
+        assert set(state.agent_driver_spec(cluster).nodes) == {
+            str(first.uuid),
+            str(second.uuid),
+        }
         node_api.update(second.uuid, weight=2.0)
         cluster = cluster_api.get(uuid=cluster.uuid)
-        assert cluster.driver_spec.nodes[str(second.uuid)]["weight"] == 2.0
+        assert state.agent_driver_spec(cluster).nodes[str(second.uuid)]["weight"] == 2.0
+        ready_target = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        ).to_ua_resource()
+        assert ready_target.hash != initial_target.hash
+        assert (
+            ready_target.value["driver_spec"]["nodes"][str(second.uuid)]["weight"]
+            == 2.0
+        )
+        reported = models.Cluster.from_ua_resource(ready_target)
+        assert (
+            reported.driver_spec.dump_to_simple_view()
+            == cluster.driver_spec.dump_to_simple_view()
+        )
         policies = models.StoragePool.objects.get_all()
         persistent = next(p for p in policies if not p.ephemeral)
         pool_api.update(persistent.uuid, failure_domain="rack")
         cluster = cluster_api.get(uuid=cluster.uuid)
         assert (
-            cluster.driver_spec.pools[str(persistent.uuid)]["failure_domain"] == "rack"
+            state.agent_driver_spec(cluster).pools[str(persistent.uuid)][
+                "failure_domain"
+            ]
+            == "rack"
+        )
+        updated_target = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        ).to_ua_resource()
+        assert updated_target.hash != ready_target.hash
+        assert (
+            updated_target.value["driver_spec"]["pools"][str(persistent.uuid)][
+                "failure_domain"
+            ]
+            == "rack"
         )
         inventory = [
             {
@@ -326,6 +369,12 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
         migration("0007-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
+        migration("0008-storage-cluster-config-6ab127.py").migration_step.upgrade(
+            connection
+        )
+        assert connection.execute(
+            "SELECT driver_spec FROM storage_clusters"
+        ).fetchone()[0] == {"kind": "rawstor", "endpoint": spec["endpoint"]}
         assert connection.execute(
             "SELECT agent,status FROM storage_nodes"
         ).fetchone() == (None, "ACTIVE")
@@ -422,7 +471,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
             failure_domain_path="dc/row/rack/server",
         )
         assert node.status == "NEW"
-        assert cluster_api.get(uuid=cluster.uuid).driver_spec.nodes == {}
+        assert state.agent_driver_spec(cluster_api.get(uuid=cluster.uuid)).nodes == {}
         current = models.Node.restore_from_simple_view(**node.dump_to_simple_view())
         desired = current.to_ua_resource()
         desired.agent = agent.uuid
@@ -438,7 +487,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
             current, models.Node.from_ua_resource(actual)
         )
         cluster = cluster_api.get(uuid=cluster.uuid)
-        assert str(node.uuid) in cluster.driver_spec.nodes
+        assert str(node.uuid) in state.agent_driver_spec(cluster).nodes
         mds_target = models.Cluster.restore_from_simple_view(
             **cluster.dump_to_simple_view()
         ).to_ua_resource()
@@ -506,3 +555,24 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
         )
         assert replacement.uuid != node.uuid
         driver.finalize()
+
+
+def test_cluster_metadata_update_does_not_request_an_mds_reconcile(database):
+    cluster_api = controller(controllers.StorageClustersController)
+    with contexts.Context().session_manager():
+        cluster = cluster_api.create(
+            name="cluster",
+            driver_spec={"kind": "rawstor", "endpoint": "mds://core:7776/"},
+        )
+        target = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        ).to_ua_resource()
+        target.insert()
+        cluster.status = "ACTIVE"
+        cluster.update()
+        updated = cluster_api.update(cluster.uuid, description="updated description")
+        assert updated.status == "ACTIVE"
+        assert updated.driver_spec.dump_to_simple_view() == {
+            "kind": "rawstor",
+            "endpoint": "mds://core:7776/",
+        }
