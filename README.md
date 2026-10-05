@@ -52,8 +52,8 @@ The Debian version is `99.0.0`; the bindings are `99.0.0+0.4e3d1f3`.
 Artifacts and their SHA256 checksums are bundled under `exordos/images/rawstor`.
 Set `RAWSTOR_VERSION` during the image build to use a GitHub release instead.
 Build this branch with `LOCAL_GENESIS_SDK_PATH` pointing to the matching
-`gcl_sdk` checkout on `feat/rawstor`. OpenAPI artifact generation uses that
-same checkout through the `openapi_artifacts` tox environment; rebuilding an
+`gcl_sdk` checkout on `feat/rawstor`. OpenAPI and documentation generation use
+that same checkout through tox; rebuilding an
 SDK elsewhere does not change the SDK locked inside tox.
 
 `exordos storages clusters add` starts a per-cluster MDS on core. Initialize
