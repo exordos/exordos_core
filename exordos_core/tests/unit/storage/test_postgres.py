@@ -59,7 +59,7 @@ def migration(filename):
 
 
 @pytest.fixture
-def database():
+def empty_database():
     name = "storage_test_" + uuid.uuid4().hex
     with psycopg.connect(DSN, autocommit=True) as admin:
         admin.execute(
@@ -69,24 +69,6 @@ def database():
         )
     uri = DSN.rsplit("/", 1)[0] + "/" + name
     try:
-        with psycopg.connect(uri) as connection:
-            for statement in migration(
-                "0000-squashed-current-7f2e4a.py"
-            ).SCHEMA_STATEMENTS:
-                if statement.startswith("CREATE TABLE public.compute_machine_volumes"):
-                    connection.execute(statement)
-                    connection.execute(
-                        "ALTER TABLE compute_machine_volumes ADD PRIMARY KEY(uuid)"
-                    )
-            connection.execute(
-                "ALTER TABLE compute_machine_volumes ADD speed varchar(16) DEFAULT 'HOT', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
-            )
-            migration("0004-storage-clusters-3d8a1c.py").migration_step.upgrade(
-                connection
-            )
-            migration("0005-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
-                connection
-            )
         engines.engine_factory.configure_factory(db_url=uri)
         yield uri
     finally:
@@ -95,6 +77,26 @@ def database():
             admin.execute(
                 sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
             )
+
+
+@pytest.fixture
+def database(empty_database):
+    uri = empty_database
+    with psycopg.connect(uri) as connection:
+        for statement in migration("0000-squashed-current-7f2e4a.py").SCHEMA_STATEMENTS:
+            if statement.startswith("CREATE TABLE public.compute_machine_volumes"):
+                connection.execute(statement)
+                connection.execute(
+                    "ALTER TABLE compute_machine_volumes ADD PRIMARY KEY(uuid)"
+                )
+        connection.execute(
+            "ALTER TABLE compute_machine_volumes ADD speed varchar(16) DEFAULT 'HOT', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
+        )
+        migration("0004-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
+        migration("0005-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
+            connection
+        )
+    return uri
 
 
 def controller(cls):
@@ -227,7 +229,9 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
 
         with pytest.raises(exceptions.ConflictRecords):
             cluster_api.delete(cluster.uuid)
-        with patch("rawstor.Location", return_value=[]):
+        with patch.dict(
+            "sys.modules", rawstor=MagicMock(Location=MagicMock(return_value=[]))
+        ):
             node_api.delete(first.uuid)
             node_api.delete(second.uuid)
         cluster_api.delete(cluster.uuid)
@@ -308,3 +312,38 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
             "chunk_size": 1 << 30,
             "failure_domain": "server",
         }
+
+
+@pytest.mark.parametrize(
+    "previous_head",
+    [
+        None,
+        "0005-storage-nodes-pools-8ce6d2.py",
+        "0004-add-opaque-secrets-362f6d21.py",
+    ],
+)
+def test_full_migration_graph_applies_from_empty_database(
+    empty_database, previous_head
+):
+    import gcl_sdk.migrations as sdk_migrations
+    from restalchemy.storage.sql import migrations
+
+    for path in (Path(sdk_migrations.__file__).parent, ROOT / "migrations"):
+        engine = migrations.MigrationEngine(str(path))
+        if path == ROOT / "migrations" and previous_head:
+            engine.apply_migration(previous_head)
+        engine.apply_migration(engine.get_latest_migration())
+    with psycopg.connect(empty_database) as connection:
+        tables = {
+            r[0]
+            for r in connection.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname='public'"
+            )
+        }
+        assert {
+            "storage_clusters",
+            "storage_nodes",
+            "storage_pools",
+            "secret_secrets",
+            "storage_secrets",
+        } <= tables
