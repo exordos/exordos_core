@@ -14,6 +14,12 @@ original paths through a config override. The first MDS defaults to port 7776.
 For subsequent clusters specify `--port` or enter an unused port when prompted.
 The cluster endpoint is `mds://<core-ip>:<port>/`.
 
+The public cluster `driver_spec` contains only `kind` and `endpoint`. OSTs and
+pool policies are separate resources (`storages nodes` and `storages pools`).
+Core assembles their current snapshot only when sending the cluster to its
+agent; it is not stored in the public `driver_spec`. `ost_endpoint` belonged to
+the old single-OST configuration and is no longer a cluster API field.
+
 Each new cluster has two policies sharing the same OST capacity:
 
 | Pool | Speed | Ephemeral | Mirrors | Failure domain | Chunk size |
