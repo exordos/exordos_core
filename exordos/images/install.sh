@@ -67,8 +67,8 @@ else
 fi
 sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
     "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
-# Clusters have individual MDS units, provisioned by the universal agent.
-sudo systemctl disable --now rawstor-mds.service
+# The package does not start MDS automatically. The agent configures
+# cluster instances using the packaged rawstor-mds@.service template.
 
 # Configure PostgreSQL
 sudo -u postgres psql -c "ALTER SYSTEM SET io_method = 'io_uring';"
