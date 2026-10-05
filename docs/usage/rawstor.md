@@ -44,7 +44,7 @@ exordos storages nodes init --type rawstor
 headers for the running kernel). It requires no core configuration and does
 not configure or start agents or OSTs.
 
-Run `nodes add` on the storage host without `--agent` to configure its local
+Run `nodes add` on the storage host without `--pool-agent-name` to configure its local
 universal agent and register an OST. This preserves the existing agent identity
 and adds `StorageNodeAgentDriver` for the same core. On this feature branch,
 `LOCAL_GENESIS_SDK_PATH` selects the matching SDK checkout for the agent's
@@ -59,12 +59,12 @@ LOCAL_GENESIS_SDK_PATH=/path/to/gcl_sdk \
 To create or configure a named local agent, run on the storage host:
 
 ```bash
-exordos storages nodes add --cluster storage1 --agent my_universal_agent --name ost1 \
+exordos storages nodes add --cluster storage1 --pool-agent-name my_universal_agent --name ost1 \
   --location zfs://tank/ost1 --endpoint ost://10.100.0.10:7777 \
   --failure-domain-path dc1/row1/rack1/server1
 ```
 
-`--agent` names the local service instance; it defaults to `universal_agent`.
+`--pool-agent-name` names the local service instance; it defaults to `universal_agent`.
 If it exists, its UUID and other drivers are preserved and `StorageNodeAgentDriver`
 is added with a separate state file. Otherwise, the command installs and registers
 that local agent. Run `add` on the host that will serve the OST.
