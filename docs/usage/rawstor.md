@@ -34,23 +34,29 @@ for persistent rawstor disks.
 
 ## Initialize and register OSTs
 
-Run initialization once on each storage host:
+Install packages once on each storage host, or while preparing its image in CI:
+
+```bash
+exordos storages nodes init --type rawstor
+```
+
+`init` installs librawstor, OST and ZFS support (utilities, DKMS module and
+headers for the running kernel). It requires no core configuration and does
+not configure or start agents or OSTs.
+
+Run `nodes add` on the storage host without `--agent` to configure its local
+universal agent and register an OST. This preserves the existing agent identity
+and adds `StorageNodeAgentDriver` for the same core. On this feature branch,
+`LOCAL_GENESIS_SDK_PATH` selects the matching SDK checkout for the agent's
+virtualenv. Omit it once a compatible SDK release is available.
 
 ```bash
 LOCAL_GENESIS_SDK_PATH=/path/to/gcl_sdk \
-  exordos storages nodes init --type rawstor --agent universal_agent
+  exordos storages nodes add --cluster storage1 --name ost1 \
+  --location zfs://tank/ost1 --failure-domain-path dc1/row1/rack1/server1
 ```
 
-`init` installs librawstor, OST, Python bindings and ZFS support (utilities,
-DKMS module and headers for the running kernel), loads ZFS and configures a universal
-agent with `StorageNodeAgentDriver`. It starts the agent, not an OST. On this
-feature branch, `LOCAL_GENESIS_SDK_PATH` selects the matching SDK checkout for
-the agent's virtualenv. Omit it once a compatible SDK release is available.
-The command prints the agent UUID to use with `add`. Re-running `init` preserves
-the agent identity and merges the driver into an existing agent for the same core.
-A separate `--agent` creates an isolated service with its own identity.
-
-Declare each OST through the core API:
+For an already configured storage agent, declare OSTs from any host through the core API:
 
 ```bash
 exordos storages nodes add --cluster storage1 --agent AGENT_UUID --name ost1 \
