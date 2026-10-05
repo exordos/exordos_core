@@ -142,6 +142,7 @@ nav:
     - Licensing: usage/licensing.md
     - Local Deployment: usage/local_deployment.md
     - Admin Guide: usage/admin-guide.md
+    - Rawstor storage: usage/rawstor.md
     - Support: usage/support-lifecycle.md
     - Security: usage/security.md
     - Troubleshooting: usage/troubleshooting.md

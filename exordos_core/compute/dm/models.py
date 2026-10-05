@@ -389,6 +389,7 @@ class MachineVolume(
     storage_location = properties.property(
         types.AllowNone(types.String(max_length=2048)), default=None
     )
+    storage_policy = properties.property(types.Dict(), default=dict)
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
