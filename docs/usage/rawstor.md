@@ -50,18 +50,20 @@ On this feature branch, `LOCAL_GENESIS_SDK_PATH` selects the matching SDK checko
 for the agent's virtualenv. Omit it once a compatible SDK release is available.
 `init` does not create or start an OST.
 
-Declare each OST on that storage host:
+Declare each OST through the core API from any host:
 
 ```bash
-exordos storages nodes add --cluster storage1 --pool-agent-name my_universal_agent --name ost1 \
+exordos storages nodes add --cluster storage1 --agent AGENT_UUID --name ost1 \
   --location zfs://tank/ost1 --endpoint ost://10.100.0.10:7777 \
   --failure-domain-path dc1/row1/rack1/server1
 ```
 
-`add` reads the UUID from the initialized local agent's config and creates the
-OST resource in core. It does not install packages, change agent configuration,
-start services or wait for OST readiness. Use the same `--pool-agent-name` as for
-`init`, or omit it in both commands to use `universal_agent`.
+`add --agent` selects a registered agent by its name in core or UUID (printed
+by `init`) and creates the OST resource. It does not read local agent configs,
+install packages, change agent configuration, start services or wait for OST
+readiness. For an OST on another host, specify its advertised `--endpoint`.
+The local service name from `--pool-agent-name` can differ from the agent's
+registered name; use its UUID to avoid ambiguity.
 
 The agent receives the desired resource through reconciliation, writes
 `/etc/rawstor/ost/UUID.conf` and starts the package's `rawstor-ost@UUID.service`
