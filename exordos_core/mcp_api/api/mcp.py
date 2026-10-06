@@ -72,6 +72,7 @@ INVALID_PARAMS = -32602
 # on -- this list is the boundary between the two services, so a header the
 # User API trusts has to be named here to cross it.
 FORWARDED_HEADERS = (
+    "Host",
     "Authorization",
     "X-OTP",
     "X-Firebase-AppCheck",
@@ -288,10 +289,9 @@ class ToolError(Exception):
 class McpApplication:
     """The MCP endpoint, calling the User API at `user_api_url`.
 
-    `user_api_url` is the base the User API answers `/v1/...` under, and
-    should be the address callers themselves would use: the User API builds
-    absolute URLs from the host it is asked on, so an internal address there
-    puts an internal address in what it returns.
+    `user_api_url` is the base the User API answers `/v1/...` under.
+    The caller's Host header is forwarded so absolute URLs retain the
+    public host even when the service calls an internal address.
     """
 
     def __init__(self, user_api_url, client=None):
@@ -323,9 +323,13 @@ class McpApplication:
                 _error(None, INVALID_REQUEST, "Invalid request"), status=400
             )
 
-        # Notifications and responses to us need no answer.
-        if "method" not in message or "id" not in message:
+        # Notifications need no answer.
+        if "id" not in message:
             return webob.Response(status=202)
+        if "method" not in message:
+            return _json_response(
+                _error(message["id"], INVALID_REQUEST, "Invalid request"), status=400
+            )
 
         return _json_response(self._dispatch(req, message))
 
@@ -451,6 +455,12 @@ class McpApplication:
         for header in FORWARDED_HEADERS:
             if header in req.headers:
                 headers[header] = req.headers[header]
+        if (
+            not headers.get("X-Forwarded-For")
+            and not headers.get("X-Real-IP")
+            and req.remote_addr
+        ):
+            headers["X-Forwarded-For"] = req.remote_addr
 
         try:
             resp = self.client.request(method, url, headers=headers, json=body)
@@ -483,6 +493,8 @@ def _check_arguments(tool, arguments):
         if name not in arguments:
             raise ToolError(f"Missing argument: {name}")
     for name, value in arguments.items():
+        if value is None and properties[name].get("nullable"):
+            continue
         # A generated property need not say what it holds; then anything goes.
         expected = properties[name].get("type")
         if expected is None:

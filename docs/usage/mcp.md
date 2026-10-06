@@ -31,10 +31,9 @@ headers the security rule verifiers read (`X-Firebase-AppCheck`,
 
 ## Configuration
 
-`user_api_url` is the base the service calls the User API under. Use the
-address callers themselves use: the User API builds absolute URLs from the
-host it is asked on, so an internal address there puts an internal address in
-what it returns.
+`user_api_url` is the base the service calls the User API under. It can be an
+internal address: the service forwards the caller's `Host` header so
+API-generated absolute URLs retain the public host.
 
 ```ini
 [mcp_api]

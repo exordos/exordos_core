@@ -58,10 +58,11 @@ def _json_bytes(payload):
     return json.dumps(payload).encode()
 
 
-def _call_with_headers(application, headers):
+def _call_with_headers(application, headers, remote_addr=None):
     """Run call_api with extra headers and return what reached the client."""
     req = webob.Request.blank(mcp.MCP_PATH, method="POST")
     req.authorization = "Bearer token"
+    req.remote_addr = remote_addr
     for name, value in headers.items():
         req.headers[name] = value
     req.body = json.dumps(
@@ -108,6 +109,13 @@ def call_tool(application, name, /, **arguments):
 
 
 class TestTransport:
+    def test_request_with_id_but_no_method_is_rejected(self, application):
+        resp = post(application, {"jsonrpc": "2.0", "id": 7})
+
+        assert resp.status_code == 400
+        assert resp.json_body["id"] == 7
+        assert resp.json_body["error"]["code"] == mcp.INVALID_REQUEST
+
     def test_serves_nothing_but_the_mcp_path(self, application):
         """This service is the endpoint, not a layer in front of the API."""
         resp = webob.Request.blank("/v1/compute/nodes/").get_response(application)
@@ -325,6 +333,30 @@ class TestTools:
         assert "X-Admin" not in sent["headers"]
         assert "Cookie" not in sent["headers"]
 
+    def test_call_api_preserves_the_public_host(self, application):
+        sent = _call_with_headers(application, {"Host": "public.example.com"})
+
+        assert sent["headers"]["Host"] == "public.example.com"
+        assert sent["url"].startswith(USER_API_URL)
+
+    @pytest.mark.parametrize(
+        "headers, expected",
+        [
+            ({}, {"X-Forwarded-For": "192.0.2.1"}),
+            ({"X-Forwarded-For": "192.0.2.2"}, {"X-Forwarded-For": "192.0.2.2"}),
+            ({"X-Real-IP": "192.0.2.3"}, {"X-Real-IP": "192.0.2.3"}),
+        ],
+    )
+    def test_call_api_preserves_the_caller_ip(self, application, headers, expected):
+        sent = _call_with_headers(application, headers, remote_addr="192.0.2.1")
+
+        forwarded = {
+            key: value
+            for key, value in sent["headers"].items()
+            if key in ("X-Forwarded-For", "X-Real-IP")
+        }
+        assert forwarded == expected
+
     def test_call_api_reports_http_errors(self, application):
         text, is_error = call_tool(
             application, "call_api", method="GET", path="/v1/missing/"
@@ -505,6 +537,27 @@ class TestCuratedTools:
 
         assert is_error
         assert "must be a UUID" in text
+
+    @pytest.mark.parametrize(
+        "tool, field", [("update_secret", "value"), ("update_node", "hostname")]
+    )
+    def test_an_update_forwards_null_for_a_nullable_field(
+        self, application, tool, field
+    ):
+        text, is_error = call_tool(application, tool, uuid=NODE_UUID, **{field: None})
+
+        assert not is_error
+        sent = json.loads(text.split("\n", 1)[1])
+        assert sent["method"] == "PUT"
+        assert sent["body"] == {field: None}
+
+    def test_rejects_null_for_a_non_nullable_field(self, application):
+        text, is_error = call_tool(
+            application, "update_node", uuid=NODE_UUID, cores=None
+        )
+
+        assert is_error
+        assert "cores must be of type integer" in text
 
     def test_rejects_an_unknown_field(self, application):
         text, is_error = call_tool(application, "create_node", nope="x")
