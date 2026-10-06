@@ -283,11 +283,14 @@ class StorageNodesController(ClusterMemberController):
         kwargs.setdefault("uuid", sys_uuid.uuid4())
         kwargs.setdefault("location", f"file:///var/lib/rawstor/{kwargs['uuid']}")
         endpoint = _validate_endpoint(kwargs["endpoint"], "ost")
-        kwargs.setdefault("bind_address", f"0.0.0.0:{endpoint.port}")
+        kwargs.setdefault("bind_address", endpoint.netloc)
         kwargs["status"] = "NEW"
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
+        if "endpoint" in kwargs:
+            endpoint = _validate_endpoint(kwargs["endpoint"], "ost")
+            kwargs.setdefault("bind_address", endpoint.netloc)
         # The API marks changed endpoint/bind configuration as not yet ready.
         if any(field in kwargs for field in ("endpoint", "bind_address")):
             kwargs["status"] = "IN_PROGRESS"
