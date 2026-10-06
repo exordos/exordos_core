@@ -11,6 +11,7 @@
     "Admin Guide": "Руководство администратора",
     "Support": "Поддержка",
     "Security": "Безопасность",
+    "MCP Server": "MCP-сервер",
     "Troubleshooting": "Устранение неполадок",
     "Wizard": "Мастер настройки",
     "Developers": "Разработчикам",

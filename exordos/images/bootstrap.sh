@@ -164,6 +164,7 @@ sudo systemctl enable --now \
     exordos-iam-cache \
     ec-orch-api \
     ec-status-api \
+    ec-mcp-api \
     ec-boot-api \
     ec-gservice \
     ec-core-agent \
