@@ -282,7 +282,7 @@ class StorageNodesController(ClusterMemberController):
 
     def create(self, **kwargs):
         kwargs.setdefault("uuid", sys_uuid.uuid4())
-        kwargs.setdefault("location", f"file:///var/lib/rawstor/{kwargs['uuid']}")
+        kwargs.setdefault("location", f"file:///var/lib/rawstor/ost/{kwargs['uuid']}")
         endpoint = _validate_endpoint(kwargs["endpoint"], "ost")
         kwargs.setdefault("bind_address", endpoint.netloc)
         kwargs["status"] = "NEW"
