@@ -137,7 +137,9 @@ class StorageNode(
     failure_domain_path = properties.property(
         types.String(max_length=255), required=True
     )
-    weight = properties.property(types.Float(min_value=0.000001), default=1.0)
+    weight = properties.property(
+        types.Integer(min_value=1, max_value=(1 << 63) - 1), default=100
+    )
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     location = properties.property(types.String(max_length=2048), default="")
