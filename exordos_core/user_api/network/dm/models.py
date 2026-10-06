@@ -16,6 +16,7 @@
 
 import enum
 import re
+import uuid
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -44,7 +45,12 @@ class LBStatus(str, enum.Enum):
     ERROR = "ERROR"
 
 
-class LBTypeCoreKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+class AbstractLBType(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+    def validate_placement(self, project_id: uuid.UUID, session=None) -> None:
+        pass
+
+
+class LBTypeCoreKind(AbstractLBType):
     KIND = "core"
 
     cpu = properties.property(types.Integer(min_value=1, max_value=128), default=1)
@@ -61,11 +67,11 @@ class LBTypeCoreKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
     )
 
 
-class LBTypeCoreAgentKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+class LBTypeCoreAgentKind(AbstractLBType):
     KIND = "core_agent"
 
 
-class LBTypeNodeKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+class LBTypeNodeKind(AbstractLBType):
     """An LB served by an existing compute node of the LB's project.
 
     The node must ship nginx and the universal agent with LBCapabilityDriver
@@ -75,6 +81,22 @@ class LBTypeNodeKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
     KIND = "node"
 
     node = properties.property(types.UUID(), required=True)
+
+    def validate_placement(self, project_id: uuid.UUID, session=None) -> None:
+        # The LB dataplane runs as root on the node, so it may only be
+        # placed on a node of the LB's own project.
+        nodes = compute_models.Node.objects.get_all(
+            filters={
+                "uuid": dm_filters.EQ(self.node),
+                "project_id": dm_filters.EQ(project_id),
+            },
+            limit=1,
+            session=session,
+        )
+        if not nodes:
+            raise ex_exceptions.ValidateException(
+                err=f"Node {self.node} is not found in the LB project."
+            )
 
 
 class LB(
@@ -107,26 +129,8 @@ class LB(
         required=True,
     )
 
-    def _validate_node(self, session=None):
-        # The LB dataplane runs as root on the node, so it may only be
-        # placed on a node of the LB's own project.
-        if self.type.kind != LBTypeNodeKind.KIND:
-            return
-        nodes = compute_models.Node.objects.get_all(
-            filters={
-                "uuid": dm_filters.EQ(self.type.node),
-                "project_id": dm_filters.EQ(self.project_id),
-            },
-            limit=1,
-            session=session,
-        )
-        if not nodes:
-            raise ex_exceptions.ValidateException(
-                err=f"Node {self.type.node} is not found in the LB project."
-            )
-
     def insert(self, session=None):
-        self._validate_node(session=session)
+        self.type.validate_placement(project_id=self.project_id, session=session)
         super().insert(session=session)
 
     def update(self, session=None, force=False):
@@ -134,7 +138,7 @@ class LB(
         # the placement changes, so a gone node doesn't block status updates.
         props = self.properties.properties
         if props["type"].is_dirty() or props["project_id"].is_dirty():
-            self._validate_node(session=session)
+            self.type.validate_placement(project_id=self.project_id, session=session)
         super().update(session=session, force=force)
 
     def delete(self, session=None, **kwargs):
