@@ -949,6 +949,11 @@ class Resource(
         return self
 
 
+class _EngineResource(Resource):
+    # Query resources without joining elements and their manifests.
+    element = properties.property(ra_types.UUID(), required=True)
+
+
 class ExportEnum(str, enum.Enum):
     RESOURCE = "resource"
 
@@ -1148,8 +1153,6 @@ class Namespace:
 
 
 class ElementEngine:
-    RESOURCE_PAGE_SIZE = 200
-
     def __init__(self):
         super().__init__()
         self._namespaces: tp.Dict[str, Namespace] = {}
@@ -1201,23 +1204,19 @@ class ElementEngine:
         return shared
 
     def _iter_resources(self) -> tp.Iterator["Resource"]:
-        # Load resources page by page so only one page of element copies is
-        # alive at a time.
-        last_uuid = None
-        while True:
-            filters = {}
-            if last_uuid is not None:
-                filters["uuid"] = ra_filters.GT(last_uuid)
-            page = Resource.objects.get_all(
-                filters=filters,
-                limit=self.RESOURCE_PAGE_SIZE,
-                order_by={"uuid": "asc"},
+        elements = {element.uuid: element for element in self.get_elements()}
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            result = _EngineResource.get_table().select(
+                engine=engine,
+                filters={},
+                session=session,
             )
-            for resource in page:
-                yield self._share_element(resource)
-            if len(page) < self.RESOURCE_PAGE_SIZE:
-                return
-            last_uuid = page[-1].uuid
+            for row in result.rows:
+                row["element"] = elements[
+                    ra_types.UUID().from_simple_type(row["element"])
+                ]
+                yield Resource.restore_row(row)
 
     def load_from_database(self) -> None:
         self._namespaces = {}
