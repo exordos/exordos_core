@@ -157,19 +157,18 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             name="ost1",
             agent=agents[0].uuid,
             cluster=cluster.uuid,
-            endpoint="ost://host1:7777",
+            endpoint="ost://10.0.0.1:7777",
             failure_domain_path="dc1/row1/rack1/host1",
         )
+        assert first.bind_address == "10.0.0.1:7777"
         assert first.weight == 100
-        assert isinstance(
-            node_api.get(uuid=first.uuid).weight, int
-        )
+        assert isinstance(node_api.get(uuid=first.uuid).weight, int)
         second = node_api.create(
             name="ost2",
             weight=100,
             agent=agents[1].uuid,
             cluster=cluster.uuid,
-            endpoint="ost://host2:7777",
+            endpoint="ost://10.0.0.2:7777",
             failure_domain_path="dc1/row1/rack2/host2",
         )
         cluster = cluster_api.get(uuid=cluster.uuid)
@@ -471,7 +470,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
             name="ost",
             cluster=cluster.uuid,
             agent=agent.uuid,
-            endpoint="ost://host:7777",
+            endpoint="ost://10.0.0.1:7777",
             location=f"file://{tmp_path}/data",
             failure_domain_path="dc/row/rack/server",
         )
