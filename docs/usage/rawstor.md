@@ -9,8 +9,7 @@ exordos storages clusters add --type rawstor --name storage1 --host 10.100.0.2
 The core agent starts a separate `rawstor-mds@UUID.service` with its own
 persistent SQLite index and topology. The agent uses the package's template
 and writes `/etc/rawstor/mds/UUID.conf` and `UUID.topology`; new databases live
-under `/var/lib/rawstor-mds/UUID/`. Existing Exordos MDS databases stay at their
-original paths through a config override. The first MDS defaults to port 7776.
+under `/var/lib/rawstor/mds/UUID/`. The first MDS defaults to port 7776.
 For subsequent clusters specify `--port` or enter an unused port when prompted.
 The cluster endpoint is `mds://<core-ip>:<port>/`.
 
@@ -87,7 +86,7 @@ drop-in for their directory. Deleting an OST retains its backing store.
 For independent capacity accounting, use one OST per dedicated zpool; datasets
 sharing a pool also share its free space and cannot be counted independently.
 
-`--location` defaults to `file:///var/lib/rawstor/UUID`. Each OST must have a
+`--location` defaults to `file:///var/lib/rawstor/ost/UUID`. Each OST must have a
 dedicated backing filesystem; sharing one between OSTs would count its free
 space more than once. Multiple OSTs on one host need separate backing filesystems
 and bind ports. `--bind` defaults to `0.0.0.0` and the advertised endpoint port.
@@ -161,8 +160,8 @@ currently unsupported.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.fe3340e`, from
-[Actions run 37329790134](https://github.com/rawstor/librawstor/actions/runs/37329790134).
+`99.0.0+0.d914ffb`, from
+[Actions run 37463130223](https://github.com/rawstor/librawstor/actions/runs/37463130223).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
