@@ -1065,13 +1065,13 @@ components:
           - example:
               key: value
             properties:
-              kind:
-                enum:
-                - node
-                type: string
-              node:
+              external_node:
                 example: 00000000-0000-0000-0000-000000000000
                 format: uuid
+                type: string
+              kind:
+                enum:
+                - external_node
                 type: string
             type: object
           type: object

@@ -58,7 +58,7 @@ graph TD
 - Конфигурацией типа:
     - `core` — VM-based LB
     - `core_agent` — LB будет запущен на самом экземпляре exordos_core
-    - `node` — LB будет запущен на существующем узле проекта LB (`node: <uuid>`);
+    - `external_node` — LB будет запущен на существующем узле проекта LB (`external_node: <uuid>`);
       образ узла должен содержать nginx и универсальный агент с
       `LBCapabilityDriver`, например узел управляемого realm
 
@@ -120,6 +120,23 @@ graph TD
   }
 }
 ```
+
+#### Использование существующего узла
+
+Укажите `external_node` в `type.kind` и UUID вычислительного узла в `type.external_node`:
+
+```json
+{
+  "name": "my-load-balancer",
+  "type": {
+    "kind": "external_node",
+    "external_node": "12345678-c625-4fee-81d5-f691897b8142"
+  }
+}
+```
+
+Узел должен принадлежать проекту LB и содержать nginx и универсальный агент с
+`LBCapabilityDriver`. При таком размещении отдельная виртуальная машина не создаётся.
 
 ### Создание виртуального хоста
 

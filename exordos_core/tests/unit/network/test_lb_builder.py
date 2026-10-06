@@ -24,19 +24,19 @@ from exordos_core.network.lb.builders import paas as lb_paas
 from exordos_core.network.lb.dm import models as lb_models
 
 
-def _node_lb(node):
+def _external_node_lb(node):
     inst = mock.MagicMock()
     inst.uuid = sys_uuid.uuid4()
-    inst.type.kind = "node"
-    inst.type.node = node
+    inst.type.kind = "external_node"
+    inst.type.external_node = node
     inst.get_vhosts.return_value = [{"uuid": "v1"}]
     inst.get_backend_pools.return_value = {"p1": {"endpoints": []}}
     return inst
 
 
-def test_node_lb_is_pinned_to_the_node_agent():
+def test_external_node_lb_is_pinned_to_the_node_agent():
     node = sys_uuid.uuid4()
-    inst = _node_lb(node)
+    inst = _external_node_lb(node)
 
     res = lb_paas.LBBuilder().actualize_paas_objects(
         inst, paas_builder.PaaSCollection(paas_objects=tuple())
@@ -52,15 +52,15 @@ def test_node_lb_is_pinned_to_the_node_agent():
     assert obj.backend_pools == {"p1": {"endpoints": []}}
 
 
-def test_node_lb_needs_no_infra():
+def test_external_node_lb_needs_no_infra():
     builder = lb_iaas.LBBuilder(lb_models.IaasLB, project_id=sys_uuid.uuid4())
 
-    assert builder.create_infra(_node_lb(sys_uuid.uuid4())) == []
+    assert builder.create_infra(_external_node_lb(sys_uuid.uuid4())) == []
 
 
-def test_switching_to_node_drops_the_old_vm_addresses():
+def test_switching_to_external_node_drops_the_old_vm_addresses():
     builder = lb_iaas.LBBuilder(lb_models.IaasLB, project_id=sys_uuid.uuid4())
-    inst = _node_lb(sys_uuid.uuid4())
+    inst = _external_node_lb(sys_uuid.uuid4())
     inst.ipsv4 = ["10.0.0.5"]
 
     assert builder.actualize_infra(inst, mock.MagicMock()) == tuple()

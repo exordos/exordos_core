@@ -185,11 +185,16 @@ class TestLBApi:
         )
         assert response.status_code == 201
 
-        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        lb = lb_factory(
+            type=nm.LBTypeExternalNodeKind(external_node=sys_uuid.UUID(node["uuid"]))
+        )
         response = client.post(client.build_collection_uri(["network", "lb"]), json=lb)
 
         assert response.status_code == 201
-        assert response.json()["type"] == {"kind": "node", "node": node["uuid"]}
+        assert response.json()["type"] == {
+            "kind": "external_node",
+            "external_node": node["uuid"],
+        }
 
     def test_create_lb_on_node_of_other_project(
         self, user_api_client, auth_user_admin, lb_factory, node_factory
@@ -201,7 +206,9 @@ class TestLBApi:
         )
         assert response.status_code == 201
 
-        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        lb = lb_factory(
+            type=nm.LBTypeExternalNodeKind(external_node=sys_uuid.UUID(node["uuid"]))
+        )
         with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
             client.post(client.build_collection_uri(["network", "lb"]), json=lb)
         assert "is not found in the LB project" in str(
@@ -217,7 +224,9 @@ class TestLBApi:
         assert response.status_code == 201
 
         url = client.build_resource_uri(["network", "lb", lb["uuid"]])
-        update = {"type": {"kind": "node", "node": str(sys_uuid.uuid4())}}
+        update = {
+            "type": {"kind": "external_node", "external_node": str(sys_uuid.uuid4())}
+        }
         with pytest.raises(bazooka_exc.BadRequestError) as exc_info:
             client.put(url, json=update)
         assert "is not found in the LB project" in str(
@@ -232,7 +241,9 @@ class TestLBApi:
         client = user_api_client(auth_user_admin)
         node = node_factory()
         client.post(client.build_collection_uri(["compute", "nodes"]), json=node)
-        lb = lb_factory(type=nm.LBTypeNodeKind(node=sys_uuid.UUID(node["uuid"])))
+        lb = lb_factory(
+            type=nm.LBTypeExternalNodeKind(external_node=sys_uuid.UUID(node["uuid"]))
+        )
         client.post(client.build_collection_uri(["network", "lb"]), json=lb)
 
         compute_models.Node.objects.get_one(

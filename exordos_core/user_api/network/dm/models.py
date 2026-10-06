@@ -71,23 +71,23 @@ class LBTypeCoreAgentKind(AbstractLBType):
     KIND = "core_agent"
 
 
-class LBTypeNodeKind(AbstractLBType):
+class LBTypeExternalNodeKind(AbstractLBType):
     """An LB served by an existing compute node of the LB's project.
 
     The node must ship nginx and the universal agent with LBCapabilityDriver
     (paas_lb_node capability), e.g. a managed realm node.
     """
 
-    KIND = "node"
+    KIND = "external_node"
 
-    node = properties.property(types.UUID(), required=True)
+    external_node = properties.property(types.UUID(), required=True)
 
     def validate_placement(self, project_id: uuid.UUID, session=None) -> None:
         # The LB dataplane runs as root on the node, so it may only be
         # placed on a node of the LB's own project.
         nodes = compute_models.Node.objects.get_all(
             filters={
-                "uuid": dm_filters.EQ(self.node),
+                "uuid": dm_filters.EQ(self.external_node),
                 "project_id": dm_filters.EQ(project_id),
             },
             limit=1,
@@ -95,7 +95,7 @@ class LBTypeNodeKind(AbstractLBType):
         )
         if not nodes:
             raise ex_exceptions.ValidateException(
-                err=f"Node {self.node} is not found in the LB project."
+                err=f"Node {self.external_node} is not found in the LB project."
             )
 
 
@@ -123,7 +123,7 @@ class LB(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(LBTypeCoreKind),
             types_dynamic.KindModelType(LBTypeCoreAgentKind),
-            types_dynamic.KindModelType(LBTypeNodeKind),
+            types_dynamic.KindModelType(LBTypeExternalNodeKind),
         ),
         default=LBTypeCoreKind(),
         required=True,
