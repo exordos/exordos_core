@@ -100,7 +100,7 @@ The failure domain path runs from outermost to innermost:
 `dc/row/rack/server`. Shorter paths omit outer levels; omitted domains are shared.
 `--weight` defaults to 1. Node lists expose the assigned agent and readiness status.
 
-On hypervisors use `exordos hypervisors init --with-rawstor` to install the
+On hypervisors use `exordos hypervisors init` to install the
 Python binding and rawstor-vhost.
 
 ## Manage resources
