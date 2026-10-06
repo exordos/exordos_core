@@ -47,8 +47,8 @@ Then follow the instructions in the terminal, or refer to the [documentation](ht
 ## Rawstor storage
 
 The core image includes librawstor, rawstor-mds and Python bindings from
-[GitHub Actions run 37329790134](https://github.com/rawstor/librawstor/actions/runs/37329790134).
-The Debian version is `99.0.0`; the bindings are `99.0.0+0.fe3340e`.
+[GitHub Actions run 37463130223](https://github.com/rawstor/librawstor/actions/runs/37463130223).
+The Debian version is `99.0.0`; the bindings are `99.0.0+0.d914ffb`.
 Artifacts and their SHA256 checksums are bundled under `exordos/images/rawstor`.
 Set `RAWSTOR_VERSION` during the image build to use a GitHub release instead.
 Build this branch with `LOCAL_GENESIS_SDK_PATH` pointing to the matching
