@@ -1203,7 +1203,7 @@ class ElementEngine:
         shared._saved = True
         return shared
 
-    def _iter_resources(self) -> tp.Iterator["Resource"]:
+    def _load_resources(self) -> None:
         elements = {element.uuid: element for element in self.get_elements()}
         engine = engines.engine_factory.get_engine()
         with engine.session_manager() as session:
@@ -1216,7 +1216,7 @@ class ElementEngine:
                 row["element"] = elements[
                     ra_types.UUID().from_simple_type(row["element"])
                 ]
-                yield Resource.restore_row(row)
+                self.add_resource(Resource.restore_row(row))
 
     def load_from_database(self) -> None:
         self._namespaces = {}
@@ -1239,8 +1239,7 @@ class ElementEngine:
                     f"imports are currently supported."
                 )
 
-        for resource in self._iter_resources():
-            self.add_resource(resource)
+        self._load_resources()
 
         for export in Export.objects.get_all():
             if export.kind == ExportEnum.RESOURCE.value:
