@@ -106,6 +106,7 @@ class StorageClustersController(
                 )
             cluster = super().create(**kwargs)
             for uuid, policy in storage_capacity.default_policies(cluster.uuid).items():
+                policy["name"] = f"{cluster.name}-{policy['name']}"
                 models.StoragePool(
                     uuid=sys_uuid.UUID(uuid), cluster=cluster.uuid, **policy
                 ).insert()

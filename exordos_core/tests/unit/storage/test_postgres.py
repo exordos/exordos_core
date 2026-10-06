@@ -135,7 +135,9 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             "kind": "rawstor",
             "endpoint": "mds://core:7776/",
         }
-        assert len(state.agent_driver_spec(cluster).pools) == 2
+        assert {
+            policy["name"] for policy in state.agent_driver_spec(cluster).pools.values()
+        } == {"cluster1-persistent", "cluster1-ephemeral"}
         initial_target = models.Cluster.restore_from_simple_view(
             **cluster.dump_to_simple_view()
         ).to_ua_resource()
