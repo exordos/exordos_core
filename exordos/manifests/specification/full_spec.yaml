@@ -4462,11 +4462,11 @@ components:
           readOnly: true
           type: string
         weight:
-          default: 1.0
-          example: 1.0e-06
-          format: float
-          minimum: 1.0e-06
-          type: number
+          default: 100
+          example: 4611686018427387904
+          maximum: 9223372036854775807
+          minimum: 1
+          type: integer
       required:
       - cluster
       - endpoint
