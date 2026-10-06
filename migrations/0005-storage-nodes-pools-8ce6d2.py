@@ -44,7 +44,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 kind varchar(32) NOT NULL CHECK (kind = 'rawstor'),
                 endpoint varchar(2048) NOT NULL UNIQUE,
                 failure_domain_path varchar(255) NOT NULL,
-                weight double precision NOT NULL CHECK (weight > 0),
+                weight bigint NOT NULL CHECK (weight > 0),
                 created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(cluster, name)

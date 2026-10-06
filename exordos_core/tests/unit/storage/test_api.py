@@ -120,9 +120,7 @@ def test_node_rejects_weights_that_cannot_be_parsed_by_mds(weight):
     controller = controllers.StorageNodesController.__new__(
         controllers.StorageNodesController
     )
-    with pytest.raises(
-        controllers.InvalidRawstorEndpoint, match="positive uint64 integer"
-    ):
+    with pytest.raises(controllers.InvalidRawstorEndpoint, match="positive integer"):
         controller.validate_member(
             {
                 "endpoint": "ost://host:7777",

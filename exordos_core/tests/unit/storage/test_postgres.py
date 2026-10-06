@@ -160,8 +160,13 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             endpoint="ost://host1:7777",
             failure_domain_path="dc1/row1/rack1/host1",
         )
+        assert first.weight == 100
+        assert isinstance(
+            node_api.get(uuid=first.uuid).weight, int
+        )
         second = node_api.create(
             name="ost2",
+            weight=100,
             agent=agents[1].uuid,
             cluster=cluster.uuid,
             endpoint="ost://host2:7777",
@@ -179,7 +184,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             str(first.uuid),
             str(second.uuid),
         }
-        node_api.update(second.uuid, weight=2.0)
+        node_api.update(second.uuid, weight=2)
         cluster = cluster_api.get(uuid=cluster.uuid)
         assert state.agent_driver_spec(cluster).nodes[str(second.uuid)]["weight"] == 2.0
         ready_target = models.Cluster.restore_from_simple_view(
