@@ -39,6 +39,7 @@ class DomainController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Domain,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -59,6 +60,7 @@ class RecordController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Record,
+        process_filters=True,
         convert_underscore=False,
         # Query parameters are parsed against the model, which is also what
         # the filter expression (`?q=`) needs: it is how a realm's mirror
