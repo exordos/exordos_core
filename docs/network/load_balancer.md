@@ -58,6 +58,9 @@ The main load balancer entity that manages:
 - Type configuration:
     - `core` - VM-based LB
     - `core_agent` - LB will be run on exordos_core instance itself
+    - `external_node` - LB will be run on an existing node of the LB project (`external_node: <uuid>`);
+      the node's image must ship nginx and the universal agent with
+      `LBCapabilityDriver`, e.g. a managed realm node
 
 ### Vhost
 
@@ -117,6 +120,23 @@ Routing rules that define how traffic is handled:
   }
 }
 ```
+
+#### Using an existing node
+
+Set `type.kind` to `external_node` and `type.external_node` to the compute node's UUID:
+
+```json
+{
+  "name": "my-load-balancer",
+  "type": {
+    "kind": "external_node",
+    "external_node": "12345678-c625-4fee-81d5-f691897b8142"
+  }
+}
+```
+
+The node must belong to the LB's project and provide nginx and the universal agent with
+`LBCapabilityDriver`. This placement does not create a dedicated VM.
 
 ### Creating a Virtual Host
 
