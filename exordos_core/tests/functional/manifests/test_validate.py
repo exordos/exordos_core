@@ -37,8 +37,6 @@ class TestSpec:
             "communal_pg_cluster",
             "core",
             "dbaas",
-            "core-node-set-example",
-            "core-service-example",
             "genesis_notification",
             # TODO(slashburygin): need mutate imports to validate them
         ],
