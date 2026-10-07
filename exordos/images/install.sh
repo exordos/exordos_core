@@ -36,12 +36,8 @@ SYSTEMD_SERVICE_DIR=/etc/systemd/system/
 DEV_SDK_PATH="/opt/gcl_sdk"
 SDK_DEV_MODE=$([ -d "$DEV_SDK_PATH" ] && echo "true" || echo "false")
 
-# Use the official archive instead of the base image's regional mirror.
-sudo sed -i 's|http://mirror.yandex.ru/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
-  /etc/apt/sources.list.d/ubuntu.sources
-
 # Install packages
-sudo apt-get update --error-on=any
+sudo apt update
 sudo apt install \
   yq curl \
   libev-dev libvirt-dev \
