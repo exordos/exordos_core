@@ -38,6 +38,12 @@ class RepositoryUploadActionRoute(routes.Action):
     __controller__ = controllers.RepositoryController
 
 
+class AuthorizeUploadAction(routes.Action):
+    """Handler for .../repositories/<uuid>/actions/authorize_upload."""
+
+    __controller__ = controllers.RepositoryController
+
+
 class RepositoryRoute(routes.Route):
     """Handler for /v1/repo/repositories/ endpoint"""
 
@@ -45,6 +51,7 @@ class RepositoryRoute(routes.Route):
 
     refresh = routes.action(RepositoryRefreshActionRoute, invoke=True)
     upload = routes.action(RepositoryUploadActionRoute, invoke=True)
+    authorize_upload = routes.action(AuthorizeUploadAction)
 
 
 class RepoElementStableVersionsActionRoute(routes.Action):

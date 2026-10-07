@@ -412,6 +412,43 @@ realm's shared ones; filtering by any other project is forbidden. Writes
 (`update`, `delete`, `refresh`, `upload`) stay limited to the caller's own
 project. An unscoped caller with the permission reads and writes all.
 
+### Upload check for LB-served repositories
+
+An element repository can be served by an LB route: a writable `local_dir`
+(`dav_methods: [PUT, DELETE]`) laid out as `/<prefix>/<project_id>/...`
+with a single-segment prefix (e.g. `/repo/`), guarded by an `auth_request`
+modifier whose pool points at this User API and whose path is the repository action
+`/v1/repo/repositories/<repository_uuid>/actions/authorize_upload`.
+Use the UUID of the repository created during bootstrap.
+nginx sends it a `GET` with the original method and URI in
+`X-Original-Method` / `X-Original-URI`:
+
+| `X-Original-Method` | Answer |
+|---|---|
+| `GET`, `HEAD` | `200`: requires a token with `repo.repository.read` and a matching project |
+| `GET`, `HEAD`, `PUT`, `DELETE` without a token | `401` |
+| `PUT`, `DELETE` into `/<prefix>/<token project>/...` with `repo.repository.upload` | `200` |
+| `PUT`, `DELETE` into any project with an unscoped token carrying `repo.repository.upload` (e.g. the admin's) | `200` |
+| anything else | `403` |
+
+Project owners get `repo.repository.upload` through the `owner` role.
+The repository must belong to the target project or the admin project,
+which holds the realm's shared repositories. A missing repository returns
+`404`. Reads require `repo.repository.read`; writes require only
+`repo.repository.upload`. Unscoped tokens with the corresponding permission
+may access any project.
+
+nginx serves the decoded, normalized URI but passes the raw
+`X-Original-URI`, so a path with a `.`, `..` or empty segment (percent
+encoded or not) or a backslash is refused rather than resolved.
+
+On a managed realm, bootstrap registers the realm spec's non-empty
+`repo_url` alongside the other bootstrap repositories, using that URL
+unchanged, lazy mode and an hourly refresh. This requires
+[exordos PR #428](https://github.com/exordos/exordos/pull/428).
+The upload authorization action only checks access; it does not register
+repositories or append a project ID to the repository URL.
+
 ## Inventory Format
 
 The inventory is a JSON document served by the repository driver. It lists all

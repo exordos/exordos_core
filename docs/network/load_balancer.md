@@ -91,7 +91,13 @@ Routing rules that define how traffic is handled:
 - Actions
     - `backend` - send to backend
     - `redirect` - return http redirect
-    - `local_dir` - serve static from local dir on LB
+    - `local_dir` - serve static from local dir on LB; `dav_methods` (`PUT`,
+      `DELETE`) makes it writable over WebDAV and needs an `auth_request`
+      modifier on the route; the route must be a one-segment prefix like
+      `/repo/` (the upload check reads the project from the next segment);
+      not on `core_agent` LBs (their nginx is shared by every project) or
+      `core` LBs with more than one node (each node has its own disk), and
+      not together with `rewrite_url` (nginx rewrites before the auth check)
     - `local_dir_download` - download tar.gz/zstd on LB itself, unpack it and serve data from local dir
 - Modifiers (headers, rewrite rules)
     - `headers` - modify headers
@@ -102,6 +108,10 @@ Routing rules that define how traffic is handled:
             - X-Forwarded-Prefix
         - `set_header`: set static header to request
         - `set_resp_header`: set static header for response
+    - `auth_request` - authorize every request of the route by a
+      subrequest to a backend `pool` at `path`; it gets the original method,
+      URI and `Authorization` (not the body) and answers 2xx to allow,
+      401/403 to deny. One per route; the pool must belong to the route's LB
 
 ## API Structure
 
