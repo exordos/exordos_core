@@ -109,12 +109,13 @@ Key names deliberately match the `spec.json` keys consumed by
 `admin_password`, `disable_telemetry`), so the image's first-boot script can
 merge this file into its baked spec template with minimal mapping.
 
-The optional `repo_url` is the base URL of the realm node's element
-repository as the realm core reaches it (the ecosystem sets
-`http://<nested gateway>:8081/repo/` when the realm repository is on). The
-core keeps it in the `realm_repo_url` variable and registers a project's
-repository (`<repo_url><project_id>/exordos-elements/`) on the project's
-first authorized upload. Without it, nothing is registered.
+The optional `repo_url` is the URL of the realm node's element repository
+as the realm core reaches it. With
+[exordos PR #428](https://github.com/exordos/exordos/pull/428), it is added
+to the bootstrap repository list and registered using the URL unchanged.
+Existing repositories are preserved; an exact duplicate URL is added only
+once. An absent or empty `repo_url` leaves the list unchanged.
+Upload authorization does not create repositories.
 
 Next you can view the bootstrap service logs with `sudo journalctl -u exordos-realm-bootstrap`.
 

@@ -30,9 +30,23 @@ from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as c
 from exordos_core.repo.dm import models as repo_models
-from exordos_core.vs.dm import models as vs_models
 
-AUTH_PATH = f"iam/clients/{c.ZERO_UUID}/actions/authorize_repo_upload"
+REPO_UUID = sys_uuid.UUID("31cebe30-f3a5-4813-a1aa-3b59e31d8d15")
+AUTH_PATH = f"repo/repositories/{REPO_UUID}/actions/authorize_upload"
+
+
+@pytest.fixture(autouse=True)
+def realm_repository(user_api):
+    repository = repo_models.Repository(
+        uuid=REPO_UUID,
+        name="realm-repository",
+        project_id=c.ZERO_UUID,
+        driver_spec=repo_models.NginxDriverSpec(
+            url="http://10.40.0.1:8081/repo/exordos-elements/"
+        ),
+    )
+    repository.insert()
+    return repository
 
 
 def _ask(client, method, uri):
@@ -127,14 +141,19 @@ class TestRepoUploadAuth:
 
         assert _ask(user, "PUT", f"/repo/{project}/app/x") == 403
 
-    def test_project_member_without_upload_is_refused(
+    @pytest.mark.parametrize(
+        ("permissions", "expected"),
+        [([], 403), (["repo.repository.upload"], 200)],
+    )
+    def test_project_member_needs_only_upload_permission(
         self,
         user_api_client,
         auth_test2_user,
         project,
+        permissions,
+        expected,
     ):
-        # A role with no permissions, bound in the owner's project.
-        user_api_client(auth_test2_user, permissions=[], project_id=project)
+        user_api_client(auth_test2_user, permissions=permissions, project_id=project)
         member = user_api_client(
             iam_clients.GenesisCoreAuth(
                 username=auth_test2_user.username,
@@ -148,75 +167,34 @@ class TestRepoUploadAuth:
             )
         )
 
-        assert _ask(member, "PUT", f"/repo/{project}/app/x") == 403
+        assert _ask(member, "PUT", f"/repo/{project}/app/x") == expected
 
+    def test_repository_of_another_project_refuses_writes(
+        self, owner, project, realm_repository
+    ):
+        realm_repository.delete()
+        repo_models.Repository(
+            uuid=REPO_UUID,
+            name=realm_repository.name,
+            project_id=sys_uuid.uuid4(),
+            driver_spec=realm_repository.driver_spec,
+        ).insert()
 
-REPO_URL = "http://10.40.0.1:8081/repo/"
+        assert _ask(owner, "PUT", f"/repo/{project}/app/x") == 403
 
+    def test_missing_repository_is_not_authorized(self, owner, realm_repository):
+        realm_repository.delete()
 
-def _realm_repos(project):
-    return repo_models.Repository.objects.get_all(
-        filters={"project_id": dm_filters.EQ(sys_uuid.UUID(str(project)))}
-    )
-
-
-@pytest.fixture
-def realm_repo_url(user_api):
-    # What bootstrap sets from the realm spec's `repo_url` on a managed realm.
-    vs_models.Variable(
-        uuid=c.VAR_REALM_REPO_URL_UUID,
-        name="realm_repo_url",
-        project_id=c.EM_PROJECT_ID,
-        setter=vs_models.SelectorVariableSetter(selector_strategy="latest"),
-        value=REPO_URL,
-    ).insert()
-    return REPO_URL
+        assert _ask(owner, "GET", "/repo/app/x") == 404
 
 
 class TestRealmRepositoryRegistration:
-    def test_first_upload_registers_the_project_repository(
-        self, owner, project, realm_repo_url
-    ):
-        assert _ask(owner, "PUT", f"/repo/{project}/app/1.0.0/app.yaml") == 200
-        assert _ask(owner, "PUT", f"/repo/{project}/app/1.0.0/inventory.json") == 200
-
-        (repo,) = _realm_repos(project)
-        assert repo.name == f"realm-{str(project)[:8]}"
-        assert repo.driver_spec.url == f"{REPO_URL}{project}/exordos-elements/"
-        assert repo.sync_mode == repo_models.SyncMode.COPY.value
-
-    def test_refused_upload_registers_nothing(
-        self, user_api_noauth_client, project, realm_repo_url
-    ):
-        anon = user_api_noauth_client()
-
-        assert _ask(anon, "PUT", f"/repo/{project}/app/x") == 401
-        assert _realm_repos(project) == []
-
-    def test_reads_register_nothing(self, owner, project, realm_repo_url):
-        assert _ask(owner, "GET", f"/repo/{project}/app/x") == 200
-        assert _realm_repos(project) == []
-
-    def test_realm_without_a_repository_registers_nothing(self, owner, project):
-        assert _ask(owner, "PUT", f"/repo/{project}/app/x") == 200
-        assert _realm_repos(project) == []
-
-    def test_url_held_by_another_project_is_left_alone(
-        self, owner, project, realm_repo_url
-    ):
-        # Another project registered this project's URL first: the upload
-        # still goes through, and the other project's row is not touched.
-        other = sys_uuid.uuid4()
-        repo_models.Repository(
-            name="squatter",
-            project_id=other,
-            refresh_rate=60,
-            sync_mode=repo_models.SyncMode.COPY.value,
-            driver_spec=repo_models.NginxDriverSpec(
-                url=f"{REPO_URL}{project}/exordos-elements/"
-            ),
-        ).insert()
-
-        assert _ask(owner, "PUT", f"/repo/{project}/app/x") == 200
-        assert _realm_repos(project) == []
-        assert [r.name for r in _realm_repos(other)] == ["squatter"]
+    @pytest.mark.parametrize("method", ["GET", "HEAD", "PUT", "DELETE"])
+    def test_authorization_does_not_register_repositories(self, owner, project, method):
+        assert _ask(owner, method, f"/repo/{project}/app/1.0.0/app.yaml") == 200
+        assert (
+            repo_models.Repository.objects.get_all(
+                filters={"project_id": dm_filters.EQ(sys_uuid.UUID(str(project)))}
+            )
+            == []
+        )

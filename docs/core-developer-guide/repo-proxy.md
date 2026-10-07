@@ -417,9 +417,9 @@ project. An unscoped caller with the permission reads and writes all.
 An element repository can be served by an LB route: a writable `local_dir`
 (`dav_methods: [PUT, DELETE]`) laid out as `/<prefix>/<project_id>/...`
 with a single-segment prefix (e.g. `/repo/`), guarded by an `auth_request`
-modifier whose pool points at this User API and whose path is the IAM
-client action
-`/v1/iam/clients/00000000-0000-0000-0000-000000000000/actions/authorize_repo_upload`.
+modifier whose pool points at this User API and whose path is the repository action
+`/v1/repo/repositories/<repository_uuid>/actions/authorize_upload`.
+Use the UUID of the repository created during bootstrap.
 nginx sends it a `GET` with the original method and URI in
 `X-Original-Method` / `X-Original-URI`:
 
@@ -432,20 +432,20 @@ nginx sends it a `GET` with the original method and URI in
 | anything else | `403` |
 
 Project owners get `repo.repository.upload` through the `owner` role.
+The repository must belong to the target project or the admin project,
+which holds the realm's shared repositories. A missing repository returns
+`404`. This action does not require `repo.repository.read`.
 
 nginx serves the decoded, normalized URI but passes the raw
 `X-Original-URI`, so a path with a `.`, `..` or empty segment (percent
 encoded or not) or a backslash is refused rather than resolved.
 
-On a managed realm the core also knows where that repository is: bootstrap
-sets the `realm_repo_url` values store variable from the realm spec's
-`repo_url` (e.g. `http://10.40.0.1:8081/repo/`). The first upload a project
-is allowed then registers the project's repository here: an nginx
-repository `realm-<project prefix>` in that project, at
-`<realm_repo_url><project_id>/exordos-elements/`, copy mode, refreshed every
-minute, so pushed elements become installable without further steps. It is
-registered once (a deterministic uuid per project); a repository already
-registered by hand for the same URL or name is left as it is.
+On a managed realm, bootstrap registers the realm spec's non-empty
+`repo_url` alongside the other bootstrap repositories, using that URL
+unchanged, lazy mode and an hourly refresh. This requires
+[exordos PR #428](https://github.com/exordos/exordos/pull/428).
+The upload authorization action only checks access; it does not register
+repositories or append a project ID to the repository URL.
 
 ## Inventory Format
 

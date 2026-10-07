@@ -258,12 +258,6 @@ class UserinfoAction(routes.Action):
     __controller__ = controllers.ClientsController
 
 
-class AuthorizeRepoUploadAction(routes.Action):
-    """Handler for .../<uuid>/actions/authorize_repo_upload endpoint"""
-
-    __controller__ = controllers.ClientsController
-
-
 class LogoutAction(routes.Action):
     """Handler for .../<uuid>/actions/logout/invoke endpoint"""
 
@@ -281,7 +275,6 @@ class IamClientsRoute(routes.Route):
     introspect = routes.action(IntrospectAction)
     me = routes.action(MeAction)
     userinfo = routes.action(UserinfoAction)
-    authorize_repo_upload = routes.action(AuthorizeRepoUploadAction)
     logout = routes.action(LogoutAction, invoke=True)
     send_reset_password_code = routes.action(
         SendResetPasswordCodeAction,

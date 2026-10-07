@@ -14,38 +14,29 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-"""The realm spec's `repo_url` becomes the `realm_repo_url` variable."""
+"""Realm repositories are registered from the bootstrap repository list."""
 
 from unittest import mock
 
 import pytest
 
-from exordos_core.bootstrap import defaults
-from exordos_core.common import constants as c
-
-
-def test_without_repo_url_there_is_nothing_to_set():
-    with mock.patch.object(defaults, "set_var") as set_var:
-        assert defaults.set_realm_repo_url_var({"realm_uuid": "x"}) is True
-
-    set_var.assert_not_called()
+from exordos_core.cmd import bootstrap
+from exordos_core.repo.dm import models as repo_models
 
 
 @pytest.mark.parametrize(
     "repo_url",
-    ["http://10.40.0.1:8081/repo/", "http://10.40.0.1:8081/repo"],
+    [
+        "http://10.40.0.1:8081/repo/",
+        "http://10.40.0.1:8081/repo/project/exordos-elements/",
+    ],
 )
-def test_repo_url_is_set_with_a_trailing_slash(repo_url):
-    with mock.patch.object(defaults, "set_var", return_value=True) as set_var:
-        assert defaults.set_realm_repo_url_var({"repo_url": repo_url}) is True
+def test_bootstrap_registers_the_realm_repository_url_unchanged(repo_url):
+    with mock.patch.object(bootstrap, "_ensure_repository") as ensure:
+        bootstrap._ensure_repositories_from_spec({"repository": [repo_url]})
 
-    set_var.assert_called_once_with(
-        "realm_repo_url", "http://10.40.0.1:8081/repo/", c.VAR_REALM_REPO_URL_UUID
-    )
-
-
-def test_waits_until_the_variable_exists():
-    # set_var answers False while the manifest hasn't declared the variable;
-    # bootstrap retries the task until it is there.
-    with mock.patch.object(defaults, "set_var", return_value=False):
-        assert defaults.set_realm_repo_url_var({"repo_url": "http://x/repo/"}) is False
+    ensure.assert_called_once()
+    kwargs = ensure.call_args.kwargs
+    assert kwargs["driver_spec"].url == repo_url
+    assert kwargs["refresh_rate"] == 3600
+    assert kwargs["sync_mode"] == repo_models.SyncMode.LAZY.value

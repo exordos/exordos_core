@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from urllib import parse as urllib_parse
 import uuid as sys_uuid
 
 from gcl_iam import exceptions as iam_exc
@@ -30,6 +31,30 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.common import constants as c
 from exordos_core.common import exceptions as common_exc
 from exordos_core.repo.dm import models
+
+
+def _repo_path_project(uri):
+    """Return the project an element repo URI `/<prefix>/<project>/...` names.
+
+    nginx serves the percent-decoded, normalized URI but passes the raw
+    one, so any `.`/`..`/empty segment or a backslash is refused rather
+    than resolved: the path checked must be the path written.
+    """
+    path = urllib_parse.unquote(uri.split("?", 1)[0])
+    if not path.startswith("/") or "\\" in path:
+        return None
+    segments = path[1:].split("/")
+    if len(segments) < 3:
+        return None
+    if any(s in ("", ".", "..") for s in segments[:-1]) or segments[-1] in (
+        ".",
+        "..",
+    ):
+        return None
+    try:
+        return sys_uuid.UUID(segments[1])
+    except ValueError:
+        return None
 
 
 class RepoProxyController(controllers.RoutesListController):
@@ -67,6 +92,14 @@ class RepositoryController(
     def get(self, uuid, **kwargs):
         # Actions load their resource through here, so they check the
         # project themselves: reading an admin repository is not writing it.
+        if (
+            self._req.method == "GET"
+            and self._req.path_info == "/actions/authorize_upload"
+        ):
+            # auth_request reads are public; writes are checked by the action.
+            return controllers.BaseResourceControllerPaginated.get(
+                self, uuid=uuid, **kwargs
+            )
         self._enforce("read")
         if self._ctx_project_id:
             kwargs["project_id"] = dm_filters.In(self._visible_projects())
@@ -102,6 +135,38 @@ class RepositoryController(
     def _authorize_write(self, resource: models.Repository):
         if self._ctx_project_id:
             self._force_project_id(resource.project_id)
+
+    @actions.get
+    def authorize_upload(self, resource):
+        """Answer the `auth_request` of an LB route serving an element repo.
+
+        The route serves a writable `local_dir` laid out as
+        `/<prefix>/<project_id>/...` and asks here about every request;
+        nginx passes the method in `X-Original-Method`, the URI in
+        `X-Original-URI` and the caller's `Authorization`. Reads are open:
+        hypervisors and the repo proxy fetch without a token. A write needs
+        `repo.repository.upload` in a token scoped to the project the path
+        names, or in an unscoped token (e.g. the admin's, whose permissions a
+        project scoped token doesn't carry), which may write into any project.
+        """
+        method = self._req.headers.get("X-Original-Method", "")
+        if method in ("GET", "HEAD"):
+            return {}
+        if method not in ("PUT", "DELETE"):
+            raise iam_exc.Forbidden()
+
+        if not self._req.headers.get("Authorization"):
+            raise iam_exc.Unauthorized()
+        target = _repo_path_project(self._req.headers.get("X-Original-URI", ""))
+        if target is None:
+            raise iam_exc.Forbidden()
+
+        if self._ctx_project_id is not None and target != self._ctx_project_id:
+            raise iam_exc.Forbidden()
+        if resource.project_id not in (c.ZERO_UUID, target):
+            raise iam_exc.Forbidden()
+        self._enforce("upload")
+        return {}
 
     @actions.post
     def refresh(self, resource: models.Repository):

@@ -102,9 +102,6 @@ VAR_REALM_UUID_UUID = sys_uuid.UUID("9f8e7d6c-5b4a-4c3d-2e1f-0a9b8c7d6e5f")
 VAR_REALM_SECRET_UUID = sys_uuid.UUID("3e2d1c0b-9a8f-4e7d-6c5b-4a3f2e1d0c9b")
 VAR_REALM_ACCESS_TOKEN_UUID = sys_uuid.UUID("7c6b5a4f-3e2d-4c1b-0a9f-8e7d6c5b4a3f")
 VAR_REALM_REFRESH_TOKEN_UUID = sys_uuid.UUID("eacf0c1f-3495-4986-89a5-80139526b82a")
-# Base URL of the realm's element repository as the realm core reaches it
-# (`<base><project_id>/exordos-elements/`); set only on managed realms.
-VAR_REALM_REPO_URL_UUID = sys_uuid.UUID("4e1f9b27-6d3a-4c85-b0e2-7a9c5d1f3e68")
 VAR_HS256_JWKS_ENCRYPTION_KEY_UUID = sys_uuid.UUID(
     "c371a647-e1a6-4bec-bef2-a50041bc5af2"
 )
