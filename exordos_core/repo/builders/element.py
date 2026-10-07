@@ -458,13 +458,23 @@ class RepoElementBuilderService(
         except (
             repo_exceptions.DependencyConstraintError,
             repo_exceptions.DependencyConstraintFormatError,
-        ):
+        ) as exc:
             instance.status = models.RepoElementStatus.ERROR.value
-            LOG.error("Inappropriate dependencies for element %s", instance.name)
+            LOG.error(
+                "Inappropriate dependencies for element %s:%s: %s",
+                instance.name,
+                instance.version,
+                exc,
+            )
             return False
-        except repo_exceptions.DependencyNotFoundError:
+        except repo_exceptions.DependencyNotFoundError as exc:
             instance.status = models.RepoElementStatus.ERROR.value
-            LOG.error("Failed to resolve dependencies for element %s", instance.name)
+            LOG.error(
+                "Failed to resolve dependencies for element %s:%s: %s",
+                instance.name,
+                instance.version,
+                exc,
+            )
             return False
 
     def can_create_instance_resource(self, instance: RepoElement) -> bool:

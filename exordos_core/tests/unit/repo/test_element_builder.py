@@ -542,6 +542,47 @@ class TestCreateInstanceHooks:
         assert self._service.can_create_instance_resource(element) is False
         assert element.status == models.RepoElementStatus.ERROR.value
 
+    @pytest.mark.parametrize(
+        "error, details",
+        [
+            (
+                repo_exceptions.DependencyConstraintError(
+                    name="dbaas", version="2.6.2", constraint={">=": "2.7.0"}
+                ),
+                ["dbaas", "2.6.2", "2.7.0"],
+            ),
+            (
+                repo_exceptions.DependencyConstraintFormatError(
+                    name="dbaas", constraint={"~=": "2.7.0"}
+                ),
+                ["dbaas", "~=", "2.7.0"],
+            ),
+            (
+                repo_exceptions.DependencyNotFoundError(
+                    name="dbaas", element="notification_pg_backup"
+                ),
+                ["dbaas", "not found"],
+            ),
+        ],
+    )
+    def test_dependency_failure_logs_reason(self, monkeypatch, caplog, error, details):
+        element = FakeElement(
+            name="notification_pg_backup",
+            version="1.2.8",
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+        )
+
+        def _raise(instance):
+            raise error
+
+        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+
+        assert self._service.can_create_instance_resource(element) is False
+        assert element.status == models.RepoElementStatus.ERROR.value
+        assert "notification_pg_backup:1.2.8" in caplog.text
+        for detail in details:
+            assert detail in caplog.text
+
     def test_create_derivatives_installs_upgrade_target(self, monkeypatch):
         element = FakeElement(
             installation_state=models.RepoElementInstallationState.INSTALLED.value,
