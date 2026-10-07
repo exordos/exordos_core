@@ -17,6 +17,8 @@
 from concurrent import futures
 import datetime
 import logging
+import os
+import tempfile
 import time
 
 import bazooka
@@ -27,6 +29,7 @@ from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as c
+
 from exordos_core.user_api.dns.dm import models as dns_models
 from exordos_core.vs.dm import models as vs_models
 
@@ -35,6 +38,9 @@ LOG = logging.getLogger(__name__)
 DNS_SYNC_TIMEOUT = 30
 DNS_SYNC_POOL_SIZE = 1
 FULL_SYNC_INTERVAL = 60
+# dnsdist-public.conf re-reads this file and routes the listed domains
+# to the "privatedns" pool.
+DNSDIST_DOMAINS_FILE = "/etc/dnsdist/publicdns-domains.txt"
 
 # Unsupported expressions return 400; older field filters return
 # KeyError('q') with 500. Other server failures must remain errors.
@@ -77,6 +83,7 @@ class DNSSyncService(basic.BasicService):
         # with the answer the old one gave.
         self._filter_lang_refused = {}
         self._tags_unsupported = set()
+        self._dnsdist_domains_content = None
 
     def _get_variable_value(self, var_uuid):
         """Read variable value from ValuesStore by UUID."""
@@ -605,7 +612,51 @@ class DNSSyncService(basic.BasicService):
         if self._pending_future is not None and self._pending_future.done():
             self._pending_future = None
 
+    def _write_dnsdist_domains(self):
+        """Write local DNS domains to the file consumed by dnsdist-public."""
+        # Fetch only domain names, not full models
+        with dns_models.Domain._get_engine().session_manager() as session:
+            # Select domains tagged public
+            rows = session.execute(
+                "SELECT name FROM dns_domains WHERE tags @> %s::text[]",
+                (["public"],),
+            ).fetchall()
+        names = sorted({row["name"].strip().rstrip(".").lower() for row in rows})
+        # Suffix matching already covers subdomains, so keep only top-level ones
+        name_set = set(names)
+        names = [
+            name
+            for name in names
+            if name
+            and not any(
+                ".".join(name.split(".")[i:]) in name_set
+                for i in range(1, len(name.split(".")))
+            )
+        ]
+        content = "".join(f"{name}\n" for name in names)
+        if content == self._dnsdist_domains_content:
+            return
+
+        dir_name = os.path.dirname(DNSDIST_DOMAINS_FILE)
+        os.makedirs(dir_name, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, prefix=".privatedns-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.chmod(tmp_path, 0o644)
+            os.replace(tmp_path, DNSDIST_DOMAINS_FILE)
+        except Exception:
+            os.unlink(tmp_path)
+            raise
+        self._dnsdist_domains_content = content
+        LOG.info("Updated %s: %d domains", DNSDIST_DOMAINS_FILE, len(names))
+
     def _iteration(self):
+        try:
+            self._write_dnsdist_domains()
+        except Exception:
+            LOG.exception("Unable to write %s", DNSDIST_DOMAINS_FILE)
+
         self._check_pending_future()
 
         if self._pending_future is not None:
