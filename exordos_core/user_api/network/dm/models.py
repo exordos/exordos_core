@@ -596,7 +596,7 @@ class ModifierAuthRequestKind(AbstractModifierKind):
 
     The backend answers 2xx to allow and 401/403 to deny; it gets the
     original method, URI and `Authorization` but not the body. Core serves
-    such a check for element repositories as the IAM client action
+    such a check for element repositories as the repository action
     `authorize_upload`.
     """
 

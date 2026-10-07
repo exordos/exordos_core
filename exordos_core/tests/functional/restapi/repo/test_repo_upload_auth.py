@@ -77,8 +77,9 @@ class TestRepoUploadAuth:
         assert _ask(owner, "PUT", uri) == 200
         assert _ask(owner, "DELETE", f"/repo/{project}/app/1.0.0/") == 200
 
-    def test_write_into_another_project_is_refused(self, owner):
-        assert _ask(owner, "PUT", f"/repo/{sys_uuid.uuid4()}/app/1.0.0/x") == 403
+    @pytest.mark.parametrize("method", ["GET", "HEAD", "PUT", "DELETE"])
+    def test_access_to_another_project_is_refused(self, owner, method):
+        assert _ask(owner, method, f"/repo/{sys_uuid.uuid4()}/app/1.0.0/x") == 403
 
     @pytest.mark.parametrize(
         "tail",
@@ -91,10 +92,11 @@ class TestRepoUploadAuth:
             "app\\..\\x",
         ],
     )
-    def test_path_tricks_are_refused(self, owner, project, tail):
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    def test_path_tricks_are_refused(self, owner, project, tail, method):
         uri = f"/repo/{project}/" + tail.format(other=sys_uuid.uuid4())
 
-        assert _ask(owner, "PUT", uri) == 403
+        assert _ask(owner, method, uri) == 403
 
     @pytest.mark.parametrize(
         "uri",
@@ -112,12 +114,12 @@ class TestRepoUploadAuth:
     def test_other_methods_are_refused(self, owner, project, method):
         assert _ask(owner, method, f"/repo/{project}/app/x") == 403
 
-    def test_reads_are_open(self, user_api_noauth_client, project):
+    def test_anonymous_reads_need_a_token(self, user_api_noauth_client, project):
         anon = user_api_noauth_client()
         uri = f"/repo/{project}/app/1.0.0/inventory.json"
 
-        assert _ask(anon, "GET", uri) == 200
-        assert _ask(anon, "HEAD", uri) == 200
+        assert _ask(anon, "GET", uri) == 401
+        assert _ask(anon, "HEAD", uri) == 401
 
     def test_anonymous_write_needs_a_token(self, user_api_noauth_client, project):
         anon = user_api_noauth_client()
@@ -142,15 +144,23 @@ class TestRepoUploadAuth:
         assert _ask(user, "PUT", f"/repo/{project}/app/x") == 403
 
     @pytest.mark.parametrize(
-        ("permissions", "expected"),
-        [([], 403), (["repo.repository.upload"], 200)],
+        ("permissions", "method", "expected"),
+        [
+            ([], "PUT", 403),
+            (["repo.repository.upload"], "PUT", 200),
+            (["repo.repository.upload"], "GET", 403),
+            (["repo.repository.read"], "GET", 200),
+            (["repo.repository.read"], "HEAD", 200),
+            (["repo.repository.read"], "PUT", 403),
+        ],
     )
-    def test_project_member_needs_only_upload_permission(
+    def test_project_member_needs_the_method_permission(
         self,
         user_api_client,
         auth_test2_user,
         project,
         permissions,
+        method,
         expected,
     ):
         user_api_client(auth_test2_user, permissions=permissions, project_id=project)
@@ -167,7 +177,7 @@ class TestRepoUploadAuth:
             )
         )
 
-        assert _ask(member, "PUT", f"/repo/{project}/app/x") == expected
+        assert _ask(member, method, f"/repo/{project}/app/x") == expected
 
     def test_repository_of_another_project_refuses_writes(
         self, owner, project, realm_repository

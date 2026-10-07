@@ -96,7 +96,7 @@ class RepositoryController(
             self._req.method == "GET"
             and self._req.path_info == "/actions/authorize_upload"
         ):
-            # auth_request reads are public; writes are checked by the action.
+            # The action checks the permission for the original request.
             return controllers.BaseResourceControllerPaginated.get(
                 self, uuid=uuid, **kwargs
             )
@@ -143,16 +143,20 @@ class RepositoryController(
         The route serves a writable `local_dir` laid out as
         `/<prefix>/<project_id>/...` and asks here about every request;
         nginx passes the method in `X-Original-Method`, the URI in
-        `X-Original-URI` and the caller's `Authorization`. Reads are open:
-        hypervisors and the repo proxy fetch without a token. A write needs
+        `X-Original-URI` and the caller's `Authorization`. Reads require
+        `repo.repository.read`. A write needs
         `repo.repository.upload` in a token scoped to the project the path
         names, or in an unscoped token (e.g. the admin's, whose permissions a
         project scoped token doesn't carry), which may write into any project.
         """
         method = self._req.headers.get("X-Original-Method", "")
-        if method in ("GET", "HEAD"):
-            return {}
-        if method not in ("PUT", "DELETE"):
+        permission = {
+            "GET": "read",
+            "HEAD": "read",
+            "PUT": "upload",
+            "DELETE": "upload",
+        }.get(method)
+        if permission is None:
             raise iam_exc.Forbidden()
 
         if not self._req.headers.get("Authorization"):
@@ -165,7 +169,7 @@ class RepositoryController(
             raise iam_exc.Forbidden()
         if resource.project_id not in (c.ZERO_UUID, target):
             raise iam_exc.Forbidden()
-        self._enforce("upload")
+        self._enforce(permission)
         return {}
 
     @actions.post
