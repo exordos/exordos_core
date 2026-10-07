@@ -14,12 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-"""A DNS record carries tags, and a zone can be asked for the tagged ones.
-
-A realm's DNS mirror marks the records it writes into a shared zone and
-reads back only those, so it can tell its rows from the ones this
-installation publishes into the same zone.
-"""
+"""DNS records preserve tags and support filtering by a selected tag."""
 
 import typing as tp
 import uuid as sys_uuid
@@ -28,7 +23,6 @@ from gcl_iam.tests.functional import clients as iam_clients
 import pytest
 
 from exordos_core.common import constants as c
-from exordos_core.dns_sync import service as dns_sync
 
 
 class TestRecordTags:
@@ -72,7 +66,7 @@ class TestRecordTags:
         domain: tp.Dict,
     ):
         client = user_api_client(auth_user_admin)
-        mark = dns_sync.realm_tag(sys_uuid.uuid4())
+        mark = f"realm:{sys_uuid.uuid4()}"
 
         record = self._record(client, domain, tags=["env:prod", mark])
 
@@ -96,10 +90,10 @@ class TestRecordTags:
         auth_user_admin: iam_clients.GenesisCoreAuth,
         domain: tp.Dict,
     ):
-        """An operator can explicitly hand a legacy row to the mirror."""
+        """Tags can be added to an existing record."""
         client = user_api_client(auth_user_admin)
         record = self._record(client, domain)
-        mark = dns_sync.realm_tag(sys_uuid.uuid4())
+        mark = f"realm:{sys_uuid.uuid4()}"
         url = client.build_resource_uri(
             ["dns", "domains", domain["uuid"], "records", record["uuid"]]
         )
@@ -116,7 +110,7 @@ class TestRecordTags:
         domain: tp.Dict,
     ):
         client = user_api_client(auth_user_admin)
-        mark = dns_sync.realm_tag(sys_uuid.uuid4())
+        mark = f"realm:{sys_uuid.uuid4()}"
         record = self._record(client, domain, tags=[mark])
         url = client.build_resource_uri(
             ["dns", "domains", domain["uuid"], "records", record["uuid"]]
@@ -133,11 +127,11 @@ class TestRecordTags:
         auth_user_admin: iam_clients.GenesisCoreAuth,
         domain: tp.Dict,
     ):
-        """What a realm's mirror asks, instead of reading the whole zone."""
+        """The tag filter selects only matching records in the zone."""
         client = user_api_client(auth_user_admin)
-        mark = dns_sync.realm_tag(sys_uuid.uuid4())
+        mark = f"realm:{sys_uuid.uuid4()}"
         mine = self._record(client, domain, tags=[mark])
-        self._record(client, domain, tags=[dns_sync.realm_tag(sys_uuid.uuid4())])
+        self._record(client, domain, tags=[f"realm:{sys_uuid.uuid4()}"])
         self._record(client, domain)
         url = client.build_collection_uri(["dns", "domains", domain["uuid"], "records"])
 
@@ -153,9 +147,9 @@ class TestRecordTags:
         domain: tp.Dict,
     ):
         client = user_api_client(auth_user_admin)
-        self._record(client, domain, tags=[dns_sync.realm_tag(sys_uuid.uuid4())])
+        self._record(client, domain, tags=[f"realm:{sys_uuid.uuid4()}"])
         url = client.build_collection_uri(["dns", "domains", domain["uuid"], "records"])
-        somebody_else = dns_sync.realm_tag(sys_uuid.uuid4())
+        somebody_else = f"realm:{sys_uuid.uuid4()}"
 
         response = client.get(url, params={"q": 'tags:"%s"' % somebody_else})
 
