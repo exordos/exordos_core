@@ -949,6 +949,11 @@ class Resource(
         return self
 
 
+class _EngineResource(Resource):
+    # Query resources without joining elements and their manifests.
+    element = properties.property(ra_types.UUID(), required=True)
+
+
 class ExportEnum(str, enum.Enum):
     RESOURCE = "resource"
 
@@ -1042,6 +1047,13 @@ class Import(
     @property
     def link(self):
         return f"{self.element.link}.imports.${self.name}"
+
+
+class _EngineImport(Import):
+    # Resolve import relationships from objects already held by the engine.
+    element = properties.property(ra_types.UUID(), required=True)
+    from_element = properties.property(ra_types.UUID(), required=True)
+    from_resource = properties.property(ra_types.UUID(), required=True)
 
 
 class ImportedResource:
@@ -1181,17 +1193,29 @@ class ElementEngine:
     def get_elements(self) -> tp.List["Element"]:
         return [namespace.element for namespace in self._namespaces.values()]
 
-    def load_from_database(self) -> None:
-        self._namespaces = {}
-        self._resource_exports = {}
-        for element in Element.objects.get_all():
-            self.add_element(element)
+    def _load_resources(self) -> None:
+        elements = {element.uuid: element for element in self.get_elements()}
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            result = _EngineResource.get_table().select(
+                engine=engine,
+                filters={},
+                session=session,
+            )
+            for row in result.rows:
+                row["element"] = elements[
+                    ra_types.UUID().from_simple_type(row["element"])
+                ]
+                self.add_resource(Resource.restore_row(row))
 
-        for import_ in Import.objects.get_all():
+    def _load_imports(self) -> None:
+        elements = {element.uuid: element for element in self.get_elements()}
+        resources = {resource.uuid: resource for resource in self.get_resources()}
+        for import_ in _EngineImport.objects.get_all():
             if import_.kind == ImportEnum.RESOURCE.value:
                 resource = ImportedResource(
-                    element=import_.element,
-                    resource=import_.from_resource,
+                    element=elements[import_.element],
+                    resource=resources[import_.from_resource],
                     import_name=import_.name,
                 )
                 self.add_resource(resource)
@@ -1202,8 +1226,15 @@ class ElementEngine:
                     f"imports are currently supported."
                 )
 
-        for resource in Resource.objects.get_all():
-            self.add_resource(resource)
+    def load_from_database(self) -> None:
+        self._namespaces = {}
+        self._resource_exports = {}
+        for element in Element.objects.get_all():
+            self.add_element(element)
+
+        self._load_resources()
+
+        self._load_imports()
 
         for export in Export.objects.get_all():
             if export.kind == ExportEnum.RESOURCE.value:

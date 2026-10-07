@@ -861,3 +861,140 @@ class TestElementEngineLoadElements:
         engine.load_elements()
 
         assert engine.get_elements() == []
+
+
+class TestElementEngineLoadFromDatabase:
+    """Tests for load_from_database sharing elements between resources."""
+
+    ELEMENT_UUID = sys_uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+    def _element(self) -> Element:
+        return Element(
+            uuid=self.ELEMENT_UUID,
+            name="dbaas",
+            version="0.2.2",
+            link="$dbaas",
+        )
+
+    def _resource(self, number: int) -> Resource:
+        # Every row restores its own copy of the element, like the ORM does.
+        return Resource(
+            uuid=sys_uuid.UUID(int=number),
+            name=f"res_{number}",
+            element=self._element(),
+            resource_link_prefix="$dbaas.types.postgres.instances",
+            value={"name": f"res_{number}"},
+        )
+
+    def test_imports_share_loaded_resources(self, monkeypatch):
+        from restalchemy.storage.sql import orm
+
+        from exordos_core.elements.dm import models as em_models
+
+        engine = ElementEngine()
+        element = self._element()
+        rows = [dict(self._resource(number)) for number in range(1, 3)]
+        for row in rows:
+            row["element"] = str(element.uuid)
+        imports = [
+            em_models._EngineImport(
+                element=element.uuid,
+                from_element=element.uuid,
+                from_resource=sys_uuid.UUID(int=1),
+                name=f"import_{number}",
+            )
+            for number in range(1, 3)
+        ]
+
+        def fake_get_all(collection, **kwargs):
+            if collection.model_cls is Element:
+                return [element]
+            if collection.model_cls is em_models._EngineImport:
+                assert kwargs == {}
+                assert len(engine.get_resources()) == 2
+                return imports
+            assert collection.model_cls not in (Resource, em_models.Import)
+            return []
+
+        monkeypatch.setattr(orm.ObjectCollection, "get_all", fake_get_all)
+        db_engine = mock.MagicMock()
+        monkeypatch.setattr(
+            em_models.engines.engine_factory, "get_engine", lambda: db_engine
+        )
+        table = mock.MagicMock()
+        table.select.return_value.rows = rows
+        monkeypatch.setattr(em_models._EngineResource, "get_table", lambda: table)
+        engine.load_from_database()
+
+        source, other, first_import, second_import = engine.get_resources()
+        assert source.uuid == sys_uuid.UUID(int=1)
+        assert other.uuid == sys_uuid.UUID(int=2)
+        assert first_import.name == "import_1"
+        assert second_import.name == "import_2"
+        assert first_import.original is source
+        assert second_import.original is source
+        assert all(r.element is element for r in engine.get_resources())
+        assert all(not r.is_dirty() and r._saved for r in engine.get_resources())
+
+    def test_import_query_does_not_load_relationships(self):
+        from restalchemy.dm import relationships
+
+        from exordos_core.elements.dm import models as em_models
+
+        properties = em_models._EngineImport.properties.properties
+        for name in ("element", "from_element", "from_resource"):
+            assert not issubclass(
+                properties[name].get_property_class(), relationships.BaseRelationship
+            )
+            assert issubclass(
+                em_models.Import.properties.properties[name].get_property_class(),
+                relationships.BaseRelationship,
+            )
+
+    def test_resources_share_engine_element(self, monkeypatch):
+        from restalchemy.storage.sql import orm
+
+        from exordos_core.elements.dm import models as em_models
+
+        engine = ElementEngine()
+        element = self._element()
+        rows = [dict(self._resource(number)) for number in range(1, 6)]
+        for row in rows:
+            row["element"] = str(element.uuid)
+
+        def fake_get_all(self, **kwargs):
+            if self.model_cls is Element:
+                return [element]
+            assert self.model_cls is not Resource
+            return []
+
+        monkeypatch.setattr(orm.ObjectCollection, "get_all", fake_get_all)
+        db_engine = mock.MagicMock()
+        monkeypatch.setattr(
+            em_models.engines.engine_factory, "get_engine", lambda: db_engine
+        )
+        table = mock.MagicMock()
+        table.select.return_value.rows = rows
+        monkeypatch.setattr(em_models._EngineResource, "get_table", lambda: table)
+        engine.load_from_database()
+
+        resources = engine.get_resources()
+        assert [r.uuid for r in resources] == [r["uuid"] for r in rows]
+        assert all(type(r) is Resource for r in resources)
+        assert all(r.element is element for r in resources)
+        assert not any(r.is_dirty() for r in resources)
+        assert all(r._saved for r in resources)
+        table.select.assert_called_once_with(
+            engine=db_engine,
+            filters={},
+            session=db_engine.session_manager.return_value.__enter__.return_value,
+        )
+
+    def test_resource_query_does_not_prefetch_element(self):
+        from exordos_core.elements.dm import models as em_models
+
+        properties = em_models._EngineResource.properties.properties
+        assert not properties["element"].is_prefetch()
+        assert properties["target_resource"].is_prefetch()
+        assert properties["actual_resource"].is_prefetch()
+        assert Resource.properties.properties["element"].is_prefetch()
