@@ -109,14 +109,6 @@ Key names deliberately match the `spec.json` keys consumed by
 `admin_password`, `disable_telemetry`), so the image's first-boot script can
 merge this file into its baked spec template with minimal mapping.
 
-The optional `repo_url` is the URL of the realm node's element repository
-as the realm core reaches it. With
-[exordos PR #428](https://github.com/exordos/exordos/pull/428), it is added
-to the bootstrap repository list and registered using the URL unchanged.
-Existing repositories are preserved; an exact duplicate URL is added only
-once. An absent or empty `repo_url` leaves the list unchanged.
-Upload authorization does not create repositories.
-
 Next you can view the bootstrap service logs with `sudo journalctl -u exordos-realm-bootstrap`.
 
 And after few seconds you can see work stand by `exordos e e l`.
