@@ -1242,10 +1242,33 @@ components:
                 format: uuid
                 type: string
               storage_pool:
-                example: any_string
-                maxLength: 255
-                nullable: true
-                type: string
+                default: []
+                example:
+                - ephemeral: true
+                  name: any_string
+                  speed: COLD
+                items:
+                  example:
+                    ephemeral: true
+                    name: any_string
+                    speed: COLD
+                  properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
+                    name:
+                      example: any_string
+                      maxLength: 255
+                      type: string
+                    speed:
+                      enum:
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
+                      type: string
+                  type: object
+                type: array
             type: object
           - example:
               key: value
@@ -1310,15 +1333,40 @@ components:
                   example: 0
                   minimum: 0
                   type: integer
+                chunk_size:
+                  default: 1073741824
+                  example: 1
+                  minimum: 1
+                  type: integer
                 description:
                   default: ''
                   example: any_string
                   maxLength: 255
                   type: string
+                ephemeral:
+                  default: false
+                  example: true
+                  type: boolean
+                failure_domain:
+                  default: server
+                  enum:
+                  - dc
+                  - ost
+                  - rack
+                  - row
+                  - server
+                  example: ost
+                  type: string
                 kind:
                   enum:
                   - thin_storage_pool
                   type: string
+                mirrors:
+                  default: 1
+                  example: 128
+                  maximum: 255
+                  minimum: 1
+                  type: integer
                 name:
                   default: ''
                   example: any_string
@@ -1332,6 +1380,14 @@ components:
                   type: number
                 pool_type:
                   example: any_string
+                  type: string
+                speed:
+                  default: WARM
+                  enum:
+                  - COLD
+                  - HOT
+                  - WARM
+                  example: COLD
                   type: string
                 uuid:
                   example: 00000000-0000-0000-0000-000000000000
@@ -1518,6 +1574,10 @@ components:
           - example:
               key: value
             properties:
+              ephemeral:
+                default: true
+                example: true
+                type: boolean
               image:
                 example: any_string
                 maxLength: 255
@@ -1532,6 +1592,14 @@ components:
                 maximum: 1000000
                 minimum: 1
                 type: integer
+              speed:
+                default: HOT
+                enum:
+                - COLD
+                - HOT
+                - WARM
+                example: COLD
+                type: string
             type: object
           - example:
               key: value
@@ -1539,19 +1607,26 @@ components:
               disks:
                 default: []
                 example:
-                - fs: any_string
+                - ephemeral: true
+                  fs: any_string
                   image: any_string
                   label: any_string
                   mount_point: any_string
                   size: 500000
+                  speed: COLD
                 items:
                   example:
+                    ephemeral: true
                     fs: any_string
                     image: any_string
                     label: any_string
                     mount_point: any_string
                     size: 500000
+                    speed: COLD
                   properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
                     fs:
                       example: any_string
                       maxLength: 256
@@ -1573,6 +1648,13 @@ components:
                       maximum: 1000000
                       minimum: 1
                       type: integer
+                    speed:
+                      enum:
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
+                      type: string
                   type: object
                 type: array
               kind:
@@ -1705,6 +1787,10 @@ components:
           - example:
               key: value
             properties:
+              ephemeral:
+                default: true
+                example: true
+                type: boolean
               image:
                 example: any_string
                 maxLength: 255
@@ -1719,6 +1805,14 @@ components:
                 maximum: 1000000
                 minimum: 1
                 type: integer
+              speed:
+                default: HOT
+                enum:
+                - COLD
+                - HOT
+                - WARM
+                example: COLD
+                type: string
             type: object
           - example:
               key: value
@@ -1726,19 +1820,26 @@ components:
               disks:
                 default: []
                 example:
-                - fs: any_string
+                - ephemeral: true
+                  fs: any_string
                   image: any_string
                   label: any_string
                   mount_point: any_string
                   size: 500000
+                  speed: COLD
                 items:
                   example:
+                    ephemeral: true
                     fs: any_string
                     image: any_string
                     label: any_string
                     mount_point: any_string
                     size: 500000
+                    speed: COLD
                   properties:
+                    ephemeral:
+                      example: true
+                      type: boolean
                     fs:
                       example: any_string
                       maxLength: 256
@@ -1760,6 +1861,13 @@ components:
                       maximum: 1000000
                       minimum: 1
                       type: integer
+                    speed:
+                      enum:
+                      - COLD
+                      - HOT
+                      - WARM
+                      example: COLD
+                      type: string
                   type: object
                 type: array
               kind:
@@ -4111,6 +4219,353 @@ components:
       - target
       - service_type
       type: object
+    StorageCluster_Create:
+      $ref: '#/components/schemas/StorageCluster_Get'
+      path: /v1/storage/clusters/
+    StorageCluster_Get:
+      properties:
+        agent:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        builder:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        capacity_info:
+          additionalProperties:
+            oneOf:
+            - type: string
+            - type: integer
+            - type: boolean
+            - type: object
+            - items: {}
+              type: array
+          default: {}
+          example:
+            key: value
+          readOnly: true
+          type: object
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        driver_spec:
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              endpoint:
+                example: any_string
+                maxLength: 2048
+                type: string
+              kind:
+                enum:
+                - rawstor
+                type: string
+            type: object
+          type: object
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        status:
+          default: DISABLED
+          enum:
+          - ACTIVE
+          - DISABLED
+          - IN_PROGRESS
+          - MAINTENANCE
+          example: ACTIVE
+          readOnly: true
+          type: string
+        storage_pools:
+          default: []
+          example:
+          - key: value
+          items:
+            example:
+              key: value
+            oneOf:
+            - example:
+                key: value
+              properties:
+                available_actual:
+                  default: 0
+                  example: 0
+                  minimum: 0
+                  type: integer
+                capacity_provisioned:
+                  default: 0
+                  example: 0
+                  minimum: 0
+                  type: integer
+                capacity_usable:
+                  default: 0
+                  example: 0
+                  minimum: 0
+                  type: integer
+                chunk_size:
+                  default: 1073741824
+                  example: 1
+                  minimum: 1
+                  type: integer
+                description:
+                  default: ''
+                  example: any_string
+                  maxLength: 255
+                  type: string
+                ephemeral:
+                  default: false
+                  example: true
+                  type: boolean
+                failure_domain:
+                  default: server
+                  enum:
+                  - dc
+                  - ost
+                  - rack
+                  - row
+                  - server
+                  example: ost
+                  type: string
+                kind:
+                  enum:
+                  - thin_storage_pool
+                  type: string
+                mirrors:
+                  default: 1
+                  example: 128
+                  maximum: 255
+                  minimum: 1
+                  type: integer
+                name:
+                  default: ''
+                  example: any_string
+                  maxLength: 255
+                  type: string
+                oversubscription_ratio:
+                  default: 1.0
+                  example: 0.0
+                  format: float
+                  minimum: 0.0
+                  type: number
+                pool_type:
+                  example: any_string
+                  type: string
+                speed:
+                  default: WARM
+                  enum:
+                  - COLD
+                  - HOT
+                  - WARM
+                  example: COLD
+                  type: string
+                uuid:
+                  example: 00000000-0000-0000-0000-000000000000
+                  format: uuid
+                  readOnly: true
+                  type: string
+              type: object
+            type: object
+          readOnly: true
+          type: array
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - driver_spec
+      type: object
+    StorageNode_Create:
+      $ref: '#/components/schemas/StorageNode_Get'
+      path: /v1/storage/nodes/
+    StorageNode_Get:
+      properties:
+        agent:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        bind_address:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        builder:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          readOnly: true
+          type: string
+        cluster:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        endpoint:
+          example: any_string
+          maxLength: 2048
+          type: string
+        failure_domain_path:
+          example: any_string
+          maxLength: 255
+          type: string
+        kind:
+          default: rawstor
+          enum:
+          - rawstor
+          example: rawstor
+          type: string
+        location:
+          default: ''
+          example: any_string
+          maxLength: 2048
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        status:
+          default: NEW
+          enum:
+          - ACTIVE
+          - ERROR
+          - IN_PROGRESS
+          - NEW
+          example: NEW
+          readOnly: true
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+        weight:
+          default: 100
+          example: 4611686018427387904
+          maximum: 9223372036854775807
+          minimum: 1
+          type: integer
+      required:
+      - cluster
+      - endpoint
+      - failure_domain_path
+      type: object
+    StoragePool_Create:
+      $ref: '#/components/schemas/StoragePool_Get'
+      path: /v1/storage/pools/
+    StoragePool_Get:
+      properties:
+        chunk_size:
+          default: 1073741824
+          example: 1
+          minimum: 1
+          type: integer
+        cluster:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        ephemeral:
+          default: false
+          example: true
+          type: boolean
+        failure_domain:
+          default: server
+          enum:
+          - dc
+          - ost
+          - rack
+          - row
+          - server
+          example: ost
+          type: string
+        mirrors:
+          default: 2
+          example: 128
+          maximum: 255
+          minimum: 1
+          type: integer
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        speed:
+          default: WARM
+          enum:
+          - COLD
+          - HOT
+          - WARM
+          example: COLD
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - cluster
+      type: object
     UniversalAgent_Create:
       path: /v1/ua/agents/
       properties:
@@ -4738,6 +5193,11 @@ components:
           example: any_string
           maxLength: 64
           type: string
+        ephemeral:
+          default: false
+          example: true
+          readOnly: true
+          type: boolean
         image:
           example: any_string
           maxLength: 255
@@ -4764,6 +5224,15 @@ components:
           maximum: 1000000
           minimum: 1
           type: integer
+        speed:
+          default: WARM
+          enum:
+          - COLD
+          - HOT
+          - WARM
+          example: COLD
+          readOnly: true
+          type: string
         status:
           default: NEW
           enum:
@@ -4988,6 +5457,18 @@ properties:
       $core.security.rules:
         additionalProperties:
           $ref: '#/components/schemas/Rule_Create'
+        type: object
+      $core.storage.clusters:
+        additionalProperties:
+          $ref: '#/components/schemas/StorageCluster_Create'
+        type: object
+      $core.storage.nodes:
+        additionalProperties:
+          $ref: '#/components/schemas/StorageNode_Create'
+        type: object
+      $core.storage.pools:
+        additionalProperties:
+          $ref: '#/components/schemas/StoragePool_Create'
         type: object
       $core.ua.agents:
         additionalProperties:

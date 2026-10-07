@@ -71,6 +71,7 @@ build:
         envs:
           - ALLOW_USER_PASSWD
           - FREQUENT_LOG_VACUUM
+          - RAWSTOR_VERSION
     # eco manifest must be after core manifest!
     - manifest: manifests/ecosystem_realm.yaml.j2
     - manifest: manifests/exordos_docs.yaml.j2

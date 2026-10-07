@@ -1,8 +1,6 @@
-#!/usr/bin/env bash
-
-# Copyright 2025 Genesis Corporation
+#    Copyright 2026 Genesis Corporation.
 #
-# All Rights Reserved.
+#    All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -16,18 +14,4 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-set -eu
-set -x
-set -o pipefail
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_ROOT"
-
-if [[ -n "${LOCAL_GENESIS_SDK_PATH:-}" ]]; then
-    LOCAL_GENESIS_SDK_PATH="$(cd "$LOCAL_GENESIS_SDK_PATH" && pwd)"
-    export LOCAL_GENESIS_SDK_PATH
-fi
-
-rm -fr exordos_docs
-tox -e docs-build
-mv site exordos_docs
+POLICY_SERVICE_NAME = "storage"

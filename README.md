@@ -44,6 +44,26 @@ curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 
 Then follow the instructions in the terminal, or refer to the [documentation](https://exordos.github.io/exordos_core/) for a full setup guide.
 
+## Rawstor storage
+
+The core image includes librawstor, rawstor-mds and Python bindings from
+[GitHub Actions run 37463130223](https://github.com/rawstor/librawstor/actions/runs/37463130223).
+The Debian version is `99.0.0`; the bindings are `99.0.0+0.d914ffb`.
+Artifacts and their SHA256 checksums are bundled under `exordos/images/rawstor`.
+Set `RAWSTOR_VERSION` during the image build to use a GitHub release instead.
+Build this branch with `LOCAL_GENESIS_SDK_PATH` pointing to the matching
+`gcl_sdk` checkout on `feat/rawstor`. OpenAPI and documentation generation use
+that same checkout through tox; rebuilding an
+SDK elsewhere does not change the SDK locked inside tox.
+
+`exordos storages clusters add` starts a per-cluster MDS on core. Initialize
+hosts with `storages nodes init`, then create OST resources through
+`storages nodes add --agent AGENT_UUID`. Host agents start OSTs; core adds ready
+OSTs to MDS topology. Each cluster creates WARM
+persistent (two mirrors) and ephemeral (one mirror) pools with a shared capacity
+budget. Local qcow2 disks default to HOT ephemeral.
+See [Rawstor storage](docs/usage/rawstor.md) for topology, policy CRUD and admission.
+
 # 💡 Contributing
 
 Contributing to the project is highly appreciated! However, some rules should be followed for successful inclusion of new changes in the project:
@@ -52,3 +72,15 @@ Contributing to the project is highly appreciated! However, some rules should be
 - Changes should include not only new functionality or bug fixes, but also tests for the new code.
 - After the changes are completed and **tested**, a Pull Request should be created with a clear description of the new functionality. And add one of the project maintainers as a reviewer.
 - Changes can be merged only after receiving an approve from one of the project maintainers.
+
+OST and MDS instances use the rawstor package's systemd templates and per-instance
+configs under `/etc/rawstor/ost` and `/etc/rawstor/mds`. `storages nodes init`
+installs ZFS support; select an existing native backing with
+`nodes add --location zfs://POOL/DATASET`. Pools and datasets are provisioned
+separately. See the Rawstor storage guide above for service permissions and
+capacity isolation.
+
+The public cluster `driver_spec` contains only `kind` and `endpoint`; nodes and
+pool policies are managed through their separate storage resources. Core builds
+their agent snapshot at delivery time. The old `ost_endpoint` field is removed
+from the cluster API.

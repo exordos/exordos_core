@@ -51,6 +51,26 @@ sudo apt install \
 #sudo apt update
 #sudo apt install postgresql-"$PG_VERSION" -y
 
+# Keep rawstor servers and bindings on the same build. The pinned CI
+# artifacts are bundled so the image remains buildable after CI expiry.
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-99.0.0}
+RAWSTOR_ART_DIR="$GC_PATH/exordos/images/rawstor"
+if [[ "$RAWSTOR_VERSION" != "99.0.0" ]]; then
+    RAWSTOR_ART_DIR=$(mktemp -d)
+    for package in librawstor rawstor-mds; do
+        curl -fsSLo "$RAWSTOR_ART_DIR/${package}_${RAWSTOR_VERSION}_amd64.deb" \
+            "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/${package}_${RAWSTOR_VERSION}_amd64.deb"
+    done
+    curl -fsSLo "$RAWSTOR_ART_DIR/rawstor-${RAWSTOR_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" \
+        "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/rawstor-${RAWSTOR_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl"
+else
+    (cd "$RAWSTOR_ART_DIR" && sha256sum -c SHA256SUMS)
+fi
+sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
+    "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
+# The package does not start MDS automatically. The agent configures
+# cluster instances using the packaged rawstor-mds@.service template.
+
 # Configure PostgreSQL
 sudo -u postgres psql -c "ALTER SYSTEM SET io_method = 'io_uring';"
 # It's fine to create the user and database here since the bootstrap will transfer
@@ -215,6 +235,7 @@ trap - EXIT
 
 cd "$GC_PATH"
 uv sync
+uv pip install "$RAWSTOR_ART_DIR"/*.whl
 source "$GC_PATH"/.venv/bin/activate
 
 sudo chown -R ubuntu:ubuntu "$GC_PATH"
