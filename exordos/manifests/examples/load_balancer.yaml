@@ -191,4 +191,4 @@ resources:
                 kind: raw
                 actions:
                   - kind: backend
-                    pool: $core.network.lb.$example_lb.backend_pools.$example_backend_udp:uuid
+                    pool: $parent.parent.backend_pools.$example_backend_udp:uuid
