@@ -628,3 +628,20 @@ requests installation without waiting for the element's resources to become acti
 - [Core Developer Guide](core-guide.md) — architecture overview, element engine, reconciliation
 - [Exports reference](exports.md) — how elements share resources
 - [Manifest reference](../em/manifest.md) — manifest YAML specification
+
+## Bootstrap repository definitions
+
+The config drive's `spec.json` accepts a `repository` list of legacy URL strings
+and complete repository model objects. A single object is normalized to a
+one-item list. Definitions preserve `uuid`, `name`,
+`description`, `project_id`, `status`, `priority`, `refresh_rate`, `sync_mode`, and
+`driver_spec`, including driver credentials. Fields are validated through the
+repository model. An explicit UUID is the lookup key on bootstrap retries;
+legacy URLs keep their existing name-based lookup and defaults.
+
+For managed realms, the repository definition points to the internal element
+index, for example
+`http://10.40.0.1:8082/repo/00000000-0000-0000-0000-000000000000/exordos-elements/`.
+It starts `NEW` with `refresh_rate: 60`; the repository builder reads the index
+without authorization and transitions it to `ACTIVE`. Existing repositories
+are reused rather than reconfigured by bootstrap.
