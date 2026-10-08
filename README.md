@@ -52,7 +52,3 @@ Contributing to the project is highly appreciated! However, some rules should be
 - Changes should include not only new functionality or bug fixes, but also tests for the new code.
 - After the changes are completed and **tested**, a Pull Request should be created with a clear description of the new functionality. And add one of the project maintainers as a reviewer.
 - Changes can be merged only after receiving an approve from one of the project maintainers.
-
-Bootstrap config accepts complete repository definitions alongside legacy URLs,
-including stable UUIDs, initial status, refresh policy, and driver settings.
-See [bootstrap repository definitions](docs/core-developer-guide/repo-proxy.md#bootstrap-repository-definitions).
