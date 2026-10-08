@@ -174,7 +174,7 @@ resources:
                 value: /
                 actions:
                   - kind: backend
-                    pool: $core.network.lb.$example_lb.backend_pools.$example_backend_https:uuid
+                    pool: $parent.parent.backend_pools.$example_backend_https:uuid
                     protocol:
                       kind: https
                       verify: false

@@ -37,8 +37,8 @@ ELEMENT_NAMESPACE = sys_uuid.UUID("f277e88a-cd58-4c33-a0c3-23a1086a53b7")
 SCHEMA_REF_PREFIX = "#/components/schemas/"
 UUID_PREFIX = "12345678"
 REGEXP = re.compile(r"\$(.+?)(?:\:(.+))?$")
-PARENT_LINK_REGEXP = re.compile(r"^\$parent((?:\.parent)*):(.+)$")
-PARENT_LINK_IN_FSTRING_REGEXP = re.compile(r"([\\]?)\{(\$parent(?:\.parent)*:[^{}]+)}")
+PARENT_LINK_REGEXP = re.compile(r"^\$parent((?:\.parent)*)(.*):(.+)$")
+PARENT_LINK_IN_FSTRING_REGEXP = re.compile(r"([\\]?)\{(\$parent(?:\.[^{}:]+)*:[^{}]+)}")
 
 
 @dataclasses.dataclass
@@ -453,7 +453,28 @@ def _resolve_parent_links(value, ancestors: list[str], resource_link: str):
                 err=f"Parent link '{link}' in resource '{resource_link}' "
                 f"goes above the root resource."
             )
-        return f"{ancestors[level - 1]}:{match.group(2)}"
+        relative_path = match.group(2)
+        if relative_path:
+            parts = (
+                relative_path[1:].split(".") if relative_path.startswith(".") else []
+            )
+            if (
+                not parts
+                or len(parts) % 2
+                or any(not part for part in parts)
+                or any(
+                    parts[index].startswith("$") for index in range(0, len(parts), 2)
+                )
+                or any(
+                    not parts[index].startswith("$") or len(parts[index]) == 1
+                    for index in range(1, len(parts), 2)
+                )
+            ):
+                raise exceptions.ValidateException(
+                    err=f"Invalid relative resource path in parent link '{link}' "
+                    f"in resource '{resource_link}'."
+                )
+        return f"{ancestors[level - 1]}{relative_path}:{match.group(3)}"
 
     if value.startswith('f"'):
 

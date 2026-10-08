@@ -39,6 +39,7 @@ def test_expand_nested_lb_resources_and_parent_links():
                             "default": {
                                 "parent": "$parent:uuid",
                                 "lb": "$parent.parent:uuid",
+                                "pool": "$parent.parent.backend_pools.$https_pool:uuid",
                                 "description": 'f"LB {$parent.parent:name}"',
                             }
                         },
@@ -68,6 +69,7 @@ def test_expand_nested_lb_resources_and_parent_links():
             "default": {
                 "parent": "$core.network.lb.$example_lb.vhosts.$https:uuid",
                 "lb": "$core.network.lb.$example_lb:uuid",
+                "pool": "$core.network.lb.$example_lb.backend_pools.$https_pool:uuid",
                 "description": 'f"LB {$core.network.lb.$example_lb:name}"',
             },
         },
