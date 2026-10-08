@@ -56,11 +56,12 @@ def test_enrich_preserves_explicit_policy_and_adds_nested_fields():
 
 def test_enrich_volume_and_target_fields():
     value = {"size": 10, "storage_pool": "existing", "target_fields": {"size": None}}
-    result = migration.enrich(value, volume=True)
+    result = migration.enrich(value, volume=True, pool_volume=True)
     assert result["storage_pool"] == "existing"
     assert result["ephemeral"] is False
     assert result["target_fields"]["speed"] is None
     assert "storage_pool" in result["target_fields"]
+    assert "storage_pool" not in migration.enrich({"size": 10}, volume=True)
 
 
 @pytest.mark.skipif(
