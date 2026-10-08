@@ -471,6 +471,26 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
     # Volume
 
+    def _select_storage_pool(
+        self,
+        pool: pool_models.Pool,
+        volume: pool_models.MachineVolume,
+        size: int,
+    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+        """Select the storage pool to use for `volume`.
+
+        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
+        rules (soft speed/ephemeral match with a capacity fallback; a
+        volume already scheduled onto a pool only considers that one).
+        """
+        return ua_pool.select_storage_pool(
+            pool.storage_pools,
+            volume.speed,
+            volume.ephemeral,
+            size,
+            volume.storage_pool or None,
+        )
+
     def _has_enough_space_in_pool(
         self,
         pool: pool_models.Pool,
@@ -485,8 +505,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if not pool.storage_pools:
             return False
 
-        storage_pool: ua_pool.AbstractStoragePool = pool.storage_pools[0]
-        return storage_pool.has_capacity(size)
+        return self._select_storage_pool(pool, target_volume, size) is not None
 
     def _reschedule_volume(
         self,
@@ -516,11 +535,13 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool = self._select_storage_pool(volume.pool, volume, volume.size)
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(volume.size)
+        if not volume.storage_pool:
+            volume.storage_pool = storage_pool.name
 
         return True
 
@@ -547,11 +568,15 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool: ua_pool.AbstractStoragePool = volume.pool.storage_pools[0]
+        storage_pool = self._select_storage_pool(
+            volume.pool, target_volume, target_volume.size - actual_volume.size
+        )
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(target_volume.size - actual_volume.size)
+        if not volume.storage_pool:
+            volume.storage_pool = storage_pool.name
 
         return True
 

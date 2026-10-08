@@ -157,6 +157,10 @@ if [[ -f "${POOL_META}" && ! -f "${POOL_META_BAK}" ]]; then
     mv "${POOL_META}" "${POOL_META_BAK}"
 fi
 
+# Recreate local pool metadata from the data plane with disk scheduling fields.
+log "Removing stale pool agent metadata"
+rm -f "${POOL_META}"
+
 # Enable exordos core services
 log "systemctl enable --now ec-services"
 sudo systemctl enable --now \
