@@ -36,15 +36,17 @@ RESOURCE_KINDS = (
 )
 
 
-def enrich(value, volume=False, mask=False):
+def enrich(value, volume=False, mask=False, pool_volume=False):
     """Fill missing disk scheduling fields without changing existing policy."""
     result = copy.deepcopy(value)
     defaults = {"speed": ic.DiskSpeed.WARM.value, "ephemeral": False}
     if mask:
         defaults = dict.fromkeys(defaults)
     if volume:
-        for key, default in {**defaults, "storage_pool": None}.items():
+        for key, default in defaults.items():
             result.setdefault(key, default)
+    if pool_volume:
+        result.setdefault("storage_pool", None)
     spec = result.get("disk_spec")
     if isinstance(spec, dict):
         if spec.get("kind") == "root_disk" or (mask and "size" in spec):
@@ -61,7 +63,9 @@ def enrich(value, volume=False, mask=False):
                 pool.setdefault(key, default)
     fields = result.get("target_fields")
     if isinstance(fields, dict):
-        result["target_fields"] = enrich(fields, volume=volume, mask=True)
+        result["target_fields"] = enrich(
+            fields, volume=volume, mask=True, pool_volume=pool_volume
+        )
     return result
 
 
@@ -114,6 +118,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                     row["value"],
                     volume=row["kind"]
                     in ("volume", "pool_volume", "em_core_compute_volumes"),
+                    pool_volume=row["kind"] == "pool_volume",
                 )
                 # Rebuild target hashes from the enriched fields; actual hashes
                 # are refreshed from the agent's next report, never invented here.
