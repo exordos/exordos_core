@@ -22,7 +22,7 @@ POOL_STATUS_CHECK = "('" + "', '".join(POOL_STATUSES) + "')"
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0003-volumes-speed-ephemeral-fba1de.py"]
+        self._depends = ["0004-disk-scheduling-resources-96f43b.py"]
 
     @property
     def migration_id(self):
