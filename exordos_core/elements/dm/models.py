@@ -313,7 +313,8 @@ class Manifest(
             )
         }
 
-        for resource_link_prefix, resources in self.resources.items():
+        resources_by_type = utils.expand_nested_resources(self.resources)
+        for resource_link_prefix, resources in resources_by_type.items():
             link_resolver = LinkResolver(
                 element=element,
                 engine=element_engine,
@@ -424,7 +425,9 @@ class Manifest(
 
     def validate_schema_base(self) -> "Manifest":
         element_engine.load_schemas()
-        utils.validate_manifest(self.dump_to_simple_view(), element_engine.base_schema)
+        manifest = self.dump_to_simple_view()
+        manifest["resources"] = utils.expand_nested_resources(manifest["resources"])
+        utils.validate_manifest(manifest, element_engine.base_schema)
         return self
 
     def validate_schema_full(self) -> "Manifest":

@@ -113,82 +113,82 @@ resources:
       # type:
       #   kind: core
       #   ram: 5000
-  $core.network.lb.$example_lb.backend_pools:
-    example_backend_https:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb:uuid
-      endpoints:
-        - kind: host
-          host: $core.compute.nodes.$demo_node:default_network:ipv4
+      /backend_pools:
+        example_backend_https:
+          project_id: "12345678-c625-4fee-81d5-f691897b8142"
+          parent: $parent:uuid
+          endpoints:
+            - kind: host
+              host: $core.compute.nodes.$demo_node:default_network:ipv4
+              port: 443
+        example_backend_udp:
+          project_id: "12345678-c625-4fee-81d5-f691897b8142"
+          parent: $parent:uuid
+          endpoints:
+            - kind: host
+              host: $core.compute.nodes.$demo_node:default_network:ipv4
+              port: 10000
+      /vhosts:
+        example_http:
+          project_id: "12345678-c625-4fee-81d5-f691897b8142"
+          parent: $parent:uuid
+          domains:
+            - example.com
+            - www.example.com
+          protocol: http
+          port: 80
+          /routes:
+            example_http_route:
+              project_id: "12345678-c625-4fee-81d5-f691897b8142"
+              parent: $parent:uuid
+              condition:
+                kind: prefix
+                value: /
+                actions:
+                  - kind: redirect
+                    url: https://example.com
+        example_https:
+          project_id: "12345678-c625-4fee-81d5-f691897b8142"
+          parent: $parent:uuid
+          domains:
+            - example.com
+            - www.example.com
+          protocol: https
           port: 443
-    example_backend_udp:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb:uuid
-      endpoints:
-        - kind: host
-          host: $core.compute.nodes.$demo_node:default_network:ipv4
+          cert:
+            kind: raw
+            crt: |
+              -----BEGIN CERTIFICATE-----
+              YOUR_REAL_CERT_DATA_OR_LINK_TO_CERT_RESOURCE
+              -----END CERTIFICATE-----
+            key: |
+              -----BEGIN PRIVATE KEY-----
+              YOUR_REAL_KEY_DATA_OR_LINK_TO_CERT_RESOURCE
+              -----END PRIVATE KEY-----
+          /routes:
+            example_https_route:
+              project_id: "12345678-c625-4fee-81d5-f691897b8142"
+              parent: $parent:uuid
+              condition:
+                kind: prefix
+                value: /
+                actions:
+                  - kind: backend
+                    pool: $core.network.lb.$example_lb.backend_pools.$example_backend_https:uuid
+                    protocol:
+                      kind: https
+                      verify: false
+        example_udp:
+          project_id: "12345678-c625-4fee-81d5-f691897b8142"
+          parent: $parent:uuid
+          protocol: udp
           port: 10000
-  $core.network.lb.$example_lb.vhosts:
-    example_http:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb:uuid
-      domains:
-        - example.com
-        - www.example.com
-      protocol: http
-      port: 80
-    example_https:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb:uuid
-      domains:
-        - example.com
-        - www.example.com
-      protocol: https
-      port: 443
-      cert:
-        kind: raw
-        crt: |
-          -----BEGIN CERTIFICATE-----
-          YOUR_REAL_CERT_DATA_OR_LINK_TO_CERT_RESOURCE
-          -----END CERTIFICATE-----
-        key: |
-          -----BEGIN PRIVATE KEY-----
-          YOUR_REAL_KEY_DATA_OR_LINK_TO_CERT_RESOURCE
-          -----END PRIVATE KEY-----
-    example_udp:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb:uuid
-      protocol: udp
-      port: 10000
-  $core.network.lb.$example_lb.vhosts.$example_http.routes:
-    example_http_route:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb.vhosts.$example_http:uuid
-      condition:
-        kind: prefix
-        value: /
-        actions:
-          - kind: redirect
-            url: https://example.com
-  $core.network.lb.$example_lb.vhosts.$example_https.routes:
-    example_https_route:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb.vhosts.$example_https:uuid
-      condition:
-        kind: prefix
-        value: /
-        actions:
-          - kind: backend
-            pool: $core.network.lb.$example_lb.backend_pools.$example_backend_https:uuid
-            protocol:
-              kind: https
-              verify: false
-  $core.network.lb.$example_lb.vhosts.$example_udp.routes:
-    example_udp_route:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$example_lb.vhosts.$example_udp:uuid
-      condition:
-        kind: raw
-        actions:
-          - kind: backend
-            pool: $core.network.lb.$example_lb.backend_pools.$example_backend_udp:uuid
+          /routes:
+            example_udp_route:
+              project_id: "12345678-c625-4fee-81d5-f691897b8142"
+              parent: $parent:uuid
+              condition:
+                kind: raw
+                actions:
+                  - kind: backend
+                    pool: $core.network.lb.$example_lb.backend_pools.$example_backend_udp:uuid

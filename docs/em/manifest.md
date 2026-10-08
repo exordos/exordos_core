@@ -227,6 +227,30 @@ resources:
 Here `$core.dns.domains.$local_domain.records` means "records within the `local_domain` domain resource".
 The `$local_domain` segment is a reference to the parent resource by its key name.
 
+The same collection can be written inside its parent resource. A leading `/` marks a child collection;
+the parser expands this into the same flat path:
+
+```yaml
+resources:
+  $core.dns.domains:
+    local_domain:
+      name: "local.example.com"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      /records:
+        core_record:
+          domain: $parent:uuid
+          project_id: "12345678-c625-4fee-81d5-f691897b8142"
+          type: "A"
+          record:
+            kind: "A"
+            name: "core"
+            address: "10.20.0.2"
+```
+
+`$parent:uuid` refers to the nearest enclosing resource; `$parent.parent:uuid` moves up one more level.
+The relation field keeps the name required by the resource schema — `domain` in this example. The flat
+form above remains supported.
+
 ---
 
 ## Imports

@@ -37,6 +37,8 @@ ELEMENT_NAMESPACE = sys_uuid.UUID("f277e88a-cd58-4c33-a0c3-23a1086a53b7")
 SCHEMA_REF_PREFIX = "#/components/schemas/"
 UUID_PREFIX = "12345678"
 REGEXP = re.compile(r"\$(.+?)(?:\:(.+))?$")
+PARENT_LINK_REGEXP = re.compile(r"^\$parent((?:\.parent)*):(.+)$")
+PARENT_LINK_IN_FSTRING_REGEXP = re.compile(r"([\\]?)\{(\$parent(?:\.parent)*:[^{}]+)}")
 
 
 @dataclasses.dataclass
@@ -428,6 +430,112 @@ def remove_middle_parts(input_string):
     return ".".join(result_parts)
 
 
+def _resolve_parent_links(value, ancestors: list[str], resource_link: str):
+    if isinstance(value, dict):
+        return {
+            key: _resolve_parent_links(item, ancestors, resource_link)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_resolve_parent_links(item, ancestors, resource_link) for item in value]
+    if not isinstance(value, str):
+        return value
+
+    def resolve(link: str) -> str:
+        match = PARENT_LINK_REGEXP.fullmatch(link)
+        if not match:
+            raise exceptions.ValidateException(
+                err=f"Invalid parent link '{link}' in resource '{resource_link}'."
+            )
+        level = 1 + match.group(1).count(".parent")
+        if level > len(ancestors):
+            raise exceptions.ValidateException(
+                err=f"Parent link '{link}' in resource '{resource_link}' "
+                f"goes above the root resource."
+            )
+        return f"{ancestors[level - 1]}:{match.group(2)}"
+
+    if value.startswith('f"'):
+
+        def replace_inline(match):
+            if match.group(1):
+                return match.group(0)
+            return "{" + resolve(match.group(2)) + "}"
+
+        return PARENT_LINK_IN_FSTRING_REGEXP.sub(replace_inline, value)
+
+    if value == "$parent" or value.startswith(("$parent:", "$parent.")):
+        return resolve(value)
+    return value
+
+
+def _expand_resource_group(
+    resource_type: str,
+    resources: dict,
+    ancestors: list[str],
+    expanded: dict,
+) -> None:
+    group = expanded.setdefault(resource_type, {})
+    if not isinstance(resources, dict) or not isinstance(group, dict):
+        raise exceptions.ValidateException(
+            err=f"Nested resources for '{resource_type}' must be a mapping."
+        )
+
+    for resource_name, resource_value in resources.items():
+        resource_link = f"{resource_type}.${resource_name}"
+        child_collections = []
+        value = resource_value
+        if isinstance(resource_value, dict):
+            value = {}
+            for key, item in resource_value.items():
+                if isinstance(key, str) and key.startswith("/"):
+                    collection = key[1:]
+                    if (
+                        not collection
+                        or collection.startswith("$")
+                        or "." in collection
+                        or "/" in collection
+                    ):
+                        raise exceptions.ValidateException(
+                            err=f"Invalid nested collection key '{key}' "
+                            f"in resource '{resource_link}'."
+                        )
+                    if not isinstance(item, dict):
+                        raise exceptions.ValidateException(
+                            err=f"Nested collection '{key}' in resource "
+                            f"'{resource_link}' must be a mapping."
+                        )
+                    child_collections.append((collection, item))
+                else:
+                    value[key] = item
+
+        if ancestors:
+            value = _resolve_parent_links(value, ancestors, resource_link)
+
+        if resource_name in group:
+            raise exceptions.ValidateException(
+                err=f"Resource '{resource_name}' is declared more than once "
+                f"in '{resource_type}'."
+            )
+        group[resource_name] = value
+
+        for collection, child_resources in child_collections:
+            _expand_resource_group(
+                resource_type=f"{resource_link}.{collection}",
+                resources=child_resources,
+                ancestors=[resource_link, *ancestors],
+                expanded=expanded,
+            )
+
+
+def expand_nested_resources(resources: dict) -> dict:
+    """Expand slash-prefixed child collections into flat resource groups."""
+    expanded = {}
+    for resource_type, resource_group in resources.items():
+        _expand_resource_group(resource_type, resource_group, [], expanded)
+    return expanded
+
+
 def mutate_resource_types(manifest: dict) -> dict:
     mutated_map = {}
     for resource_type in manifest["resources"].keys():
@@ -442,6 +550,7 @@ def mutate_resource_types(manifest: dict) -> dict:
 
 
 def mutate_manifest(manifest: dict, scheme: dict) -> dict:
+    manifest["resources"] = expand_nested_resources(manifest["resources"])
     manifest = mutate_resource_types(manifest)
     for resource_type, resource in manifest["resources"].items():
         for resource_name, resource_value in resource.items():
