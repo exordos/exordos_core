@@ -598,6 +598,31 @@ graph TB
   a repository. This stub driver allows that without requiring a real external
   repository.
 
+## Bootstrap element installation
+
+The bootstrap spec (`/mnt/cdrom/spec.json`) may include an optional list of
+element names:
+
+```json
+{
+    "elements": ["dbaas", "s3aas"]
+}
+```
+
+Bootstrap installs these elements after connecting the repositories from the
+spec and setting the core defaults. The built-in `core` and `ecosystem_realm`
+installations remain part of bootstrap. Names already installed in the admin project are skipped,
+including installations still in progress. For each remaining name, bootstrap
+selects a new or available element in the admin project using the dependency selection
+order: higher repository priority, release versions, then higher version numbers.
+Within the same repository priority, the floating `latest` alias is a fallback
+after concrete release and development versions.
+Bootstrap marks a selected new element available as part of the installation
+request; the element builder still resolves dependencies and creates resources.
+If an element is missing or installation fails, the existing bootstrap retry
+loop retries according to `retry_on_error`. Installation is asynchronous; bootstrap
+requests installation without waiting for the element's resources to become active.
+
 ## See also
 
 - [Core Developer Guide](core-guide.md) — architecture overview, element engine, reconciliation

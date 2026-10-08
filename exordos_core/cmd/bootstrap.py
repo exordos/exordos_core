@@ -41,6 +41,7 @@ from exordos_core.common import exceptions as common_exc
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
+from exordos_core.repo.builders import element as repo_element_builder
 from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
@@ -220,11 +221,14 @@ def _ensure_exordos_config(spec: dict[str, tp.Any]):
 
 def _ensure_repository(
     name: str,
-    driver_spec: repo_models.NginxDriverSpec | repo_models.BootstrapDriverSpec,
+    driver_spec: repo_models.AbstractDriverSpec,
     priority: int = 2048,
     refresh_rate: int = 3600,
     sync_mode: str = repo_models.SyncMode.LAZY.value,
-    project_id: str = c.ZERO_UUID,
+    project_id: str | sys_uuid.UUID = c.ZERO_UUID,
+    uuid: sys_uuid.UUID | None = None,
+    description: str = "",
+    status: str = repo_models.RepositoryStatus.NEW.value,
 ) -> repo_models.Repository:
     """Ensure repository exists and is active.
 
@@ -237,6 +241,9 @@ def _ensure_repository(
         refresh_rate: Refresh interval in seconds (0 = disabled)
         sync_mode: Sync mode (copy or lazy)
         project_id: Project ID
+        uuid: Optional pre-assigned repository identity
+        description: Repository description
+        status: Initial status; ACTIVE skips the initial inventory scan
 
     Returns:
         The active repository
@@ -246,18 +253,25 @@ def _ensure_repository(
     """
     repository = repo_models.Repository.objects.get_one_or_none(
         filters={
-            "name": dm_filters.EQ(name),
+            "uuid" if uuid is not None else "name": dm_filters.EQ(
+                uuid if uuid is not None else name
+            ),
         }
     )
     if not repository:
-        repository = repo_models.Repository(
+        properties = dict(
             name=name,
+            description=description,
+            status=status,
             priority=priority,
             refresh_rate=refresh_rate,
             sync_mode=sync_mode,
             driver_spec=driver_spec,
             project_id=project_id,
         )
+        if uuid is not None:
+            properties["uuid"] = uuid
+        repository = repo_models.Repository(**properties)
         repository.save()
         LOG.info("The repository is created: %s", name)
 
@@ -824,38 +838,91 @@ def _migrate_installed_elements_to_repo() -> None:
 def _ensure_repositories_from_spec(spec: dict[str, tp.Any]) -> None:
     """Ensure repositories from spec exist and are active.
 
-    Iterates through the repository URLs in the spec and creates them
-    if they don't exist.
+    Accepts repository model definitions and legacy URL strings.
 
     Args:
-        spec: Specification dictionary containing repository URLs
+        spec: Specification containing repository definitions or URLs
     """
     repositories = spec.get("repository", [])
+    if isinstance(repositories, dict):
+        repositories = [repositories]
     if not repositories:
         LOG.info("No repositories found in spec")
         return
 
-    for repo_url in repositories:
-        # Generate a unique name from the URL
-        repo_name = (
-            repo_url.replace("https://", "")
-            .replace("http://", "")
-            .replace("/", "_")
-            .replace(c.ELEMENTS_PATH, "")
-            .strip("_")
-        )
-
+    for definition in repositories:
         try:
-            _ensure_repository(
-                name=repo_name,
-                driver_spec=repo_models.NginxDriverSpec(url=repo_url),
-                priority=2048,
-                refresh_rate=3600,
-                sync_mode=repo_models.SyncMode.LAZY.value,
-            )
-            LOG.info("Repository %s (%s) is active", repo_name, repo_url)
+            if isinstance(definition, dict):
+                repository = repo_models.Repository.restore_from_simple_view(
+                    **definition
+                )
+                _ensure_repository(
+                    uuid=repository.uuid if "uuid" in definition else None,
+                    name=repository.name,
+                    description=repository.description,
+                    project_id=repository.project_id,
+                    status=repository.status,
+                    driver_spec=repository.driver_spec,
+                    priority=repository.priority,
+                    refresh_rate=repository.refresh_rate,
+                    sync_mode=repository.sync_mode,
+                )
+            else:
+                repo_name = (
+                    definition.replace("https://", "")
+                    .replace("http://", "")
+                    .replace("/", "_")
+                    .replace(c.ELEMENTS_PATH, "")
+                    .strip("_")
+                )
+                _ensure_repository(
+                    name=repo_name,
+                    driver_spec=repo_models.NginxDriverSpec(url=definition),
+                    priority=2048,
+                    refresh_rate=3600,
+                    sync_mode=repo_models.SyncMode.LAZY.value,
+                )
+            LOG.info("Bootstrap repository is active")
         except Exception:
-            LOG.exception("Failed to ensure repository %s (%s)", repo_name, repo_url)
+            LOG.exception("Failed to ensure bootstrap repository")
+
+
+def _install_elements_from_spec(spec: dict[str, tp.Any]) -> None:
+    """Idempotently install named elements from the connected repositories."""
+    for name in spec.get("elements", []):
+        installed = repo_models.RepoElement.objects.get_all(
+            filters={
+                "name": dm_filters.EQ(name),
+                "project_id": dm_filters.EQ(c.ZERO_UUID),
+                "installation_state": dm_filters.EQ(
+                    repo_models.RepoElementInstallationState.INSTALLED.value
+                ),
+            }
+        )
+        if installed:
+            LOG.info("Element %s already installed, skipping", name)
+            continue
+
+        candidates = repo_models.RepoElement.objects.get_all(
+            filters={
+                "name": dm_filters.EQ(name),
+                "project_id": dm_filters.EQ(c.ZERO_UUID),
+                "status": dm_filters.In(
+                    [
+                        repo_models.RepoElementStatus.NEW,
+                        repo_models.RepoElementStatus.AVAILABLE,
+                    ]
+                ),
+            }
+        )
+        if not candidates:
+            raise RuntimeError(f"Unable to find available element {name}")
+
+        element = min(candidates, key=repo_element_builder._element_sort_key)
+        if element.status == repo_models.RepoElementStatus.NEW:
+            element.status = repo_models.RepoElementStatus.AVAILABLE.value
+        element.install()
+        LOG.info("Requested installation of element %s (%s)", name, element.version)
 
 
 def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
@@ -1011,6 +1078,7 @@ def main() -> None:
             _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
             _set_defaults_vs(spec)
+            _install_elements_from_spec(spec)
             return
         except Exception:
             LOG.exception("Unable to perform bootstrap, retrying...")
