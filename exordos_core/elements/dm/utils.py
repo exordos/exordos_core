@@ -495,6 +495,7 @@ def _expand_resource_group(
     resources: dict,
     ancestors: list[str],
     expanded: dict,
+    parent_value: dict | None = None,
 ) -> None:
     group = expanded.setdefault(resource_type, {})
     if not isinstance(resources, dict) or not isinstance(group, dict):
@@ -530,6 +531,15 @@ def _expand_resource_group(
                 else:
                     value[key] = item
 
+        if (
+            isinstance(value, dict)
+            and parent_value is not None
+            and isinstance(parent_value, dict)
+            and "project_id" not in value
+            and "project_id" in parent_value
+        ):
+            value["project_id"] = parent_value["project_id"]
+
         if ancestors:
             value = _resolve_parent_links(value, ancestors, resource_link)
 
@@ -546,6 +556,7 @@ def _expand_resource_group(
                 resources=child_resources,
                 ancestors=[resource_link, *ancestors],
                 expanded=expanded,
+                parent_value=value,
             )
 
 

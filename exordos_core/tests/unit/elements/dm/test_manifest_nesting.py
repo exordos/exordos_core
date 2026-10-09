@@ -92,6 +92,38 @@ def test_expand_nested_resources_does_not_mutate_input():
     assert resources == original
 
 
+def test_expand_nested_resources_inherits_project_id_from_parent():
+    resources = {
+        "$core.network.lb": {
+            "lb": {
+                "project_id": "parent-project",
+                "/vhosts": {
+                    "vhost": {
+                        "project_id": "vhost-project",
+                        "/routes": {"route": {}},
+                    },
+                },
+                "/backend_pools": {"pool": {}},
+            },
+        }
+    }
+
+    expanded = utils.expand_nested_resources(resources)
+
+    assert (
+        expanded["$core.network.lb.$lb.vhosts"]["vhost"]["project_id"]
+        == "vhost-project"
+    )
+    assert (
+        expanded["$core.network.lb.$lb.vhosts.$vhost.routes"]["route"]["project_id"]
+        == "vhost-project"
+    )
+    assert (
+        expanded["$core.network.lb.$lb.backend_pools"]["pool"]["project_id"]
+        == "parent-project"
+    )
+
+
 def test_expand_nested_resources_rejects_parent_above_root():
     resources = {
         "$core.compute.nodes": {

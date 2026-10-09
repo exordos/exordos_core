@@ -239,7 +239,6 @@ resources:
       /records:
         core_record:
           domain: $parent:uuid
-          project_id: "12345678-c625-4fee-81d5-f691897b8142"
           type: "A"
           record:
             kind: "A"
@@ -248,8 +247,9 @@ resources:
 ```
 
 `$parent:uuid` refers to the nearest enclosing resource; `$parent.parent:uuid` moves up one more level.
-The relation field keeps the name required by the resource schema — `domain` in this example. The flat
-form above remains supported. To reference a resource in an ancestor's child collection, append the
+The relation field keeps the name required by the resource schema — `domain` in this example. A nested
+resource inherits `project_id` from its parent when omitted; an explicit child value takes precedence. The
+flat form above remains supported. To reference a resource in an ancestor's child collection, append the
 collection and resource key after the `.parent` chain, for example
 `$parent.parent.backend_pools.$https_pool:uuid`.
 
