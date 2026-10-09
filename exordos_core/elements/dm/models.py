@@ -107,6 +107,12 @@ class LinkResolver:
         """Returns resource.link + discarded part"""
         return self._resource.link + self._discarded_part
 
+    @property
+    def parent_resource(self):
+        if isinstance(self._resource, (Resource, ImportedResource)):
+            return self._resource
+        return None
+
 
 class Manifest(
     models.ModelWithUUID,
@@ -846,6 +852,14 @@ class Resource(
         target_state = target_state or self.render_target_state()
         return sdk_utils.calculate_hash(target_state)
 
+    def get_parent_resource(self):
+        link_resolver = LinkResolver(
+            engine=element_engine,
+            element=self.element,
+            full_link=self.resource_link_prefix,
+        )
+        return link_resolver.parent_resource
+
     def _find_actual_resource(self) -> sdk_models.Resource | None:
         if self.actual_resource is None:
             for actual_resource in sdk_models.Resource.objects.get_all(
@@ -861,6 +875,8 @@ class Resource(
     def actualize(self):
         try:
             target_state = self.render_target_state()
+            parent_resource = self.get_parent_resource()
+            parent_uuid = parent_resource.uuid if parent_resource else None
         except KeyError as e:
             LOG.warning(
                 "Target state is not available for resource %s by reason: %s",
@@ -880,6 +896,7 @@ class Resource(
                 value=target_state,
                 hash=hash,
                 full_hash=self.full_hash,
+                master=parent_uuid,
                 tracked_at=self.updated_at,
             )
             orphaned = list(
@@ -897,6 +914,9 @@ class Resource(
                     res_uuid,
                 )
                 self.target_resource = orphaned[0]
+                if self.target_resource.master != parent_uuid:
+                    self.target_resource.master = parent_uuid
+                    self.target_resource.update()
                 self.update()
                 return
             target_resource.insert()
@@ -907,6 +927,7 @@ class Resource(
             self.target_resource.value = target_state
             self.target_resource.calculate_hash()
             self.target_resource.full_hash = self.full_hash
+            self.target_resource.master = parent_uuid
             self.target_resource.tracked_at = self.updated_at
             self.target_resource.update()
             LOG.debug(
@@ -915,6 +936,7 @@ class Resource(
             )
         elif self.target_resource.full_hash != self.full_hash:
             self.target_resource.full_hash = self.full_hash
+            self.target_resource.master = parent_uuid
             self.target_resource.update()
             LOG.debug(
                 "Target resource %s full hash has been updated.",
@@ -922,11 +944,15 @@ class Resource(
             )
         elif self.target_resource.tracked_at != self.updated_at:
             self.target_resource.tracked_at = self.updated_at
+            self.target_resource.master = parent_uuid
             self.target_resource.update()
             LOG.debug(
                 "Target resource %s tracked_at has been updated.",
                 self.target_resource,
             )
+        elif self.target_resource.master != parent_uuid:
+            self.target_resource.master = parent_uuid
+            self.target_resource.update()
         else:
             LOG.debug(
                 "Target resource %s is actual state.",
