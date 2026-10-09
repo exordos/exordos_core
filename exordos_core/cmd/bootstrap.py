@@ -525,6 +525,13 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
     },
+    "model_parents": {
+        "em_core_network_lb_vhosts": "parent,em_core_network_lb",
+        "em_core_network_lb_vhosts_routes": (
+            "parent,em_core_network_lb_vhosts"
+        ),
+        "em_core_network_lb_backend_pools": "parent,em_core_network_lb",
+    },
     "filters": {
         "em_core_iam_idp": "project_id:12345678-c625-4fee-81d5-f691897b8142",
         # Written by earlier images. A manifest declares the project its

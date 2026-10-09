@@ -42,6 +42,12 @@ em_core_vs_values = exordos_core.vs.dm.models:Value
 # The special driver is required to the user_api.iam.dm.models:User model.
 # em_core_iam_users = exordos_core.user_api.iam.dm.models:User
 
+# child kind = relationship field,parent kind
+[model_parents]
+em_core_network_lb_vhosts = parent,em_core_network_lb
+em_core_network_lb_vhosts_routes = parent,em_core_network_lb_vhosts
+em_core_network_lb_backend_pools = parent,em_core_network_lb
+
 
 [filters]
 em_core_em_services = project_id:12345678-c625-4fee-81d5-f691897b8142
