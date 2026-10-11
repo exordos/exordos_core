@@ -883,6 +883,20 @@ class Resource(
 
         return self.actual_resource
 
+    def _update_target_resource(self):
+        # Scheduling and status updates run in other workers. Lock the current
+        # row before copying the desired fields from the EM snapshot.
+        with engines.engine_factory.get_engine().session_manager() as session:
+            current = sdk_models.TargetResource.objects.get_one(
+                filters={"res_uuid": ra_filters.EQ(self.target_resource.res_uuid)},
+                session=session,
+                locked=True,
+            )
+            for name in ("value", "hash", "full_hash", "tracked_at"):
+                setattr(current, name, getattr(self.target_resource, name))
+            current.update(session=session)
+            self.target_resource = current
+
     def actualize(self):
         try:
             target_state = self.render_target_state()
@@ -933,21 +947,21 @@ class Resource(
             self.target_resource.calculate_hash()
             self.target_resource.full_hash = self.full_hash
             self.target_resource.tracked_at = self.updated_at
-            self.target_resource.update()
+            self._update_target_resource()
             LOG.debug(
                 "Target resource %s has been updated.",
                 self.target_resource,
             )
         elif self.target_resource.full_hash != self.full_hash:
             self.target_resource.full_hash = self.full_hash
-            self.target_resource.update()
+            self._update_target_resource()
             LOG.debug(
                 "Target resource %s full hash has been updated.",
                 self.target_resource,
             )
         elif self.target_resource.tracked_at != self.updated_at:
             self.target_resource.tracked_at = self.updated_at
-            self.target_resource.update()
+            self._update_target_resource()
             LOG.debug(
                 "Target resource %s tracked_at has been updated.",
                 self.target_resource,
