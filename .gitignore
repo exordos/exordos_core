@@ -138,6 +138,8 @@ docs/openapi/*.yaml
 # Written by `ec-em-api-docs` when the site is built, out of full_spec.yaml
 docs/em/api_documentation.md
 docs/em/api_documentation.ru.md
+# Downloaded by the documentation build.
+docs/javascripts/vendor/
 
 # Vagrant
 .vagrant/
