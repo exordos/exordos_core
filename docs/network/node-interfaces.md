@@ -16,9 +16,6 @@ $core.compute.nodes:
         subnet: "$core.network.subnets.$private:uuid"
         config:
           kind: "simple"
-          security_groups:
-            # Security groups are made through the API, not a manifest.
-            - "b3c1f6de-8a4e-4c1b-9d8e-2f7a5c0e1d42"
           public:
             address: "$core.network.catalog.addresses.$fip:uuid"
     disk_spec:
@@ -30,6 +27,11 @@ $core.compute.nodes:
 That is one command's worth of what used to take two: create the node, then
 find the port the platform gave it and update that port to attach the
 floating address. A manifest could not express the second step at all.
+
+Security and identity memberships use separate PortSecurityGroup and
+PortIdentityGroup resources. To create the port and its bindings together,
+use [the `networking` creation request](sdn-api-contract.md#node-creation-and-attachment).
+Group lists and service switches inside `config` are not accepted.
 
 ## What replaced what
 
@@ -100,7 +102,9 @@ rule nobody reads.
 | `network` | sugar for the ordinary case of one placeable subnet on it |
 | `address` | an address to ask for, instead of what the pool hands out |
 | `index` | device order; **index 0 is the primary interface** |
-| `config` | the port's own `simple` kind — groups, `public`, `dhcp`/`dns` |
+| `config` | `simple` kind carrying only the `public` address request |
+| `dhcp`, `dns` | optional Port service switches; unset uses the default |
+| `network_identity` | `false` opts out of the network's automatic identity |
 | `port_security` | anti-spoof, as on the port |
 
 `kind: port` — adopt a leg that already exists:
@@ -215,6 +219,6 @@ addresses and ports, not a way to give the guest a second NIC.
 
 - [Private networks](private-network.md) — the user-facing how-to
 - [Security groups across a network](security-group-remote-access.md) — what
-  `config.security_groups` and `config.identity_groups` mean
+  canonical PortSecurityGroup and PortIdentityGroup bindings mean
 - [Realm connectivity SDN](realm-connectivity-sdn.md) — the overlay these
   legs are plugged into

@@ -1,5 +1,8 @@
 # Private networks: two nodes and a floating IP
 
+For the canonical Port/Address/SG API, use [SDN networking resources](sdn-api-contract.md).
+The inline Port security/FIP examples below describe the earlier prototype.
+
 A private network is an EVPN/VXLAN overlay (`ovs_evpn`): the core allocates
 its VNI, route target and MTU, and every guest of it is wired into the fabric
 by its hypervisor's SDN agent. Guests of two private networks never see each
@@ -118,6 +121,7 @@ resources:
       cidr: "203.0.113.0/24"
       dhcp: false
       placeable: false
+      floating_pool: true
 
   $core.compute.nodes:
     node_a:
@@ -161,8 +165,8 @@ one NIC — here, the one on the overlay. Its address and MAC come from the
 subnet unless the entry asks for an address. The node's own `ipv4` is read
 back from `default_network`, which is the primary leg (index 0) promoted
 onto the node and is read-only. See [Node interfaces](node-interfaces.md)
-for the full shape, including attaching a floating address or a security
-group in the same declaration.
+for the full shape, including a floating-address request. Group bindings are
+separate resources.
 
 That last part has a consequence worth stating: a node whose only network is
 an overlay has no route to the control plane, so its in-guest agent never
@@ -208,19 +212,19 @@ network's `dns` function carries.
 Filtering is a group attached to the port the platform created with the node:
 
 ```bash
-exordos network sg add -n web -p $P \
-      -r ingress:icmp -r ingress:tcp:22 -r egress:any
+exordos network sg add -n web -p $P
+exordos network sg rule-add web ingress:icmp
+exordos network sg rule-add web ingress:tcp:22
+exordos network sg rule-add web egress:any
 exordos network ports list --filters node=<node uuid>
-exordos network ports update <port uuid> -g web
+exordos network sg bind web <port uuid>
 ```
 
 A rule reads
 `<ingress|egress>:<tcp|udp|icmp|any>[:<port>][@<remote cidr>|@<group>]`.
-A port with no group of its own is not unfiltered: it gets its subnet's
-default group, which lets it start anything outward and lets in only its own
-subnet. Attaching a group replaces that default and denies everything it does
-not allow, in both directions. An attached group with no rules denies all
-traffic.
+A port without security-group bindings allows traffic subject to anti-spoofing.
+Binding a group enables filtering: its rules allow traffic, and an empty group
+denies new traffic. Rules from multiple bound groups are combined.
 
 ## 4. Naming who, instead of where
 
@@ -234,21 +238,22 @@ rule when a guest is created or destroyed.
 exordos network identity-groups add -n web -p $P -N private
 exordos network identity-groups add -n db  -p $P -N private
 
-exordos network ports update <port of node-a> --identity-group web
-# A port joins as many as it needs — the option repeats.
-exordos network ports update <port of node-b> --identity-group db \
-      --identity-group web
+exordos network ig bind web <port of node-a>
+exordos network ig bind db <port of node-b>
+exordos network ig bind web <port of node-b>
 
-exordos network sg add -n admits-web -p $P \
-      -r ingress:tcp:5432@web -r egress:any
-exordos network ports update <port of the database> -g admits-web
+exordos network sg add -n admits-web -p $P
+exordos network sg rule-add admits-web ingress:tcp:5432@web
+exordos network sg rule-add admits-web egress:any
+exordos network sg bind admits-web <port of the database>
 ```
 
-Now the database admits the `web` group on 5432 and nothing else. Moving a
+The database admits new inbound traffic from `web` on 5432 and allows egress.
+Moving a
 guest between groups is a change to *that guest's* port; the rule protecting
 the database is not touched, and neither is any other host.
 
-Three things worth knowing before relying on it:
+Identity-group behavior:
 
 - **Ingress only.** What a packet carries is its *sender's* identity, so a
   rule can ask "from that group" and cannot ask "to that group". A group on
@@ -257,24 +262,13 @@ Three things worth knowing before relying on it:
   group rule matches it. That is the safe direction while a hypervisor is
   still catching up, and the reason a mixed fabric drops such traffic instead
   of passing it.
-- **The subnet's default is a group too.** "Only from my own subnet" holds by
-  membership, so a neighbour cannot claim to be one of you by choosing an
-  address.
 - **A port carries the set of groups it is in**, one bit each, and its
-  subnet's default group is included unless it opts out with
-  `--no-subnet-group`. So joining a group *adds* access rather than trading
-  the subnet's away, and a workload that is deliberately not one of the
-  neighbours says so — it is then reachable only where a rule names a group
-  it is actually in. A port that leaves the subnet's group and names none of
-  its own is unidentified, which no group rule matches.
-- **Sixteen bits, so sixteen groups per network**, and each subnet's default
-  group takes one of them. The ceiling is the price of carrying membership
-  in the packet instead of distributing it: nothing about a group is ever
-  sent to another host, so a guest appearing or leaving costs no flow
-  anywhere else. Groups are a network's for the same reason — the same bit
-  means a different group on a different network, which is safe because a
-  packet never crosses between them. Asking for one too many is refused with
-  a message that says which network is full.
+  network's automatic group is included unless disabled with
+  `network ports update <port> --no-network-identity`. Explicit bindings are
+  independent of this setting. A port with neither automatic nor explicit
+  membership is unidentified.
+- **Sixteen groups per network**, including its automatic group. Groups cannot
+  bind to ports in another network.
 
 Names work as well as uuids everywhere, and `network identity-groups list`
 shows what exists. The number a group travels as is the platform's and is not
@@ -287,37 +281,34 @@ traffic path stays symmetric with distributed egress. Take an address out of
 a public pool and bind it to the port:
 
 ```bash
-exordos network addresses add -p $P -s example-public -a 203.0.113.20
-exordos network ports update <port uuid> --public-address <address uuid>
+exordos network addresses add -p $P -s example-public \
+      --kind floating -a 203.0.113.20 --port <port uuid>
 ```
 
 Or let the platform pick one:
 
 ```bash
-exordos network ports update <port uuid> --floating-from example-public-subnet
+exordos network addresses add -p $P -s example-public-subnet \
+      --kind floating --port <port uuid>
 ```
 
-`--floating-from` names the **subnet** to take an address out of, not the
-network holding it: which addresses these are is the whole question, and a
-network answers it only when it happens to have one subnet.
+`--subnet` names the pool to allocate from. An existing floating address can
+be associated with `network addresses update <address uuid> --port <port uuid>`.
 
 And to take it away — the address stays allocated to you, which is the point
 of keeping it an object of its own:
 
 ```bash
-exordos network ports update <port uuid> --no-public
+exordos network addresses update <address uuid> --no-port
 ```
 
 A floating address comes only from a **floating pool**: an address-only
-subnet (`placeable: false`, `--pool-only`) of a flat network or of one
-published with `access: public`. Neither kind of network is one a tenant can
-make, and that is the point — the hypervisor answers for a floating address
-on its own segment and lets every guest reach it, so a tenant's own overlay
-subnet, whose CIDR is whatever its owner typed, is refused as a source for
-both `--floating-from` and `--public-address`. A project can allocate from a
-pool another project published, or from one marked `--shared-pool`. What is *not* the platform's
-job is getting the outside world to route that prefix to the hypervisor: on a
-lab that is a static route, in a real installation it is the border's uplink.
+subnet (`floating_pool: true`, `placeable: false`) prepared by the operator
+on a flat network or on one published with `access: public`. Tenant-created
+overlay subnets are not floating pools. A project can allocate from a published
+pool or one marked `--shared-pool`. The operator must route the pool's prefix
+to its hypervisors: a static route in a lab, or the border's uplink in an
+installation.
 
 That last sentence has teeth. A floating address is what the guest *is*, in
 both directions: once bound, everything the guest sends leaves as that

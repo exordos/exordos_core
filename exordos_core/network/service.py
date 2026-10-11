@@ -135,10 +135,9 @@ class NetworkService(basic.BasicService):
 
     def _actualize_network(
         self,
-        network: models.Network,
+        driver: net_base.AbstractNetworkDriver,
         subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
     ) -> None:
-        driver: net_base.AbstractNetworkDriver = network.load_driver()
         actual_subnets = {s.uuid: s for s in driver.list_subnets()}
         target_subnets = {s.uuid: s for s in subnet_map.keys()}
 
@@ -191,7 +190,7 @@ class NetworkService(basic.BasicService):
         target_ports: tp.List[net_models.Port],
     ) -> None:
         actual_ports = {p.uuid: p for p in driver.list_ports(actual_subnet)}
-        target_ports = {p.uuid: p for p in target_ports}
+        target_ports = {p.uuid: p for p in target_ports if p.node is not None}
 
         if (
             target_subnet.cidr != actual_subnet.cidr
@@ -244,18 +243,27 @@ class NetworkService(basic.BasicService):
             LOG.exception("Error creating ports: %s", ports)
             ports = tuple()
 
+        common_ports = actual_ports.keys() & target_ports.keys()
+        with (
+            models.Port.prefetch_bindings(target_ports[u] for u in common_ports),
+            driver.compare_ports(
+                target_subnet.cast_to_base(),
+                (target_ports[u] for u in common_ports),
+            ),
+        ):
+            stale_ports = {
+                uuid
+                for uuid in common_ports
+                if target_ports[uuid].ipv4 != actual_ports[uuid].ipv4
+                or target_ports[uuid].mask != actual_ports[uuid].mask
+                or driver.port_is_stale(target_ports[uuid].cast_to_base())
+            }
+
         # Actualize ports
-        for uuid in actual_ports.keys() & target_ports.keys():
+        for uuid in common_ports:
             target_port = target_ports[uuid]
             actual_port = actual_ports[uuid]
-
-            # Actualize a small set of fields so far, plus whatever else the
-            # driver considers part of the port (see `port_is_stale`).
-            if (
-                target_port.ipv4 != actual_port.ipv4
-                or target_port.mask != actual_port.mask
-                or driver.port_is_stale(target_port.cast_to_base())
-            ):
+            if uuid in stale_ports:
                 try:
                     driver.update_port(target_port.cast_to_base())
                 except Exception:
@@ -374,6 +382,9 @@ class NetworkService(basic.BasicService):
         port_security: bool,
         ipam: net_ipam.Ipam,
         subnet_map: tp.Dict[net_models.Subnet, tp.List[net_models.Port]],
+        dhcp: tp.Optional[bool] = None,
+        dns: tp.Optional[bool] = None,
+        network_identity: tp.Optional[bool] = None,
     ) -> net_models.Port:
         ip = ipam.allocate_ip(subnet, target_ip)
         mask = subnet.cidr.netmask
@@ -391,6 +402,9 @@ class NetworkService(basic.BasicService):
             # The compiler may rewrite and remove it.
             provenance=nc.PortProvenance.GENERATED.value,
             port_security=port_security,
+            dhcp=dhcp,
+            dns=dns,
+            network_identity=network_identity,
         )
         if config is not None:
             fields["config"] = config
@@ -487,9 +501,13 @@ class NetworkService(basic.BasicService):
             return False
         config = interface.config.dump_to_simple_view()
         current = port.config.dump_to_simple_view() if port.config else None
-        if current != config or port.port_security != interface.port_security:
+        toggles = ("dhcp", "dns", "network_identity", "port_security")
+        if current != config or any(
+            getattr(port, field) != getattr(interface, field) for field in toggles
+        ):
             port.config = interface.config
-            port.port_security = interface.port_security
+            for field in toggles:
+                setattr(port, field, getattr(interface, field))
             port.update()
         return True
 
@@ -505,9 +523,13 @@ class NetworkService(basic.BasicService):
         Only generated ports are added and removed here, so the declaration
         never fights the ports API.
         """
+        if getattr(node, "network_initialized", False) is True:
+            return
         if node.interfaces is None:
             # Legacy placement: one port, and only for a node that has none.
             if existing:
+                node.network_initialized = True
+                node.update()
                 return
             legacy = self._legacy_interface(node)
             self._build_port(
@@ -524,6 +546,8 @@ class NetworkService(basic.BasicService):
                 ipam=ipam,
                 subnet_map=subnet_map,
             ).insert()
+            node.network_initialized = True
+            node.update()
             return
 
         wanted = {}
@@ -562,6 +586,9 @@ class NetworkService(basic.BasicService):
                 ),
                 config=interface.config,
                 port_security=interface.port_security,
+                dhcp=interface.dhcp,
+                dns=interface.dns,
+                network_identity=interface.network_identity,
                 ipam=ipam,
                 subnet_map=subnet_map,
             ).insert()
@@ -620,8 +647,17 @@ class NetworkService(basic.BasicService):
                     LOG.exception("Error allocating IP for machine %s", port.machine)
 
             # Actualize ports and subnets on the data plane
+            driver_ready = {}
             for network, net_subnet_map in network_map.items():
                 try:
-                    self._actualize_network(network, net_subnet_map)
+                    driver = network.load_driver()
+                    driver_type = type(driver)
+                    if driver_type not in driver_ready:
+                        driver_ready[driver_type] = False
+                        driver.refresh_global()
+                        driver_ready[driver_type] = True
+                    if driver_ready[driver_type]:
+                        with driver.reconcile():
+                            self._actualize_network(driver, net_subnet_map)
                 except Exception:
                     LOG.exception("Error actualizing network %s", network.uuid)

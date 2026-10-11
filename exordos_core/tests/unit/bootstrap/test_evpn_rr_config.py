@@ -18,6 +18,7 @@ from unittest import mock
 import uuid as sys_uuid
 
 import netaddr
+import pytest
 from restalchemy.storage.sql import orm
 
 from exordos_core.bootstrap import defaults
@@ -77,9 +78,47 @@ def test_render_overrides_rr_address_and_peer_prefixes():
         "rr_agent = 5ded6d70-a989-4f88-8216-1c64274a1d6a\n"
         "rr_addresses = 10.20.0.23\n"
         "rr_peer_prefixes = 10.20.0.0/22\n"
-        # dns_forwarders still points at the nested core's own resolver.
-        "dns_forwarders = 10.20.0.2\n"
+        "dns_forwarders = 10.20.0.23\n"
+        "\n[boot_api]\n"
+        "bind_host = 0.0.0.0\n"
+        "gc_boot_api = http://10.20.0.23:11013\n"
+        "kernel = http://10.20.0.23:8080/bios/vmlinuz\n"
+        "initrd = http://10.20.0.23:8080/bios/initrd.img\n"
     )
+
+
+def test_explicit_reflector_requests_overlay_without_local_ovs_pool():
+    spec = _spec()
+    del spec["stand"]["private_network"]
+    spec["stand"]["evpn_rr_address"] = "10.120.0.3"
+    with mock.patch.object(type(models.Network.objects), "get_all", return_value=[]):
+        content = defaults.render_evpn_rr_config(spec)
+    assert content is not None
+    assert "rr_addresses = 10.120.0.3\n" in content
+    assert "dns_forwarders = 10.120.0.3\n" in content
+    assert "gc_boot_api = http://10.120.0.3:11013\n" in content
+
+
+@pytest.mark.parametrize(
+    "previous_override,new_override",
+    [(None, "10.120.0.3"), ("10.120.0.3", None), ("10.120.0.3", "10.120.0.2")],
+)
+def test_apply_restarts_boot_api_when_override_added_changed_or_removed(
+    tmp_path, monkeypatch, previous_override, new_override
+):
+    spec = _spec()
+    spec["stand"]["evpn_rr_address"] = previous_override
+    path = tmp_path / "evpn.conf"
+    path.write_text(defaults.render_evpn_rr_config(spec))
+    monkeypatch.setattr(defaults, "EVPN_RR_CONF_PATH", str(path))
+    spec["stand"]["evpn_rr_address"] = new_override
+    with mock.patch.object(defaults.subprocess, "run") as restart:
+        defaults.apply_evpn_rr_config(spec)
+        defaults.apply_evpn_rr_config(spec)
+    restart.assert_called_once_with(
+        ["systemctl", "try-restart", "ec-gservice", "ec-boot-api"], check=False
+    )
+    assert path.read_text() == defaults.render_evpn_rr_config(spec)
 
 
 def test_render_none_when_the_installation_asked_for_no_overlay():
@@ -130,6 +169,10 @@ def test_bootstrap_keeps_the_real_port_through_ownership_validation():
         mock.patch.object(orm.ObjectCollection, "get_one_or_none", fetch),
         mock.patch.object(orm.ObjectCollection, "get_all", return_value=[]),
         mock.patch.object(orm.SQLStorableMixin, "insert", insert),
+        mock.patch.object(models.Port, "_get_engine"),
+        mock.patch.object(models.Port, "_assign_index"),
+        mock.patch.object(models.Port, "_touch_machine"),
+        mock.patch.object(orm.ObjectCollection, "get_one", fetch),
         mock.patch.object(defaults.node_set_models.NodeSet, "insert"),
         mock.patch.object(models.Node, "insert", autospec=True) as insert_node,
         mock.patch.object(defaults, "seed_core_set_target"),
@@ -185,3 +228,51 @@ def test_bootstrap_target_survives_unresolved_profile_values():
         objects.get_one.return_value = resource
         defaults.seed_core_set_target(node_set)
     convert.assert_not_called()
+
+
+def test_removing_only_overlay_request_cleans_dropin(tmp_path, monkeypatch):
+    spec = _spec()
+    del spec["stand"]["private_network"]
+    spec["stand"]["evpn_rr_address"] = "10.120.0.3"
+    path = tmp_path / "evpn.conf"
+    path.write_text(defaults.render_evpn_rr_config(spec))
+    monkeypatch.setattr(defaults, "EVPN_RR_CONF_PATH", str(path))
+    del spec["stand"]["evpn_rr_address"]
+    with (
+        mock.patch.object(type(models.Network.objects), "get_all", return_value=[]),
+        mock.patch.object(defaults.subprocess, "run") as restart,
+    ):
+        defaults.apply_evpn_rr_config(spec)
+        defaults.apply_evpn_rr_config(spec)
+    assert not path.exists()
+    restart.assert_called_once_with(
+        ["systemctl", "try-restart", "ec-gservice", "ec-boot-api"], check=False
+    )
+
+
+def test_unknown_overlay_state_preserves_existing_dropin(tmp_path, monkeypatch):
+    spec = _spec()
+    del spec["stand"]["private_network"]
+    path = tmp_path / "evpn.conf"
+    path.write_text("existing reflector config")
+    monkeypatch.setattr(defaults, "EVPN_RR_CONF_PATH", str(path))
+    with (
+        mock.patch.object(
+            type(models.Network.objects), "get_all", side_effect=ConnectionError
+        ) as lookup,
+        mock.patch.object(defaults.subprocess, "run") as restart,
+    ):
+        defaults.apply_evpn_rr_config(spec)
+    lookup.assert_called_once()
+    assert path.read_text() == "existing reflector config"
+    restart.assert_not_called()
+
+
+def test_incomplete_stand_spec_preserves_existing_dropin(tmp_path, monkeypatch):
+    path = tmp_path / "evpn.conf"
+    path.write_text("existing reflector config")
+    monkeypatch.setattr(defaults, "EVPN_RR_CONF_PATH", str(path))
+    with mock.patch.object(defaults.subprocess, "run") as restart:
+        defaults.apply_evpn_rr_config({"stand": {"private_network": {}}})
+    assert path.read_text() == "existing reflector config"
+    restart.assert_not_called()

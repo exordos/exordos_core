@@ -34,45 +34,44 @@ def _subnet(**overrides):
         "project_id": str(sys_uuid.uuid4()),
         "cidr": "10.101.0.0/24",
         "dhcp": True,
-        "routers": [],
-        "dns_servers": [],
+        "routers": None,
+        "dns_servers": None,
         "ip_range": None,
         "ip_discovery_range": None,
         "next_server": None,
     }
     view.update(overrides)
     subnet = models.Subnet.restore_from_simple_view(**view)
-    subnet._default_gateway_services()
     return subnet.dump_to_simple_view()
 
 
 def test_dhcp_subnet_defaults_gateway_and_dns_to_first_host():
     view = _subnet()
-    assert view["routers"] == [{"to": "0.0.0.0/0", "via": "10.101.0.1"}]
-    assert view["dns_servers"] == ["10.101.0.1"]
+    assert view["effective_routers"] == [{"to": "0.0.0.0/0", "via": "10.101.0.1"}]
+    assert view["effective_dns_servers"] == ["10.101.0.1"]
 
 
 def test_dhcpless_subnet_gets_nothing():
     """A floating-IP pool serves no guests — no gateway to reserve."""
     view = _subnet(dhcp=False)
-    assert view["routers"] == []
-    assert view["dns_servers"] == []
+    assert view["effective_routers"] == []
+    assert view["effective_dns_servers"] == []
 
 
 def test_explicit_routers_are_left_alone_but_dns_still_defaults():
     view = _subnet(routers=[{"to": "10.0.0.0/8", "via": "10.101.0.9"}])
-    assert view["routers"] == [{"to": "10.0.0.0/8", "via": "10.101.0.9"}]
-    assert view["dns_servers"] == ["10.101.0.1"]
+    assert view["effective_routers"] == [{"to": "10.0.0.0/8", "via": "10.101.0.9"}]
+    assert view["effective_dns_servers"] == ["10.101.0.1"]
 
 
 def test_explicit_dns_is_left_alone_but_gateway_still_defaults():
     view = _subnet(dns_servers=["8.8.8.8"])
-    assert view["routers"] == [{"to": "0.0.0.0/0", "via": "10.101.0.1"}]
-    assert view["dns_servers"] == ["8.8.8.8"]
+    assert view["effective_routers"] == [{"to": "0.0.0.0/0", "via": "10.101.0.1"}]
+    assert view["effective_dns_servers"] == ["8.8.8.8"]
 
 
 def test_tiny_subnet_has_no_room_for_a_gateway():
     """A /31 is only network/broadcast — nothing to hand out."""
     view = _subnet(cidr="10.9.9.0/31")
-    assert view["routers"] == []
-    assert view["dns_servers"] == []
+    assert view["effective_routers"] == []
+    assert view["effective_dns_servers"] == []

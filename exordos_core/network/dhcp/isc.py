@@ -160,13 +160,15 @@ def dhcp_config(subnets: tp.Dict[models.Subnet, tp.List[models.Port]]) -> str:
         # addresses nothing is placed in, for instance — took the PXE server
         # down for every network on the host, and the only sign of it was
         # guests looping on "No configuration methods succeeded".
+        effective_dns = getattr(subnet, "effective_dns_servers", subnet.dns_servers)
+        effective_routes = getattr(subnet, "effective_routers", subnet.routers)
         dns_servers = (
-            "option domain-name-servers %s;" % ",".join(subnet.dns_servers)
-            if subnet.dns_servers
+            "option domain-name-servers %s;" % ",".join(effective_dns)
+            if effective_dns
             else ""
         )
 
-        routes = [StaticRoute(**r) for r in subnet.routers]
+        routes = [StaticRoute(**r) for r in effective_routes]
 
         config += _subnet_template.format(
             net_address=str(subnet.cidr.network),

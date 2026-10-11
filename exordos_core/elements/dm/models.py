@@ -34,6 +34,7 @@ from restalchemy.dm import types_dynamic as ra_types_dyn
 from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import constants as core_constants
 from exordos_core.common import exceptions
 from exordos_core.common import utils as cm_utils
 from exordos_core.common.dm import models as cm
@@ -845,6 +846,24 @@ class Resource(
         # uuid is mandatory to find already created resources in services
         if "uuid" not in res:
             res["uuid"] = str(self.uuid)
+        canonical = (
+            ".compute.nodes",
+            ".compute.sets",
+            ".network.networks",
+            ".network.subnets",
+            ".network.ports",
+            ".network.port_security_groups",
+            ".network.port_identity_groups",
+            ".network.catalog.addresses",
+            ".network.catalog.security_groups",
+            ".network.catalog.security_group_rules",
+            ".network.catalog.identity_groups",
+            ".network.catalog.proxy_services",
+        )
+        if self.resource_link_prefix.endswith(canonical):
+            # EM install permissions are global; explicit resource projects are
+            # operator declarations. Preserve the released agent's default.
+            res.setdefault("project_id", str(core_constants.EM_PROJECT_ID))
         return res
 
     @property
@@ -883,6 +902,20 @@ class Resource(
 
         return self.actual_resource
 
+    def _update_target_resource(self):
+        # Scheduling and status updates run in other workers. Lock the current
+        # row before copying the desired fields from the EM snapshot.
+        with engines.engine_factory.get_engine().session_manager() as session:
+            current = sdk_models.TargetResource.objects.get_one(
+                filters={"res_uuid": ra_filters.EQ(self.target_resource.res_uuid)},
+                session=session,
+                locked=True,
+            )
+            for name in ("value", "hash", "full_hash", "tracked_at"):
+                setattr(current, name, getattr(self.target_resource, name))
+            current.update(session=session)
+            self.target_resource = current
+
     def actualize(self):
         try:
             target_state = self.render_target_state()
@@ -894,7 +927,30 @@ class Resource(
             )
             return
         self.actual_resource = self._find_actual_resource()
-        hash = sdk_utils.calculate_hash(target_state)
+        persistent_target = dict(target_state)
+        if self.kind == "em_core_compute_nodes":
+            persistent_target.pop("networking", None)
+            persistent_target.pop("network_activation_barrier", None)
+        if self.kind == "em_core_network_ports":
+            from exordos_core.network.manifest import activation_barrier
+
+            target_state["activation_barrier"] = activation_barrier(
+                self, target_state, element_engine
+            )
+        if self.kind in (
+            "em_core_compute_nodes",
+            "em_core_compute_sets",
+        ) and target_state.get("networking"):
+            from exordos_core.network.manifest import inline_activation_barrier
+
+            target_state["network_activation_barrier"] = inline_activation_barrier(
+                self, target_state, element_engine
+            )
+            if self.kind == "em_core_compute_sets":
+                persistent_target["network_activation_barrier"] = target_state[
+                    "network_activation_barrier"
+                ]
+        hash = sdk_utils.calculate_hash(persistent_target)
         self.full_hash = self.calculate_full_hash(target_state)
         if self.target_resource is None:
             res_uuid = sdk_models.TargetResource.gen_res_uuid(self.uuid, self.kind)
@@ -930,24 +986,28 @@ class Resource(
             LOG.debug("Target resource %s has been created.", target_resource)
         elif self.target_resource.hash != hash:
             self.target_resource.value = target_state
-            self.target_resource.calculate_hash()
+            self.target_resource.hash = hash
             self.target_resource.full_hash = self.full_hash
             self.target_resource.tracked_at = self.updated_at
-            self.target_resource.update()
+            self._update_target_resource()
             LOG.debug(
                 "Target resource %s has been updated.",
                 self.target_resource,
             )
+        elif self.target_resource.value != target_state:
+            self.target_resource.value = target_state
+            self.target_resource.tracked_at = self.updated_at
+            self._update_target_resource()
         elif self.target_resource.full_hash != self.full_hash:
             self.target_resource.full_hash = self.full_hash
-            self.target_resource.update()
+            self._update_target_resource()
             LOG.debug(
                 "Target resource %s full hash has been updated.",
                 self.target_resource,
             )
         elif self.target_resource.tracked_at != self.updated_at:
             self.target_resource.tracked_at = self.updated_at
-            self.target_resource.update()
+            self._update_target_resource()
             LOG.debug(
                 "Target resource %s tracked_at has been updated.",
                 self.target_resource,

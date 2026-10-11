@@ -60,6 +60,7 @@ def _port(index=0, provenance=nc.PortProvenance.GENERATED.value, subnet=SUBNET_A
     port.ipv4 = None
     port.config = compute_models.PortSimpleKind()
     port.port_security = True
+    port.dhcp = port.dns = port.network_identity = None
     return port
 
 
@@ -363,22 +364,16 @@ def test_a_set_nodes_legs_belong_to_the_sets_owner():
 
 
 def test_an_edited_leg_is_brought_in_line_in_place():
-    """Groups and port security are the port's own settings: edited in the
-    declaration, they are edited on the port, not rebuilt."""
+    """Port security and service toggles are updated without rebuilding a leg."""
     harness = _Harness()
     port = _port(index=0)
-    group = sys_uuid.uuid4()
-    leg = _leg(
-        subnet=SUBNET_A,
-        port_security=False,
-        config=compute_models.PortSimpleKind(security_groups=[group]),
-    )
+    leg = _leg(subnet=SUBNET_A, port_security=False, dhcp=False, dns=False)
     built = harness.run(_node(interfaces=[leg]), existing=[port])
     assert built == []
     port.delete.assert_not_called()
     port.update.assert_called_once()
     assert port.port_security is False
-    assert port.config.security_groups == [group]
+    assert port.dhcp is False and port.dns is False
 
 
 def test_a_leg_moved_to_another_subnet_is_rebuilt():

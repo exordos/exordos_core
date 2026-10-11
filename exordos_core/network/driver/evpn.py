@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import contextlib
+import contextvars
 import hashlib
 import ipaddress
 import logging
@@ -23,11 +25,13 @@ import urllib.parse as urlparse
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.drivers import evpn_records
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 import netaddr
 from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_storage_exc
+from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.common import constants as c
 from exordos_core.compute import constants as nc
@@ -39,6 +43,21 @@ from exordos_core.network.evpn.dm import models as evpn_models
 from exordos_core.vs.dm import models as vs_models
 
 LOG = logging.getLogger(__name__)
+_COMPARISON_READS = contextvars.ContextVar("evpn_comparison_reads", default=None)
+_RECONCILE_READS = contextvars.ContextVar("evpn_reconcile_reads", default=None)
+
+
+def _cached_read(cache, key, read):
+    if cache is None:
+        return read()
+    if key not in cache:
+        cache[key] = read()
+    return cache[key]
+
+
+def _comparison_read(key, read):
+    return _cached_read(_COMPARISON_READS.get(), key, read)
+
 
 # uuid5 namespace for the per-(host, function) slices: the same function on
 # the same host always compiles to the same resource, on any core.
@@ -204,14 +223,19 @@ def _proxy_service_rows(network_uuid) -> tp.List[tp.Any]:
     if network_uuid is None:
         return []
     try:
-        rows = net_api_models.ProxyService.objects.get_all(
-            filters={"network": dm_filters.EQ(network_uuid)}
+        return _comparison_read(
+            ("proxy-services", str(network_uuid)),
+            lambda: sorted(
+                net_api_models.ProxyService.objects.get_all(
+                    filters={"network": dm_filters.EQ(network_uuid)}
+                ),
+                key=lambda row: int(row.port),
+            ),
         )
     except Exception:
         # A failed read is not "no doors"; don't close them all on an error.
         LOG.exception("Cannot read the proxy doors of network %s", network_uuid)
         return []
-    return sorted(rows, key=lambda row: int(row.port))
 
 
 def _proxy_services(network_uuid) -> tp.Dict[str, str]:
@@ -283,7 +307,7 @@ def _published_addresses() -> tp.Optional[tp.List[str]]:
     try:
         rows = net_api_models.Address.objects.get_all(
             filters={
-                "origin": dm_filters.EQ(net_api_models.AddressOrigin.FLOATING.value),
+                "kind": dm_filters.EQ("floating"),
                 "allocation": dm_filters.EQ(
                     net_api_models.AddressAllocation.RESERVED.value
                 ),
@@ -367,12 +391,15 @@ def _image_origins(subnet) -> tp.List[str]:
         ports = compute_models.Port.objects.get_all(
             filters={"subnet": dm_filters.EQ(subnet.uuid)}
         )
-        for port in ports:
-            if port.node is None:
-                continue
-            node = compute_models.Node.objects.get_one_or_none(
-                filters={"uuid": dm_filters.EQ(port.node)}
+        node_ids = {port.node for port in ports if port.node is not None}
+        nodes = (
+            compute_models.Node.objects.get_all(
+                filters={"uuid": dm_filters.In([str(uuid) for uuid in node_ids])}
             )
+            if node_ids
+            else []
+        )
+        for node in nodes:
             image = getattr(getattr(node, "disk_spec", None), "image", None)
             origin = unreachable_origin(image)
             if not origin:
@@ -473,7 +500,10 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
     VNI_CONFIRMED = "vni_confirmed"
 
     def _ensure_allocated(self) -> None:
-        spec = dict(self._network.driver_spec)
+        if isinstance(self._network, models.Network):
+            self._network.reconcile_driver_state()
+            return
+        spec = dict(self._network.driver_state)
         changed = False
         if "vni" not in spec:
             spec["vni"] = self._allocate_vni()
@@ -497,11 +527,15 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         if "rt" not in spec:
             spec["rt"] = "%d:%d" % (CONF.evpn.as_number, spec["vni"])
             changed = True
-        if "mtu" not in spec:
-            spec["mtu"] = CONF.evpn.underlay_mtu - VXLAN_OVERHEAD
+        mtu = (
+            self._network.driver_spec.get("mtu")
+            or CONF.evpn.underlay_mtu - VXLAN_OVERHEAD
+        )
+        if spec.get("mtu") != mtu:
+            spec["mtu"] = mtu
             changed = True
         if changed:
-            self._network.driver_spec = spec
+            self._network.driver_state = spec
             self._network.update()
             LOG.info(
                 "Allocated evpn spec for network %s: vni=%s rt=%s mtu=%s",
@@ -520,8 +554,8 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         for net in models.Network.objects.get_all():
             if net.uuid == self._network.uuid:
                 continue
-            spec = net.driver_spec or {}
-            if not nc.is_overlay(spec) or spec.get("vni") is None:
+            spec = net.driver_state or {}
+            if not nc.is_overlay(net.driver_spec) or spec.get("vni") is None:
                 continue
             if int(spec["vni"]) == vni and str(net.uuid) < str(self._network.uuid):
                 return True
@@ -531,8 +565,8 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
     def _allocate_vni() -> int:
         used = set()
         for net in models.Network.objects.get_all():
-            spec = net.driver_spec or {}
-            if nc.is_overlay(spec) and "vni" in spec:
+            spec = net.driver_state or {}
+            if nc.is_overlay(net.driver_spec) and "vni" in spec:
                 used.add(int(spec["vni"]))
         for vni in range(CONF.evpn.vni_range_start, CONF.evpn.vni_range_end + 1):
             if vni not in used:
@@ -543,25 +577,25 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
 
     @property
     def _vni(self) -> int:
-        return int(self._network.driver_spec["vni"])
+        return int(self._network.driver_state["vni"])
 
     @property
     def _rt(self) -> str:
-        return self._network.driver_spec["rt"]
+        return self._network.driver_state["rt"]
 
     @property
     def _mtu(self) -> int:
-        return int(self._network.driver_spec["mtu"])
+        return int(self._network.driver_state["mtu"])
 
     # --- target resource storage helpers --------------------------------
 
     @staticmethod
     def _get_resource(kind: str, uuid: sys_uuid.UUID) -> ua_models.TargetResource:
-        return ua_models.TargetResource.objects.get_one(
-            filters={
-                "kind": dm_filters.EQ(kind),
-                "uuid": dm_filters.EQ(uuid),
-            }
+        return _comparison_read(
+            ("resource", kind, str(uuid)),
+            lambda: ua_models.TargetResource.objects.get_one(
+                filters={"kind": dm_filters.EQ(kind), "uuid": dm_filters.EQ(uuid)}
+            ),
         )
 
     @staticmethod
@@ -577,12 +611,15 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
 
     # --- subnets ---------------------------------------------------------
 
-    def list_subnets(self) -> tp.Iterable[models.Subnet]:
-        # Per-loop maintenance lives here: the driver is cached and rebound,
-        # not rebuilt, so __init__ runs once.
+    def refresh_global(self) -> None:
         self._ensure_agent_offers_overlay()
         self._ensure_rr()
         self._actualize_statuses()
+        self._settle_publications()
+        self._refresh_published_hosts()
+
+    def list_subnets(self) -> tp.Iterable[models.Subnet]:
+        self._settle_withdrawals()
         subnets = []
         for res in self._list_resources(SUBNET_KIND, self._network.uuid):
             subnets.append(models.Subnet.restore_from_simple_view(**res.value))
@@ -607,6 +644,8 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
             nfs = self._service_nfs(subnet)
             for agent in agents:
                 try:
+                    if _RECONCILE_READS.get() is not None:
+                        self._ensure_host(agent)
                     self._ensure_host_nfs(agent, subnet, nfs=nfs)
                 except Exception:
                     LOG.exception(
@@ -636,33 +675,116 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         return subnet
 
     def delete_subnet(self, subnet: models.Subnet) -> None:
-        agents = set()
-        for port_res in self._list_resources(
-            evpn_models.EvpnPort.get_resource_kind(), subnet.uuid
-        ):
-            agents.add(port_res.agent)
-            port_res.delete()
+        # Retain host targets and their owning subnet until withdrawal is acknowledged.
+        targets = list(
+            self._list_resources(evpn_models.EvpnPort.get_resource_kind(), subnet.uuid)
+        )
+        if targets:
+            for target in targets:
+                if target.value.get("enabled", True):
+                    target.value = {**target.value, "enabled": False}
+                    target.calculate_hash()
+                    target.status = "IN_PROGRESS"
+                    target.update()
+            return
         try:
             self._get_resource(SUBNET_KIND, subnet.uuid).delete()
         except ra_storage_exc.RecordNotFound:
             pass
-        # Collect each host's slices as a per-port delete would.
-        for agent in agents:
-            if agent is not None:
-                try:
-                    self._collect_host_nfs(agent, subnet)
-                except Exception:
-                    LOG.exception("Could not collect the function slices of %s", agent)
-                self._collect_host(agent)
 
     # --- ports -----------------------------------------------------------
 
+    @contextlib.contextmanager
+    def reconcile(self):
+        cache = {}
+        token = _RECONCILE_READS.set(cache)
+        try:
+            yield
+        finally:
+            try:
+                hosts = cache.get("hosts", ())
+                if hosts:
+                    published = _published_addresses()
+                    for host in hosts:
+                        try:
+                            with sql_utils.savepoint():
+                                self._write_host(host, published)
+                        except Exception:
+                            LOG.exception("Could not refresh evpn_host %s", host)
+                for compiled, master in cache.get("nf-targets", {}).values():
+                    try:
+                        with sql_utils.savepoint():
+                            self._write_resource(compiled, master=master)
+                    except Exception:
+                        LOG.exception("Could not refresh NF slice %s", compiled.uuid)
+            finally:
+                _RECONCILE_READS.reset(token)
+
+    @contextlib.contextmanager
+    def compare_ports(self, subnet: models.Subnet, ports=()):
+        cache = {("subnet", str(subnet.uuid)): subnet}
+        reconcile = _RECONCILE_READS.get()
+        listed = (
+            reconcile.pop(("port-targets", str(subnet.uuid)), None)
+            if reconcile is not None
+            else None
+        )
+        if listed is not None:
+            cache.update(
+                {("resource", "evpn_port", str(row.uuid)): row for row in listed}
+            )
+        ports = tuple(ports)
+        node_ids = {
+            getattr(p.node, "uuid", p.node)
+            for p in ports
+            if not p.name and p.node is not None
+        }
+        nodes = {p.node.uuid: p.node for p in ports if isinstance(p.node, models.Node)}
+        missing = node_ids - nodes.keys()
+        try:
+            with sql_utils.savepoint():
+                if missing:
+                    nodes.update(
+                        {
+                            node.uuid: node
+                            for node in models.Node.objects.get_all(
+                                filters={
+                                    "uuid": dm_filters.In(
+                                        [str(uuid) for uuid in missing]
+                                    )
+                                }
+                            )
+                        }
+                    )
+                cache.update(
+                    {("node", str(uuid)): nodes.get(uuid) for uuid in node_ids}
+                )
+        except Exception:
+            LOG.exception("Could not prefetch guest names; using individual reads")
+        if ports:
+            try:
+                with sql_utils.savepoint():
+                    cache.update(self._comparison_addresses(ports))
+            except Exception:
+                LOG.exception("Could not prefetch FIP ledger; using individual reads")
+        token = _COMPARISON_READS.set(cache)
+        try:
+            yield
+        finally:
+            _COMPARISON_READS.reset(token)
+
     def list_ports(self, subnet: models.Subnet) -> tp.Iterable[models.Port]:
         ports = []
-        for res in self._list_resources(
+        targets = self._list_resources(
             evpn_models.EvpnPort.get_resource_kind(), subnet.uuid
-        ):
+        )
+        reconcile = _RECONCILE_READS.get()
+        if reconcile is not None:
+            reconcile[("port-targets", str(subnet.uuid))] = targets
+        for res in targets:
             value = res.value
+            if not value.get("enabled", True):
+                continue
             ipv4 = value.get("ipv4")
             ports.append(
                 models.Port(
@@ -686,8 +808,11 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         The ``evpn_subnet`` marker refreshes only on cidr/next_server
         changes, so it would freeze dhcp, resolvers and routes.
         """
-        stored = models.Subnet.objects.get_one_or_none(
-            filters={"uuid": dm_filters.EQ(subnet_uuid)}
+        stored = _comparison_read(
+            ("subnet", str(subnet_uuid)),
+            lambda: models.Subnet.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(subnet_uuid)}
+            ),
         )
         if stored is not None:
             return stored
@@ -697,13 +822,16 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
     def _dhcp_record(self, subnet: models.Subnet) -> dict:
         # dump_to_simple_view keeps the record JSON-simple (the restored
         # model carries IPNetwork/IPAddress objects).
-        view = subnet.dump_to_simple_view()
-        return {
-            "cidr": str(subnet.cidr),
-            "routers": view.get("routers") or [],
-            "dns_servers": view.get("dns_servers") or [],
-            "mtu": self._mtu,
-        }
+        def read():
+            view = subnet.dump_to_simple_view()
+            return {
+                "cidr": str(subnet.cidr),
+                "routers": view.get("effective_routers") or [],
+                "dns_servers": view.get("effective_dns_servers") or [],
+                "mtu": self._mtu,
+            }
+
+        return dict(_comparison_read(("dhcp", str(subnet.uuid)), read))
 
     def _allocate_ip(
         self, subnet: models.Subnet, target_ip: tp.Optional[netaddr.IPAddress]
@@ -745,6 +873,7 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
             identity=self._compile_identity(port, subnet, seed=publish),
             node=port.node,
             fips=fips,
+            retired_fips=self._retired_fips(port.uuid, fips),
             # Anti-spoof, enforced by the agent on br-int.
             port_security=port.port_security,
             agent_uuid=port.node,
@@ -759,29 +888,36 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
 
         DHCP is the subnet's, dns and proxy the network's; all are seeded
         objects the caller may edit (`_seed_service_nfs`). The subnet's
-        ``dhcp`` flag and the ``simple`` port kind's ``dhcp``/``dns``
-        toggles detach a function from the port.
+        ``dhcp`` flag supplies the default; Port's ``dhcp``/``dns`` toggles
+        override whether a function is attached.
         """
-        config = getattr(port, "config", None)
-        simple = config if getattr(config, "KIND", None) == "simple" else None
 
         def wanted(kind: str) -> bool:
-            if simple is not None and getattr(simple, kind, None) is False:
-                return False
+            explicit = getattr(port, kind, None)
+            if isinstance(explicit, bool):
+                return explicit
             return subnet.dhcp if kind == "dhcp" else True
 
         services = []
         for nf in self._service_nfs(subnet, seed=seed):
             if not wanted(nf.kind):
                 continue
-            # Only the kind: config rides in the `evpn_nf` slice, so editing
-            # a function does not re-hash ports.
+            # Function settings ride in the evpn_nf slice. Intercept selectors
+            # affect guest flows and therefore belong to the port target.
             descriptor = {"kind": nf.kind}
+            if nf.kind in {"dns", "proxy"}:
+                gateway = evpn_records.default_gateway(
+                    self._dhcp_record(subnet)["routers"]
+                )
+                destinations = [urlparse.urlsplit(DEFAULT_NETBOOT_URL).hostname]
+                if gateway and str(gateway) not in destinations:
+                    destinations.append(str(gateway))
+                descriptor["config"] = {"destinations": destinations}
             if nf.kind == "proxy":
                 # Exception: door ports are per-guest intercept flows, so
                 # they must be in the port's hash or a new door would never
                 # be delivered. Costs a re-apply when the doors change.
-                descriptor["config"] = {"ports": _proxy_service_ports(subnet.network)}
+                descriptor["config"]["ports"] = _proxy_service_ports(subnet.network)
             services.append(descriptor)
         return services
 
@@ -791,76 +927,58 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
 
         if seed:
             self._seed_service_nfs(subnet)
+        reconcile = _RECONCILE_READS.get()
+        cache = (
+            reconcile.setdefault("nf-rows", {})
+            if seed
+            and reconcile is not None
+            and reconcile.get("seeded-subnet") == subnet.uuid
+            else None
+        )
         found = {}
-        for filters in (
-            {"owner_subnet": dm_filters.EQ(subnet.uuid)},
-            {"owner_network": dm_filters.EQ(subnet.network)},
+        for owner, uuid in (
+            ("owner_subnet", subnet.uuid),
+            ("owner_network", subnet.network),
         ):
-            for nf in net_api_models.NetworkFunction.objects.get_all(filters=filters):
+
+            def read():
+                return net_api_models.NetworkFunction.objects.get_all(
+                    filters={owner: dm_filters.EQ(uuid)}
+                )
+
+            rows = (
+                _cached_read(cache, (owner, str(uuid)), read)
+                if seed
+                else _comparison_read(("nf", owner, str(uuid)), read)
+            )
+            for nf in rows:
                 found.setdefault(nf.kind, nf)
         return [found[kind] for kind in ("dhcp", "dns", "proxy") if kind in found]
 
-    def _default_group_rules(self, subnet: models.Subnet) -> tp.Optional[list]:
-        """What a subnet's default group permits, as this version seeds it."""
-        default_identity = self._default_identity_group(subnet)
-        if default_identity is None:
-            return None
-        return [
-            # Out: anything the guest starts.
-            {"direction": "egress", "protocol": "any"},
-            # In: from the subnet's default group by membership, not address,
-            # so a neighbour cannot spoof its way in. Replies use conntrack.
-            {
-                "direction": "ingress",
-                "protocol": "any",
-                "remote_group": str(default_identity.uuid),
-            },
-        ]
-
     def refresh_generated(self, subnet: models.Subnet) -> None:
-        """Keep generated services and the default group current.
-
-        Both derive from installation settings and would otherwise go stale
-        after an upgrade. Operator-edited ones are left alone (provenance).
-        """
+        """Refresh generated services and the automatic Network identity."""
         self._seed_service_nfs(subnet)
-        self._refresh_default_group(subnet)
-        self._refresh_published_hosts()
+        self._default_identity_group(subnet)
 
     def _refresh_published_hosts(self) -> None:
         """Refresh every host's published-address list.
 
-        Installation-wide work in the only periodic hook the driver has: a
-        floating address is bound on one host but must be reachable from
-        all. `_ensure_host` writes only on a hash difference.
+        A floating address is bound on one host but must be reachable from
+        all. Writes only on a hash difference.
         """
         hosts = ua_models.TargetResource.objects.get_all(
             filters={
                 "kind": dm_filters.EQ(evpn_models.EvpnHost.get_resource_kind()),
             }
         )
+        if not hosts:
+            return
+        published = _published_addresses()
         for host in hosts:
             try:
-                self._ensure_host(host.uuid)
+                self._write_host(host.uuid, published)
             except Exception:
                 LOG.exception("Cannot refresh the evpn_host resource %s", host.uuid)
-
-    def _refresh_default_group(self, subnet: models.Subnet) -> None:
-        """Bring a generated default group to the shape this version seeds."""
-        nf = self._default_group_nf(subnet)
-        if nf is None:
-            return
-        from exordos_core.user_api.network.dm import models as net_api_models
-
-        if nf.provenance != net_api_models.NFProvenance.GENERATED.value:
-            return
-        wanted = self._default_group_rules(subnet)
-        if wanted is None or list((nf.config or {}).get("rules") or []) == wanted:
-            return
-        config = dict(nf.config or {})
-        config["rules"] = wanted
-        nf.sync_generated(config)
-        LOG.info("Refreshed the default group of subnet %s", subnet.uuid)
 
     def _seed_service_nfs(self, subnet: models.Subnet) -> None:
         """Seed missing dhcp/dns/proxy functions with `[evpn]` defaults.
@@ -870,35 +988,48 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         """
         from exordos_core.user_api.network.dm import models as net_api_models
 
-        wanted = {
-            "dhcp": (
-                "owner_subnet",
-                subnet.uuid,
-                {"filename": DEFAULT_NETBOOT_URL},
-            ),
-            "dns": (
-                "owner_network",
-                subnet.network,
-                {
-                    "forwarders": self._configured_or_core(CONF.evpn.dns_forwarders),
-                    "zone_suffix": CONF.evpn.dns_zone_suffix,
-                    # The platform's name and the doors' domains resolve to
-                    # the serving hypervisor, the only one a guest can reach.
-                    "platform_names": [CONF.boot_api.gc_host]
-                    + _proxy_service_domains(subnet.network),
-                },
-            ),
-            "proxy": (
-                "owner_network",
-                subnet.network,
-                {
-                    "forwards": _default_proxy_forwards(subnet),
-                    "ports": _platform_ports(),
-                    "apis": list(CONF.evpn.proxy_apis),
-                    "services": _proxy_services(subnet.network),
-                },
-            ),
-        }
+        cache = _RECONCILE_READS.get()
+        if cache is not None:
+            if cache.get("seeded-subnet") == subnet.uuid:
+                return
+            cache.pop("seeded-subnet", None)
+            cache.pop("nf-rows", None)
+
+        def prepare():
+            return {
+                "dhcp": (
+                    "owner_subnet",
+                    subnet.uuid,
+                    {"filename": DEFAULT_NETBOOT_URL},
+                ),
+                "dns": (
+                    "owner_network",
+                    subnet.network,
+                    {
+                        "forwarders": self._configured_or_core(
+                            CONF.evpn.dns_forwarders
+                        ),
+                        "zone_suffix": CONF.evpn.dns_zone_suffix,
+                        # The platform's name and the doors' domains resolve to
+                        # the serving hypervisor, the only one a guest can reach.
+                        "platform_names": [CONF.boot_api.gc_host]
+                        + _proxy_service_domains(subnet.network),
+                    },
+                ),
+                "proxy": (
+                    "owner_network",
+                    subnet.network,
+                    {
+                        "forwards": _default_proxy_forwards(subnet),
+                        "ports": _platform_ports(),
+                        "apis": list(CONF.evpn.proxy_apis),
+                        "services": _proxy_services(subnet.network),
+                    },
+                ),
+            }
+
+        wanted = _cached_read(cache, ("nf-defaults", str(subnet.uuid)), prepare)
+        complete = True
         for kind, (owner_field, owner_uuid, config) in wanted.items():
             if owner_uuid is None:
                 continue
@@ -909,12 +1040,8 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                 }
             )
             if nf is not None:
-                # Generated functions are ours to keep current so upgrades
-                # reach them; operator-edited ones are not. `proxy` cannot be
-                # edited via the API, so it is always generated.
                 if nf.provenance == net_api_models.NFProvenance.GENERATED.value:
-                    # Not `update`: that marks the function operator-owned.
-                    if dict(nf.config or {}) != config:
+                    if nf.generated_config != config:
                         nf.sync_generated(config)
                         LOG.info(
                             "Refreshed the generated %s function of %s",
@@ -928,7 +1055,7 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                     name="%s-%s" % (kind, owner_uuid),
                     project_id=subnet.project_id,
                     kind=kind,
-                    config=config,
+                    generated_config=config,
                     provenance=net_api_models.NFProvenance.GENERATED.value,
                     **{owner_field: owner_uuid},
                 ).insert()
@@ -937,6 +1064,9 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                 # Another compile pass may have seeded it a moment ago; the
                 # next iteration reads whichever won.
                 LOG.exception("Could not seed the %s function of %s", kind, owner_uuid)
+                complete = False
+        if complete and cache is not None:
+            cache["seeded-subnet"] = subnet.uuid
 
     def _compile_fips(self, port: models.Port, claim: bool = True) -> list:
         """Compile the port's floating IP (`fip`).
@@ -956,32 +1086,117 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
             self._settle_associations(port.uuid, addr)
         return [{"public": str(addr.address)}]
 
+    @staticmethod
+    def _comparison_addresses(ports):
+        from exordos_core.user_api.network.dm import models as catalog
+
+        uuids = [str(port.uuid) for port in ports]
+        singles = {("bound-address", uuid): [] for uuid in uuids}
+        retired = {("retired-addresses", uuid): [] for uuid in uuids}
+        named, owned = set(), set()
+        for port in ports:
+            config = getattr(port, "config", None)
+            public = (
+                getattr(config, "public", None)
+                if getattr(config, "KIND", None) == "simple"
+                else None
+            )
+            if public and public.get("address"):
+                named.add(str(public["address"]))
+            elif public and public.get("floating_from"):
+                owned.add(str(port.uuid))
+        singles.update({("named-address", uuid): [] for uuid in named})
+        singles.update({("owned-address", uuid): [] for uuid in owned})
+        clauses = [
+            {
+                "port": dm_filters.In(uuids),
+                "kind": dm_filters.EQ("floating"),
+                "delete_requested": dm_filters.EQ(False),
+            },
+            {"association": dm_filters.In(uuids)},
+        ]
+        if named:
+            clauses.append(
+                {
+                    "uuid": dm_filters.In(list(named)),
+                    "delete_requested": dm_filters.EQ(False),
+                }
+            )
+        if owned:
+            clauses.append({"owner_port": dm_filters.In(list(owned))})
+        for address in catalog.Address.objects.get_all(filters=dm_filters.OR(*clauses)):
+            keys = [("owned-address", str(address.owner_port))]
+            if not address.delete_requested:
+                keys.append(("named-address", str(address.uuid)))
+                if address.kind == "floating":
+                    keys.append(("bound-address", str(address.port)))
+            for key in keys:
+                if key in singles:
+                    singles[key].append(address)
+            key = ("retired-addresses", str(address.association))
+            if key in retired:
+                retired[key].append(address)
+        # Ambiguous single-row lookups retain get_one's HasManyRecords error.
+        retired.update(
+            {
+                key: rows[0] if rows else None
+                for key, rows in singles.items()
+                if len(rows) <= 1
+            }
+        )
+        return retired
+
     def _public_address(self, port: models.Port, allocate: bool = True):
         """The address object the port's ``public`` slot resolves to.
 
         ``allocate`` is False on the comparing compile, which must not write.
         """
+        from exordos_core.user_api.network.dm import models as net_api_models
+
+        read = (lambda key, reader: reader()) if allocate else _comparison_read
+        bound = read(
+            ("bound-address", str(port.uuid)),
+            lambda: net_api_models.Address.objects.get_one_or_none(
+                filters={
+                    "port": dm_filters.EQ(port.uuid),
+                    "kind": dm_filters.EQ("floating"),
+                    "delete_requested": dm_filters.EQ(False),
+                }
+            ),
+        )
+        if bound is not None:
+            return bound
         config = getattr(port, "config", None)
         if config is None or getattr(config, "KIND", None) != "simple":
             return None
         public = getattr(config, "public", None)
         if not public:
             return None
-        from exordos_core.user_api.network.dm import models as net_api_models
 
         addr_uuid = public.get("address")
         if addr_uuid:
             # Reuse a caller's already-allocated public address-object.
-            return net_api_models.Address.objects.get_one_or_none(
-                filters={"uuid": dm_filters.EQ(addr_uuid)}
+            return read(
+                ("named-address", str(addr_uuid)),
+                lambda: net_api_models.Address.objects.get_one_or_none(
+                    filters={
+                        "uuid": dm_filters.EQ(addr_uuid),
+                        "delete_requested": dm_filters.EQ(False),
+                    }
+                ),
             )
         if public.get("floating_from"):
             # Allocate once from the named subnet (not network: a network
             # may have several), idempotent via owner_port only — matching
             # on origin too would re-allocate if origin was rewritten.
-            addr = net_api_models.Address.objects.get_one_or_none(
-                filters={"owner_port": dm_filters.EQ(port.uuid)}
+            addr = read(
+                ("owned-address", str(port.uuid)),
+                lambda: net_api_models.Address.objects.get_one_or_none(
+                    filters={"owner_port": dm_filters.EQ(port.uuid)}
+                ),
             )
+            if addr is not None and addr.delete_requested:
+                return None
             if addr is not None or not allocate:
                 return addr
             subnet = models.Subnet.objects.get_one_or_none(
@@ -995,6 +1210,8 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                 subnet=subnet.uuid,
                 owner_port=port.uuid,
                 origin="floating",
+                kind="floating",
+                port=port.uuid,
             )
             addr.insert()  # Address.insert auto-allocates a free IP
             return addr
@@ -1002,38 +1219,100 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
 
     @staticmethod
     def _settle_associations(port_uuid: sys_uuid.UUID, addr) -> None:
-        """Set the ledger's `association` to what this port actually uses.
+        """Hold a publication before handing the target to its host.
 
-        The association is what blocks re-citing or freeing an address in
-        use. Releasing stale ones belongs here too: unbinding keeps the
-        port, so nothing else would clear the old pointer. Publishing pass
-        only; writes only what changed.
+        Old holds are released only by an acknowledged withdrawal, never by
+        compiling an empty desired mapping or noticing an offline host.
         """
-        from exordos_core.user_api.network.dm import models as net_api_models
-
-        keep = str(addr.uuid) if addr is not None else None
-        try:
-            for stale in net_api_models.Address.objects.get_all(
-                filters={"association": dm_filters.EQ(port_uuid)}
-            ):
-                if str(stale.uuid) == keep:
-                    continue
-                stale.association = None
-                stale.update()
-        except Exception:
-            LOG.exception("Could not release the addresses port %s left", port_uuid)
-        if addr is None or str(addr.association or "") == str(port_uuid):
-            return
-        try:
-            addr.association = port_uuid
-            addr.update()
-        except Exception:
-            LOG.exception(
-                "Could not associate address %s with port %s", addr.uuid, port_uuid
-            )
+        if addr is not None and str(addr.association or "") != str(port_uuid):
+            addr.claim_publication(port_uuid)
 
     @staticmethod
-    def _compile_rule(rule: dict) -> dict:
+    def _retired_fips(port_uuid, fips):
+        from exordos_core.user_api.network.dm import models as catalog
+
+        keep = {fip["public"] for fip in fips}
+        return sorted(
+            str(address.address)
+            for address in _comparison_read(
+                ("retired-addresses", str(port_uuid)),
+                lambda: catalog.Address.objects.get_all(
+                    filters={"association": dm_filters.EQ(port_uuid)}
+                ),
+            )
+            if str(address.address) not in keep
+        )
+
+    @staticmethod
+    def _withdrawal_acknowledged(target):
+        actual = ua_models.Resource.objects.get_one_or_none(
+            filters={
+                "kind": dm_filters.EQ(target.kind),
+                "uuid": dm_filters.EQ(target.uuid),
+            }
+        )
+        from exordos_core.network.contracts import applied_by_owner
+
+        return applied_by_owner(target, actual) and actual.status == ACTIVE_STATUS
+
+    def _settle_publications(self):
+        from exordos_core.user_api.network.dm import models as catalog
+
+        for snapshot in catalog.Address.objects.get_all(
+            filters={"association": dm_filters.IsNot(None)}
+        ):
+            from exordos_core.network.contracts import atomic_session
+
+            with atomic_session(snapshot._get_engine()) as session:
+                address = catalog.Address.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(snapshot.uuid)},
+                    session=session,
+                    locked=True,
+                )
+                if address is None or address.association is None:
+                    continue
+                target = ua_models.TargetResource.objects.get_one_or_none(
+                    filters={
+                        "kind": dm_filters.EQ("evpn_port"),
+                        "uuid": dm_filters.EQ(address.association),
+                    },
+                    session=session,
+                    locked=True,
+                )
+                if target is None or not self._withdrawal_acknowledged(target):
+                    continue
+                enabled = target.value.get("enabled", True)
+                if enabled and any(
+                    str(f.get("public")) == str(address.address)
+                    for f in target.value.get("fips", [])
+                ):
+                    continue
+                if enabled and str(address.address) not in target.value.get(
+                    "retired_fips", []
+                ):
+                    continue
+                address.release_publication(session=session)
+                if address.delete_requested:
+                    address.owner_port = None
+                    # Compiler-owned bookkeeping, not a user rebinding.
+                    super(catalog.Address, address).update(session=session)
+                    address.delete(session=session)
+
+    def _settle_withdrawals(self):
+        for subnet_target in self._list_resources(SUBNET_KIND, self._network.uuid):
+            for target in self._list_resources("evpn_port", subnet_target.uuid):
+                if target.value.get(
+                    "enabled", True
+                ) or not self._withdrawal_acknowledged(target):
+                    continue
+                agent = target.agent
+                target.delete()
+                if agent is not None:
+                    self._collect_host_nfs(agent, self._find_subnet(subnet_target.uuid))
+                    self._collect_host(agent)
+
+    @staticmethod
+    def _compile_rule(rule: dict, network=None) -> dict:
         """Lower one ruleset entry to the agent's allow-list entry.
 
         ``{direction, protocol, port?, remote_ip?}`` becomes
@@ -1051,7 +1330,11 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
             # The agent matches the group's numeric identity. A dangling
             # reference compiles to a match-nothing rule (fail closed).
             carried = OvsEvpnNetworkDriver._identity_group(group)
-            if carried is None:
+            if (
+                carried is None
+                or network is not None
+                and str(carried.network) != str(network)
+            ):
                 LOG.error("Rule names identity group %s, which is gone", group)
                 return {"direction": compiled["direction"], "proto": "none"}
             compiled["remote_identity"] = int(carried.identity)
@@ -1065,8 +1348,11 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         """The named group, or None if it is gone."""
         from exordos_core.user_api.network.dm import models as net_api_models
 
-        return net_api_models.IdentityGroup.objects.get_one_or_none(
-            filters={"uuid": dm_filters.EQ(group_uuid)}
+        return _comparison_read(
+            ("identity", str(group_uuid)),
+            lambda: net_api_models.IdentityGroup.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(group_uuid)}
+            ),
         )
 
     def _compile_identity(
@@ -1080,14 +1366,13 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         One bit per group: the subnet's default (unless opted out) plus each
         named group. Zero means unidentified; no group rule matches it.
         """
-        config = getattr(port, "config", None)
         mark = 0
         # Named groups add to the subnet's group; leaving it is explicit.
-        if subnet is not None and getattr(config, "subnet_group", None) is not False:
+        if subnet is not None and getattr(port, "network_identity", None) is not False:
             default = self._default_identity_group(subnet, seed=seed)
             if default is not None:
                 mark |= int(default.identity)
-        for named in getattr(config, "identity_groups", None) or []:
+        for named in port.identity_groups:
             group = self._identity_group(named)
             if group is not None and subnet is not None:
                 # `network` may be a prefetched object or a uuid.
@@ -1114,38 +1399,37 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         return mark
 
     def _default_identity_group(self, subnet: models.Subnet, seed: bool = True):
-        """The subnet's own group, seeded on first use.
+        """The whole network's group, seeded on first use.
 
         The default rule names this group rather than the subnet CIDR, so
         membership is not decided by a spoofable address.
         """
+        from exordos_core.network.contracts import automatic_identity_uuid
         from exordos_core.user_api.network.dm import models as net_api_models
 
-        # Scoped by network: any project may create a group with this name.
-        existing = sorted(
-            net_api_models.IdentityGroup.objects.get_all(
-                filters={
-                    "name": dm_filters.EQ(nc.default_group_name(subnet.uuid)),
-                    "network": dm_filters.EQ(subnet.network),
-                }
-            ),
-            key=lambda group: str(group.uuid),
+        existing = self._identity_group(
+            automatic_identity_uuid(getattr(subnet.network, "uuid", subnet.network))
         )
-        if existing:
-            return existing[0]
+        if existing is not None:
+            return existing
         if not seed:
             # A read must not create what it came to look at.
             return None
         try:
             group = net_api_models.IdentityGroup(
-                uuid=sys_uuid.uuid4(),
-                name=nc.default_group_name(subnet.uuid),
-                description="Default identity of subnet %s" % subnet.uuid,
+                uuid=sys_uuid.uuid5(
+                    NF_SLICE_NS,
+                    "identity:%s" % getattr(subnet.network, "uuid", subnet.network),
+                ),
+                name=nc.default_group_name(
+                    getattr(subnet.network, "uuid", subnet.network)
+                ),
+                description="Automatic identity of network %s" % subnet.network,
                 project_id=subnet.project_id,
                 network=subnet.network,
                 # Spent bits land in the `except` (deny-all between guests);
                 # `Subnet.insert` checks up front, so only a race gets here.
-                identity=net_api_models.IdentityGroup.allocate_identity(subnet.network),
+                automatic=True,
             )
             group.insert()
             LOG.info("Seeded the default identity group of subnet %s", subnet.uuid)
@@ -1169,8 +1453,11 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         """
         name = port.name
         if not name and port.node is not None:
-            node = models.Node.objects.get_one_or_none(
-                filters={"uuid": dm_filters.EQ(port.node)}
+            node = _comparison_read(
+                ("node", str(port.node)),
+                lambda: models.Node.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(port.node)}
+                ),
             )
             name = node.name if node is not None else None
         if not name or not _DNS_LABEL.fullmatch(name):
@@ -1185,24 +1472,23 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
     ) -> list:
         """Compile the port's security groups into the agent's allow-list.
 
-        A group is an allow-list in both directions (AWS-SG semantics). A
-        port with no group gets its subnet's default group instead, which
-        attaching any group replaces.
+        With no group binding there is no SG filtering. Bound groups union
+        their allow rules; an attached empty or missing group grants nothing.
         """
-        config = getattr(port, "config", None)
-        if config is None or getattr(config, "KIND", None) != "simple":
-            return self._default_security_rules(subnet, seed=seed)
-        sg_uuids = list(getattr(config, "security_groups", None) or [])
+        sg_uuids = port.security_groups
         if not sg_uuids:
-            return self._default_security_rules(subnet, seed=seed)
+            return []
         # Lazy import: the SG catalog model lives in user_api (a higher layer);
         # imported here only when a port actually references a group.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         rules = []
         for sg_uuid in sg_uuids:
-            sg = net_api_models.SecurityGroup.objects.get_one_or_none(
-                filters={"uuid": dm_filters.EQ(sg_uuid)}
+            sg = _comparison_read(
+                ("security-group", str(sg_uuid)),
+                lambda: net_api_models.SecurityGroup.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(sg_uuid)}
+                ),
             )
             if sg is None:
                 # Removed out of band (the API refuses it): fail closed.
@@ -1214,70 +1500,22 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                 )
                 rules.extend(self.DENY_ALL)
                 continue
-            for rule in sg.rules or []:
-                rules.append(self._compile_rule(rule))
+            for rule in _comparison_read(
+                ("rules", str(sg_uuid)), lambda: sg.rules or []
+            ):
+                rules.append(
+                    self._compile_rule(
+                        rule,
+                        network=getattr(subnet.network, "uuid", subnet.network)
+                        if subnet is not None
+                        else None,
+                    )
+                )
         return rules or list(self.DENY_ALL)
 
     # `proto: none` matches nothing: an allow-list with no allow isolates
     # the port. Used whenever the rules cannot be determined.
     DENY_ALL = ({"direction": "egress", "proto": "none"},)
-
-    def _default_security_rules(
-        self, subnet: tp.Optional[models.Subnet], seed: bool = True
-    ) -> tp.List[dict]:
-        """The subnet's default group (a `splitter` NF), seeded on first use.
-
-        Everything out, in only from the subnet's own group. When it cannot
-        be produced, the port gets DENY_ALL: an empty list would mean "no
-        filtering".
-        """
-        if subnet is None:
-            return []
-        nf = self._default_group_nf(subnet, seed=seed)
-        if nf is None:
-            LOG.error(
-                "Subnet %s has no default security group and one could not be "
-                "seeded; its ports compile to deny-all until it has",
-                subnet.uuid,
-            )
-            return list(self.DENY_ALL)
-        return [
-            self._compile_rule(rule) for rule in (nf.config or {}).get("rules") or []
-        ] or list(self.DENY_ALL)
-
-    def _default_group_nf(self, subnet: models.Subnet, seed: bool = True):
-        from exordos_core.user_api.network.dm import models as net_api_models
-
-        existing = net_api_models.NetworkFunction.objects.get_one_or_none(
-            filters={
-                "kind": dm_filters.EQ("splitter"),
-                "owner_subnet": dm_filters.EQ(subnet.uuid),
-            }
-        )
-        if existing is not None or not seed:
-            return existing
-        rules = self._default_group_rules(subnet)
-        if rules is None:
-            # No identity group: don't fall back to an address-based rule.
-            return None
-        try:
-            nf = net_api_models.NetworkFunction(
-                uuid=sys_uuid.uuid4(),
-                name="default-%s" % subnet.uuid,
-                project_id=subnet.project_id,
-                kind="splitter",
-                config={"rules": rules},
-                provenance=net_api_models.NFProvenance.GENERATED.value,
-                owner_subnet=subnet.uuid,
-            )
-            nf.insert()
-            LOG.info("Seeded the default security group of subnet %s", subnet.uuid)
-            return nf
-        except Exception:
-            LOG.exception(
-                "Could not seed the default security group of %s", subnet.uuid
-            )
-            return None
 
     def _wiring_agent(self, node_uuid: sys_uuid.UUID) -> tp.Optional[sys_uuid.UUID]:
         """The hypervisor agent that wires the port (``hypervisor_node``).
@@ -1308,6 +1546,8 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         return None
 
     def create_port(self, port: models.Port) -> models.Port:
+        if not port.ready_for_activation():
+            return port
         if port.node is None:
             # Nothing to schedule yet; NetworkService retries next loop.
             LOG.warning("Port %s has no node, skipping", port.uuid)
@@ -1344,6 +1584,7 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         res = self._get_resource(evpn_models.EvpnPort.get_resource_kind(), port.uuid)
         new_res = self._build_evpn_port(port, subnet).to_ua_resource(master=subnet.uuid)
         res.update_value(new_res)
+        res.tracked_at = new_res.tracked_at
         res.agent = self._wiring_agent(port.node) or res.agent
         res.update()
         if res.agent is not None:
@@ -1385,45 +1626,20 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         return res.hash != new_res.hash
 
     def delete_port(self, port: models.Port) -> None:
-        node_uuid = None
         try:
-            res = self._get_resource(
-                evpn_models.EvpnPort.get_resource_kind(), port.uuid
-            )
-            node_uuid = res.agent
-            res.delete()
+            target = self._get_resource("evpn_port", port.uuid)
         except ra_storage_exc.RecordNotFound:
-            pass
-        self._release_owned_addresses(port.uuid)
-        if node_uuid is not None:
-            try:
-                self._collect_host_nfs(node_uuid, self._find_subnet(port.subnet))
-            except Exception:
-                LOG.exception("Could not collect the function slices of %s", node_uuid)
-            self._collect_host(node_uuid)
+            return
+        if not target.value.get("enabled", True):
+            return
+        value = dict(target.value, enabled=False)
+        target.value = value
+        target.calculate_hash()
+        import datetime
 
-    @staticmethod
-    def _release_owned_addresses(port_uuid: sys_uuid.UUID) -> None:
-        """Give back what a departing port held (best-effort).
-
-        An address it owns (``floating_from``) is deleted — Address.delete
-        refuses owned rows, so this is the only path. An address it merely
-        cited is the caller's (Elastic-IP shape) and is only disassociated.
-        """
-        from exordos_core.user_api.network.dm import models as net_api_models
-
-        OvsEvpnNetworkDriver._settle_associations(port_uuid, None)
-        try:
-            for addr in net_api_models.Address.objects.get_all(
-                filters={"owner_port": dm_filters.EQ(port_uuid)}
-            ):
-                # Clear the pointers so the model's delete guards pass.
-                addr.owner_port = None
-                addr.association = None
-                addr.update()
-                addr.delete()
-        except Exception:
-            LOG.exception("Could not release owned addresses of port %s", port_uuid)
+        target.tracked_at = datetime.datetime.now(datetime.timezone.utc)
+        target.status = "IN_PROGRESS"
+        target.update()
 
     # --- per-node host resources -----------------------------------------
 
@@ -1447,13 +1663,22 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
             return "Created"
         if update and res.hash != new_res.hash:
             res.update_value(new_res)
+            res.tracked_at = new_res.tracked_at
             res.update()
             return "Updated"
         return None
 
     def _ensure_host(self, node_uuid: sys_uuid.UUID) -> None:
         """Create or refresh the node's evpn_host resource."""
-        published = _published_addresses()
+        cache = _RECONCILE_READS.get()
+        if cache is not None:
+            cache.setdefault("hosts", set()).add(node_uuid)
+            return
+        self._write_host(node_uuid, _published_addresses())
+
+    def _write_host(
+        self, node_uuid: sys_uuid.UUID, published: tp.Optional[list]
+    ) -> None:
         host = evpn_models.EvpnHost(
             uuid=node_uuid,
             as_number=CONF.evpn.as_number,
@@ -1485,9 +1710,13 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                 uuid=slice_uuid,
                 kind=nf.kind,
                 vni=self._vni,
-                config=dict(nf.config or {}),
+                config=dict(nf.effective_config or {}),
                 agent_uuid=node_uuid,
             )
+            cache = _RECONCILE_READS.get()
+            if cache is not None:
+                cache.setdefault("nf-targets", {})[slice_uuid] = (compiled, subnet.uuid)
+                continue
             written = self._write_resource(compiled, master=subnet.uuid)
             if written:
                 LOG.info(
@@ -1711,11 +1940,16 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
             filters={"kind": dm_filters.In(list(self.OWNED_KINDS))}
         ):
             res = actual.get((target.kind, target.uuid))
+            from exordos_core.network.contracts import applied_by_owner
+
+            if res is not None and not applied_by_owner(
+                target, res, require_hash=False
+            ):
+                res = None
             if target.kind == "evpn_host":
                 host_statuses[target.uuid] = (
                     res.status
                     if res is not None
-                    and res.node == target.agent == target.uuid
                     and (res.status != ACTIVE_STATUS or res.hash == target.hash)
                     else "IN_PROGRESS"
                 )

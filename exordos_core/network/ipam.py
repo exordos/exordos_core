@@ -73,6 +73,10 @@ def ledger_reservations(
     ):
         if row.address:
             held[str(row.subnet)].append(netaddr.IPAddress(row.address))
+    from exordos_core.network.contracts import published_private_addresses
+
+    for subnet, addresses in published_private_addresses(uuids).items():
+        held[subnet].extend(netaddr.IPAddress(address) for address in addresses)
     return held
 
 
@@ -124,7 +128,7 @@ class Ipam:
         namespace) and its netboot server.
         """
         addresses = []
-        for router in subnet.routers or []:
+        for router in getattr(subnet, "effective_routers", subnet.routers) or []:
             via = router.get("via") if isinstance(router, dict) else None
             if via is not None:
                 addresses.append(netaddr.IPAddress(str(via)))
@@ -160,11 +164,10 @@ class Ipam:
             )
 
         pool = [(int(ip_start), int(ip_end))]
-        for address in self.infrastructure_addresses(subnet):
-            self.occupy_ip(int(address), pool)
+        infrastructure = {int(a) for a in self.infrastructure_addresses(subnet)}
         taken = {int(netaddr.IPAddress(p.ipv4)) for p in ports if p.ipv4 is not None}
         # Only what falls in the pool.
-        for address in {int(a) for a in reserved} - taken:
+        for address in infrastructure | ({int(a) for a in reserved} - taken):
             if int(ip_start) <= address <= int(ip_end):
                 self.occupy_ip(address, pool)
         for port in ports:
@@ -174,7 +177,12 @@ class Ipam:
                     continue
 
                 ip = int(netaddr.IPAddress(port.ipv4))
-                self.occupy_ip(ip, pool)
+                if ip in infrastructure:
+                    continue
+                # Static ports may live below the allocation range, but
+                # addresses outside the subnet still need to be reported.
+                if int(ip_start) <= ip <= int(ip_end) or port.ipv4 not in subnet.cidr:
+                    self.occupy_ip(ip, pool)
 
         return pool
 
@@ -213,7 +221,7 @@ class Ipam:
         if address in self._reported_out_of_pool:
             return
         self._reported_out_of_pool.add(address)
-        LOG.warning("IP %s is not in the pool", address)
+        LOG.warning("IP %s is not in the pool", netaddr.IPAddress(address))
 
     def allocate_ip(
         self,
@@ -272,7 +280,7 @@ class Ipam:
                         address_pool.pop(i + 1)
                 return
             elif s < address < e:
-                LOG.warning("IP %s is not allocated", address)
+                LOG.warning("IP %s is not allocated", netaddr.IPAddress(address))
                 return
 
         address_pool.append((address, address))

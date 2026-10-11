@@ -1,5 +1,8 @@
 # Letting a group reach a private network
 
+For the canonical Port/Address/SG API, use [SDN networking resources](sdn-api-contract.md).
+The inline Port security/FIP examples below describe the earlier prototype.
+
 A security group today says what a port accepts by address: its default is
 "everything out, and in only from my own subnet" (a `splitter` NF owned by
 the subnet). The question this note answers is what comes after that — how a

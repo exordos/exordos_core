@@ -46,6 +46,9 @@ def _sweep(driver, targets, actual):
         mock.patch.object(evpn.ua_models, "TargetResource") as target_model,
         mock.patch.object(evpn.ua_models, "Resource") as actual_model,
         mock.patch.object(evpn.models.MachinePool, "objects") as pools,
+        mock.patch(
+            "exordos_core.network.contracts.applied_by_owner", return_value=True
+        ),
     ):
         target_model.objects.get_all.return_value = targets
         actual_model.objects.get_all.return_value = actual

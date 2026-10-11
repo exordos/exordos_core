@@ -26,7 +26,9 @@ from exordos_core.user_api.network.dm import models as net_models
 
 
 def _subnet(cidr="10.42.0.0/24"):
-    return mock.MagicMock(cidr=netaddr.IPNetwork(cidr) if cidr else None)
+    return mock.MagicMock(
+        cidr=netaddr.IPNetwork(cidr) if cidr else None, ip_range_pair=None
+    )
 
 
 def _check(address, subnet=None):

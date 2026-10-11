@@ -1,0 +1,73 @@
+name: sdn_demo
+version: "0.1.0"
+schema_version: 1
+api_version: v1
+requirements:
+  core:
+    from_version: "0.0.0"
+resources:
+  $core.network.networks:
+    private:
+      name: demo-private
+      driver_spec:
+        driver: ovs_evpn
+    external:
+      name: demo-external
+      driver_spec:
+        driver: ovs_evpn
+      access: public
+  $core.network.subnets:
+    private:
+      network: $core.network.networks.$private:uuid
+      cidr: 10.101.0.0/24
+    external_pool:
+      network: $core.network.networks.$external:uuid
+      cidr: 192.168.1.0/24
+      ip_range: 192.168.1.50-192.168.1.99
+      placeable: false
+      floating_pool: true
+      dhcp: false
+  $core.compute.nodes:
+    vm:
+      name: sdn-demo
+      cores: 2
+      ram: 2048
+      networking: []
+      disk_spec:
+        kind: root_disk
+        size: 10
+        image: https://repo.exordos.com/exordos-base/1.1.2/exordos-base.raw.zst
+  $core.network.ports:
+    private:
+      network: $core.network.networks.$private:uuid
+      node: $core.compute.nodes.$vm:uuid
+      port_security: true
+      # Omit index for automatic assignment; declarative reapply preserves it.
+  $core.network.catalog.addresses:
+    fip:
+      kind: floating
+      network: $core.network.networks.$external:uuid
+      port: $core.network.ports.$private:uuid
+  $core.network.catalog.security_groups:
+    ssh:
+      name: demo-ssh
+  $core.network.catalog.security_group_rules:
+    ssh:
+      security_group: $core.network.catalog.security_groups.$ssh:uuid
+      direction: ingress
+      protocol: tcp
+      port: 22
+      remote_ip: 192.168.1.0/24
+    egress:
+      security_group: $core.network.catalog.security_groups.$ssh:uuid
+      direction: egress
+      protocol: any
+  $core.network.port_security_groups:
+    ssh:
+      port: $core.network.ports.$private:uuid
+      security_group: $core.network.catalog.security_groups.$ssh:uuid
+exports:
+  vm:
+    link: $core.compute.nodes.$vm
+  port:
+    link: $core.network.ports.$private

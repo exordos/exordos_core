@@ -87,7 +87,11 @@ class TestSharedNetwork:
         client = user_api_client(
             auth_test1_user, permissions=["network.address.create"]
         )
-        payload = {"subnet": str(private.uuid), "project_id": CALLER_PROJECT}
+        payload = {
+            "kind": "reservation",
+            "subnet": str(private.uuid),
+            "project_id": CALLER_PROJECT,
+        }
         with pytest.raises(bazooka_exc.BadRequestError):
             client.post(_addresses(client), json=payload)
 
@@ -100,7 +104,11 @@ class TestSharedNetwork:
         )
         resp = client.post(
             _addresses(client),
-            json={"subnet": str(public.uuid), "project_id": CALLER_PROJECT},
+            json={
+                "kind": "reservation",
+                "subnet": str(public.uuid),
+                "project_id": CALLER_PROJECT,
+            },
         )
         assert resp.status_code == 201, resp.text
         assert netaddr.IPAddress(resp.json()["address"]) in public.cidr
@@ -120,7 +128,11 @@ class TestSharedNetwork:
         )
         resp = client.post(
             _addresses(client),
-            json={"subnet": str(pool.uuid), "project_id": CALLER_PROJECT},
+            json={
+                "kind": "reservation",
+                "subnet": str(pool.uuid),
+                "project_id": CALLER_PROJECT,
+            },
         )
         assert resp.status_code == 201, resp.text
         assert netaddr.IPAddress(resp.json()["address"]) in pool.cidr
@@ -144,7 +156,11 @@ class TestSharedNetwork:
         with pytest.raises(bazooka_exc.BadRequestError):
             client.post(
                 _addresses(client),
-                json={"subnet": str(neighbour.uuid), "project_id": CALLER_PROJECT},
+                json={
+                    "kind": "reservation",
+                    "subnet": str(neighbour.uuid),
+                    "project_id": CALLER_PROJECT,
+                },
             )
 
     def test_pinning_an_address_in_a_foreign_public_subnet_needs_permission(
@@ -152,6 +168,7 @@ class TestSharedNetwork:
     ):
         public = _foreign_subnet("public", "10.75.0.0/24")
         pinned = {
+            "kind": "reservation",
             "subnet": str(public.uuid),
             "address": "10.75.0.9",
             "project_id": CALLER_PROJECT,
@@ -164,6 +181,10 @@ class TestSharedNetwork:
         )
         with pytest.raises(bazooka_exc.ForbiddenError):
             creator.post(_addresses(creator), json=pinned)
+        by_network = {key: value for key, value in pinned.items() if key != "subnet"}
+        by_network["network"] = str(public.network)
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            creator.post(_addresses(creator), json=by_network)
 
         # With the explicit-address permission it goes through.
         pinner = user_api_client(
@@ -219,11 +240,15 @@ class TestCrossTenantWrites:
         client = user_api_client(auth_user_admin)
         created = client.post(
             _addresses(client),
-            json={"subnet": str(public.uuid), "project_id": CALLER_PROJECT},
+            json={
+                "kind": "reservation",
+                "subnet": str(public.uuid),
+                "project_id": CALLER_PROJECT,
+            },
         )
         assert created.status_code == 201, created.text
         item = _address_item(client, created.json()["uuid"])
-        with pytest.raises(bazooka_exc.ForbiddenError):
+        with pytest.raises(bazooka_exc.ConflictError):
             client.put(item, json={"subnet": str(private.uuid)})
 
     def test_an_address_update_pinning_in_a_foreign_public_subnet_needs_permission(
@@ -238,7 +263,11 @@ class TestCrossTenantWrites:
         )
         created = client.post(
             _addresses(client),
-            json={"subnet": str(public.uuid), "project_id": CALLER_PROJECT},
+            json={
+                "kind": "reservation",
+                "subnet": str(public.uuid),
+                "project_id": CALLER_PROJECT,
+            },
         )
         assert created.status_code == 201, created.text
         item = _address_item(client, created.json()["uuid"])
@@ -371,7 +400,7 @@ class TestAReferenceIsNotMovedAway:
         client.post(client.build_collection_uri(["network", "subnets"]), json=sub)
 
         url = client.build_resource_uri(["network", "subnets", sub["uuid"]])
-        with pytest.raises(bazooka_exc.ForbiddenError):
+        with pytest.raises(bazooka_exc.ConflictError):
             client.put(url, json={"network": str(_foreign_network().uuid)})
 
     def test_an_identity_group_stays_on_its_network(

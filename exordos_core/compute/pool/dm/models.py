@@ -175,6 +175,9 @@ class PoolMachine(
     project_id = properties.property(types.UUID(), required=True, read_only=True)
 
     port_info = properties.property(types.Dict(), default=dict)
+    ports_info = properties.property(
+        types.AllowNone(types.TypedList(types.Dict())), default=None
+    )
 
     @classmethod
     def get_resource_kind(cls) -> str:
@@ -186,7 +189,7 @@ class PoolMachine(
 
         Refer to the Resource model for more details about target fields.
         """
-        return frozenset(
+        fields = frozenset(
             (
                 "uuid",
                 "name",
@@ -201,6 +204,13 @@ class PoolMachine(
                 "image",
             )
         )
+        return fields if self.ports_info is None else fields | {"ports_info"}
+
+    def get_resource_ignore_fields(self):
+        fields = set(super().get_resource_ignore_fields())
+        if self.ports_info is None:
+            fields.add("ports_info")
+        return fields
 
     @classmethod
     def from_machine_and_port(

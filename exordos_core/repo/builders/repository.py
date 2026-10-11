@@ -36,6 +36,9 @@ class Repository(models.Repository, ua_models.InstanceMixin):
     def get_resource_kind(cls) -> str:
         return "repo_proxy_repository"
 
+    def get_resource_ignore_fields(self) -> tp.Collection[str]:
+        return {*super().get_resource_ignore_fields(), "refresh_requested"}
+
 
 class RepoProxyBuilderService(
     sdk_builder.UniversalBuilderService,
@@ -62,11 +65,9 @@ class RepoProxyBuilderService(
 
         # Check each repository for refresh
         for repo in repositories:
-            # Skip repositories without refresh rate
-            if not repo.refresh_rate:
-                continue
-
-            if repo.next_refresh and repo.next_refresh <= now:
+            if repo.refresh_requested or (
+                repo.refresh_rate and repo.next_refresh and repo.next_refresh <= now
+            ):
                 LOG.info(
                     "Repository %s needs refresh, forcing update",
                     repo.name,
@@ -256,15 +257,15 @@ class RepoProxyBuilderService(
         resource: ua_models.TargetResource,
         derivatives: tp.Collection[ua_models.TargetResource] = tuple(),
     ) -> None:
-        """Handle repository refresh if next_refresh time has passed."""
+        """Handle an explicit refresh or an elapsed periodic deadline."""
         super().post_update_instance_resource(instance, resource, derivatives)
 
-        # Check if refresh is needed
-        if not instance.refresh_rate:
-            return
-
         now = datetime.datetime.now(datetime.timezone.utc)
-        if instance.next_refresh and instance.next_refresh <= now:
+        if instance.refresh_requested or (
+            instance.refresh_rate
+            and instance.next_refresh
+            and instance.next_refresh <= now
+        ):
             LOG.info(
                 "Refreshing repository %s",
                 instance.name,
@@ -274,20 +275,23 @@ class RepoProxyBuilderService(
             except Exception:
                 # A failed refresh must not become a retry storm.
                 LOG.exception(
-                    "Repository %s refresh failed; retrying in %ss",
+                    "Repository %s refresh failed; periodic refresh interval: %ss",
                     instance.name,
                     instance.refresh_rate,
                 )
                 if instance.status != models.RepositoryStatus.DISABLED.value:
                     instance.status = models.RepositoryStatus.ERROR.value
-                instance.next_refresh = datetime.datetime.now(
-                    datetime.timezone.utc
-                ) + datetime.timedelta(seconds=instance.refresh_rate)
+                if instance.refresh_rate:
+                    instance.next_refresh = datetime.datetime.now(
+                        datetime.timezone.utc
+                    ) + datetime.timedelta(seconds=instance.refresh_rate)
             else:
                 # A successful refresh clears a previous failure. Only
                 # clear ERROR so a user-set DISABLED is left untouched.
                 if instance.status == models.RepositoryStatus.ERROR.value:
                     instance.status = models.RepositoryStatus.ACTIVE.value
+            finally:
+                instance.refresh_requested = False
 
     def can_actualize_outdated_instance_resource(
         self, instance: ua_models.InstanceMixin

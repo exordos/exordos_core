@@ -24,15 +24,13 @@ subnet is still refused.
 from unittest import mock
 import uuid as sys_uuid
 
+from gcl_iam.api import controllers as iam_controllers
 import pytest
 
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
-from gcl_iam.api import controllers as iam_controllers
-
 from exordos_core.user_api.compute.api import controllers
-
 
 TENANT = sys_uuid.uuid4()
 SERVICE = sys_uuid.uuid4()
@@ -104,8 +102,11 @@ class TestBothWaysInAreGated:
     def test_an_edit_that_moves_a_leg_is_asked_the_same_question(self):
         controller = self._controller()
         legs = [_leg(subnet=sys_uuid.uuid4())]
-        with self._foreign_subnet(), mock.patch.object(
-            iam_controllers.PolicyBasedController, "update", return_value=None
+        with (
+            self._foreign_subnet(),
+            mock.patch.object(
+                iam_controllers.PolicyBasedController, "update", return_value=None
+            ),
         ):
             controllers.NodesController.update(
                 controller, sys_uuid.uuid4(), interfaces=legs
@@ -114,8 +115,11 @@ class TestBothWaysInAreGated:
 
     def test_an_edit_that_says_nothing_about_legs_asks_nothing(self):
         controller = self._controller()
-        with self._foreign_subnet(), mock.patch.object(
-            iam_controllers.PolicyBasedController, "update", return_value=None
+        with (
+            self._foreign_subnet(),
+            mock.patch.object(
+                iam_controllers.PolicyBasedController, "update", return_value=None
+            ),
         ):
             controllers.NodesController.update(controller, sys_uuid.uuid4(), cores=4)
         controller._enforce.assert_not_called()
@@ -127,8 +131,16 @@ class TestBothWaysInAreGated:
         controller._ctx_project_id = SERVICE
         controller._enforce = mock.Mock(return_value=True)
         legs = [_leg(subnet=sys_uuid.uuid4())]
-        with self._foreign_subnet(), mock.patch.object(
-            iam_controllers.PolicyBasedController, "update", return_value=None
+        with (
+            mock.patch.object(
+                controller,
+                "get",
+                return_value=mock.MagicMock(networking=None, interfaces=None),
+            ),
+            self._foreign_subnet(),
+            mock.patch.object(
+                iam_controllers.PolicyBasedController, "update", return_value=None
+            ),
         ):
             controllers.NodeSetsController.update(
                 controller, sys_uuid.uuid4(), interfaces=legs

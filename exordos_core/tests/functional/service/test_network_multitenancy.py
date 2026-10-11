@@ -151,6 +151,7 @@ def _pool(project_id, driver="flat_bridge", access="private", shared_pool=False)
         project_id=project_id,
         dhcp=False,
         placeable=False,
+        floating_pool=True,
         shared_pool=shared_pool,
     )
     pool.insert()
@@ -232,7 +233,9 @@ class TestFloatingPools:
         operator, tenant = sys_uuid.uuid4(), sys_uuid.uuid4()
         pool = _pool(operator, driver="ovs_evpn", access="public")
         leg = _subnet(_network(tenant), tenant)
-        address = net_models.Address(subnet=pool.uuid, project_id=tenant)
+        address = net_models.Address(
+            subnet=pool.uuid, project_id=tenant, kind="floating"
+        )
         address.insert()
 
         _public_port(tenant, leg, {"address": address.uuid}).insert()
@@ -262,9 +265,7 @@ class TestFloatingPools:
         )
         forged.insert()
         pool = _pool(sys_uuid.uuid4(), shared_pool=True)
-        real = net_models.Address(
-            subnet=pool.uuid, project_id=tenant, origin="floating"
-        )
+        real = net_models.Address(subnet=pool.uuid, project_id=tenant, kind="floating")
         real.insert()
 
         published = evpn._published_addresses()
@@ -309,7 +310,7 @@ class TestPortsOnFlatSubnets:
 
         with pytest.raises(ex_exceptions.ValidateException) as exc:
             _port_on(subnet, tenant).insert()
-        assert "another project" in str(exc.value)
+        assert "no accessible subnet" in str(exc.value)
 
     def test_the_platforms_own_leg_there_is_let_through(self):
         """A node's generated port keeps the node's project on the operator's

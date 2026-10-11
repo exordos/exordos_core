@@ -26,7 +26,7 @@ from exordos_core.compute.dm import models as compute_models
 
 
 class TestPortApi:
-    """Thin port with polymorphic config kind."""
+    """Canonical ports and independent group memberships."""
 
     def _subnet(self, client, network_factory, subnet_factory):
         net_url = client.build_collection_uri(["network", "networks"])
@@ -45,7 +45,11 @@ class TestPortApi:
         sg = security_group_factory(
             name="port-sg", rules=[{"direction": "ingress", "protocol": "icmp"}]
         )
-        assert client.post(url, json=sg).status_code == 201
+        from exordos_core.tests.functional.restapi.network.test_catalog_api import (
+            _create_sg,
+        )
+
+        assert _create_sg(client, url, sg).status_code == 201
         return sg
 
     def test_create_port_defaults_to_simple(
@@ -94,10 +98,16 @@ class TestPortApi:
 
         port = port_factory(
             subnet_uuid=subnet["uuid"],
-            config=compute_models.PortSimpleKind(security_groups=[foreign.uuid]),
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.post(self._url(client), json=port)
+            client.post(
+                client.build_collection_uri(["network", "port_security_groups"]),
+                json={
+                    "project_id": str(c.ZERO_UUID),
+                    "port": client.post(self._url(client), json=port).json()["uuid"],
+                    "security_group": str(foreign.uuid),
+                },
+            )
         assert "another project" in str(exc.value.cause.response.text)
 
         # ... and the refusal leaves the owner's object deletable
@@ -178,7 +188,8 @@ class TestPortApi:
 
         given = _stored(ports["user"])
         assert given is not None and given.node is None
-        assert _stored(ports["generated"]) is None
+        generated = _stored(ports["generated"])
+        assert generated is not None and generated.node is None
 
     def test_a_caller_cannot_claim_the_compilers_provenance(
         self,
@@ -216,14 +227,21 @@ class TestPortApi:
         sg_ref = sys_uuid.UUID(
             self._security_group(client, security_group_factory)["uuid"]
         )
-        config = compute_models.PortSimpleKind(
-            security_groups=[sg_ref], dhcp=True, dns=False
-        )
-        port = port_factory(subnet_uuid=subnet["uuid"], config=config)
+        port = port_factory(subnet_uuid=subnet["uuid"], dhcp=True, dns=False)
         output = client.post(self._url(client), json=port).json()
-        assert output["config"]["kind"] == "simple"
-        assert output["config"]["security_groups"] == [str(sg_ref)]
-        assert output["config"]["dhcp"] is True
+        client.post(
+            client.build_collection_uri(["network", "port_security_groups"]),
+            json={
+                "project_id": str(c.ZERO_UUID),
+                "port": output["uuid"],
+                "security_group": str(sg_ref),
+            },
+        )
+        output = client.get(
+            client.build_resource_uri(["network", "ports", output["uuid"]])
+        ).json()
+        assert output["security_groups"] == [str(sg_ref)]
+        assert output["dhcp"] is True and output["dns"] is False
 
     def test_update_port_security(
         self,
@@ -327,13 +345,17 @@ class TestPortApi:
 
         port = port_factory(
             subnet_uuid=subnet["uuid"],
-            config=compute_models.PortSimpleKind(
-                identity_groups=[sys_uuid.UUID(borrowed)]
-            ),
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.post(self._url(client), json=port)
-        assert "another network" in exc.value.cause.response.text
+            client.post(
+                client.build_collection_uri(["network", "port_identity_groups"]),
+                json={
+                    "project_id": str(c.ZERO_UUID),
+                    "port": client.post(self._url(client), json=port).json()["uuid"],
+                    "identity_group": borrowed,
+                },
+            )
+        assert "port's network" in exc.value.cause.response.text
 
         # A group of this network is exactly the same request, and it works.
         mine = client.post(
@@ -348,11 +370,19 @@ class TestPortApi:
         assert mine.status_code == 201, mine.text
         port = port_factory(
             subnet_uuid=subnet["uuid"],
-            config=compute_models.PortSimpleKind(
-                identity_groups=[sys_uuid.UUID(mine.json()["uuid"])]
-            ),
         )
-        assert client.post(self._url(client), json=port).status_code == 201
+        created = client.post(self._url(client), json=port).json()
+        assert (
+            client.post(
+                client.build_collection_uri(["network", "port_identity_groups"]),
+                json={
+                    "project_id": str(c.ZERO_UUID),
+                    "port": created["uuid"],
+                    "identity_group": mine.json()["uuid"],
+                },
+            ).status_code
+            == 201
+        )
 
     def test_a_port_may_not_borrow_another_projects_group(
         self,
@@ -388,10 +418,17 @@ class TestPortApi:
         try:
             port = port_factory(
                 subnet_uuid=subnet["uuid"],
-                config=compute_models.PortSimpleKind(identity_groups=[foreign.uuid]),
             )
             with pytest.raises(bazooka_exc.BadRequestError) as exc:
-                client.post(self._url(client), json=port)
+                created = client.post(self._url(client), json=port).json()
+                client.post(
+                    client.build_collection_uri(["network", "port_identity_groups"]),
+                    json={
+                        "project_id": str(c.ZERO_UUID),
+                        "port": created["uuid"],
+                        "identity_group": str(foreign.uuid),
+                    },
+                )
             assert "another project" in exc.value.cause.response.text
         finally:
             foreign.delete()

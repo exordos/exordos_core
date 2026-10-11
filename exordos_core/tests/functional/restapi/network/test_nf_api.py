@@ -30,7 +30,7 @@ def _seeded(kind, config, **owner):
         name="seeded-%s" % kind,
         project_id=c.ZERO_UUID,
         kind=kind,
-        config=config,
+        generated_config=config,
         provenance="generated",
         **owner,
     )
@@ -95,7 +95,7 @@ class TestNetworkFunctionApi:
             output = response.json()
             assert output["config"]["rules"][0]["port"] == 443
             # Edited by a caller, so it is the caller's from now on.
-            assert output["provenance"] == "user"
+            assert output["provenance"] == "generated"
         finally:
             nf.collect_generated()
 

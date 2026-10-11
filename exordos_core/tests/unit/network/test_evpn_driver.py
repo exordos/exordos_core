@@ -24,10 +24,471 @@ import pytest
 from exordos_core.network.driver import evpn
 
 
+@pytest.fixture(autouse=True)
+def no_database_savepoints(monkeypatch):
+    monkeypatch.setattr(evpn.sql_utils, "savepoint", contextlib.nullcontext)
+
+
+def test_shared_host_and_nf_targets_are_written_once_after_port_batch():
+    driver = _make_driver()
+    subnet = _subnet_stub()
+    subnet.network = driver._network.uuid
+    host = sys_uuid.uuid4()
+    nf = mock.Mock(
+        uuid=sys_uuid.uuid4(), kind="dns", effective_config={"zone_suffix": "old"}
+    )
+    with (
+        mock.patch.object(
+            evpn, "_published_addresses", side_effect=[["192.0.2.1"], ["192.0.2.2"]]
+        ) as published,
+        mock.patch.object(driver, "_write_host") as write_host,
+        mock.patch.object(driver, "_service_nfs", return_value=[nf]),
+        mock.patch.object(driver, "_write_resource") as write_nf,
+    ):
+        with driver.reconcile():
+            for _ in range(4):
+                driver._ensure_host(host)
+                driver._ensure_host_nfs(host, subnet)
+            nf.effective_config = {"zone_suffix": "new"}
+            driver._ensure_host_nfs(host, subnet)
+            write_host.assert_not_called()
+            write_nf.assert_not_called()
+        published.assert_called_once()
+        write_host.assert_called_once_with(host, ["192.0.2.1"])
+        write_nf.assert_called_once()
+        assert write_nf.call_args.args[0].config == {"zone_suffix": "new"}
+        driver._ensure_host(host)
+        assert published.call_count == 2
+
+
+def test_live_nf_rows_are_shared_only_after_successful_seed():
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    subnet = _subnet_stub()
+    subnet.network = driver._network.uuid
+    with (
+        mock.patch.object(catalog.NetworkFunction, "objects") as rows,
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
+        mock.patch.object(evpn, "_default_proxy_forwards", return_value=[]),
+        mock.patch.object(evpn, "_proxy_services", return_value=[]),
+        mock.patch.object(evpn, "_proxy_service_domains", return_value=[]),
+    ):
+        rows.get_one_or_none.return_value = mock.Mock(provenance="operator")
+        rows.get_all.return_value = []
+        for _ in range(2):
+            with driver.reconcile():
+                for _ in range(4):
+                    assert driver._service_nfs(subnet) == []
+        assert rows.get_all.call_count == 4
+        driver._service_nfs(subnet)
+        assert rows.get_all.call_count == 6
+
+
+def test_pending_host_targets_are_flushed_after_failure_and_retried_next_pass():
+    driver = _make_driver()
+    host = sys_uuid.uuid4()
+    with (
+        mock.patch.object(evpn, "_published_addresses", return_value=[]),
+        mock.patch.object(driver, "_write_host") as write_host,
+    ):
+        write_host.side_effect = RuntimeError("host storage unavailable")
+        with pytest.raises(ValueError, match="interrupted reconciliation"):
+            with driver.reconcile():
+                driver._ensure_host(host)
+                raise ValueError("interrupted reconciliation")
+        write_host.assert_called_once()
+        assert evpn._RECONCILE_READS.get() is None
+        write_host.side_effect = None
+        with driver.reconcile():
+            driver._ensure_host(host)
+        assert write_host.call_count == 2
+
+
+def test_image_origins_load_distinct_nodes_in_one_query():
+    subnet = _subnet_stub()
+    node = mock.Mock(uuid=sys_uuid.uuid4())
+    node.disk_spec.image = "http://10.20.0.1/image.raw"
+    ports = [mock.Mock(node=node.uuid) for _ in range(4)]
+    with (
+        mock.patch.object(evpn.models.Port, "objects") as port_rows,
+        mock.patch.object(evpn.models.Node, "objects") as nodes,
+        mock.patch.object(
+            evpn, "_granted_image_origins", return_value={"http://10.20.0.1"}
+        ),
+    ):
+        port_rows.get_all.return_value = ports
+        nodes.get_all.return_value = [node]
+        nodes.get_one_or_none.return_value = node
+        assert evpn._image_origins(subnet) == ["http://10.20.0.1"]
+        nodes.get_all.assert_called_once()
+        nodes.get_one_or_none.assert_not_called()
+
+
+def test_generated_nf_preparation_is_scoped_and_restores_subnet_order():
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    first, second = _subnet_stub(), _subnet_stub()
+    first.network = second.network = driver._network.uuid
+    nf = mock.Mock(provenance="operator")
+    with (
+        mock.patch.object(catalog.NetworkFunction, "objects") as rows,
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
+        mock.patch.object(evpn, "_default_proxy_forwards", return_value=[]) as forwards,
+        mock.patch.object(evpn, "_proxy_services", return_value=[]),
+        mock.patch.object(evpn, "_proxy_service_domains", return_value=[]),
+    ):
+        rows.get_one_or_none.return_value = nf
+        for _ in range(2):
+            with driver.reconcile():
+                for _ in range(4):
+                    driver._seed_service_nfs(first)
+                driver._seed_service_nfs(second)
+                driver._seed_service_nfs(first)
+        assert forwards.call_count == 4
+        assert rows.get_one_or_none.call_count == 18
+        driver._seed_service_nfs(first)
+        driver._seed_service_nfs(first)
+        assert forwards.call_count == 6
+
+
+def test_comparison_reuses_targets_and_batches_node_names():
+    driver = _make_driver()
+    subnet = evpn.models.Subnet.restore_from_simple_view(**_subnet_view())
+    node = mock.Mock(uuid=sys_uuid.uuid4())
+    node.name = "guest"
+    targets = [
+        mock.Mock(
+            uuid=sys_uuid.uuid4(),
+            agent=node.uuid,
+            value={"ipv4": "10.42.0.7", "mac": "52:54:00:aa:bb:cc"},
+        )
+        for _ in range(3)
+    ]
+    with (
+        mock.patch.object(evpn.ua_models.TargetResource, "objects") as resources,
+        mock.patch.object(evpn.models.Node, "objects") as nodes,
+    ):
+        resources.get_all.return_value = targets
+        resources.get_one.return_value = targets[0]
+        nodes.get_all.return_value = [node]
+        nodes.get_one_or_none.return_value = node
+        with driver.reconcile():
+            ports = list(driver.list_ports(subnet))
+            with driver.compare_ports(subnet, ports):
+                for port, target in zip(ports, targets):
+                    assert driver._get_resource("evpn_port", port.uuid) is target
+                    assert driver._guest_name(port) == "guest"
+        resources.get_all.assert_called_once()
+        resources.get_one.assert_not_called()
+        nodes.get_all.assert_called_once()
+        nodes.get_one_or_none.assert_not_called()
+        node.name = "renamed"
+        assert driver._guest_name(ports[0]) == "renamed"
+        driver._get_resource("evpn_port", ports[0].uuid)
+        resources.get_one.assert_called_once()
+
+
+def test_comparison_batches_fip_ledger_and_reads_live_when_publishing():
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    ports = [mock.Mock(uuid=sys_uuid.uuid4(), node=None, config=None) for _ in range(3)]
+    address = mock.Mock(
+        uuid=sys_uuid.uuid4(),
+        port=ports[0].uuid,
+        association=ports[0].uuid,
+        owner_port=None,
+        kind="floating",
+        delete_requested=False,
+        address="192.0.2.10",
+    )
+    retired = mock.Mock(
+        uuid=sys_uuid.uuid4(),
+        port=None,
+        association=ports[0].uuid,
+        owner_port=None,
+        kind="floating",
+        delete_requested=True,
+        address="192.0.2.11",
+    )
+    with mock.patch.object(catalog.Address, "objects") as ledger:
+        ledger.get_all.return_value = [address, retired]
+        ledger.get_one_or_none.side_effect = lambda filters: (
+            address if filters["port"].value == ports[0].uuid else None
+        )
+        with driver.compare_ports(_subnet_stub(), ports):
+            assert driver._compile_fips(ports[0], claim=False) == [
+                {"public": "192.0.2.10"}
+            ]
+            assert driver._retired_fips(ports[0].uuid, [{"public": "192.0.2.10"}]) == [
+                "192.0.2.11"
+            ]
+            for port in ports[1:]:
+                assert driver._compile_fips(port, claim=False) == []
+                assert driver._retired_fips(port.uuid, []) == []
+            ledger.get_all.assert_called_once()
+            ledger.get_one_or_none.assert_not_called()
+            assert driver._public_address(ports[0], allocate=True) is address
+            ledger.get_one_or_none.assert_called_once()
+        driver._public_address(ports[0], allocate=False)
+        assert ledger.get_one_or_none.call_count == 2
+
+
+def test_port_network_uses_its_prefetched_subnet_when_casting():
+    from exordos_core.network.dm import models as related
+    from exordos_core.user_api.network.dm import models as catalog
+
+    network = evpn.models.Network(project_id=sys_uuid.uuid4(), name="network")
+    view = _subnet_view()
+    base_subnet = evpn.models.Subnet.restore_from_simple_view(**view)
+    fields = {name: getattr(base_subnet, name) for name in base_subnet.properties}
+    fields["network"] = network
+    subnet = related.Subnet(**fields)
+    port = related.Port(
+        subnet=subnet, project_id=subnet.project_id, mac=evpn.models.Port.generate_mac()
+    )
+    with (
+        mock.patch.object(evpn.models.Subnet, "objects") as subnets,
+        mock.patch.object(
+            catalog.PortSecurityGroup, "objects", **{"get_all.return_value": []}
+        ),
+        mock.patch.object(
+            catalog.PortIdentityGroup, "objects", **{"get_all.return_value": []}
+        ),
+    ):
+        assert port.network == network.uuid
+        base_port = port.cast_to_base()
+        subnets.get_one_or_none.assert_not_called()
+        subnets.get_one_or_none.return_value = subnet
+        assert base_port.network == network.uuid
+        subnets.get_one_or_none.assert_called_once()
+
+
+@pytest.mark.parametrize("failed", ["nodes", "ledger"])
+def test_failed_comparison_prefetch_uses_live_reads_and_clears_scope(failed):
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    port = mock.Mock(uuid=sys_uuid.uuid4(), node=sys_uuid.uuid4(), config=None)
+    port.name = ""
+    node = mock.Mock()
+    node.name = "fresh"
+    with (
+        mock.patch.object(evpn.models.Node, "objects") as nodes,
+        mock.patch.object(catalog.Address, "objects") as ledger,
+    ):
+        nodes.get_all.return_value = []
+        nodes.get_one_or_none.return_value = node
+        ledger.get_all.return_value = []
+        ledger.get_one_or_none.return_value = None
+        (nodes if failed == "nodes" else ledger).get_all.side_effect = RuntimeError(
+            "batch failed"
+        )
+        with pytest.raises(ValueError, match="comparison interrupted"):
+            with driver.compare_ports(_subnet_stub(), [port]):
+                if failed == "nodes":
+                    assert driver._guest_name(port) == "fresh"
+                    nodes.get_one_or_none.assert_called_once()
+                else:
+                    assert driver._public_address(port, allocate=False) is None
+                    ledger.get_one_or_none.assert_called_once()
+                raise ValueError("comparison interrupted")
+        assert evpn._COMPARISON_READS.get() is None
+
+
+def test_failed_generated_nf_change_does_not_skip_previous_subnet():
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    first, second = _subnet_stub(), _subnet_stub()
+    first.network = second.network = driver._network.uuid
+    nf = mock.Mock(provenance=catalog.NFProvenance.GENERATED.value, generated_config={})
+
+    def sync(config):
+        nf.generated_config = dict(config)
+        if config.get("forwards") == [str(second.uuid)]:
+            raise RuntimeError("partially applied defaults")
+
+    nf.sync_generated.side_effect = sync
+    with (
+        mock.patch.object(catalog.NetworkFunction, "objects") as rows,
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
+        mock.patch.object(
+            evpn,
+            "_default_proxy_forwards",
+            side_effect=lambda subnet: [str(subnet.uuid)],
+        ),
+        mock.patch.object(evpn, "_proxy_services", return_value=[]),
+        mock.patch.object(evpn, "_proxy_service_domains", return_value=[]),
+    ):
+        rows.get_one_or_none.return_value = nf
+        with driver.reconcile():
+            driver._seed_service_nfs(first)
+            with pytest.raises(RuntimeError):
+                driver._seed_service_nfs(second)
+            driver._seed_service_nfs(first)
+            assert nf.generated_config["forwards"] == [str(first.uuid)]
+        assert evpn._RECONCILE_READS.get() is None
+
+
+@pytest.mark.parametrize("mode", ["named", "owned", "deleted_owned", "ambiguous"])
+def test_comparison_fip_lookup_preserves_selection_and_ambiguity(mode):
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    port = mock.Mock(uuid=sys_uuid.uuid4(), node=None)
+    address = mock.Mock(
+        uuid=sys_uuid.uuid4(),
+        port=None,
+        association=None,
+        kind="floating",
+        owner_port=port.uuid,
+        delete_requested=mode == "deleted_owned",
+    )
+    port.config.KIND = "simple"
+    port.config.public = (
+        {"address": address.uuid}
+        if mode == "named"
+        else {"floating_from": sys_uuid.uuid4()}
+    )
+    with mock.patch.object(catalog.Address, "objects") as ledger:
+        ledger.get_all.return_value = (
+            [address, address] if mode == "ambiguous" else [address]
+        )
+        ledger.get_one_or_none.side_effect = evpn.ra_storage_exc.HasManyRecords(
+            model=catalog.Address, filters={}
+        )
+        with driver.compare_ports(_subnet_stub(), [port]):
+            if mode == "ambiguous":
+                with pytest.raises(evpn.ra_storage_exc.HasManyRecords):
+                    driver._public_address(port, allocate=False)
+            else:
+                assert driver._public_address(port, allocate=False) is (
+                    None if mode == "deleted_owned" else address
+                )
+                ledger.get_one_or_none.assert_not_called()
+
+
+def test_port_bindings_are_read_once_per_comparison_and_fresh_afterwards():
+    from exordos_core.compute.dm import models
+    from exordos_core.user_api.network.dm import models as catalog
+
+    ports = [
+        models.Port(
+            project_id=sys_uuid.uuid4(),
+            subnet=sys_uuid.uuid4(),
+            mac=models.Port.generate_mac(),
+        )
+        for _ in range(3)
+    ]
+    sg, identity = sys_uuid.uuid4(), sys_uuid.uuid4()
+    sg_links = [mock.Mock(port=ports[0].uuid, security_group=sg)]
+    ig_links = [mock.Mock(port=ports[1].uuid, identity_group=identity)]
+
+    def matching(rows, filters):
+        wanted = filters["port"].value
+        wanted = wanted if isinstance(wanted, (list, tuple, set)) else [wanted]
+        return [row for row in rows if str(row.port) in {str(p) for p in wanted}]
+
+    with (
+        mock.patch.object(catalog.PortSecurityGroup, "objects") as security,
+        mock.patch.object(catalog.PortIdentityGroup, "objects") as identities,
+        mock.patch.object(models.Subnet, "objects") as subnets,
+    ):
+        subnets.get_one_or_none.return_value = None
+        security.get_all.side_effect = lambda filters: matching(sg_links, filters)
+        identities.get_all.side_effect = lambda filters: matching(ig_links, filters)
+        scope = models.Port.prefetch_bindings
+        with scope(ports):
+            for _ in range(2):
+                assert [p.security_groups for p in ports] == [[sg], [], []]
+                assert [p.identity_groups for p in ports] == [[], [identity], []]
+                for port in ports:
+                    copied = models.Port.restore_from_simple_view(
+                        **port.dump_to_simple_view(save_uuid=True)
+                    )
+                    assert copied.security_groups == port.security_groups
+                    assert copied.identity_groups == port.identity_groups
+            assert security.get_all.call_count == 1
+            assert identities.get_all.call_count == 1
+            ports[0].security_groups.clear()
+            assert ports[0].security_groups == [sg]
+            sg_links.clear()
+            assert ports[0].security_groups == [sg]
+            assert security.get_all.call_count == 1
+            assert identities.get_all.call_count == 1
+        assert ports[0].security_groups == []
+        with scope(ports):
+            assert ports[0].security_groups == []
+        assert security.get_all.call_count == 3
+        assert identities.get_all.call_count == 2
+
+
+def test_port_binding_scope_is_restored_after_error_and_ignores_other_ports():
+    from exordos_core.compute.dm import models
+    from exordos_core.user_api.network.dm import models as catalog
+
+    ports = [
+        models.Port(project_id=sys_uuid.uuid4(), mac=models.Port.generate_mac())
+        for _ in range(2)
+    ]
+    group = sys_uuid.uuid4()
+    with (
+        mock.patch.object(catalog.PortSecurityGroup, "objects") as security,
+        mock.patch.object(catalog.PortIdentityGroup, "objects") as identities,
+    ):
+        security.get_all.return_value = []
+        identities.get_all.return_value = []
+        with models.Port.prefetch_bindings([]):
+            security.get_all.assert_not_called()
+            identities.get_all.assert_not_called()
+        with models.Port.prefetch_bindings([ports[0]]):
+            security.get_all.return_value = [mock.Mock(security_group=group)]
+            assert ports[1].security_groups == [group]
+            assert ports[0].security_groups == []
+            security.get_all.return_value = []
+            with pytest.raises(RuntimeError):
+                with models.Port.prefetch_bindings([ports[1]]):
+                    assert ports[1].identity_groups == []
+                    raise RuntimeError("comparison failed")
+            assert ports[0].security_groups == []
+        security.get_all.return_value = [mock.Mock(security_group=group)]
+        assert ports[0].security_groups == [group]
+
+
+@pytest.mark.parametrize("failed_model", ["PortSecurityGroup", "PortIdentityGroup"])
+def test_failed_port_binding_prefetch_falls_back_to_live_reads(failed_model):
+    from exordos_core.compute.dm import models
+    from exordos_core.user_api.network.dm import models as catalog
+
+    port = models.Port(project_id=sys_uuid.uuid4(), mac=models.Port.generate_mac())
+    sg, identity = sys_uuid.uuid4(), sys_uuid.uuid4()
+    with (
+        mock.patch.object(catalog.PortSecurityGroup, "objects") as security,
+        mock.patch.object(catalog.PortIdentityGroup, "objects") as identities,
+    ):
+        security.get_all.return_value = [mock.Mock(port=port.uuid, security_group=sg)]
+        identities.get_all.return_value = [
+            mock.Mock(port=port.uuid, identity_group=identity)
+        ]
+        failed = security if failed_model == "PortSecurityGroup" else identities
+        failed.get_all.side_effect = [
+            RuntimeError("batch read failed"),
+            failed.get_all.return_value,
+        ]
+        with models.Port.prefetch_bindings([port]):
+            assert port.security_groups == [sg]
+            assert port.identity_groups == [identity]
+
+
 def _network(spec=None):
     network = mock.MagicMock()
     network.uuid = sys_uuid.uuid4()
-    network.driver_spec = spec if spec is not None else {"driver": "ovs_evpn"}
+    given = spec if spec is not None else {"driver": "ovs_evpn"}
+    network.driver_spec = {k: v for k, v in given.items() if k in ("driver", "mtu")}
+    network.driver_state = {k: v for k, v in given.items() if k != "driver"}
     return network
 
 
@@ -43,7 +504,8 @@ def _make_driver(spec=None, used_vnis=()):
     for vni in used_vnis:
         used = mock.MagicMock()
         used.uuid = sys_uuid.uuid4()
-        used.driver_spec = {"driver": "ovs_evpn", "vni": vni}
+        used.driver_spec = {"driver": "ovs_evpn"}
+        used.driver_state = {"vni": vni}
         nets.append(used)
     with mock.patch.object(
         evpn.models.Network, "objects", **{"get_all.return_value": nets}
@@ -81,6 +543,10 @@ def test_hypervisor_identity_follows_current_owned_host_fact(
         uuid=uuid, status="ERROR", description="No suitable HW machines found"
     )
     with (
+        mock.patch(
+            "exordos_core.network.contracts.applied_by_owner",
+            side_effect=lambda target, actual, **kw: actual.node == target.agent,
+        ),
         mock.patch.object(
             evpn.ua_models.Resource,
             "objects",
@@ -152,7 +618,7 @@ def test_rejects_foreign_spec():
 def test_allocates_vni_rt_mtu_and_persists():
     driver = _make_driver(used_vnis=[10000, 10001])
 
-    spec = driver._network.driver_spec
+    spec = driver._network.driver_state
     assert spec["vni"] == 10002
     assert spec["rt"] == "65001:10002"
     assert spec["mtu"] == 1450
@@ -168,7 +634,7 @@ def test_existing_allocation_untouched():
     spec = {"driver": "ovs_evpn", "vni": 12345, "rt": "65001:12345", "mtu": 1400}
     driver = _make_driver(spec=dict(spec))
 
-    stored = driver._network.driver_spec
+    stored = {"driver": "ovs_evpn", **driver._network.driver_state}
     assert {k: stored[k] for k in spec} == spec
     assert stored[evpn.OvsEvpnNetworkDriver.VNI_CONFIRMED] is True
 
@@ -378,7 +844,8 @@ def test_create_port_produces_scheduled_resource():
     assert [nf["kind"] for nf in port_res.value["nfs"]] == ["dhcp", "dns", "proxy"]
     port_dns = next(nf for nf in port_res.value["nfs"] if nf["kind"] == "dns")
     # the port names the function; its settings are in that function's slice
-    assert set(port_dns) == {"kind"}
+    assert set(port_dns) == {"kind", "config"}
+    assert "169.254.169.254" in port_dns["config"]["destinations"]
 
     # The port itself got its allocation back for persistence
     assert str(port.ipv4) == "10.42.0.1"
@@ -511,6 +978,7 @@ def test_delete_port_collects_idle_host():
 
     port_res = mock.MagicMock()
     port_res.agent = node
+    port_res.value = {"enabled": True}
     host_res = mock.MagicMock()
 
     def get_resource(kind, uuid):
@@ -523,8 +991,10 @@ def test_delete_port_collects_idle_host():
         objs.get_all.return_value = []  # no evpn_port left on the node
         driver.delete_port(port)
 
-    port_res.delete.assert_called_once()
-    host_res.delete.assert_called_once()
+    port_res.delete.assert_not_called()
+    port_res.update.assert_called_once()
+    assert port_res.value["enabled"] is False
+    host_res.delete.assert_not_called()
 
 
 def test_delete_port_keeps_busy_host():
@@ -534,6 +1004,7 @@ def test_delete_port_keeps_busy_host():
 
     port_res = mock.MagicMock()
     port_res.agent = sys_uuid.uuid4()
+    port_res.value = {"enabled": True}
     host_res = mock.MagicMock()
 
     def get_resource(kind, uuid):
@@ -546,7 +1017,9 @@ def test_delete_port_keeps_busy_host():
         objs.get_all.return_value = [mock.MagicMock()]  # another port remains
         driver.delete_port(port)
 
-    port_res.delete.assert_called_once()
+    port_res.delete.assert_not_called()
+    port_res.update.assert_called_once()
+    assert port_res.value["enabled"] is False
     host_res.delete.assert_not_called()
 
 
@@ -558,6 +1031,7 @@ def _nf(kind, config=None, uuid=None, outputs=None):
     nf.uuid = uuid or sys_uuid.uuid4()
     nf.kind = kind
     nf.config = config or {}
+    nf.effective_config = config or {}
     nf.outputs = outputs or {}
     return nf
 
@@ -580,14 +1054,11 @@ def _seeded_services(driver, **configs):
     }
     defaults.update(configs)
     nfs = [_nf(kind, config) for kind, config in defaults.items()]
-    # The default security group is seeded the same way and needs a database
-    # too; its own tests drive it directly.
     with (
+        mock.patch.object(driver, "_compile_fips", return_value=[]),
+        mock.patch.object(driver, "_retired_fips", return_value=[]),
         mock.patch.object(
             type(driver), "_service_nfs", lambda self, subnet, seed=True: nfs
-        ),
-        mock.patch.object(
-            type(driver), "_default_group_nf", lambda self, subnet, seed=True: None
         ),
         # The subnet's default identity is a catalog row, seeded the same
         # way and needing the same database.
@@ -617,16 +1088,31 @@ def test_host_services_come_from_the_subnet_and_the_installation():
     port.config = mock.MagicMock(KIND="simple", dhcp=None, dns=None)
     with _seeded_services(driver):
         services = driver._host_services(port, _subnet_stub())
-    # the port names its functions; what each answers with travels as its
-    # own slice, so a port's own resource carries no function configuration
+    # Function settings live in their slices; per-guest intercept addresses
+    # and door ports must participate in the port's own target hash.
     assert [s["kind"] for s in services] == ["dhcp", "dns", "proxy"]
-    assert all(set(s) == {"kind"} for s in services if s["kind"] != "proxy")
-    # The one exception, and it is not configuration: a door is a port the
-    # bridge steals from this guest, so which ports those are has to be part
-    # of what the port's own target hashes over.
+    assert set(services[0]) == {"kind"}
     proxy = next(s for s in services if s["kind"] == "proxy")
     assert set(proxy) == {"kind", "config"}
-    assert set(proxy["config"]) == {"ports"}
+    assert set(proxy["config"]) == {"ports", "destinations"}
+
+
+@pytest.mark.parametrize("gateway", ["10.120.0.1", None])
+def test_nf_intercept_addresses_are_metadata_and_the_actual_gateway(gateway):
+    driver = _make_driver()
+    subnet = _subnet_stub()
+    routes = [{"to": "10.90.0.0/16", "via": "10.120.0.9"}]
+    if gateway:
+        routes.append({"to": "0.0.0.0/0", "via": gateway})
+    subnet.dump_to_simple_view.return_value = {"effective_routers": routes}
+    port = mock.MagicMock()
+    port.config = mock.MagicMock(KIND="simple", dhcp=None, dns=None)
+    with _seeded_services(driver):
+        services = driver._host_services(port, subnet)
+    expected = ["169.254.169.254"] + ([gateway] if gateway else [])
+    for service in services:
+        if service["kind"] in {"dns", "proxy"}:
+            assert service["config"]["destinations"] == expected
 
 
 def test_a_missing_service_is_simply_not_served():
@@ -643,48 +1129,22 @@ def test_a_missing_service_is_simply_not_served():
     assert kinds == ["dhcp"]
 
 
-def test_a_port_with_no_group_of_its_own_gets_the_subnets_default():
-    """A guest arrives filtered: everything out, in only from its own subnet."""
+def test_a_port_with_no_group_binding_has_no_security_filtering():
+    driver = _make_driver()
+    port = mock.MagicMock()
+    port.security_groups = []
+    assert driver._compile_security_rules(port, _subnet_stub()) == []
+
+
+def test_attaching_a_group_compiles_only_its_explicit_rules():
+    """Explicit SG binding permits only the group's declared traffic."""
     driver = _make_driver()
     subnet = _subnet_stub()
     port = mock.MagicMock()
-    port.config = mock.MagicMock(KIND="simple", security_groups=[])
-    default = _nf(
-        "splitter",
-        {
-            "rules": [
-                {"direction": "egress", "protocol": "any"},
-                {
-                    "direction": "ingress",
-                    "protocol": "any",
-                    "remote_ip": str(subnet.cidr),
-                },
-            ]
-        },
-    )
-    with mock.patch.object(
-        type(driver), "_default_group_nf", lambda self, s, seed=True: default
-    ):
-        rules = driver._compile_security_rules(port, subnet)
-    assert {r["direction"] for r in rules} == {"egress", "ingress"}
-    ingress = next(r for r in rules if r["direction"] == "ingress")
-    assert ingress["remote"] == str(subnet.cidr)
-
-
-def test_attaching_a_group_replaces_the_default():
-    """Attaching a group is how a caller says what may reach the guest, so
-    it must not be widened by the default sitting underneath it."""
-    driver = _make_driver()
-    subnet = _subnet_stub()
-    port = mock.MagicMock()
-    port.config = mock.MagicMock(KIND="simple", security_groups=[sys_uuid.uuid4()])
+    port.security_groups = [sys_uuid.uuid4()]
     sg = mock.MagicMock()
     sg.rules = [{"direction": "ingress", "protocol": "tcp", "port": 22}]
-    default = _nf("splitter", {"rules": [{"direction": "egress", "protocol": "any"}]})
     with (
-        mock.patch.object(
-            type(driver), "_default_group_nf", lambda self, s, seed=True: default
-        ),
         _api_models(
             SecurityGroup=mock.MagicMock(**{"objects.get_one_or_none.return_value": sg})
         ),
@@ -712,13 +1172,13 @@ def test_port_toggles_switch_a_service_off():
     port = mock.MagicMock()
 
     with _seeded_services(driver):
-        port.config = mock.MagicMock(KIND="simple", dhcp=False, dns=None)
+        port.dhcp, port.dns = False, None
         assert [s["kind"] for s in driver._host_services(port, subnet)] == [
             "dns",
             "proxy",
         ]
 
-        port.config = mock.MagicMock(KIND="simple", dhcp=None, dns=False)
+        port.dhcp, port.dns = None, False
         assert [s["kind"] for s in driver._host_services(port, subnet)] == [
             "dhcp",
             "proxy",
@@ -740,7 +1200,7 @@ def test_security_rules_keep_their_direction():
     sg_objects = mock.MagicMock()
     sg_objects.objects.get_one_or_none.return_value = sg
     port = mock.MagicMock()
-    port.config = mock.MagicMock(KIND="simple", security_groups=[sys_uuid.uuid4()])
+    port.security_groups = [sys_uuid.uuid4()]
 
     with _api_models(SecurityGroup=sg_objects):
         rules = driver._compile_security_rules(port)
@@ -757,13 +1217,108 @@ def test_missing_security_group_keeps_the_port_filtered():
     sg_objects = mock.MagicMock()
     sg_objects.objects.get_one_or_none.return_value = None
     port = mock.MagicMock()
-    port.config = mock.MagicMock(KIND="simple", security_groups=[sys_uuid.uuid4()])
+    port.security_groups = [sys_uuid.uuid4()]
 
     with _api_models(SecurityGroup=sg_objects):
         rules = driver._compile_security_rules(port)
 
     # non-empty (the agent installs the pipeline) but nothing is allowed
     assert rules and all(r["proto"] == "none" for r in rules)
+
+
+def test_shared_policy_reads_are_scoped_to_port_comparison():
+    driver = _make_driver()
+    subnet = _subnet_stub()
+    subnet.network = driver._network.uuid
+    sg_uuid, identity_uuid = sys_uuid.uuid4(), sys_uuid.uuid4()
+    ports = [mock.Mock(security_groups=[sg_uuid]) for _ in range(3)]
+    sg = mock.Mock()
+    declared = [{"remote_group": identity_uuid, "port": port} for port in range(4)]
+    group = mock.Mock(network=subnet.network, identity=4)
+    sg_model, identity_model = mock.Mock(), mock.Mock()
+    sg_model.objects.get_one_or_none.return_value = sg
+    identity_model.objects.get_one_or_none.return_value = group
+    with (
+        _api_models(SecurityGroup=sg_model, IdentityGroup=identity_model),
+        mock.patch.object(
+            type(sg), "rules", new_callable=mock.PropertyMock, create=True
+        ) as rules,
+    ):
+        rules.return_value = declared
+        with driver.compare_ports(subnet):
+            for port in ports:
+                compiled = driver._compile_security_rules(port, subnet, seed=False)
+                assert len(compiled) == 4
+                assert all(rule["remote_identity"] == 4 for rule in compiled)
+        sg_model.objects.get_one_or_none.assert_called_once()
+        identity_model.objects.get_one_or_none.assert_called_once()
+        rules.assert_called_once()
+
+        rules.return_value = []
+        with driver.compare_ports(subnet):
+            for port in ports:
+                assert driver._compile_security_rules(port, subnet, seed=False) == list(
+                    driver.DENY_ALL
+                )
+        assert sg_model.objects.get_one_or_none.call_count == 2
+        assert rules.call_count == 2
+
+        rules.return_value = declared
+        identity_model.objects.get_one_or_none.return_value = None
+        with driver.compare_ports(subnet):
+            for port in ports:
+                assert all(
+                    rule["proto"] == "none"
+                    for rule in driver._compile_security_rules(port, subnet, seed=False)
+                )
+        assert identity_model.objects.get_one_or_none.call_count == 2
+
+
+def test_comparison_shares_network_inputs_and_clears_them_after_failure():
+    from exordos_core.user_api.network.dm import models as catalog
+
+    driver = _make_driver()
+    subnet = _subnet_stub()
+    subnet.network = driver._network.uuid
+    with (
+        mock.patch.object(catalog.NetworkFunction, "objects") as nfs,
+        mock.patch.object(catalog.IdentityGroup, "objects") as identities,
+        mock.patch.object(catalog.ProxyService, "objects") as proxies,
+        mock.patch.object(evpn.models.Subnet, "objects") as subnets,
+    ):
+        nfs.get_all.return_value = []
+        identities.get_one_or_none.return_value = None
+        proxies.get_all.return_value = []
+        subnets.get_one_or_none.return_value = subnet
+        with pytest.raises(ValueError, match="interrupted comparison"):
+            with driver.compare_ports(subnet):
+                for _ in range(3):
+                    assert driver._find_subnet(subnet.uuid) is subnet
+                    assert driver._service_nfs(subnet, seed=False) == []
+                    assert driver._default_identity_group(subnet, seed=False) is None
+                    assert evpn._proxy_service_ports(subnet.network) == []
+                raise ValueError("interrupted comparison")
+        assert nfs.get_all.call_count == 2
+        identities.get_one_or_none.assert_called_once()
+        proxies.get_all.assert_called_once()
+
+        driver._service_nfs(subnet, seed=False)
+        assert nfs.get_all.call_count == 4
+
+
+def test_shared_dhcp_inputs_keep_each_guests_name_separate():
+    driver = _make_driver()
+    subnet = _subnet_stub()
+    subnet.cidr = "10.42.0.0/24"
+    subnet.dump_to_simple_view.return_value = {}
+    with driver.compare_ports(subnet):
+        first = driver._dhcp_record(subnet)
+        first["name"] = "first"
+        second = driver._dhcp_record(subnet)
+        assert "name" not in second
+        second["name"] = "second"
+        assert first["name"] == "first"
+    subnet.dump_to_simple_view.assert_called_once()
 
 
 def test_catalog_reservations_are_not_handed_to_a_port():
@@ -773,6 +1328,10 @@ def test_catalog_reservations_are_not_handed_to_a_port():
     address_objects = mock.MagicMock()
     address_objects.objects.get_all.return_value = []
     with (
+        mock.patch(
+            "exordos_core.network.contracts.published_private_addresses",
+            return_value={},
+        ),
         _api_models(Address=address_objects),
         mock.patch.object(driver, "list_ports", return_value=[]),
     ):
@@ -781,6 +1340,10 @@ def test_catalog_reservations_are_not_handed_to_a_port():
     reserved = mock.MagicMock(address=str(first), subnet=subnet.uuid)
     address_objects.objects.get_all.return_value = [reserved]
     with (
+        mock.patch(
+            "exordos_core.network.contracts.published_private_addresses",
+            return_value={},
+        ),
         _api_models(Address=address_objects),
         mock.patch.object(driver, "list_ports", return_value=[]),
     ):
@@ -851,6 +1414,71 @@ def test_an_unreadable_ledger_shuts_no_doors():
     stale.update.assert_not_called()
 
 
+def test_published_hosts_share_one_ledger_read():
+    driver = _make_driver()
+    hosts = [mock.Mock(uuid=sys_uuid.uuid4()) for _ in range(3)]
+    with (
+        _with_published(["10.20.3.1"]) as published,
+        mock.patch.object(evpn.ua_models.TargetResource, "objects") as targets,
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
+        mock.patch.object(driver, "_write_resource", return_value=None) as write,
+    ):
+        targets.get_all.return_value = hosts
+        driver._refresh_published_hosts()
+
+    published.assert_called_once()
+    assert write.call_count == len(hosts)
+    assert all(
+        call.args[0].published_addresses == ["10.20.3.1"]
+        for call in write.call_args_list
+    )
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_network_iteration_runs_global_work_once_for_multiple_networks(failed):
+    from exordos_core.network import service
+
+    drivers = [_make_driver(), _make_driver()]
+    network_map = {driver._network: {} for driver in drivers}
+    for driver in drivers:
+        driver._network.load_driver.return_value = driver
+    reconciler = object.__new__(service.NetworkService)
+    with (
+        mock.patch.object(service.contexts, "Context"),
+        mock.patch.object(reconciler, "_get_vm_nodes", return_value=[]),
+        mock.patch.object(reconciler, "_get_subnet_map", return_value={}),
+        mock.patch.object(reconciler, "_get_new_hw_ports", return_value=[]),
+        mock.patch.object(reconciler, "_build_network_map", return_value=network_map),
+        mock.patch.object(evpn.OvsEvpnNetworkDriver, "_ensure_agent_offers_overlay"),
+        mock.patch.object(evpn.OvsEvpnNetworkDriver, "_ensure_rr"),
+        mock.patch.object(
+            evpn.OvsEvpnNetworkDriver,
+            "_actualize_statuses",
+            side_effect=ValueError("unreadable facts") if failed else None,
+        ) as statuses,
+        mock.patch.object(
+            evpn.OvsEvpnNetworkDriver, "_settle_withdrawals"
+        ) as withdrawals,
+        mock.patch.object(
+            evpn.OvsEvpnNetworkDriver, "_refresh_published_hosts"
+        ) as hosts,
+        mock.patch.object(
+            evpn.OvsEvpnNetworkDriver, "_list_resources", return_value=[]
+        ),
+        mock.patch.object(evpn.OvsEvpnNetworkDriver, "_refresh_nf_slices"),
+        mock.patch.object(
+            evpn.OvsEvpnNetworkDriver, "_settle_publications", create=True
+        ) as publications,
+    ):
+        reconciler._iteration()
+        reconciler._iteration()
+
+    assert statuses.call_count == 2
+    assert hosts.call_count == (0 if failed else 2)
+    assert publications.call_count == (0 if failed else 2)
+    assert withdrawals.call_count == (0 if failed else 4)
+
+
 def test_only_the_addresses_still_held_are_published():
     """A freed row is a receipt, not a reservation — the door it names is
     gone, and leaving it open would outlive the realm that had it."""
@@ -878,7 +1506,7 @@ def test_only_the_addresses_still_held_are_published():
     ):
         assert evpn._published_addresses() == ["10.20.3.1"]
 
-    assert "origin" in captured and "allocation" in captured
+    assert "kind" in captured and "allocation" in captured
 
 
 def test_a_configured_service_address_is_published_too():
@@ -923,7 +1551,7 @@ def test_an_unparseable_service_address_is_dropped_here_not_on_every_host():
         assert evpn._published_addresses() == ["10.20.4.1:8081"]
 
 
-def test_delete_subnet_collects_the_hosts_of_its_ports():
+def test_delete_subnet_requests_withdrawal_before_collecting_hosts():
     driver = _make_driver()
     node = sys_uuid.uuid4()
     port_res = mock.MagicMock()
@@ -939,7 +1567,10 @@ def test_delete_subnet_collects_the_hosts_of_its_ports():
     ):
         driver.delete_subnet(subnet)
 
-    collect.assert_called_once_with(node)
+    collect.assert_not_called()
+    assert port_res.value["enabled"] is False
+    port_res.update.assert_called_once_with()
+    port_res.delete.assert_not_called()
 
 
 def test_the_proxy_is_granted_what_a_netbooting_guest_must_fetch():
@@ -968,22 +1599,19 @@ def test_the_proxy_is_granted_what_a_netbooting_guest_must_fetch():
             conf.clear_override(opt, group)
 
 
-def test_a_subnet_without_a_default_group_compiles_to_deny_not_to_open():
-    """A subnet without a default group compiles to deny, not to open.
-
-    `_default_group_nf` returns nothing when the default cannot be produced (no
-    identity bits, lost seed race, row removed); an empty allow-list would mean
-    no filtering at all.
-    """
+def test_an_attached_empty_group_compiles_to_deny_all():
     driver = _make_driver()
-    subnet = _subnet_stub()
-    with mock.patch.object(driver, "_default_group_nf", return_value=None):
-        rules = driver._default_security_rules(subnet)
-    assert rules, "a port with no producible default is not unfiltered"
-    assert all(rule["proto"] == "none" for rule in rules), rules
-    # No subnet at all is a different question — there is nothing to default
-    # to, and the caller (a port off any subnet) is not being denied silently.
-    assert driver._default_security_rules(None) == []
+    port = mock.MagicMock()
+    port.config.KIND = "simple"
+    port.security_groups = [sys_uuid.uuid4()]
+    with _api_models(
+        SecurityGroup=mock.MagicMock(
+            **{"objects.get_one_or_none.return_value": mock.MagicMock(rules=[])}
+        )
+    ):
+        assert driver._compile_security_rules(port, _subnet_stub()) == list(
+            driver.DENY_ALL
+        )
 
 
 def test_the_default_group_is_looked_up_on_its_own_network():
@@ -997,12 +1625,12 @@ def test_the_default_group_is_looked_up_on_its_own_network():
     with mock.patch(
         "exordos_core.user_api.network.dm.models.IdentityGroup"
     ) as group_model:
-        group_model.objects.get_all.return_value = []
-        group_model.allocate_identity.return_value = 1
+        group_model.objects.get_one_or_none.return_value = None
         driver._default_identity_group(subnet)
-    filters = group_model.objects.get_all.call_args.kwargs["filters"]
-    assert "network" in filters, "scoped by the network, not by the name alone"
-    assert "name" in filters
+    from exordos_core.network.contracts import automatic_identity_uuid
+
+    lookup = group_model.objects.get_one_or_none.call_args.kwargs["filters"]
+    assert lookup["uuid"].value == automatic_identity_uuid(subnet.network.uuid)
 
 
 def _seed_probe(*existing):
@@ -1082,9 +1710,8 @@ def test_a_group_of_another_network_is_not_stamped():
     subnet = _subnet_stub()
     subnet.network = sys_uuid.uuid4()
     port = mock.MagicMock()
-    port.config = mock.MagicMock(
-        KIND="simple", identity_groups=[sys_uuid.uuid4()], subnet_group=False
-    )
+    port.identity_groups = [sys_uuid.uuid4()]
+    port.network_identity = False
     elsewhere = mock.MagicMock()
     elsewhere.identity = 2
     elsewhere.network = sys_uuid.uuid4()
@@ -1124,6 +1751,7 @@ def test_asking_whether_a_port_is_stale_writes_nothing():
             type(driver), "_seed_service_nfs", lambda self, s: seeded.append(s)
         ),
         _api_models(
+            Address=mock.MagicMock(**{"objects.get_one_or_none.return_value": None}),
             NetworkFunction=mock.MagicMock(
                 **{"objects.get_all.return_value": []},
             ),
@@ -1211,7 +1839,7 @@ def test_a_node_may_only_name_an_origin_the_installation_publishes():
                 compute_models.Port, "objects", **{"get_all.return_value": [port]}
             ),
             mock.patch.object(
-                compute_models.Node, "objects", **{"get_one_or_none.return_value": node}
+                compute_models.Node, "objects", **{"get_all.return_value": [node]}
             ),
         ):
             return evpn_driver._image_origins(subnet)
@@ -1290,15 +1918,15 @@ def test_a_subnet_on_a_network_with_no_bits_left_gets_no_default():
     subnet.project_id = sys_uuid.uuid4()
 
     group_model = mock.MagicMock()
-    group_model.objects.get_all.return_value = []
-    group_model.allocate_identity.side_effect = ex_exceptions.ValidateException(
+    group_model.objects.get_one_or_none.return_value = None
+    group_model.return_value.insert.side_effect = ex_exceptions.ValidateException(
         err="no identity bit left"
     )
 
     with _api_models(IdentityGroup=group_model):
         assert driver._default_identity_group(subnet) is None
 
-    group_model.return_value.insert.assert_not_called()
+    group_model.return_value.insert.assert_called_once_with()
 
 
 def test_the_comparing_compile_allocates_no_floating_address():
@@ -1314,16 +1942,15 @@ def test_the_comparing_compile_allocates_no_floating_address():
     address_objects.assert_not_called()
 
 
-@pytest.mark.parametrize("default_group", [False, True])
-def test_an_empty_allowlist_denies_all_traffic(default_group):
+@pytest.mark.parametrize("bound", [False, True])
+def test_empty_bound_group_denies_but_no_binding_allows(bound):
     driver = _make_driver()
     port = mock.MagicMock()
     port.config.KIND = "simple"
-    port.config.security_groups = [] if default_group else [sys_uuid.uuid4()]
+    port.security_groups = [sys_uuid.uuid4()] if bound else []
     group = mock.MagicMock(rules=[])
     group.config = {"rules": []}
     with (
-        mock.patch.object(driver, "_default_group_nf", return_value=group),
         _api_models(
             SecurityGroup=mock.MagicMock(
                 **{"objects.get_one_or_none.return_value": group}
@@ -1331,4 +1958,4 @@ def test_an_empty_allowlist_denies_all_traffic(default_group):
         ),
     ):
         rules = driver._compile_security_rules(port, _subnet_stub())
-    assert rules == list(driver.DENY_ALL)
+    assert rules == (list(driver.DENY_ALL) if bound else [])

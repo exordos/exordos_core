@@ -463,9 +463,7 @@ class TestRepoProxyBuilderService:
         refresh_failed_at = refresh_started_at + datetime.timedelta(seconds=90)
         bootstrap_repo.status = repo_models.RepositoryStatus.ACTIVE.value
         bootstrap_repo.refresh_rate = 60
-        bootstrap_repo.next_refresh = refresh_started_at - datetime.timedelta(
-            seconds=1
-        )
+        bootstrap_repo.next_refresh = refresh_started_at - datetime.timedelta(seconds=1)
         bootstrap_repo.update()
 
         datetime_module_mock = mock.Mock(
@@ -534,8 +532,63 @@ class TestRepoProxyBuilderService:
         bootstrap_repo.refresh_rate = 0
         bootstrap_repo.update()
 
-        # Should not raise
-        self._service._check_refresh()
+        with mock.patch.object(repo_models.Repository, "update") as update:
+            self._service._check_refresh()
+        update.assert_not_called()
+        with mock.patch.object(self._service, "_refresh_repository") as refresh:
+            self._service.post_update_instance_resource(
+                bootstrap_repo, mock.MagicMock()
+            )
+        refresh.assert_not_called()
+
+    def test_manual_refresh_scheduled_without_periodic_refresh(self, bootstrap_repo):
+        bootstrap_repo.refresh_rate = 0
+        bootstrap_repo.next_refresh = datetime.datetime.now(datetime.timezone.utc)
+        bootstrap_repo.update()
+
+        bootstrap_repo.refresh()
+
+        assert bootstrap_repo.refresh_requested is True
+        with mock.patch.object(repo_models.Repository, "update") as update:
+            self._service._check_refresh()
+        update.assert_called_once_with(force=True)
+
+    def test_manual_refresh_consumed_once(self, bootstrap_repo, manifests_dir):
+        bootstrap_repo.refresh_requested = True
+        bootstrap_repo.refresh_rate = 0
+        bootstrap_repo.next_refresh = datetime.datetime.now(datetime.timezone.utc)
+        bootstrap_repo.update()
+        _write_manifest(manifests_dir, "new-app", "1.0.0")
+
+        self._service.post_update_instance_resource(bootstrap_repo, mock.MagicMock())
+
+        assert bootstrap_repo.refresh_requested is False
+        assert repo_models.RepoElement.objects.get_all(
+            filters={"repository": bootstrap_repo.uuid, "name": "new-app"}
+        )
+        with mock.patch.object(self._service, "_refresh_repository") as refresh:
+            self._service.post_update_instance_resource(
+                bootstrap_repo, mock.MagicMock()
+            )
+        refresh.assert_not_called()
+
+    def test_manual_refresh_failure_stops_without_periodic_refresh(
+        self, bootstrap_repo
+    ):
+        bootstrap_repo.refresh_requested = True
+        bootstrap_repo.refresh_rate = 0
+        bootstrap_repo.next_refresh = datetime.datetime.now(datetime.timezone.utc)
+        bootstrap_repo.update()
+
+        with mock.patch.object(
+            self._service, "_refresh_repository", side_effect=ConnectionError
+        ):
+            self._service.post_update_instance_resource(
+                bootstrap_repo, mock.MagicMock()
+            )
+
+        assert bootstrap_repo.status == repo_models.RepositoryStatus.ERROR.value
+        assert bootstrap_repo.refresh_requested is False
 
     def test_check_refresh_skips_when_not_due(self, bootstrap_repo):
         """_check_refresh should skip repositories where next_refresh is in the future."""

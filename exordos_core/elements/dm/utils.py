@@ -40,15 +40,7 @@ REGEXP = re.compile(r"\$(.+?)(?:\:(.+))?$")
 # SDN resources the user API creates but the core agent has no model for
 # (see `core_agent.conf.j2`): a manifest declaring one validated and then
 # never applied, so the schema does not offer them.
-UNMANAGED_RESOURCE_TYPES = frozenset(
-    (
-        "$core.network.catalog.identity_groups",
-        "$core.network.catalog.proxy_services",
-        "$core.network.catalog.security_groups",
-        "$core.network.nfs",
-        "$core.network.ports",
-    )
-)
+UNMANAGED_RESOURCE_TYPES = frozenset(("$core.network.nfs",))
 
 
 @dataclasses.dataclass

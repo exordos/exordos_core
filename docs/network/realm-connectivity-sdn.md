@@ -7,6 +7,10 @@ this repository; the host side is the evpn capability driver in `gcl_sdk`,
 which renders the target resources into `evpn_connector` and `gobgpd`
 configuration.
 
+For the current entity inventory and topology diagrams, see
+[Network dataplane](dataplane.md). API fields and mutation semantics are
+maintained in the [SDN API contract](sdn-api-contract.md).
+
 ## Context and goals
 
 An ecosystem installation hosts **realms** — nested, fully fledged
@@ -431,288 +435,35 @@ realms are migrated by recreation; live flat→EVPN migration is out of scope.
 
 ## Control-plane API
 
-The user-facing model for network management. Guiding principles:
-
-- **Thin port.** A port is a NIC: an attachment point with a MAC, an
-  address and a small `config` of references and toggles. It never
-  accumulates per-feature fields.
-- **Network is topology, not type.** There is no "external" network type
-  and no separate PublicIP pool: a public network is an ordinary network
-  whose prefix is routed from outside; public addresses are ordinary
-  subnet allocations in it (Neutron reached the same model the hard way).
-- **Traffic processing is network functions.** DHCP, DNS, the metadata
-  proxy and the subnet's default filter are typed objects owned by a subnet
-  or a network, compiled into flat per-host rulesets.
-- Lessons adopted from OVN/Neutron: constrained match schema instead of a
-  user-facing expression language; no rule priorities in the user API
-  (ordered rules + default); group-centric compilation (shared policy is
-  compiled once and referenced; a group travels as an identity bit, not as
-  a derived member address set); DHCP answered host-locally from CP facts.
-
-### Resource tree
-
-```text
-/v1/network/
-├── networks/                    CRUD; driver_spec, access
-├── subnets/                     CRUD; each names its network
-├── ports/                       CRUD
-├── nfs/                         read + edit; never created on their own
-├── catalog/
-│   ├── security_groups/         CRUD; named rulesets ports cite
-│   ├── identity_groups/         CRUD; what a port *is*
-│   ├── addresses/               CRUD; the IPAM ledger
-│   └── proxy_services/          CRUD; doors onto services of the installation
-├── lb/…                         core LB
-└── border/                      border forwards
-```
-
-CLI mirrors the tree: `exordos network networks|subnets|ports|nfs …`.
-
-### Network
-
-Fields: `name`, `project_id`, `status` (RO), `driver_spec` and `access`:
-
-- `driver_spec`: `flat_bridge` | `ovs_evpn {mtu, vni (RO), rt (RO)}` — VNI/RT
-  are allocated by the core on creation and only read through the API.
-  Over the API a caller creates only `ovs_evpn` and may say nothing but
-  `driver` and `mtu`; the spec is read-only afterwards. A `flat_bridge`
-  spec names a file on the host the core rewrites, so such a network is the
-  operator's, made by bootstrap or a manifest;
-- `access`: `private` (default: owner project only) | `public` (any
-  project of the installation may allocate addresses). There is no third
-  value such as an explicit grant list.
-
-`access` semantics — what `public` grants to foreign projects: seeing the
-network and its subnets in listings and allocating addresses in them
-(port addresses, `fip` references). What it does not grant: managing the
-network/subnets, seeing other projects' ports/allocations, or routing
-into the network (inter-network routing is a separate right, never
-implied by shared access). Publishing a network
-(`access` → `public`) requires a dedicated `network.network.share` permission.
-
-Explicit caveat: **the isolation boundary is the network, not the
-project**. Projects allocating addresses in one shared network are
-mutually routable inside it; per-port protection is the security group.
-Per-project allocation quotas in shared networks are not modelled.
-
-### Subnet
-
-Nested under a network: `cidr`, `ip_range`, `dhcp`, `routers`,
-`dns_servers`; infrastructure fields (`next_server`,
-`ip_discovery_range`) are valid only in `flat_bridge` networks. MTU lives
-on the network's driver kind (decision 11).
+The [SDN API contract](sdn-api-contract.md) describes canonical fields,
+bindings, address allocation, placement and update semantics. The complete
+[dataplane inventory](dataplane.md) maps these resources to their targets and
+runtime components. Keep those references as the source for the current API;
+the sections below explain the forwarding design.
 
 ### Guest-visible semantics of `ovs_evpn` networks
 
-The overlay is L3-only, and guests can tell. The contract:
-
-- No broadcast or multicast crosses hosts — there is no BUM in the
-  fabric (decision 2). Same-subnet VM↔VM traffic is routed `/32`; ARP is
-  answered by the local host (proxy).
-- Consequently guest-level VRRP/keepalived, mDNS and L2-multicast
-  clustering protocols do not work between VMs on different hosts, and
-  the platform has no shared service address to offer instead (see "Not
-  built"). A service that needs one is a service that needs a balancer.
-- DHCP and DNS are served host-locally (`dhcp`/`dns` NFs); the netboot
-  and metadata endpoints are host-local too (`proxy`).
-- Workloads that genuinely need stretched L2 are the use case for the
-  future EVPN Type-2 segments option (decision 2), not for creative
-  workarounds.
-
-### Port
-
-A port belongs to a node and to one subnet:
-
-```json
-{
-  "node": "<uuid>",
-  "subnet": "<uuid>",
-  "mac": "…",
-  "ipv4": "10.42.0.7",
-  "port_security": true,
-  "index": 0,
-  "config": {
-    "kind": "simple",
-    "security_groups": [],
-    "identity_groups": [],
-    "subnet_group": null,
-    "dhcp": null,
-    "dns": null,
-    "public": null
-  }
-}
-```
-
-- `ipv4` omitted ⇒ allocated by IPAM. Given, it has to be an address of
-  the subnet no other port there holds, and it is read-only afterwards. A
-  hand-made port in another project's private subnet is refused, flat
-  subnets included; the platform's own (`generated`) legs are not. The port's `/32` Type-5 route goes
-  into its subnet's VRF. A node on several networks has several ports
-  (`index` is device order; 0 is the primary, see node interfaces).
-- `machine` is derived and read-only. Ports are auto-created with machines
-  (boot NIC) or built from a node's `interfaces`.
-- `port_security` — anti-spoof: only the port's own MAC and its own
-  address may be sourced. A `fip` needs no exception: the NAT is on the
-  hypervisor, so what the guest sends is its private address either way.
-  Network-function traffic always pins the caller to this MAC and address,
-  even with `port_security=false`; DHCP is exempt until the guest has an address.
-- `config.public` asks for a floating address: `{address}` cites an
-  allocated one, `{floating_from}` allocates one from a subnet — one of
-  them, by uuid. Either has to be in a floating pool the port's project
-  may allocate in; anything else is refused at 400.
-- `config.dhcp`/`dns` detach the function from this port; unset follows
-  the subnet.
-
-### The address ledger
-
-An address a caller reserved is one row in `net_addresses` — the
-DB-backed source of truth for IPAM, beside the older in-memory `Ipam`
-that scans ports and still serves the flat networks:
-
-```text
-net_addresses: uuid, project_id, subnet, address,
-               allocation: reserved | freed,
-               origin: auto | explicit | floating,
-               owner_port, association,
-               UNIQUE (subnet, address) WHERE allocation = 'reserved'
-```
-
-Two facts, deliberately separate, and this is the Elastic-IP shape:
-**`allocation`** says whether the address is held against its subnet's
-pool, and **`association`** says which port is using it right now. So a
-public address survives the machine that answered on it — disassociating
-does not release, and releasing is a thing you do on purpose.
-
-Each half is enforced, which is the part that took a second pass to get
-right. The allocator counts the reserved rows and only those, so freeing
-really does hand an address back; the uniqueness that stops two live
-claims on one address is scoped to those rows too, or a freed one would
-keep its address out of circulation for ever. Freeing is refused while
-the address is associated or while it belongs to the port it was
-allocated for — the same two facts that refuse a delete, because freeing
-*is* the delete that keeps the receipt. Re-reserving re-checks
-availability: the address may have gone to somebody else in between.
-
-`association` is written by the compiler, not by the caller's intent: a
-port that names a public address gets recorded as its user, and a second
-port naming the same one is refused at 400 rather than quietly
-programming a second NAT for the same public IP on another hypervisor. A
-port that stops using one gives it back, and that has to happen on the
-compile and not only on the port's delete: unbinding leaves the port in
-place, so nothing else would ever clear the pointer, and an address
-marked as used by a port that stopped using it can be neither re-cited
-nor released. A port that goes away releases outright — deleted if the
-port owned it (`floating_from` allocated it), disassociated if it merely
-cited it, because that one is the caller's and outlives the port.
-
-Auto-allocation takes a `SELECT FOR UPDATE` on the subnet row before it
-scans, so two concurrent allocations serialize rather than race to the
-unique index. Explicit-address policy: auto-allocation is always allowed;
-picking a specific address in your own network is allowed; in a shared
-network it needs the `network.address.explicit_address` permission (admin
-by default) — no squatting on pretty public addresses. An address picked by
-value may not be its subnet's network, broadcast or gateway, nor a port's,
-and an allocation does not move: `address` and `subnet` are read-only on
-update.
-
-### Network functions
-
-**dhcp, dns and proxy are functions.** Each is an object that can be
-listed and edited, with a config schema that fails at 400 rather than
-compiling into a data plane that quietly does nothing: DHCP belongs to the
-subnet (every value it hands out is the subnet's), the resolver and the
-netboot/metadata proxy to the network.
-
-Zero-config is preserved by *seeding* rather than by inventing: the first
-compile of a subnet creates the three functions with the installation's
-defaults as their initial config and never rewrites one that already
-exists. A seeded default is an object the caller can edit, and an edit
-makes it theirs (`provenance` flips to `user`).
-
-A port's own filter and floating address are not functions: the compiler
-reads them from the port (its groups, its `public` slot) straight into
-`evpn_port`.
-
-**A port arrives filtered.** Every subnet is also seeded a default
-`splitter`: everything out, and in only from the subnet the guest is on —
-the shape AWS gives a default security group, read for a model where the
-group is the subnet. An empty rule list is no longer a policy: a port that
-names no group of its own gets that default, attaching a group replaces it
-(not widens it), and an installation that deletes the object gets ports
-that are genuinely unfiltered and say so. The platform's own services are
-unaffected, being intercepted above the filter.
-
-An NF is a typed processing node, and it exists because something that
-owns it does: a subnet's DHCP and its default group, a network's resolver
-and metadata proxy. There is no way to make one
-on its own, because there would be nothing to read it.
-
-Each element intercepts the traffic it is responsible for. The kinds:
-
-- **`splitter`** — the filter: an allow-list of `rules`
-  (`{direction, protocol, port?, remote_ip?|remote_group?}`; `remote_ip`
-  is an IPv4 address or prefix — the fabric is IPv4-only), and
-  nothing else: established is allowed and the rest is dropped. A
-  security group is a splitter pattern, not a separate resource. An
-  `evpn_port.security_rules` allowlist (`{proto, port?, dst?}`) compiles
-  in `EvpnPort` to a conntrack pipeline on `br-int` — the guest's
-  untracked IP egress goes to `ct(zone=<vlan>)` (the guest's own local
-  VLAN, since realm CIDRs overlap), established **and related** traffic is allowed, each rule
-  commits + returns to NORMAL, everything else drops. Scoped by the guest's `in_port`; the
-  DHCP/DNS/proxy punts sit above the entry so infra bypasses the filter;
-  GC'd by a per-port cookie.
-- **`dhcp`** — punts DHCP requests to the host-local responder answering
-  from Port/Subnet facts (decision 4); config: `filename` (the HTTP URL
-  a guest's iPXE ROM chain-loads, served by the `proxy` NF) and
-  `lease_seconds`.
-- **`proxy`** — punts HTTP to the cloud-init well-known address
-  (`169.254.169.254`) into a host-local proxy serving an **allowlist of
-  core endpoints**: netboot scripts and artifacts (via the agent's repo
-  cache), Seed/universal-agent CP calls, cloud-init-style metadata later.
-  Terminated on the kernel stack in the VNI's namespace, folded into the
-  one NF process (see the proxy paragraph below). One NF covers what would
-  otherwise be separate `boot` and `metadata` kinds.
-- **`dns`** — punts port 53 (`udp`/`tcp`) on `br-int` into the same merged
-  host-local responder: answers the installation's internal zone from CP
-  facts (a port's name → `A` + reverse `PTR`) and forwards everything
-  else through the installation's upstream resolvers — private and public
-  resolution for every VM with no runtime dependency on a central resolver
-  (OVN answers DNS on the hypervisor the same way). Guests use the
-  **gateway as their resolver** (handed out via `dhcp` option 6); the punt
-  intercepts it before the EVPN patch, and each VNI's thread answers
-  from its own guests' records only. Config: `forwarders`, `zone_suffix`,
-  `platform_names` (names that resolve to the serving hypervisor). Naming
-  scheme: see the DNS section. A forwarder a caller adds must be a public
-  IPv4 address: the responder relays from the network's namespace through
-  the hypervisor's routing, not into the overlay and not through the fabric
-  guard, so a private one would be a relay onto the underlay. The seeded
-  resolvers the function already has are kept through an edit; deleting
-  the function reseeds them.
-- **`fip`** (a port attribute, not an NF kind) — 1:1 NAT between a
-  public-network address and the port's own address: guest-unaware
-  public identity in both directions, strictly one port. NAT happens on
-  the port's hypervisor (path stays symmetric with DVR). A port asks for
-  one through its own `public` slot.
-
-So there are two address flavours: a **port address** is
-exclusive and unconditional — the port's identity; a **`fip`** is NAT,
-and the guest keeps its private addressing.
-
-#### Not built / removed
-
-- **The NF graph.** Named `outputs` between functions, `forward`/`drop`/
-  `reject` terminals and a `custom` port kind naming an entry function were
-  built and removed: every port was `simple` and the agent's contract is an
-  allow-list, not a graph. It comes back with whatever needs it.
-- **`splitter` `default` output and `stateful` flag.** The pipeline is
-  conntrack-based and always was; the other values were never implemented.
-- **`vip`** (an anycast address several ports answer for): it had no health
-  check and was reachable only through the graph. Fan-in is an L4
-  balancer's job.
-- **Inter-VRF routing** (an edge from a function into another network):
-  out of scope; it would need rights on the target network.
-- **`egress: stable`**: DVR is the only egress model, so the field is not
-  on the API.
+- The overlay is L3-only. No broadcast or multicast crosses hosts;
+  same-network guest traffic is routed using Type-5 routes, and the local
+  host answers ARP. Guest VRRP, mDNS and L2 multicast clustering cannot span
+  hypervisors. Services needing fan-in use LB.
+- DHCP, DNS and allowlisted platform HTTP services run host-locally.
+  Core seeds `dhcp` per Subnet and `dns`/`proxy` per Network. Generated
+  defaults refresh; DHCP/DNS user overrides remain. Proxy configuration
+  is installation-owned and cannot be edited/deleted by a tenant.
+- SecurityGroup, SecurityGroupRule and PortSecurityGroup are separate API
+  resources. Several bound groups union their allow rules. A Port without
+  any SG binding has no SG filtering; an attached empty group denies new
+  tenant traffic. Anti-spoofing and platform service intercepts are separate.
+- IdentityGroup and PortIdentityGroup express peer identity. The automatic
+  network identity is not a default SG and grants no access on its own.
+- FIP is an Address with `kind=floating` associated through `port`; it
+  compiles into host-local 1:1 NAT. The guest keeps its private address.
+  The legacy `simple.public` config remains an allocation request;
+  canonical association uses Address resources.
+- `splitter` remains a model kind but is not seeded or selected for runtime
+  NF slices by the current compiler. Active policy comes from SG bindings.
+  There is no NF graph, `vip` Port kind, inter-VRF edge or stable-egress mode.
 
 ### Why the NF flows are shaped this way
 
@@ -812,7 +563,7 @@ lives on a **separate, agent-owned bridge**, and the two are joined by an
 OVS **patch-port** pair. This is the OVN `br-int` + `br-tun` split:
 
 ```text
-guest tap ─▶ br-int (agent-owned: splitter, dhcp/dns/proxy intercepts)
+guest tap ─▶ br-int (agent-owned: SG, dhcp/dns/proxy intercepts)
                 │
                 ▼  patch-port
              evpn  (evpn_connector-owned: EVPN Type-5, VXLAN)  ─▶ underlay
@@ -1068,7 +819,7 @@ the same host's state. Punt NFs answer from the VNI's namespace: UDP
 
 The `ovs_evpn` builder compiles each port into an `evpn_port` resource
 scheduled to its hypervisor's agent; the agent renders it into **`br-int`
-flows** it owns (`splitter` ⇒ the conntrack pipeline, `dhcp`/`dns`/`proxy`
+flows** it owns (SG rules ⇒ the conntrack pipeline, `dhcp`/`dns`/`proxy`
 ⇒ intercept flows to the local responder) plus the `evpn_connector` client
 config for the port's VNI (the patch-port side), and a `fip` into NAT in the
 VNI's egress namespace. A function serving many ports compiles once per
@@ -1087,17 +838,19 @@ Target-resource granularity produced by the `ovs_evpn` builder:
 - **`evpn_host`** — per host: gobgpd session parameters and the
   installation's published addresses; changes rarely.
 - **`evpn_nf`** — per (host × NF), uuid `uuid5(nf, node)`: the compiled
-  slice of a shared NF. Editing an NF
-  re-hashes only these slices on affected hosts; ports are untouched.
+  slice of a shared DHCP/DNS/proxy NF. Answer settings re-hash these slices
+  on affected hosts. Intercept selectors are part of the port target, so
+  a change to ProxyService door ports can also re-hash ports.
   The slice carries what the function answers with
   (resolvers, the zone's suffix, the netboot filename, the proxy's
   allowlist) and lands beside that VNI's guest records, in the namespace's
   own directory. The slices are refreshed on the loop that already runs,
-  for every host with a guest on the subnet — nothing about a port changes
-  when a function is edited, and nothing should.
+  for every host with a guest on the subnet.
 - **`evpn_port`** — per port, scheduled to its host's agent: mac/ip/VNI/RTs,
   DHCP record, security rules, identity, floating addresses. It names the
-  kinds of the functions serving it (`{kind}`), not their configuration.
+  service kinds and intercept selectors, including proxy door ports.
+- **`bgp_rr`** — on each reflector node: ASN and dynamic-peer prefixes;
+  the agent renders the route-reflector role in gobgpd.
 
 Hash discipline (hard rules for the `evpn_*` drivers):
 
@@ -1111,19 +864,10 @@ Hash discipline (hard rules for the `evpn_*` drivers):
 3. No write-backs of DP data into target models; facts land in their own
    storage only.
 
-Counters and statuses are a design, not a surface. **None of it is
-built**: nothing samples an `nf_stats` fact, no builder aggregates a
-status and nothing writes a reason, so `nf.status`/`status_reason` are
-not on the API — `port.status` (the reconcile state) is the only status
-the model carries. The shape to build against, when something needs it:
-counters as a fact kind per (host × NF) sampled with throttling, the last
-sample kept and aggregated across hosts on read; `nf.status` as the
-aggregate of its `evpn_nf` actuals; `port.status` as the aggregate of its
-`evpn_port` plus the slices of the functions serving it **on its own host
-only**, so a function broken on host B degrades only host B's ports; and
-compile-time errors (no capable agent on the port's node, a broken
-reference) never reaching agents at all, the builder setting `ERROR` plus
-a `status_reason` on the object whose input caused it.
+The API exposes Port reconciliation status. It does not expose per-NF
+traffic counters, an aggregated `nf.status` or `status_reason`. Agent target
+statuses describe their individual applications; they are not a network-wide
+service health monitor.
 
 ### DNS: private names and external publication
 
@@ -1182,7 +926,7 @@ network function's `kind`.
 - **IPv6**: the platform is v4-only. The `addresses` list and the NF model
   are family-neutral, so dual stack is additive rather than breaking.
 - **Live migration of VMs**: the `/32` route would move, but conntrack
-  state (`fip` NAT, stateful `splitter`, DVR SNAT) would not; out of
+  state (`fip` NAT, stateful SG filtering, DVR SNAT) would not; out of
   scope until compute needs it.
 - **Overlay encryption**: VXLAN rides the underlay in cleartext;
   IPsec/WireGuard between VTEPs is a possible future layer, not part of

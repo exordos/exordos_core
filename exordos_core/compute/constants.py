@@ -26,6 +26,7 @@ NODE_SET_PROJECT = sys_uuid.UUID("11111113-bc70-4760-9fbf-9fcfe40da329")
 
 # The network driver that makes a network an overlay.
 OVERLAY_DRIVER = "ovs_evpn"
+OVERLAY_MTU_RANGE = (576, 9000)
 
 
 def is_overlay(driver_spec) -> bool:

@@ -54,11 +54,40 @@ def test_the_machine_is_built_with_the_leg_at_index_zero():
     builder = pool_builder.PoolBuilderService.__new__(pool_builder.PoolBuilderService)
     machine = mock.MagicMock()
 
-    with mock.patch.object(
-        models.Port, "objects", **{"get_all.return_value": list(ports)}
-    ), mock.patch.object(
-        models.MachineVolume, "objects", **{"get_all.return_value": []}
+    with (
+        mock.patch.object(
+            models.Port, "objects", **{"get_all.return_value": list(ports)}
+        ),
+        mock.patch.object(
+            models.MachineVolume, "objects", **{"get_all.return_value": []}
+        ),
     ):
         fetched, _volumes = builder._fetch_machine_deps(machine)
 
     assert [p.index for p in fetched] == [0, 1, 2]
+
+
+def test_multi_nic_metadata_keeps_boot_leg_and_secondary_ports():
+    from types import SimpleNamespace
+
+    from exordos_core.compute.pool.dm import models as pool_models
+
+    builder = pool_builder.PoolBuilderService.__new__(pool_builder.PoolBuilderService)
+    primary = mock.MagicMock(index=0)
+    secondary = mock.MagicMock(index=1)
+    boot = mock.MagicMock(index=0)
+    machine = mock.MagicMock()
+    builder._iteration_context = {machine.uuid: {"machine_ports": [primary, secondary]}}
+    target = SimpleNamespace(ports_info=None)
+    with mock.patch.object(
+        pool_models.PoolMachine,
+        "from_machine_and_port",
+        side_effect=lambda machine, port, **kwargs: SimpleNamespace(
+            port_info={"port": port}
+        ),
+    ):
+        builder._populate_machine_ports(target, machine, boot, None)
+        assert [info["port"] for info in target.ports_info] == [boot, secondary]
+        # The exact same helper rebuilds the target after FLASHED.
+        builder._populate_machine_ports(target, machine, primary, None)
+        assert [info["port"] for info in target.ports_info] == [primary, secondary]

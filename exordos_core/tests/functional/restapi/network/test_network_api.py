@@ -57,14 +57,14 @@ class TestNetworkApi:
         with pytest.raises(bazooka_exc.BadRequestError):
             client.post(url, json=network_factory(driver_spec=driver_spec))
 
-    def test_the_spec_of_a_network_is_not_edited(
+    def test_allocated_overlay_parameters_are_not_user_settings(
         self, user_api_client, auth_user_admin, network_factory
     ):
         client = user_api_client(auth_user_admin)
         network, _ = self._create_network(client, network_factory)
         url = client.build_resource_uri(["network", "networks", network["uuid"]])
         spec = {"driver": "ovs_evpn", "vni": 10000, "vni_confirmed": True}
-        with pytest.raises(bazooka_exc.ForbiddenError):
+        with pytest.raises(bazooka_exc.BadRequestError):
             client.put(url, json={"driver_spec": spec})
 
     def test_create_ovs_evpn_network(

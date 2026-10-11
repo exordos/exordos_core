@@ -33,9 +33,9 @@ from gcl_sdk.infra.dm import models as sdk_models
 import netaddr
 from oslo_config import cfg
 import pytest
-
-from restalchemy.storage import exceptions as ra_storage_exc
+from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage import exceptions as ra_storage_exc
 
 from exordos_core.bootstrap import defaults as bootstrap_defaults
 from exordos_core.common import constants as c
@@ -184,6 +184,7 @@ class _EvpnStand:
             cidr=netaddr.IPNetwork(cidr),
             project_id=c.ZERO_UUID,
             placeable=False,
+            floating_pool=True,
         )
         subnet.insert()
         self._created.append(subnet)
@@ -244,6 +245,50 @@ class _EvpnStand:
         port.insert()
         self._created.append(port)
         return port
+
+    def _security_group(self, name, rules):
+        from exordos_core.user_api.network.dm import models as catalog
+
+        group = catalog.SecurityGroup(name=name, project_id=c.ZERO_UUID)
+        group.insert()
+        self._created.append(group)
+        for value in rules:
+            rule = catalog.SecurityGroupRule(
+                security_group=group.uuid, project_id=c.ZERO_UUID, **value
+            )
+            rule.insert()
+            self._created.append(rule)
+        return group
+
+    def _bind_sg(self, port, group):
+        from exordos_core.user_api.network.dm import models as catalog
+
+        binding = catalog.PortSecurityGroup(
+            project_id=port.project_id, port=port.uuid, security_group=group.uuid
+        )
+        binding.insert()
+        self._created.append(binding)
+
+    def _ack_port(self, port):
+        target = ua_models.TargetResource.objects.get_one(
+            filters={
+                "kind": dm_filters.EQ("evpn_port"),
+                "uuid": dm_filters.EQ(port.uuid),
+            }
+        )
+        owner = ua_models.UniversalAgent.objects.get_one(
+            filters={"uuid": dm_filters.EQ(target.agent)}
+        )
+        actual = ua_models.Resource(
+            kind=target.kind,
+            uuid=target.uuid,
+            node=owner.node,
+            value=target.value,
+            hash=target.hash,
+            full_hash=target.full_hash,
+            status="ACTIVE",
+        )
+        actual.save()
 
     def _selective_load(self):
         """Patch context: real driver for ovs_evpn, no-op for the rest."""
@@ -309,7 +354,7 @@ class _EvpnStand:
         assert len({r.value["vni"] for r in eports}) == 1
 
     def test_port_toggles_switch_a_network_function_off(self):
-        # The `simple` kind's dhcp/dns toggles are the friendly surface of
+        # Port's dhcp/dns toggles are the friendly surface of
         # "this guest manages its own addressing": they must reach the host
         # as a *missing function*, not as a flag the agent may ignore.
         evpn_net, evpn_subnet = self._network()
@@ -324,7 +369,7 @@ class _EvpnStand:
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(dhcp=False),
+            dhcp=False,
         )
         port.insert()
         self._created.append(port)
@@ -361,11 +406,7 @@ class _EvpnStand:
         assert all("dhcp" not in [nf["kind"] for nf in r.value["nfs"]] for r in eports)
 
     def test_security_groups_compile_into_evpn_port(self):
-        # A port whose `simple` kind references catalog security-group objects
-        # must have their rules compiled into the evpn_port target's
-        # `security_rules` (which the on-host agent turns into a conntrack
-        # pipeline). Ties the catalog SG + simple kind to the data plane.
-        from exordos_core.user_api.network.dm import models as net_api_models
+        # Standalone SG rules and a many-to-many binding reach the host ACL.
 
         evpn_net, evpn_subnet = self._network()
         flat_net, _ = self._flat_network()
@@ -374,17 +415,13 @@ class _EvpnStand:
         guest = self._pinned_node(evpn_net.uuid, "guest-sg")
         self._machine(guest, pool)
 
-        sg = net_api_models.SecurityGroup(
-            uuid=sys_uuid.uuid4(),
-            name="web-sg",
-            project_id=c.ZERO_UUID,
-            rules=[
+        sg = self._security_group(
+            "web-sg",
+            [
                 {"direction": "ingress", "protocol": "tcp", "port": 443},
                 {"direction": "ingress", "protocol": "tcp", "port": 22},
             ],
         )
-        sg.insert()
-        self._created.append(sg)
 
         # A port carrying the simple kind referencing the SG — exactly what the
         # user-facing API creates.
@@ -393,10 +430,10 @@ class _EvpnStand:
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(security_groups=[sg.uuid]),
         )
         port.insert()
         self._created.append(port)
+        self._bind_sg(port, sg)
 
         with self._selective_load():
             self._service._iteration()
@@ -425,24 +462,22 @@ class _EvpnStand:
         guest = self._pinned_node(evpn_net.uuid, "guest-edit")
         self._machine(guest, pool)
 
-        sg = net_api_models.SecurityGroup(
-            uuid=sys_uuid.uuid4(),
-            name="edited-sg",
-            project_id=c.ZERO_UUID,
-            rules=[{"direction": "ingress", "protocol": "tcp", "port": 443}],
+        sg = self._security_group(
+            "edited-sg",
+            [
+                {"direction": "ingress", "protocol": "tcp", "port": 443},
+            ],
         )
-        sg.insert()
-        self._created.append(sg)
 
         port = models.Port(
             subnet=evpn_subnet.uuid,
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(security_groups=[sg.uuid]),
         )
         port.insert()
         self._created.append(port)
+        self._bind_sg(port, sg)
 
         with self._selective_load():
             self._service._iteration()
@@ -457,8 +492,11 @@ class _EvpnStand:
 
         # the operator narrows the group, and switches the subnet's DHCP off
         # (through a freshly loaded row, as the API does)
-        sg.rules = [{"direction": "ingress", "protocol": "tcp", "port": 22}]
-        sg.update()
+        rule = net_api_models.SecurityGroupRule.objects.get_one(
+            filters={"security_group": dm_filters.EQ(sg.uuid)}
+        )
+        rule.port = 22
+        rule.update()
         stored_subnet = models.Subnet.objects.get_one(
             filters={"uuid": dm_filters.EQ(evpn_subnet.uuid)}
         )
@@ -477,10 +515,21 @@ class _EvpnStand:
         hosts = [h for h in _resources("evpn_host") if str(h.uuid) == str(hyp.uuid)]
         assert hosts and "nfs" not in hosts[0].value
 
+        binding = net_api_models.PortSecurityGroup.objects.get_one(
+            filters={"port": dm_filters.EQ(port.uuid)}
+        )
+        binding.delete()
+        with self._selective_load():
+            self._service._iteration()
+        assert _rules() == set()
+
+        self._bind_sg(port, sg)
+        with self._selective_load():
+            self._service._iteration()
+        assert _rules() == {("tcp", 22)}
+
     def test_floating_ip_compiles_into_evpn_port(self):
-        # A port whose `simple` kind references a public address-object via
-        # `public.address` must have it compiled into the evpn_port target's
-        # `fips` (a 1:1 NAT mapping the on-host driver programs).
+        # A floating Address owns the Port reference and reaches host NAT.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         evpn_net, evpn_subnet = self._network()
@@ -491,25 +540,25 @@ class _EvpnStand:
         self._machine(guest, pool)
         pub_subnet = self._floating_pool("203.0.115.0/24")
 
-        addr = net_api_models.Address(
-            uuid=sys_uuid.uuid4(),
-            project_id=c.ZERO_UUID,
-            subnet=pub_subnet.uuid,
-            address="203.0.115.207",
-            origin="floating",
-        )
-        addr.insert()
-        self._created.append(addr)
-
         port = models.Port(
             subnet=evpn_subnet.uuid,
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(public={"address": addr.uuid}),
         )
         port.insert()
         self._created.append(port)
+
+        addr = net_api_models.Address(
+            uuid=sys_uuid.uuid4(),
+            project_id=c.ZERO_UUID,
+            subnet=pub_subnet.uuid,
+            address="203.0.115.207",
+            kind="floating",
+            port=port.uuid,
+        )
+        addr.insert()
+        self._created.append(addr)
 
         with self._selective_load():
             self._service._iteration()
@@ -538,9 +587,7 @@ class _EvpnStand:
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(
-                public={"floating_from": pub_subnet.uuid}
-            ),
+            config=models.PortSimpleKind(public={"floating_from": pub_subnet.uuid}),
         )
         port.insert()
         self._created.append(port)
@@ -561,11 +608,7 @@ class _EvpnStand:
             assert ep.value.get("fips") == [{"public": allocated_ip}]
 
     def test_deleting_a_floating_from_port_frees_its_owned_address(self):
-        # A floating_from port owns the public address the compiler allocated
-        # for it (owner_port); deleting the port must free it. Otherwise the
-        # address leaks forever — Address.delete refuses an owned address
-        # ("delete the port instead"), so the port-delete path is the only one
-        # that can release it.
+        # Legacy compiler-owned FIPs remain allocated until host withdrawal ack.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         evpn_net, evpn_subnet = self._network()
@@ -582,9 +625,7 @@ class _EvpnStand:
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(
-                public={"floating_from": pub_subnet.uuid}
-            ),
+            config=models.PortSimpleKind(public={"floating_from": pub_subnet.uuid}),
         )
         port.insert()
         self._created.append(port)
@@ -599,15 +640,16 @@ class _EvpnStand:
             self._service._iteration()
             assert len(_owned()) == 1  # the floating address was allocated
 
-            evpn_net.load_driver().delete_port(port)
-            assert _owned() == []  # …and released with the port
+            driver = evpn_net.load_driver()
+            _owned()[0].delete()
+            driver.delete_port(port)
+            assert len(_owned()) == 1  # retain the allocation while the host is offline
+            self._ack_port(port)
+            driver._settle_publications()
+            assert _owned() == []
 
     def test_a_cited_address_is_marked_used_and_given_back(self):
-        # The ledger is what says a public address is spoken for: the
-        # compiler records which port is using one, a second port citing it
-        # is refused, and a port that goes away hands it back — without
-        # deleting it, because a standalone address is the caller's and
-        # outlives the machine that answered on it.
+        # A canonical FIP retains its publication through unbind until host ack.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         evpn_net, evpn_subnet = self._network()
@@ -618,25 +660,25 @@ class _EvpnStand:
         self._machine(guest, pool)
         pub_subnet = self._floating_pool("203.0.116.0/24")
 
-        addr = net_api_models.Address(
-            uuid=sys_uuid.uuid4(),
-            project_id=c.ZERO_UUID,
-            subnet=pub_subnet.uuid,
-            address="203.0.116.215",
-            origin="floating",
-        )
-        addr.insert()
-        self._created.append(addr)
-
         port = models.Port(
             subnet=evpn_subnet.uuid,
             node=guest.uuid,
             project_id=evpn_subnet.project_id,
             mac=models.Port.generate_mac(),
-            config=models.PortSimpleKind(public={"address": addr.uuid}),
         )
         port.insert()
         self._created.append(port)
+
+        addr = net_api_models.Address(
+            uuid=sys_uuid.uuid4(),
+            project_id=c.ZERO_UUID,
+            subnet=pub_subnet.uuid,
+            address="203.0.116.215",
+            kind="floating",
+            port=port.uuid,
+        )
+        addr.insert()
+        self._created.append(addr)
 
         def _stored():
             return net_api_models.Address.objects.get_one(
@@ -648,24 +690,26 @@ class _EvpnStand:
             self._service._iteration()
             assert str(_stored().association) == str(port.uuid)
 
-            # Nobody else may take it while this guest is answering on it.
+            # A move needs an explicit unbind and a current-host withdrawal ack.
             other = self._pinned_node(evpn_net.uuid, "guest-assoc-2")
             self._machine(other, pool)
-            second = models.Port(
-                subnet=evpn_subnet.uuid,
-                node=other.uuid,
-                project_id=evpn_subnet.project_id,
-                mac=models.Port.generate_mac(),
-                config=models.PortSimpleKind(public={"address": addr.uuid}),
-            )
-            with pytest.raises(ex_exceptions.ValidateException):
-                second.insert()
-
-            # The port goes; the address stays reserved and free to re-cite.
-            evpn_net.load_driver().delete_port(port)
+            second = self._port(evpn_subnet, other)
+            stored = _stored()
+            stored.port = second.uuid
+            with pytest.raises(ra_storage_exc.ConflictRecords):
+                stored.update()
+            stored.port = None
+            stored.update()
+            driver = evpn_net.load_driver()
+            driver.update_port(port)
+            assert _stored().association == port.uuid
+            self._ack_port(port)
+            driver._settle_publications()
             released = _stored()
             assert released.association is None
             assert released.allocation == "reserved"
+            released.port = second.uuid
+            released.update()
 
     def test_a_host_that_lost_its_guests_loses_their_function_slices(self):
         # A slice is what the host answers a guest with, and its arrival is
@@ -692,6 +736,9 @@ class _EvpnStand:
         with self._selective_load():
             evpn_net.load_driver().delete_port(port)
 
+        assert _resources("evpn_nf", master=evpn_subnet.uuid)
+        self._ack_port(port)
+        evpn_net.load_driver()._settle_withdrawals()
         assert _resources("evpn_nf", master=evpn_subnet.uuid) == []
 
     def test_the_services_of_a_network_are_seeded_as_objects(self):
@@ -750,10 +797,9 @@ class _EvpnStand:
             if r.value["kind"] == "dns"
         ]
         assert dns_slices
-        assert dns_slices[0].value["config"] == {
-            "forwarders": ["9.9.9.9"],
-            "zone_suffix": "corp",
-        }
+        assert dns_slices[0].value["config"]["forwarders"] == ["9.9.9.9"]
+        assert dns_slices[0].value["config"]["zone_suffix"] == "corp"
+        assert dns_slices[0].value["config"]["platform_names"]
         # ... and the ports were left exactly as they were: an edited
         # function must not disturb a guest that is already being served
         assert [nf["kind"] for nf in eports[0].value["nfs"]] == [
@@ -766,53 +812,30 @@ class _EvpnStand:
             filters={"uuid": dm_filters.EQ(seeded["dns"].uuid)}
         ).config["forwarders"] == ["9.9.9.9"]
 
-    def test_a_guest_arrives_behind_its_subnets_default_group(self):
-        # A port with no group gets its subnet's default group (everything out, in
-        # only from its own subnet); an empty rule list would mean no filtering.
-        from exordos_core.user_api.network.dm import models as net_api_models
+    def test_a_guest_without_sg_is_unfiltered_with_network_identity(self):
+        from exordos_core.user_api.network.dm import models as catalog
 
-        evpn_net, evpn_subnet = self._network()
-        flat_net, _ = self._flat_network()
-        hyp = self._pinned_node(flat_net.uuid, "hyp-def")
-        pool = self._pool(hypervisor_node=hyp.uuid)
-        guest = self._pinned_node(evpn_net.uuid, "guest-def")
-        self._machine(guest, pool)
-
+        network, subnet = self._network()
+        flat, _ = self._flat_network()
+        hyp = self._pinned_node(flat.uuid, "hyp-def")
+        guest = self._pinned_node(network.uuid, "guest-def")
+        self._machine(guest, self._pool(hypervisor_node=hyp.uuid))
         with self._selective_load():
             self._service._iteration()
             self._service._iteration()
-
-        default = [
+        assert not catalog.SecurityGroup.objects.get_all()
+        assert not [
             nf
-            for nf in net_api_models.NetworkFunction.objects.get_all()
+            for nf in catalog.NetworkFunction.objects.get_all()
             if nf.kind == "splitter"
-            and str(nf.owner_subnet or "") == str(evpn_subnet.uuid)
         ]
-        assert default, "the subnet must have been given a default group"
-        self._created.append(default[0])
-
-        eports = _resources("evpn_port", master=evpn_subnet.uuid)
-        rules = eports[0].value["security_rules"]
-        assert rules, "a port with no group of its own must not be unfiltered"
-        directions = {r["direction"] for r in rules}
-        assert directions == {"egress", "ingress"}
-        ingress = [r for r in rules if r["direction"] == "ingress"][0]
-        # "From my own subnet" by membership, not by address. The one rule
-        # that applies to every guest is the last place that should decide
-        # who is "us" by an address a neighbour can simply choose, so the
-        # subnet gets an identity group, every port on it joins, and the
-        # rule names the group. What travels is the group's number.
-        from exordos_core.user_api.network.dm import models as net_api_models
-
-        group = net_api_models.IdentityGroup.objects.get_one(
-            filters={"name": dm_filters.EQ("subnet-%s" % evpn_subnet.uuid)}
+        target = _resources("evpn_port", master=subnet.uuid)[0]
+        group = catalog.IdentityGroup.objects.get_one(
+            filters={"uuid": dm_filters.EQ(network.default_identity_group)}
         )
-        self._created.append(group)
-        assert "remote" not in ingress
-        assert ingress["remote_identity"] == int(group.identity)
-        assert eports[0].value["identity"] == int(group.identity), (
-            "and the port stamps the same group on everything it sends"
-        )
+        assert target.value["security_rules"] == []
+        assert target.value["identity"] == int(group.identity)
+        assert group.automatic
 
     def test_unpinned_node_avoids_overlay_network(self):
         # Overlay placement is opt-in: an unpinned node must land on the
@@ -871,7 +894,82 @@ class _EvpnStand:
 
 
 class TestOvsEvpnE2E(_EvpnStand):
-    def test_cp_computes_targets_then_dp_renders_them(self):
+    def test_binding_prefetch_sql_error_allows_live_fallback(self):
+        from exordos_core.user_api.network.dm import models as catalog
+
+        _, subnet = self._network()
+        port = models.Port(
+            uuid=sys_uuid.uuid4(), subnet=subnet.uuid, project_id=c.ZERO_UUID
+        )
+        original = catalog.PortSecurityGroup.objects
+        with contexts.Context().session_manager() as session:
+            with mock.patch.object(catalog.PortSecurityGroup, "objects") as failed:
+                failed.get_all.side_effect = lambda **kwargs: session.execute(
+                    "SELECT 1 / 0"
+                )
+                with models.Port.prefetch_bindings([port]):
+                    with mock.patch.object(
+                        catalog.PortSecurityGroup,
+                        "objects",
+                        original,
+                    ):
+                        assert port.security_groups == []
+                        assert port.identity_groups == []
+
+    @pytest.mark.parametrize("read", ["nodes", "addresses"])
+    def test_comparison_prefetch_sql_error_preserves_transaction(self, read):
+        network, subnet = self._network()
+        driver = network.load_driver()
+        port = mock.Mock(uuid=sys_uuid.uuid4(), node=sys_uuid.uuid4())
+        port.name = ""
+        owner = models.Node if read == "nodes" else driver
+        method = "objects" if read == "nodes" else "_comparison_addresses"
+        with contexts.Context().session_manager() as session:
+            with mock.patch.object(owner, method) as failed:
+                query = failed.get_all if read == "nodes" else failed
+                query.side_effect = lambda *a, **kw: session.execute("SELECT 1 / 0")
+                with driver.compare_ports(subnet, [port]):
+                    assert (
+                        session.execute("SELECT 42 AS answer").fetchone()["answer"]
+                        == 42
+                    )
+
+    @pytest.mark.parametrize("resource", ["host", "nf"])
+    def test_deferred_sql_error_preserves_other_writes(self, resource):
+        network, _ = self._network()
+        driver = network.load_driver()
+        created = []
+        with contexts.Context().session_manager() as session:
+            before = self._node("before-flush")
+
+            def write(*args, **kwargs):
+                if not created:
+                    created.append(None)
+                    session.execute("SELECT 1 / 0")
+                else:
+                    created.append(self._node("after-flush"))
+
+            with mock.patch.object(
+                driver,
+                "_write_host" if resource == "host" else "_write_resource",
+                side_effect=write,
+            ):
+                with driver.reconcile():
+                    if resource == "host":
+                        driver._ensure_host(sys_uuid.uuid4())
+                        driver._ensure_host(sys_uuid.uuid4())
+                    else:
+                        cp_evpn._RECONCILE_READS.get()["nf-targets"] = {
+                            str(i): (mock.Mock(uuid=sys_uuid.uuid4()), network.uuid)
+                            for i in range(2)
+                        }
+        assert len(created) == 2
+        for node in (before, created[1]):
+            assert models.Node.objects.get_one(
+                filters={"uuid": dm_filters.EQ(node.uuid)}
+            )
+
+    def test_cp_computes_targets_then_dp_renders_them(self, tmp_path):
         node = self._node()
         # The guest's hypervisor is what wires it: its bridge is on the
         # host, and an agent inside the guest has nothing to put a patch on.
@@ -901,11 +999,11 @@ class TestOvsEvpnE2E(_EvpnStand):
             self._service._iteration()
             self._service._iteration()
 
-        # VNI/RT/MTU allocated onto the network spec
+        # Allocated driver state remains separate from the desired spec.
         network = models.Network.objects.get_one(
             filters={"uuid": dm_filters.EQ(str(network.uuid))}
         )
-        spec = network.driver_spec
+        spec = network.driver_state
         assert spec["vni"] >= CONF.evpn.vni_range_start
         assert spec["rt"] == "%d:%d" % (CONF.evpn.as_number, spec["vni"])
         assert spec["mtu"] == CONF.evpn.underlay_mtu - 50
@@ -972,6 +1070,7 @@ class TestOvsEvpnE2E(_EvpnStand):
             # command is `sh`: patching them on the package would rebind a
             # name the driver does not read.
             mock.patch.object(dp_base, "CLIENT_CONF_DIR", "/tmp/e2e_vmconf"),
+            mock.patch.object(dp_base, "EGRESS_RECORDS_DIR", str(tmp_path / "egress")),
             mock.patch.object(dp_base, "NF_RECORDS_DIR", "/tmp/e2e_nf"),
             mock.patch.object(dp_base, "VLAN_MAP_PATH", "/tmp/e2e_vlan_map.json"),
             mock.patch.object(dp_base, "FLOW_BUNDLE_FILE", "/tmp/e2e_flow_bundle.tmp"),
@@ -1063,7 +1162,7 @@ class TestOvsEvpnE2E(_EvpnStand):
 
         # --- GC: node gone -> port rows gone -> evpn_host collected -----
         # (deleting only the port is not enough: NetworkService re-creates
-        # a port for any VM node that has none — that is by design)
+        # a port for an uninitialized legacy VM node that has none)
         node_row = models.Node.objects.get_one(
             filters={"uuid": dm_filters.EQ(str(node.uuid))}
         )
@@ -1077,6 +1176,9 @@ class TestOvsEvpnE2E(_EvpnStand):
                 self._created.remove(port)
         with mock.patch.object(models.Network, "load_driver", selective_load):
             self._service._iteration()
+        assert not _resources("evpn_port", master=subnet.uuid)[0].value["enabled"]
+        self._ack_port(port)
+        network.load_driver()._settle_withdrawals()
         assert _resources("evpn_port", master=subnet.uuid) == []
         assert (
             ua_models.TargetResource.objects.get_all(
@@ -1089,9 +1191,8 @@ class TestOvsEvpnE2E(_EvpnStand):
         )
 
     def test_a_port_can_join_a_group_of_its_own(self):
-        # What a port *is* is a reference, like the groups that say what it
-        # may do: it names an identity group and stamps that group's number
-        # instead of its subnet's. Nothing about addresses changes hands.
+        # Explicit identity membership adds a bit to the Network identity;
+        # opting out of the automatic group retains the explicit membership.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         evpn_net, evpn_subnet = self._network()
@@ -1118,8 +1219,11 @@ class TestOvsEvpnE2E(_EvpnStand):
         port = models.Port.objects.get_all(filters={"node": dm_filters.EQ(guest.uuid)})[
             0
         ]
-        port.config = models.PortSimpleKind(identity_groups=[web.uuid])
-        port.update()
+        binding = net_api_models.PortIdentityGroup(
+            project_id=port.project_id, port=port.uuid, identity_group=web.uuid
+        )
+        binding.insert()
+        self._created.append(binding)
 
         with self._selective_load():
             self._service._iteration()
@@ -1127,19 +1231,14 @@ class TestOvsEvpnE2E(_EvpnStand):
         eports = _resources("evpn_port", master=evpn_subnet.uuid)
         ep = [r for r in eports if str(r.value.get("uuid")) == str(port.uuid)][0]
         subnet_group = net_api_models.IdentityGroup.objects.get_one(
-            filters={"name": dm_filters.EQ("subnet-%s" % evpn_subnet.uuid)}
+            filters={"uuid": dm_filters.EQ(evpn_net.default_identity_group)}
         )
-        # Both bits: joining a group adds access rather than trading the
-        # subnet's away, which is what carrying a *set* buys.
+        # Explicit membership combines with the automatic Network group.
         assert ep.value["identity"] == int(web.identity) | int(subnet_group.identity)
         assert int(web.identity) != int(subnet_group.identity)
 
-        # ... and a workload that is not one of the neighbours says so: it
-        # then carries only what it declared, so the subnet's default rule
-        # no longer admits it anywhere.
-        port.config = models.PortSimpleKind(
-            identity_groups=[web.uuid], subnet_group=False
-        )
+        # An opted-out workload carries only its explicit groups.
+        port.network_identity = False
         port.update()
         with self._selective_load():
             self._service._iteration()
@@ -1151,21 +1250,17 @@ class TestOvsEvpnE2E(_EvpnStand):
         # it: the rule would compile to a match on a number nobody stamps,
         # and the port it protects would quietly stop admitting the
         # workloads it was meant to.
-        sg = net_api_models.SecurityGroup(
-            uuid=sys_uuid.uuid4(),
-            name="admits-web",
-            project_id=evpn_subnet.project_id,
-            rules=[
+        sg = self._security_group(
+            "admits-web",
+            [
                 {
                     "direction": "ingress",
                     "protocol": "tcp",
                     "port": 443,
-                    "remote_group": str(web.uuid),
+                    "remote_group": web.uuid,
                 }
             ],
         )
-        sg.insert()
-        self._created.append(sg)
         with pytest.raises(ra_storage_exc.ConflictRecords):
             web.delete()
 
@@ -1173,8 +1268,9 @@ class TestOvsEvpnE2E(_EvpnStand):
         # would take their membership away silently and free the bit for the
         # next group, after which the rules that admitted them admit
         # somebody else.
-        sg.rules = []
-        sg.update()
+        net_api_models.SecurityGroupRule.objects.get_one(
+            filters={"security_group": dm_filters.EQ(sg.uuid)}
+        ).delete()
         with pytest.raises(ra_storage_exc.ConflictRecords):
             web.delete()
 
@@ -1220,19 +1316,6 @@ class TestOvsEvpnE2E(_EvpnStand):
         # exactly what must *not* be refreshed.
         proxy.sync_generated({"forwards": [], "ports": {}})
 
-        default = [
-            nf
-            for nf in net_api_models.NetworkFunction.objects.get_all()
-            if nf.kind == "splitter"
-            and str(nf.owner_subnet or "") == str(evpn_subnet.uuid)
-        ][0]
-        self._created.append(default)
-        stale = [
-            {"direction": "egress", "proto": "any"},
-            {"direction": "ingress", "proto": "any", "remote": "10.0.0.0/8"},
-        ]
-        default.sync_generated({"rules": stale})
-
         # No port changes; only the loop runs.
         with self._selective_load():
             self._service._iteration()
@@ -1240,31 +1323,24 @@ class TestOvsEvpnE2E(_EvpnStand):
         proxy = net_api_models.NetworkFunction.objects.get_one(
             filters={"uuid": dm_filters.EQ(proxy.uuid)}
         )
-        default = net_api_models.NetworkFunction.objects.get_one(
-            filters={"uuid": dm_filters.EQ(default.uuid)}
-        )
-        assert proxy.config["ports"], "the grants a guest needs came back"
-        rules = default.config["rules"]
-        ingress = [r for r in rules if r["direction"] == "ingress"][0]
-        assert "remote" not in ingress, "and the default names a group again"
-        assert ingress["remote_group"]
-        # ... and both are still the installation's to keep current.
+        assert proxy.effective_config["ports"], "the grants a guest needs came back"
         assert proxy.provenance == net_api_models.NFProvenance.GENERATED.value
-        assert default.provenance == net_api_models.NFProvenance.GENERATED.value
+        assert not [
+            nf
+            for nf in net_api_models.NetworkFunction.objects.get_all()
+            if nf.kind == "splitter"
+        ]
         CONF.clear_override("gc_boot_api", "boot_api")
         CONF.clear_override("kernel", "boot_api")
 
-    def test_a_subnet_on_a_network_out_of_bits_is_refused(self):
-        # Sixteen bits is what a packet carries, and a subnet's default group
-        # takes one like any other. A subnet the group cannot be seeded for
-        # would compile to deny-all between its own guests, so on a network
-        # whose bits are spent the subnet is refused rather than created.
+    def test_subnets_share_network_identity_when_custom_bits_are_full(self):
+        # Additional subnets share the automatic Network identity without new bits.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         evpn_net, _ = self._network()
 
         # Spend every bit the network has, the way an operator would.
-        for index in range(net_api_models.IdentityGroup.IDENTITY_BITS):
+        for index in range(net_api_models.IdentityGroup.IDENTITY_BITS - 1):
             group = net_api_models.IdentityGroup(
                 uuid=sys_uuid.uuid4(),
                 name="filler-%d" % index,
@@ -1280,18 +1356,21 @@ class TestOvsEvpnE2E(_EvpnStand):
             cidr=netaddr.IPNetwork("10.43.0.0/24"),
             project_id=c.ZERO_UUID,
         )
-        with pytest.raises(ex_exceptions.ValidateException, match="identity bit"):
-            second.insert()
+        second.insert()
+        self._created.append(second)
         assert (
-            models.Subnet.objects.get_one_or_none(
-                filters={"uuid": dm_filters.EQ(second.uuid)}
+            len(
+                net_api_models.IdentityGroup.objects.get_all(
+                    filters={"network": dm_filters.EQ(evpn_net.uuid)}
+                )
             )
-            is None
+            == net_api_models.IdentityGroup.IDENTITY_BITS
         )
+        with pytest.raises(ex_exceptions.ValidateException, match="identity bit"):
+            net_api_models.IdentityGroup.allocate_identity(evpn_net.uuid)
 
     def test_a_deleted_subnet_takes_its_generated_rows_with_it(self):
-        # Its default group holds one of the network's sixteen bits, so a
-        # group left behind by each delete refused the 17th subnet.
+        # Subnet-owned functions are collected; the Network identity survives.
         from exordos_core.user_api.network.dm import models as net_api_models
 
         evpn_net, first = self._network()
@@ -1312,7 +1391,7 @@ class TestOvsEvpnE2E(_EvpnStand):
             owned = net_api_models.NetworkFunction.objects.get_all(
                 filters={"owner_subnet": dm_filters.EQ(subnet.uuid)}
             )
-            assert {nf.kind for nf in owned} == {"dhcp", "splitter"}
+            assert {nf.kind for nf in owned} == {"dhcp"}
             freed = net_api_models.Address(
                 uuid=sys_uuid.uuid4(),
                 project_id=c.ZERO_UUID,
@@ -1330,9 +1409,10 @@ class TestOvsEvpnE2E(_EvpnStand):
             assert not net_api_models.Address.objects.get_all(
                 filters={"subnet": dm_filters.EQ(subnet.uuid)}
             )
-        assert not net_api_models.IdentityGroup.objects.get_all(
+        groups = net_api_models.IdentityGroup.objects.get_all(
             filters={"network": dm_filters.EQ(evpn_net.uuid)}
         )
+        assert len(groups) == 1 and groups[0].automatic
         # The network's own functions are not the subnet's to take.
         assert net_api_models.NetworkFunction.objects.get_all(
             filters={"owner_network": dm_filters.EQ(evpn_net.uuid)}

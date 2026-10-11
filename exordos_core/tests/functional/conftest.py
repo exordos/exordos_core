@@ -526,7 +526,14 @@ def node_factory():
             disk_spec=sdk_infra_models.RootDiskSpec(image=image),
             **kwargs,
         )
-        view = node.dump_to_simple_view()
+        view = node.dump_to_simple_view(
+            skip=[
+                "ports",
+                "network_initialized",
+                "network_activation_barrier",
+                *([] if "networking" in kwargs else ["networking"]),
+            ]
+        )
         if status is None:
             view.pop("status")
         view.pop("node_set")
@@ -559,7 +566,14 @@ def node_factory_with_model():
             disk_spec=sdk_infra_models.RootDiskSpec(image=image),
             **kwargs,
         )
-        view = node.dump_to_simple_view()
+        view = node.dump_to_simple_view(
+            skip=[
+                "ports",
+                "network_initialized",
+                "network_activation_barrier",
+                *([] if "networking" in kwargs else ["networking"]),
+            ]
+        )
         if status is None:
             view.pop("status")
         view.pop("node_set")
@@ -594,7 +608,9 @@ def node_set_factory():
             disk_spec=sdk_infra_models.SetRootDiskSpec(image=image),
             **kwargs,
         )
-        view = obj.dump_to_simple_view()
+        view = obj.dump_to_simple_view(skip=["network_activation_barrier"])
+        if "networking" not in kwargs:
+            view.pop("networking", None)
         return view
 
     return factory
@@ -1071,7 +1087,9 @@ def network_factory():
             ),
             **kwargs,
         )
-        return network.dump_to_simple_view()
+        return network.dump_to_simple_view(
+            skip=["driver_state", "default_identity_group"]
+        )
 
     return factory
 
@@ -1095,7 +1113,9 @@ def subnet_factory():
             cidr=netaddr.IPNetwork(cidr),
             **kwargs,
         )
-        return subnet.dump_to_simple_view()
+        return subnet.dump_to_simple_view(
+            skip=["effective_routers", "effective_dns_servers"]
+        )
 
     return factory
 
@@ -1117,7 +1137,10 @@ def security_group_factory():
             rules=rules if rules is not None else [],
             **kwargs,
         )
-        return sg.dump_to_simple_view()
+        view = sg.dump_to_simple_view(skip=["rules"])
+        if rules is not None:
+            view["rules"] = rules
+        return view
 
     return factory
 
@@ -1139,7 +1162,19 @@ def address_factory():
             address=address,
             **kwargs,
         )
-        view = addr.dump_to_simple_view()
+        view = addr.dump_to_simple_view(
+            skip=[
+                "network",
+                "status",
+                "delete_requested",
+                "allocation",
+                "created_at",
+                "updated_at",
+                *(["port"] if addr.kind == "reservation" else []),
+            ]
+        )
+        if address is None:
+            view.pop("address", None)
         # The compiler's fields: the API refuses them, even at their defaults.
         for field in ("origin", "owner_port", "association"):
             if field not in kwargs:
@@ -1171,7 +1206,13 @@ def nf_factory():
         # provenance and the owner fields are read-only: they say who owns
         # the function, which is the compiler's to write and not a caller's.
         return nf.dump_to_simple_view(
-            skip=["provenance", "owner_subnet", "owner_network"]
+            skip=[
+                "provenance",
+                "owner_subnet",
+                "owner_network",
+                "generated_config",
+                "effective_config",
+            ]
         )
 
     return factory
@@ -1184,7 +1225,7 @@ def port_factory():
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "port-default",
         project_id: sys_uuid.UUID = c.ZERO_UUID,
-        mac: str = "52:54:00:aa:bb:cc",
+        mac: tp.Optional[str] = None,
         config: tp.Optional[tp.Any] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -1201,7 +1242,36 @@ def port_factory():
         )
         # status/machine/provenance are read-only (reconcile-driven,
         # derived, and "who owns this row" respectively).
-        return port.dump_to_simple_view(skip=["status", "machine", "provenance"])
+        view = port.dump_to_simple_view(
+            skip=[
+                "status",
+                "machine",
+                "provenance",
+                "activation_barrier",
+                "ipv4",
+                "mask",
+                "mac",
+                "config",
+                "target_mask",
+                "network",
+                "security_groups",
+                "identity_groups",
+                "created_at",
+                "updated_at",
+                "target_ipv4",
+                "interface",
+                "source",
+            ]
+        )
+        if "target_ipv4" in kwargs:
+            view["target_ipv4"] = str(kwargs["target_ipv4"])
+        if mac is not None:
+            view["target_mac"] = mac
+        else:
+            view.pop("target_mac", None)
+        if "index" not in kwargs:
+            view.pop("index", None)
+        return view
 
     return factory
 
@@ -1243,6 +1313,8 @@ def vhost_factory():
                 "status",
             ]
         )
+        if "index" not in kwargs:
+            view.pop("index", None)
         return view
 
     return factory

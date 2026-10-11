@@ -98,7 +98,17 @@ def _storage(
     port_objects = mock.MagicMock()
     port_objects.get_all.return_value = [port] if port is not None else []
     address_objects = mock.MagicMock()
-    address_objects.get_all.return_value = list(floating)
+
+    def _addresses(filters=None, **kwargs):
+        return [
+            row
+            for row in floating
+            if all(
+                getattr(row, field) == clause.value for field, clause in filters.items()
+            )
+        ]
+
+    address_objects.get_all.side_effect = _addresses
     with (
         mock.patch.object(compute_models.Network, "objects", net_objects),
         mock.patch.object(compute_models.Node, "objects", node_objects),
@@ -395,6 +405,10 @@ def test_a_door_beside_a_floating_address_is_refused():
     port.subnet = SUBNET
     published = mock.MagicMock()
     published.address = "203.0.113.9"
+    published.kind = "floating"
+    published.allocation = "reserved"
+    published.port = None
+    published.association = port.uuid
     with _storage(
         network=_overlay(),
         node=_node(),
@@ -434,6 +448,10 @@ def test_a_second_path_that_arrives_later_shuts_the_door():
     port.subnet = SUBNET
     published = mock.MagicMock()
     published.address = "203.0.113.9"
+    published.kind = "floating"
+    published.allocation = "reserved"
+    published.port = None
+    published.association = port.uuid
     door = _door()
 
     with _storage(
@@ -450,3 +468,26 @@ def test_a_second_path_that_arrives_later_shuts_the_door():
     ):
         with mock.patch.object(net_models, "LOG"):
             assert door.upstream() is None
+
+
+@pytest.mark.parametrize("origin", ["explicit", "auto"])
+@pytest.mark.parametrize("binding", ["port", "association"])
+def test_canonical_fip_closes_proxy_during_binding_and_withdrawal(origin, binding):
+    port = mock.Mock(uuid=sys_uuid.uuid4(), subnet=SUBNET)
+    address = mock.Mock(
+        kind="floating",
+        origin=origin,
+        allocation="reserved",
+        port=None,
+        association=None,
+        address="192.0.2.10",
+    )
+    setattr(address, binding, port.uuid)
+    with _storage(
+        network=_overlay(),
+        node=_node(),
+        port=port,
+        floating=[address],
+        port_network=_flat(),
+    ):
+        assert "floating address" in _door()._second_path()

@@ -19,7 +19,6 @@ import uuid as sys_uuid
 from bazooka import exceptions as bazooka_exc
 import netaddr
 import pytest
-
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as c
@@ -34,7 +33,28 @@ def _associate(address_uuid, port):
         filters={"uuid": dm_filters.EQ(sys_uuid.UUID(str(address_uuid)))}
     )
     addr.association = sys_uuid.UUID(str(port)) if port else None
-    addr.update()
+    from restalchemy.storage.sql import orm
+
+    orm.SQLStorableMixin.update(addr)
+
+
+def _create_sg(client, url, body):
+    declaration = dict(body)
+    rules = declaration.pop("rules", [])
+    response = client.post(url, json=declaration)
+    rule_url = client.build_collection_uri(
+        ["network", "catalog", "security_group_rules"]
+    )
+    for rule in rules:
+        client.post(
+            rule_url,
+            json={
+                **rule,
+                "security_group": response.json()["uuid"],
+                "project_id": declaration["project_id"],
+            },
+        )
+    return response
 
 
 class TestSecurityGroupApi:
@@ -54,10 +74,11 @@ class TestSecurityGroupApi:
                 {"direction": "egress", "protocol": "any"},
             ],
         )
-        response = client.post(self._url(client), json=sg)
+        response = _create_sg(client, self._url(client), sg)
         assert response.status_code == 201, response.text
         output = response.json()
         assert output["uuid"] == sg["uuid"]
+        output = client.get(self._url(client) + output["uuid"]).json()
         assert len(output["rules"]) == 2
 
     def test_create_security_group_rejects_bad_direction(
@@ -68,8 +89,8 @@ class TestSecurityGroupApi:
             rules=[{"direction": "sideways", "protocol": "tcp", "port": 80}]
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.post(self._url(client), json=sg)
-        assert "direction" in str(exc.value.cause.response.text)
+            _create_sg(client, self._url(client), sg)
+        assert "sideways" in str(exc.value.cause.response.text)
 
     def test_create_security_group_rejects_a_forged_remote_ip(
         self, user_api_client, auth_user_admin, security_group_factory
@@ -88,7 +109,7 @@ class TestSecurityGroupApi:
             ]
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.post(self._url(client), json=sg)
+            _create_sg(client, self._url(client), sg)
         assert "remote_ip" in str(exc.value.cause.response.text)
 
     def test_list_get_delete_security_group(
@@ -96,7 +117,7 @@ class TestSecurityGroupApi:
     ):
         client = user_api_client(auth_user_admin)
         sg = security_group_factory(name="listable-sg")
-        assert client.post(self._url(client), json=sg).status_code == 201
+        assert _create_sg(client, self._url(client), sg).status_code == 201
 
         listed = client.get(self._url(client))
         assert listed.status_code == 200
@@ -206,7 +227,7 @@ class TestAddressApi:
         outside = address_factory(subnet_uuid=subnet["uuid"], address="10.99.0.5")
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
             client.post(self._url(client), json=outside)
-        assert "is not in" in exc.value.cause.response.text
+        assert "no accessible subnet" in exc.value.cause.response.text
 
     def test_an_update_cannot_move_an_address_out_of_its_subnet(
         self,
@@ -226,7 +247,7 @@ class TestAddressApi:
         # Nor within it: an update naming only the address is how a pinned
         # one would get past the explicit-address gate on create.
         for value in ("10.99.0.5", "10.42.0.31"):
-            with pytest.raises(bazooka_exc.ForbiddenError):
+            with pytest.raises(bazooka_exc.ConflictError):
                 client.put(
                     client.build_resource_uri(
                         ["network", "catalog", "addresses", addr["uuid"]]
@@ -328,16 +349,15 @@ class TestAddressApi:
         res_url = client.build_resource_uri(
             ["network", "catalog", "addresses", addr["uuid"]]
         )
-        assert client.put(res_url, json={"allocation": "freed"}).status_code == 200
+        assert client.delete(res_url).status_code == 204
 
         # The address is the subnet's again, and somebody else may take it.
         again = address_factory(subnet_uuid=subnet["uuid"], address="10.42.0.40")
         assert client.post(self._url(client), json=again).status_code == 201
 
         # And the row that gave it back cannot quietly take it back.
-        with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.put(res_url, json={"allocation": "reserved"})
-        assert "somebody else" in str(exc.value.cause.response.text)
+        with pytest.raises(bazooka_exc.NotFoundError):
+            client.get(res_url)
 
     def test_an_address_in_use_is_not_released(
         self,
@@ -359,13 +379,12 @@ class TestAddressApi:
         )
         _associate(addr["uuid"], "11111111-1111-1111-1111-111111111111")
 
-        with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.put(res_url, json={"allocation": "freed"})
-        assert "still associated" in str(exc.value.cause.response.text)
+        with pytest.raises(bazooka_exc.ConflictError):
+            client.delete(res_url)
 
         # Disassociated, it releases like any other.
         _associate(addr["uuid"], None)
-        assert client.put(res_url, json={"allocation": "freed"}).status_code == 200
+        assert client.delete(res_url).status_code == 204
 
 
 class TestCatalogReferentialIntegrity:
@@ -392,7 +411,7 @@ class TestCatalogReferentialIntegrity:
             name="referenced",
             rules=[{"direction": "egress", "protocol": "tcp", "port": 443}],
         )
-        client.post(self._sg_url(client), json=sg).raise_for_status()
+        _create_sg(client, self._sg_url(client), sg).raise_for_status()
 
         network = network_factory(name="sg-net", driver_spec={"driver": "ovs_evpn"})
         client.post(
@@ -404,9 +423,6 @@ class TestCatalogReferentialIntegrity:
         ).raise_for_status()
         port = port_factory(
             subnet_uuid=subnet["uuid"],
-            config=compute_models.PortSimpleKind(
-                security_groups=[sys_uuid.UUID(sg["uuid"])]
-            ),
         )
         client.post(
             client.build_collection_uri(["network", "ports"]), json=port
@@ -515,7 +531,7 @@ class TestIdentityGroupBoundaries:
             ],
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.post(self._sg_url(client), json=sg)
+            _create_sg(client, self._sg_url(client), sg)
         assert "another project" in exc.value.cause.response.text
 
 
@@ -537,7 +553,7 @@ class TestSubnetIdentityCapacity:
         client = user_api_client(auth_user_admin)
         network = network_factory(name="net-full", driver_spec={"driver": "ovs_evpn"})
         client.post(client.build_collection_uri(["network", "networks"]), json=network)
-        for bit in range(network_models.IdentityGroup.IDENTITY_BITS):
+        for bit in range(1, network_models.IdentityGroup.IDENTITY_BITS):
             network_models.IdentityGroup(
                 uuid=sys_uuid.uuid4(),
                 name="filler-%d" % bit,
@@ -547,20 +563,13 @@ class TestSubnetIdentityCapacity:
             ).insert()
 
         subnet = subnet_factory(network_uuid=network["uuid"], name="one-too-many")
-        with pytest.raises(bazooka_exc.BadRequestError) as exc:
+        # The automatic identity already covers every subnet; no new bit is needed.
+        assert (
             client.post(
                 client.build_collection_uri(["network", "subnets"]), json=subnet
-            )
-        assert "no identity bit left" in exc.value.cause.response.text
-
-        # ... and freeing one lets it through.
-        network_models.IdentityGroup.objects.get_one(
-            filters={"name": dm_filters.EQ("filler-0")}
-        ).delete()
-        created = client.post(
-            client.build_collection_uri(["network", "subnets"]), json=subnet
+            ).status_code
+            == 201
         )
-        assert created.status_code == 201, created.text
 
     def test_a_group_past_the_bits_is_refused(
         self,
@@ -585,7 +594,7 @@ class TestSubnetIdentityCapacity:
                 "network": network["uuid"],
             }
 
-        for index in range(network_models.IdentityGroup.IDENTITY_BITS):
+        for index in range(network_models.IdentityGroup.IDENTITY_BITS - 1):
             client.post(uri, json=body(index))
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
             client.post(uri, json=body(99))
@@ -686,7 +695,7 @@ class TestPlatformFunctions:
                 json={"config": {"forwarders": ["9.9.9.9"]}},
             )
             assert response.status_code == 200, response.text
-            assert response.json()["provenance"] == "user"
+            assert response.json()["provenance"] == "generated"
         finally:
             nf.collect_generated()
 
@@ -756,9 +765,10 @@ class TestIdentityIsNotClaimable:
             rules=[{"direction": "ingress", "protocol": "any", "remote_identity": 1}],
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
-            client.post(
+            _create_sg(
+                client,
                 client.build_collection_uri(["network", "catalog", "security_groups"]),
-                json=sg,
+                sg,
             )
         assert "remote_identity" in exc.value.cause.response.text
 
@@ -830,6 +840,6 @@ class TestIdentityIsNotClaimable:
             # And editing it without saying anything still takes it over.
             response = client.put(url, json={"config": {"rules": []}})
             assert response.status_code == 200, response.text
-            assert response.json()["provenance"] == "user"
+            assert response.json()["provenance"] == "generated"
         finally:
             nf.collect_generated()

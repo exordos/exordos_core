@@ -19,6 +19,12 @@
 
 Exordos Core is an open-source NoOps platform for managing corporate infrastructure and software ecosystems. It provides a unified platform layer — from bare metal and virtual machines all the way to applications and services — designed to be operated by both humans and AI agents.
 
+SDN uses independently managed [ports, floating addresses and security group
+bindings](docs/network/sdn-api-contract.md), with declarative manifests,
+multiple NICs and hotplug. Existing flat networking remains supported.
+The [network dataplane reference](docs/network/dataplane.md) lists the API and
+target entities and diagrams the hypervisor, fabric, service and gateway paths.
+
 ## What Exordos Core does
 
 Exordos Core is the next step beyond classic DevOps. Instead of a collection of disconnected tools requiring constant manual coordination, it gives your organization a single declarative platform layer where infrastructure, policies, and service lifecycle are managed as one coherent system.

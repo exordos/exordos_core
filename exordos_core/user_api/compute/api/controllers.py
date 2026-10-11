@@ -27,6 +27,9 @@ from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as storage_exc
 
+from exordos_core.common import constants as core_constants
+from exordos_core.common import exceptions as ex_exceptions
+from exordos_core.common.api.controllers import StoredFieldsQueryMixin
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as models
 from exordos_core.user_api.compute.dm import models as user_models
@@ -143,6 +146,7 @@ class ForeignSubnetMixin:
 
 
 class NodesController(
+    StoredFieldsQueryMixin,
     ForeignSubnetMixin,
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
@@ -152,7 +156,7 @@ class NodesController(
     __policy_name__ = "node"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         model_class=user_models.Node,
         process_filters=True,
         convert_underscore=False,
@@ -160,6 +164,13 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "ports": {ra_c.ALL: field_p.Permissions.RO},
+                "network_activation_barrier": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "network_initialized": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "networking": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RW,
+                },
                 # `default_network` stays writable for one more release:
                 # manifests using the released `target_ipv4` would get a 400.
                 # Deprecated in NetworkService._legacy_interface.
@@ -169,6 +180,15 @@ class NodesController(
 
     def create(self, **kwargs):
         # Validate disk spec
+        self.model.validate_create_input(kwargs)
+        self._enforce_and_override_project_id_in_kwargs("create", kwargs)
+        from exordos_core.network.permissions import gate_networking
+
+        gate_networking(
+            self,
+            kwargs.get("networking"),
+            kwargs.get("project_id", core_constants.ZERO_UUID),
+        )
         node = self.model(**kwargs)
         node.disk_spec.validate()
         self._enforce_foreign_subnets(node.interfaces)
@@ -176,6 +196,10 @@ class NodesController(
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
+        if "networking" in kwargs:
+            raise ex_exceptions.ValidateException(
+                err="networking is create-only; update ports directly"
+            )
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
         if "interfaces" in kwargs:
             self._enforce_foreign_subnets(kwargs["interfaces"])
@@ -227,12 +251,22 @@ class NodeSetsController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "network_activation_barrier": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "nodes": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
     )
 
     def create(self, **kwargs):
+        self.model.validate_create_input(kwargs)
+        self._enforce_and_override_project_id_in_kwargs("create", kwargs)
+        from exordos_core.network.permissions import gate_networking
+
+        gate_networking(
+            self,
+            kwargs.get("networking"),
+            kwargs.get("project_id", core_constants.ZERO_UUID),
+        )
         # Validate disk spec
         node_set = self.model(**kwargs)
         node_set.disk_spec.validate()
@@ -241,6 +275,11 @@ class NodeSetsController(
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
+        stored = self.get(uuid=uuid)
+        self.model.validate_update_input(kwargs, stored)
+        from exordos_core.network.permissions import gate_networking
+
+        gate_networking(self, kwargs.get("networking"), stored.project_id)
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
         if "interfaces" in kwargs:
             self._enforce_foreign_subnets(kwargs["interfaces"])

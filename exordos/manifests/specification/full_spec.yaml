@@ -1,6 +1,17 @@
 components:
   schemas:
     Address_Create:
+      oneOf:
+      - not:
+          required:
+          - network
+        required:
+        - subnet
+      - not:
+          required:
+          - subnet
+        required:
+        - network
       path: /v1/network/catalog/addresses/
       properties:
         address:
@@ -15,6 +26,7 @@ components:
           - freed
           - reserved
           example: reserved
+          readOnly: true
           type: string
         association:
           example: 00000000-0000-0000-0000-000000000000
@@ -29,6 +41,18 @@ components:
           readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        kind:
+          default: reservation
+          enum:
+          - floating
+          - reservation
+          example: reservation
+          type: string
+        network:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
         origin:
           default: explicit
           enum:
@@ -44,9 +68,19 @@ components:
           nullable: true
           readOnly: true
           type: string
+        port:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
+          type: string
+        status:
+          example: any_string
+          maxLength: 32
+          readOnly: true
           type: string
         subnet:
           example: 00000000-0000-0000-0000-000000000000
@@ -66,7 +100,7 @@ components:
           type: string
       required:
       - project_id
-      - subnet
+      - kind
       type: object
     BackendPool_Create:
       path: /v1/network/lb/{LBUuid}/backend_pools/
@@ -866,6 +900,55 @@ components:
       required:
       - name
       - client_id
+      type: object
+    IdentityGroup_Create:
+      path: /v1/network/catalog/identity_groups/
+      properties:
+        automatic:
+          default: false
+          example: true
+          readOnly: true
+          type: boolean
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        network:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      - network
       type: object
     Idp_Create:
       $ref: '#/components/schemas/Idp_Get'
@@ -1703,6 +1786,12 @@ components:
           readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        default_identity_group:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          readOnly: true
+          type: string
         description:
           default: ''
           example: any_string
@@ -1720,6 +1809,20 @@ components:
           default: {}
           example:
             key: value
+          type: object
+        driver_state:
+          additionalProperties:
+            oneOf:
+            - type: string
+            - type: integer
+            - type: boolean
+            - type: object
+            - items: {}
+              type: array
+          default: {}
+          example:
+            key: value
+          readOnly: true
           type: object
         name:
           default: ''
@@ -1893,36 +1996,14 @@ components:
                   type: string
                 config:
                   default:
-                    dhcp: null
-                    dns: null
-                    identity_groups: []
                     kind: simple
                     public: null
-                    security_groups: []
-                    subnet_group: null
                   example:
                     key: value
                   oneOf:
                   - example:
                       key: value
                     properties:
-                      dhcp:
-                        example: true
-                        nullable: true
-                        type: boolean
-                      dns:
-                        example: true
-                        nullable: true
-                        type: boolean
-                      identity_groups:
-                        default: []
-                        example:
-                        - 00000000-0000-0000-0000-000000000000
-                        items:
-                          example: 00000000-0000-0000-0000-000000000000
-                          format: uuid
-                          type: string
-                        type: array
                       kind:
                         enum:
                         - simple
@@ -1943,21 +2024,16 @@ components:
                             format: uuid
                             type: string
                         type: object
-                      security_groups:
-                        default: []
-                        example:
-                        - 00000000-0000-0000-0000-000000000000
-                        items:
-                          example: 00000000-0000-0000-0000-000000000000
-                          format: uuid
-                          type: string
-                        type: array
-                      subnet_group:
-                        example: true
-                        nullable: true
-                        type: boolean
                     type: object
                   type: object
+                dhcp:
+                  example: true
+                  nullable: true
+                  type: boolean
+                dns:
+                  example: true
+                  nullable: true
+                  type: boolean
                 index:
                   example: 7
                   maximum: 15
@@ -1973,6 +2049,10 @@ components:
                   format: uuid
                   nullable: true
                   type: string
+                network_identity:
+                  example: true
+                  nullable: true
+                  type: boolean
                 port_security:
                   default: true
                   example: true
@@ -2009,6 +2089,96 @@ components:
           example: any_string
           maxLength: 255
           type: string
+        networking:
+          items:
+            additionalProperties: false
+            properties:
+              floating_ip:
+                additionalProperties: false
+                oneOf:
+                - not:
+                    required:
+                    - network
+                  required:
+                  - subnet
+                - not:
+                    required:
+                    - subnet
+                  required:
+                  - network
+                properties:
+                  network:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                  subnet:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                type: object
+              identity_groups:
+                items:
+                  format: uuid
+                  type: string
+                type: array
+              index:
+                minimum: 0
+                type: integer
+              port:
+                additionalProperties: false
+                oneOf:
+                - not:
+                    required:
+                    - network
+                  required:
+                  - subnet
+                - not:
+                    required:
+                    - subnet
+                  required:
+                  - network
+                properties:
+                  description:
+                    example: any_string
+                    maxLength: 255
+                    type: string
+                  dhcp:
+                    example: true
+                    nullable: true
+                    type: boolean
+                  dns:
+                    example: true
+                    nullable: true
+                    type: boolean
+                  name:
+                    example: any_string
+                    maxLength: 255
+                    type: string
+                  network:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                  network_identity:
+                    example: true
+                    nullable: true
+                    type: boolean
+                  port_security:
+                    example: true
+                    type: boolean
+                  subnet:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                type: object
+              security_groups:
+                items:
+                  format: uuid
+                  type: string
+                type: array
+            required:
+            - port
+            type: object
+          type: array
         node_type:
           default: VM
           enum:
@@ -2241,36 +2411,14 @@ components:
                   type: string
                 config:
                   default:
-                    dhcp: null
-                    dns: null
-                    identity_groups: []
                     kind: simple
                     public: null
-                    security_groups: []
-                    subnet_group: null
                   example:
                     key: value
                   oneOf:
                   - example:
                       key: value
                     properties:
-                      dhcp:
-                        example: true
-                        nullable: true
-                        type: boolean
-                      dns:
-                        example: true
-                        nullable: true
-                        type: boolean
-                      identity_groups:
-                        default: []
-                        example:
-                        - 00000000-0000-0000-0000-000000000000
-                        items:
-                          example: 00000000-0000-0000-0000-000000000000
-                          format: uuid
-                          type: string
-                        type: array
                       kind:
                         enum:
                         - simple
@@ -2291,21 +2439,16 @@ components:
                             format: uuid
                             type: string
                         type: object
-                      security_groups:
-                        default: []
-                        example:
-                        - 00000000-0000-0000-0000-000000000000
-                        items:
-                          example: 00000000-0000-0000-0000-000000000000
-                          format: uuid
-                          type: string
-                        type: array
-                      subnet_group:
-                        example: true
-                        nullable: true
-                        type: boolean
                     type: object
                   type: object
+                dhcp:
+                  example: true
+                  nullable: true
+                  type: boolean
+                dns:
+                  example: true
+                  nullable: true
+                  type: boolean
                 index:
                   example: 7
                   maximum: 15
@@ -2321,6 +2464,10 @@ components:
                   format: uuid
                   nullable: true
                   type: string
+                network_identity:
+                  example: true
+                  nullable: true
+                  type: boolean
                 port_security:
                   default: true
                   example: true
@@ -2357,6 +2504,116 @@ components:
           example: any_string
           maxLength: 255
           type: string
+        networking:
+          items:
+            additionalProperties: false
+            properties:
+              floating_ip:
+                oneOf:
+                - format: uuid
+                  type: string
+                - additionalProperties: false
+                  oneOf:
+                  - not:
+                      required:
+                      - network
+                    required:
+                    - subnet
+                  - not:
+                      required:
+                      - subnet
+                    required:
+                    - network
+                  properties:
+                    address:
+                      example: any_string
+                      format: ipv4
+                      maxLength: 45
+                      minLength: 2
+                      type: string
+                    network:
+                      example: 00000000-0000-0000-0000-000000000000
+                      format: uuid
+                      type: string
+                    subnet:
+                      example: 00000000-0000-0000-0000-000000000000
+                      format: uuid
+                      type: string
+                  type: object
+              identity_groups:
+                items:
+                  format: uuid
+                  type: string
+                type: array
+              index:
+                minimum: 0
+                type: integer
+              port:
+                oneOf:
+                - format: uuid
+                  type: string
+                - additionalProperties: false
+                  oneOf:
+                  - not:
+                      required:
+                      - network
+                    required:
+                    - subnet
+                  - not:
+                      required:
+                      - subnet
+                    required:
+                    - network
+                  properties:
+                    description:
+                      example: any_string
+                      maxLength: 255
+                      type: string
+                    dhcp:
+                      example: true
+                      nullable: true
+                      type: boolean
+                    dns:
+                      example: true
+                      nullable: true
+                      type: boolean
+                    name:
+                      example: any_string
+                      maxLength: 255
+                      type: string
+                    network:
+                      example: 00000000-0000-0000-0000-000000000000
+                      format: uuid
+                      type: string
+                    network_identity:
+                      example: true
+                      nullable: true
+                      type: boolean
+                    port_security:
+                      example: true
+                      type: boolean
+                    subnet:
+                      example: 00000000-0000-0000-0000-000000000000
+                      format: uuid
+                      type: string
+                    target_ipv4:
+                      example: 127.0.0.1
+                      format: ipv4
+                      type: string
+                    target_mac:
+                      example: 00:00:00:00:00:00
+                      pattern: ^([0-9a-fA-F]{2,2}:){5,5}[0-9a-fA-F]{2,2}$
+                      type: string
+                  type: object
+              security_groups:
+                items:
+                  format: uuid
+                  type: string
+                type: array
+            required:
+            - port
+            type: object
+          type: array
         node_set:
           readOnly: true
           type: string
@@ -2375,6 +2632,15 @@ components:
             example: 00000000-0000-0000-0000-000000000000
             format: uuid
             type: string
+          type: array
+        ports:
+          example:
+          - 00000000-0000-0000-0000-000000000000
+          items:
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            type: string
+          readOnly: true
           type: array
         project_id:
           example: 00000000-0000-0000-0000-000000000000
@@ -2688,6 +2954,299 @@ components:
       required:
       - name
       type: object
+    PortIdentityGroup_Create:
+      path: /v1/network/port_identity_groups/
+      properties:
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        identity_group:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        port:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      - port
+      - identity_group
+      type: object
+    PortSecurityGroup_Create:
+      path: /v1/network/port_security_groups/
+      properties:
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        port:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        security_group:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      - port
+      - security_group
+      type: object
+    Port_Create:
+      oneOf:
+      - not:
+          required:
+          - network
+        required:
+        - subnet
+      - not:
+          required:
+          - subnet
+        required:
+        - network
+      path: /v1/network/ports/
+      properties:
+        config:
+          default:
+            kind: simple
+            public: null
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - simple
+                type: string
+              public:
+                additionalProperties: false
+                example:
+                  floating_from: 00000000-0000-0000-0000-000000000000
+                maxProperties: 1
+                nullable: true
+                properties:
+                  address:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                  floating_from:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                type: object
+            type: object
+          readOnly: true
+          type: object
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        dhcp:
+          example: true
+          nullable: true
+          type: boolean
+        dns:
+          example: true
+          nullable: true
+          type: boolean
+        identity_groups:
+          example:
+          - 00000000-0000-0000-0000-000000000000
+          items:
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            type: string
+          readOnly: true
+          type: array
+        index:
+          example: 0
+          minimum: 0
+          nullable: true
+          type: integer
+        interface:
+          example: any_string
+          maxLength: 32
+          minLength: 1
+          nullable: true
+          readOnly: true
+          type: string
+        ipv4:
+          anyOf:
+          - format: ipv4
+          - format: ipv6
+          example: 127.0.0.1
+          nullable: true
+          readOnly: true
+          type: string
+        mac:
+          example: 00:00:00:00:00:00
+          nullable: true
+          pattern: ^([0-9a-fA-F]{2,2}:){5,5}[0-9a-fA-F]{2,2}$
+          readOnly: true
+          type: string
+        machine:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          readOnly: true
+          type: string
+        mask:
+          anyOf:
+          - format: ipv4
+          - format: ipv6
+          example: 127.0.0.1
+          nullable: true
+          readOnly: true
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        network:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        network_identity:
+          example: true
+          nullable: true
+          type: boolean
+        node:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        port_security:
+          default: true
+          example: true
+          type: boolean
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        provenance:
+          default: user
+          enum:
+          - generated
+          - user
+          example: user
+          readOnly: true
+          type: string
+        security_groups:
+          example:
+          - 00000000-0000-0000-0000-000000000000
+          items:
+            example: 00000000-0000-0000-0000-000000000000
+            format: uuid
+            type: string
+          readOnly: true
+          type: array
+        source:
+          example: any_string
+          maxLength: 128
+          nullable: true
+          readOnly: true
+          type: string
+        status:
+          default: NEW
+          enum:
+          - ACTIVE
+          - ERROR
+          - IN_PROGRESS
+          - NEW
+          example: NEW
+          readOnly: true
+          type: string
+        subnet:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        target_ipv4:
+          anyOf:
+          - format: ipv4
+          - format: ipv6
+          example: 127.0.0.1
+          nullable: true
+          type: string
+        target_mac:
+          example: 00:00:00:00:00:00
+          nullable: true
+          pattern: ^([0-9a-fA-F]{2,2}:){5,5}[0-9a-fA-F]{2,2}$
+          type: string
+        target_mask:
+          anyOf:
+          - format: ipv4
+          - format: ipv6
+          example: 127.0.0.1
+          nullable: true
+          readOnly: true
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      type: object
     Profile_Create:
       path: /v1/vs/profiles/
       properties:
@@ -2791,6 +3350,94 @@ components:
       required:
       - name
       - organization
+      type: object
+    ProxyService_Create:
+      path: /v1/network/catalog/proxy_services/
+      properties:
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        destination:
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - node
+                type: string
+              node:
+                example: 00000000-0000-0000-0000-000000000000
+                format: uuid
+                type: string
+            type: object
+          - example:
+              key: value
+            properties:
+              address:
+                anyOf:
+                - format: ipv4
+                - format: ipv6
+                example: 127.0.0.1
+                type: string
+              kind:
+                enum:
+                - address
+                type: string
+            type: object
+          type: object
+        domain:
+          example: any_string
+          maxLength: 255
+          minLength: 1
+          nullable: true
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        network:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        port:
+          example: 32768
+          maximum: 65535
+          minimum: 1
+          type: integer
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      - network
+      - port
+      - destination
       type: object
     QuotaLimit_Create:
       path: /v1/quota/limits/
@@ -4520,6 +5167,119 @@ components:
       required:
       - project_id
       type: object
+    SecurityGroupRule_Create:
+      path: /v1/network/catalog/security_group_rules/
+      properties:
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        direction:
+          enum:
+          - egress
+          - ingress
+          example: ingress
+          type: string
+        port:
+          example: 32768
+          maximum: 65535
+          minimum: 1
+          nullable: true
+          type: integer
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        protocol:
+          default: any
+          enum:
+          - any
+          - icmp
+          - tcp
+          - udp
+          example: any
+          type: string
+        remote_group:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          type: string
+        remote_ip:
+          example: any_string
+          maxLength: 43
+          nullable: true
+          type: string
+        security_group:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      - security_group
+      - direction
+      type: object
+    SecurityGroup_Create:
+      path: /v1/network/catalog/security_groups/
+      properties:
+        created_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
+        project_id:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          type: string
+        rules:
+          example:
+          - '1'
+          format: string
+          items:
+            type: string
+          readOnly: true
+          type: array
+        updated_at:
+          default: '2006-01-02T15:04:05.000576Z'
+          example: '2006-01-02T15:04:05.000576Z'
+          format: date-time
+          readOnly: true
+          type: string
+          x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        uuid:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          readOnly: true
+          type: string
+      required:
+      - project_id
+      type: object
     Service_Create:
       path: /v1/em/services/
       properties:
@@ -4774,7 +5534,6 @@ components:
           example: true
           type: boolean
         dns_servers:
-          default: []
           example:
           - any_string
           items:
@@ -4784,6 +5543,39 @@ components:
             type: string
           nullable: true
           type: array
+        effective_dns_servers:
+          example:
+          - any_string
+          items:
+            example: any_string
+            type: string
+          readOnly: true
+          type: array
+        effective_routers:
+          example:
+          - to: 10.0.0.0/24
+            via: 127.0.0.1
+          items:
+            example:
+              to: 10.0.0.0/24
+              via: 127.0.0.1
+            properties:
+              to:
+                example: 10.0.0.0/24
+                type: string
+              via:
+                anyOf:
+                - format: ipv4
+                - format: ipv6
+                example: 127.0.0.1
+                type: string
+            type: object
+          readOnly: true
+          type: array
+        floating_pool:
+          default: false
+          example: true
+          type: boolean
         ip_discovery_range:
           example: null
           nullable: true
@@ -4815,7 +5607,6 @@ components:
           format: uuid
           type: string
         routers:
-          default: []
           example:
           - to: 10.0.0.0/24
             via: 127.0.0.1
@@ -5706,6 +6497,22 @@ properties:
         additionalProperties:
           $ref: '#/components/schemas/Address_Create'
         type: object
+      $core.network.catalog.identity_groups:
+        additionalProperties:
+          $ref: '#/components/schemas/IdentityGroup_Create'
+        type: object
+      $core.network.catalog.proxy_services:
+        additionalProperties:
+          $ref: '#/components/schemas/ProxyService_Create'
+        type: object
+      $core.network.catalog.security_group_rules:
+        additionalProperties:
+          $ref: '#/components/schemas/SecurityGroupRule_Create'
+        type: object
+      $core.network.catalog.security_groups:
+        additionalProperties:
+          $ref: '#/components/schemas/SecurityGroup_Create'
+        type: object
       $core.network.lb:
         additionalProperties:
           $ref: '#/components/schemas/LB_Create'
@@ -5725,6 +6532,18 @@ properties:
       $core.network.networks:
         additionalProperties:
           $ref: '#/components/schemas/Network_Create'
+        type: object
+      $core.network.port_identity_groups:
+        additionalProperties:
+          $ref: '#/components/schemas/PortIdentityGroup_Create'
+        type: object
+      $core.network.port_security_groups:
+        additionalProperties:
+          $ref: '#/components/schemas/PortSecurityGroup_Create'
+        type: object
+      $core.network.ports:
+        additionalProperties:
+          $ref: '#/components/schemas/Port_Create'
         type: object
       $core.network.subnets:
         additionalProperties:

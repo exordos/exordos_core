@@ -15,12 +15,26 @@
 #    under the License.
 
 import abc
+import contextlib
 import typing as tp
 
 from exordos_core.compute.dm import models
 
 
 class AbstractNetworkDriver(abc.ABC):
+    @contextlib.contextmanager
+    def reconcile(self):
+        """Scope shared preparation to one network's reconciliation pass."""
+        yield
+
+    @contextlib.contextmanager
+    def compare_ports(self, subnet: models.Subnet, ports=()):
+        """Compare this subnet's ports before applying their changes."""
+        yield
+
+    def refresh_global(self) -> None:
+        """Maintain shared resources once per driver type per iteration."""
+
     def bind(self, network: models.Network) -> None:
         """Point a cached driver instance at the network row just loaded."""
 

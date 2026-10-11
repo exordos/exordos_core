@@ -21,10 +21,13 @@ import pathlib
 import re
 import pwd
 import subprocess
+import tempfile
 import typing as tp
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal import constants as ua_constants
+from gcl_sdk.agents.universal import utils as ua_utils
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 from restalchemy.dm import filters as dm_filters
@@ -396,15 +399,16 @@ def apply_flat_network(stand: dict[str, tp.Any]) -> None:
         LOG.info("Created subnet %s", subnet.uuid)
 
 
-def overlay_is_wanted(spec: tp.Optional[dict[str, tp.Any]]) -> bool:
+def overlay_is_wanted(spec: tp.Optional[dict[str, tp.Any]]) -> tp.Optional[bool]:
     """Whether this installation has an overlay, or has asked for one.
 
     The switch for the whole EVPN surface: the presence of the
-    ``stand.private_network`` block, or an overlay network created later
+    ``stand.private_network`` block, an explicit ``evpn_rr_address``, or a network created later
     through the API. Older specs lack the block, so an upgrade changes
     nothing on an installation without an overlay.
     """
-    if ((spec or {}).get("stand") or {}).get("private_network") is not None:
+    stand = (spec or {}).get("stand") or {}
+    if stand.get("private_network") is not None or stand.get("evpn_rr_address"):
         return True
     try:
         for network in compute_models.Network.objects.get_all():
@@ -413,6 +417,7 @@ def overlay_is_wanted(spec: tp.Optional[dict[str, tp.Any]]) -> bool:
     except Exception:
         # Unknown: answer the safe way; the next pass asks again.
         LOG.exception("Cannot tell whether this installation carries an overlay")
+        return None
     return False
 
 
@@ -467,14 +472,18 @@ def apply_private_network(stand: dict[str, tp.Any]) -> None:
 EVPN_RR_CONF_PATH = "/etc/exordos_core/exordos_core.d/evpn.conf"
 
 
-def render_evpn_rr_config(spec: dict[str, tp.Any]) -> tp.Optional[str]:
+def render_evpn_rr_config(
+    spec: dict[str, tp.Any], *, overlay_wanted: tp.Optional[bool] = None
+) -> tp.Optional[str]:
     """Render the [evpn] route-reflector config for the network service.
 
     The core node is the route reflector. Returns ``None`` when the stand
     lacks the data or wants no overlay (the drop-in costs an `ec-gservice`
     restart).
     """
-    if not overlay_is_wanted(spec):
+    if overlay_wanted is None:
+        overlay_wanted = overlay_is_wanted(spec)
+    if not overlay_wanted:
         return None
     stand = spec.get("stand", {})
     bootstraps = stand.get("bootstraps") or []
@@ -494,8 +503,8 @@ def render_evpn_rr_config(spec: dict[str, tp.Any]) -> tp.Optional[str]:
     for extra in stand.get("evpn_peer_prefixes") or []:
         if extra not in peer_prefixes:
             peer_prefixes.append(extra)
-    # Overlay guests' DNS NF forwards to the core's resolver (core.local).
-    return (
+    # Extra hypervisors reach DNS and boot services through the same Border.
+    content = (
         "[evpn]\n"
         "rr_agent = %(agent)s\n"
         "rr_addresses = %(rr)s\n"
@@ -505,28 +514,49 @@ def render_evpn_rr_config(spec: dict[str, tp.Any]) -> tp.Optional[str]:
         "agent": core["uuid"],
         "rr": rr_address,
         "prefixes": ",".join(peer_prefixes),
-        "ip": core_ip,
+        "ip": rr_address,
     }
+    if stand.get("evpn_rr_address"):
+        content += (
+            "\n[boot_api]\n"
+            "bind_host = 0.0.0.0\n"
+            "gc_boot_api = http://%(ip)s:11013\n"
+            "kernel = http://%(ip)s:8080/bios/vmlinuz\n"
+            "initrd = http://%(ip)s:8080/bios/initrd.img\n"
+        ) % {"ip": rr_address}
+    return content
 
 
 def apply_evpn_rr_config(spec: dict[str, tp.Any]) -> None:
     """Write the [evpn] RR drop-in idempotently and refresh the service."""
-    content = render_evpn_rr_config(spec)
-    if content is None:
+    overlay_wanted = overlay_is_wanted(spec)
+    if overlay_wanted is None:
         return
+    content = render_evpn_rr_config(spec, overlay_wanted=overlay_wanted)
+    if overlay_wanted and content is None:
+        return
+    previous = ""
     try:
         with open(EVPN_RR_CONF_PATH) as f:
-            if f.read() == content:
+            previous = f.read()
+            if previous == content:
                 return
     except FileNotFoundError:
-        pass
-    os.makedirs(os.path.dirname(EVPN_RR_CONF_PATH), exist_ok=True)
-    with open(EVPN_RR_CONF_PATH, "w") as f:
-        f.write(content)
-    LOG.info("Wrote evpn RR config %s", EVPN_RR_CONF_PATH)
+        if content is None:
+            return
+    if content is None:
+        os.unlink(EVPN_RR_CONF_PATH)
+    else:
+        os.makedirs(os.path.dirname(EVPN_RR_CONF_PATH), exist_ok=True)
+        with open(EVPN_RR_CONF_PATH, "w") as f:
+            f.write(content)
+    LOG.info("Updated evpn RR config %s", EVPN_RR_CONF_PATH)
     # ec-gservice hosts the network service; nudge it to reread the config.
     try:
-        subprocess.run(["systemctl", "try-restart", "ec-gservice"], check=False)
+        services = ["ec-gservice"]
+        if "[boot_api]" in previous or "[boot_api]" in (content or ""):
+            services.append("ec-boot-api")
+        subprocess.run(["systemctl", "try-restart", *services], check=False)
     except (OSError, subprocess.SubprocessError) as e:
         LOG.warning("Could not restart ec-gservice for evpn RR config: %s", e)
 
@@ -874,6 +904,57 @@ UA_CONFIG_DATA_PATH = (
 SDN_AGENT_CONFIG_PATH = "/etc/exordos_universal_agent/sdn_agent.conf"
 
 
+def ensure_local_ua_transport() -> None:
+    """Move Core's own agent from Boot API to authenticated local APIs.
+
+    The Core Boot interface has no persisted Port. Source-port identity on
+    Boot API therefore cannot authenticate the local runtime agent.
+    """
+    path = pathlib.Path(UA_CONFIG_PATH)
+    content = path.read_text(encoding="utf-8")
+    path.chmod(0o600)
+    mirror = pathlib.Path(UA_CONFIG_DATA_PATH)
+    if mirror.exists():
+        mirror.chmod(0o600)
+    key = ua_models.NodeEncryptionKey.get_or_create(ua_utils.system_uuid())
+    key_path = pathlib.Path(ua_constants.PRIVATE_KEY_PATH)
+    key_changed = (
+        not key_path.exists() or key_path.read_text().strip() != key.private_key
+    )
+    if key_changed:
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=key_path.parent, delete=False
+        ) as f:
+            f.write(key.private_key)
+        os.replace(f.name, key_path)
+    key_path.chmod(0o600)
+
+    match = re.search(
+        r"^\[universal_agent\].*?(?=^\[|\Z)", content, re.MULTILINE | re.DOTALL
+    )
+    if match is None:
+        raise ValueError("Missing universal_agent config section")
+    section = match.group(0)
+    for name, value in {
+        "orch_secure_communication": "True",
+        "orch_endpoint": "http://127.0.0.1:11011",
+        "status_endpoint": "http://127.0.0.1:11012",
+        "private_key_path": str(key_path),
+    }.items():
+        pattern = rf"^{name}\s*=.*$"
+        if re.search(pattern, section, re.MULTILINE):
+            section = re.sub(pattern, f"{name} = {value}", section, flags=re.MULTILINE)
+        else:
+            section = section.rstrip() + f"\n{name} = {value}\n\n"
+    new_content = content[: match.start()] + section + content[match.end() :]
+    if new_content == content and not key_changed:
+        return
+    path.write_text(new_content, encoding="utf-8")
+    _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
+    subprocess.run(["systemctl", "try-restart", "exordos-universal-agent"], check=True)
+
+
 def _sync_config_to_data_path(content: str, data_path: str) -> None:
     """Write the same config content to the mirrored data path.
 
@@ -883,6 +964,7 @@ def _sync_config_to_data_path(content: str, data_path: str) -> None:
     try:
         os.makedirs(os.path.dirname(data_path), exist_ok=True)
         with open(data_path, "w", encoding="utf-8") as f:
+            os.fchmod(f.fileno(), 0o600)
             f.write(content)
         LOG.info("Synced config to %s", data_path)
     except OSError as e:
@@ -974,7 +1056,7 @@ def _migrate_ua_secret_driver(content: str) -> str:
     return content
 
 
-def _ensure_ua_config_current(with_overlay: bool = False) -> None:
+def _ensure_ua_config_current(with_overlay: tp.Optional[bool] = False) -> None:
     """Bring the universal agent config up to date with this image.
 
     ec-bootstrap-templates restores /etc configs from the persisted
@@ -998,6 +1080,10 @@ def _ensure_ua_config_current(with_overlay: bool = False) -> None:
     agent services (started before ec-bootstrap runs, thus holding the
     stale config) are restarted to pick it up.
     """
+    if with_overlay is None:
+        LOG.warning("Overlay state is unknown; preserving universal agent config")
+        return
+
     try:
         with open(UA_CONFIG_PATH, "r", encoding="utf-8") as f:
             content = f.read()

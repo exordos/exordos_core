@@ -14,9 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import logging
+from types import SimpleNamespace
 import uuid as sys_uuid
 
 import netaddr
+import pytest
 
 from exordos_core.network import ipam as net_ipam
 
@@ -102,3 +105,76 @@ def test_a_hold_outside_the_pool_is_not_the_allocators_business():
     )
     assert str(ipam.allocate_ip(subnet)) == "10.101.0.10"
     assert not ipam._reported_out_of_pool
+
+
+def test_static_addresses_outside_the_range_do_not_warn(caplog):
+    subnet = _Subnet(
+        ip_range="10.101.0.20-10.101.0.21",
+        routers=[{"to": "0.0.0.0/0", "via": "10.101.0.1"}],
+    )
+    port = SimpleNamespace(ipv4=netaddr.IPAddress("10.101.0.2"))
+    with caplog.at_level(logging.WARNING, logger=net_ipam.__name__):
+        for _ in range(2):
+            ipam = net_ipam.Ipam({subnet: [port]})
+            assert str(ipam.allocate_ip(subnet)) == "10.101.0.20"
+    assert not caplog.records
+
+
+@pytest.mark.parametrize("held,attached", [(False, False), (True, False), (True, True)])
+def test_infrastructure_addresses_are_reserved_once(held, attached, caplog):
+    address = netaddr.IPAddress("10.101.0.2")
+    subnet = _Subnet(
+        routers=[{"to": "0.0.0.0/0", "via": str(address)}],
+        next_server=str(address),
+    )
+    ports = [SimpleNamespace(ipv4=address)] if attached else []
+    reservations = {str(subnet.uuid): [address]} if held else {}
+    with caplog.at_level(logging.WARNING, logger=net_ipam.__name__):
+        ipam = net_ipam.Ipam({subnet: ports}, reservations)
+        assert str(ipam.allocate_ip(subnet)) == "10.101.0.1"
+        assert str(ipam.allocate_ip(subnet)) == "10.101.0.3"
+    assert not caplog.records
+
+
+def test_a_port_outside_the_subnet_warns_with_an_ip_address(caplog):
+    subnet = _Subnet(ip_range="10.101.0.20-10.101.0.21")
+    port = SimpleNamespace(ipv4=netaddr.IPAddress("10.200.0.2"))
+    with caplog.at_level(logging.WARNING, logger=net_ipam.__name__):
+        ipam = net_ipam.Ipam({subnet: [port]})
+    assert str(ipam.allocate_ip(subnet)) == "10.101.0.20"
+    assert [r.getMessage() for r in caplog.records] == [
+        "IP 10.200.0.2 is not in the pool"
+    ]
+
+
+def test_an_infrastructure_port_in_discovery_range_stays_reserved(caplog):
+    address = netaddr.IPAddress("10.101.0.2")
+    subnet = _Subnet(next_server=str(address))
+    subnet.ip_discovery_range = netaddr.IPRange("10.101.0.1", "10.101.0.10")
+    with caplog.at_level(logging.WARNING, logger=net_ipam.__name__):
+        ipam = net_ipam.Ipam({subnet: [SimpleNamespace(ipv4=address)]})
+        assert str(ipam.allocate_ip(subnet)) == "10.101.0.1"
+        assert str(ipam.allocate_ip(subnet)) == "10.101.0.3"
+    assert not caplog.records
+
+
+def test_duplicate_port_addresses_still_warn(caplog):
+    subnet = _Subnet()
+    port = SimpleNamespace(ipv4=netaddr.IPAddress("10.101.0.2"))
+    with caplog.at_level(logging.WARNING, logger=net_ipam.__name__):
+        ipam = net_ipam.Ipam({subnet: [port, port]})
+    assert str(ipam.allocate_ip(subnet)) == "10.101.0.1"
+    assert str(ipam.allocate_ip(subnet)) == "10.101.0.3"
+    assert [r.getMessage() for r in caplog.records] == [
+        "IP 10.101.0.2 is not in the pool"
+    ]
+
+
+def test_deallocating_an_unallocated_address_logs_an_ip_address(caplog):
+    subnet = _Subnet()
+    ipam = net_ipam.Ipam({subnet: []})
+    with caplog.at_level(logging.WARNING, logger=net_ipam.__name__):
+        ipam.deallocate_ip(subnet, netaddr.IPAddress("10.101.0.2"))
+    assert [r.getMessage() for r in caplog.records] == [
+        "IP 10.101.0.2 is not allocated"
+    ]

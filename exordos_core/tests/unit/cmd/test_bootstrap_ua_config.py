@@ -18,6 +18,8 @@ import configparser
 import pathlib
 from unittest import mock
 
+import pytest
+
 from exordos_core.bootstrap import defaults as bootstrap
 from exordos_core.cmd import bootstrap as cmd_bootstrap
 
@@ -171,6 +173,95 @@ def _run_core_agent(tmp_path):
     return etc_path, data_path, run
 
 
+def test_local_agent_uses_authenticated_apis_and_persists_key(tmp_path):
+    config = tmp_path / "agent.conf"
+    config.write_text(_OLD_UA_CONFIG)
+    mirror = tmp_path / "data" / "agent.conf"
+    key_path = tmp_path / "keys" / "private_key"
+    node = mock.sentinel.node
+    with (
+        mock.patch.object(bootstrap, "UA_CONFIG_PATH", str(config)),
+        mock.patch.object(bootstrap, "UA_CONFIG_DATA_PATH", str(mirror)),
+        mock.patch.object(bootstrap.ua_constants, "PRIVATE_KEY_PATH", str(key_path)),
+        mock.patch.object(bootstrap.ua_utils, "system_uuid", return_value=node),
+        mock.patch.object(
+            bootstrap.ua_models.NodeEncryptionKey, "get_or_create"
+        ) as get_key,
+        mock.patch.object(bootstrap.subprocess, "run") as run,
+    ):
+        get_key.return_value.private_key = "persisted-node-key"
+        bootstrap.ensure_local_ua_transport()
+        get_key.assert_called_once_with(node)
+        parser = configparser.ConfigParser()
+        parser.read(config)
+        section = parser["universal_agent"]
+        assert section.getboolean("orch_secure_communication")
+        assert section["orch_endpoint"] == "http://127.0.0.1:11011"
+        assert section["status_endpoint"] == "http://127.0.0.1:11012"
+        assert section["private_key_path"] == str(key_path)
+        assert key_path.read_text() == "persisted-node-key"
+        assert key_path.stat().st_mode & 0o777 == 0o600
+        assert config.read_text() == mirror.read_text()
+        assert config.stat().st_mode & 0o777 == 0o600
+        assert mirror.stat().st_mode & 0o777 == 0o600
+        assert parser["CoreDNSCertificateCapabilityDriver"]["username"] == "admin"
+        run.assert_called_once()
+        run.reset_mock()
+        before = config.read_text()
+        config.chmod(0o644)
+        mirror.chmod(0o644)
+        bootstrap.ensure_local_ua_transport()
+        assert config.read_text() == before
+        assert config.stat().st_mode & 0o777 == 0o600
+        assert mirror.stat().st_mode & 0o777 == 0o600
+        run.assert_not_called()
+        key_path.unlink()
+        bootstrap.ensure_local_ua_transport()
+        assert key_path.read_text() == "persisted-node-key"
+        run.assert_called_once()
+
+
+def test_unknown_overlay_preserves_config_and_persisted_copy(tmp_path):
+    etc_path = tmp_path / "exordos_universal_agent.conf"
+    data_path = tmp_path / "data" / "exordos_universal_agent.conf"
+    content = _OLD_UA_CONFIG + "\n# persisted overlay capabilities\nevpn_agent\n"
+    etc_path.write_text(content, encoding="utf-8")
+    data_path.parent.mkdir()
+    data_path.write_text(content, encoding="utf-8")
+
+    _, _, run = _run_ua(tmp_path, with_overlay=None)
+
+    assert etc_path.read_text(encoding="utf-8") == content
+    assert data_path.read_text(encoding="utf-8") == content
+    run.assert_not_called()
+
+
+def test_main_rechecks_overlay_after_successful_startup_db(tmp_path):
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text('{"stand": {}}', encoding="utf-8")
+    with (
+        mock.patch.object(cmd_bootstrap, "SPEC_PATH", str(spec_path)),
+        mock.patch.object(cmd_bootstrap.config, "parse"),
+        mock.patch.object(cmd_bootstrap.infra_log, "configure"),
+        mock.patch.object(
+            cmd_bootstrap.engines.engine_factory, "configure_postgresql_factory"
+        ),
+        mock.patch.object(cmd_bootstrap, "_migrate_installed_elements_to_repo"),
+        mock.patch.object(cmd_bootstrap, "_ensure_core_agent_config_current"),
+        mock.patch.object(bootstrap, "save_developer_keys"),
+        mock.patch.object(bootstrap, "apply_startup_db") as apply,
+        mock.patch.object(bootstrap, "overlay_is_wanted", side_effect=[None, True]),
+        mock.patch.object(cmd_bootstrap, "_ensure_ua_config_current") as ensure,
+        mock.patch.object(
+            bootstrap, "ensure_local_ua_transport", side_effect=SystemExit
+        ),
+    ):
+        with pytest.raises(SystemExit):
+            cmd_bootstrap.main()
+    apply.assert_called_once_with({"stand": {}})
+    assert ensure.call_args_list == [mock.call(None), mock.call(True)]
+
+
 def test_upgrades_old_persisted_config(tmp_path):
     etc_path = tmp_path / "exordos_universal_agent.conf"
     etc_path.write_text(_OLD_UA_CONFIG, encoding="utf-8")
@@ -251,13 +342,8 @@ def test_upgrades_core_agent_config(tmp_path):
     assert (
         "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142" in content
     )
-    assert (
-        "em_core_vs_profiles = exordos_core.vs.dm.models:Profile\n"
-        "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
-        "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
-        "em_core_iam_tokens = exordos_core.user_api.iam.dm.models:ManagedToken\n"
-        "em_core_network_networks = exordos_core.compute.dm.models:Network\n" in content
-    )
+    for name, model in cmd_bootstrap._CORE_AGENT_SECTIONS["models"].items():
+        assert f"{name} = {model}" in content
     assert (
         "[resource_transformer:em_core_secret_secrets]\n"
         "ignore_null_attributes = True\n"
@@ -436,10 +522,8 @@ def _assert_network_models(content):
     config.read_string(content)
     for name, model in _NETWORK_MODELS.items():
         assert config["models"][name] == model
-        assert config["filters"][name] == (
-            "project_id:12345678-c625-4fee-81d5-f691897b8142"
-        )
-        assert content.count(f"{name} = ") == 2
+        assert name not in config["filters"]
+        assert content.count(f"{name} = ") == 1
 
 
 def test_an_upgraded_core_agent_config_gains_the_network_models(tmp_path):
@@ -491,5 +575,6 @@ def test_the_template_carries_the_network_models_the_upgrade_adds():
     ).read_text(encoding="utf-8")
     for name in _NETWORK_MODELS:
         for section in ("models", "filters"):
-            line = f"{name} = {cmd_bootstrap._CORE_AGENT_SECTIONS[section][name]}"
-            assert line in template
+            value = cmd_bootstrap._CORE_AGENT_SECTIONS[section][name]
+            if value is not None:
+                assert f"{name} = {value}" in template

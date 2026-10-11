@@ -22,12 +22,29 @@ from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common import constants as core_constants
 from exordos_core.common import exceptions as ex_exceptions
+from exordos_core.common.api.controllers import StoredFieldsQueryMixin
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.user_api.network.dm import models
 
 CONF = cfg.CONF
+
+
+class PlacementResource(resources.ResourceByModelWithCustomProps):
+    def generate_schema_object(self, method, openapi_version):
+        schema = super().generate_schema_object(method, openapi_version)
+        if "network" in schema["properties"]:
+            schema["properties"]["network"].pop("readOnly", None)
+        if method == constants.CREATE:
+            schema["oneOf"] = [
+                {"required": ["subnet"], "not": {"required": ["network"]}},
+                {"required": ["network"], "not": {"required": ["subnet"]}},
+            ]
+            if self.get_model() is models.Address:
+                schema.setdefault("required", []).append("kind")
+        return schema
 
 
 class NetworkController(ra_controllers.RoutesListController):
@@ -55,6 +72,7 @@ class _VisibleScopeMixin:
 
 
 class NetworkCRUDController(
+    StoredFieldsQueryMixin,
     _VisibleScopeMixin,
     iam_controllers.PolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
@@ -67,14 +85,15 @@ class NetworkCRUDController(
     __policy_service_name__ = "network"
     __policy_name__ = "network"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         compute_models.Network,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
                 # A VNI named here could be another network's overlay.
-                "driver_spec": {constants.UPDATE: field_p.Permissions.RO},
+                "driver_state": {constants.ALL: field_p.Permissions.RO},
+                "default_identity_group": {constants.ALL: field_p.Permissions.RO},
             },
         ),
     )
@@ -82,7 +101,7 @@ class NetworkCRUDController(
     # The core allocates the rest. `flat_bridge` is operator-only: its spec
     # names a host file the core rewrites.
     CALLER_SPEC_KEYS = frozenset({"driver", "mtu"})
-    MTU_RANGE = (576, 9000)
+    MTU_RANGE = nc.OVERLAY_MTU_RANGE
 
     def _validate_driver_spec(self, spec) -> None:
         spec = spec or {}
@@ -100,7 +119,9 @@ class NetworkCRUDController(
             )
         mtu = spec.get("mtu")
         if mtu is not None and not (
-            isinstance(mtu, int) and self.MTU_RANGE[0] <= mtu <= self.MTU_RANGE[1]
+            isinstance(mtu, int)
+            and not isinstance(mtu, bool)
+            and self.MTU_RANGE[0] <= mtu <= self.MTU_RANGE[1]
         ):
             raise ex_exceptions.ValidateException(
                 err="driver_spec.mtu must be an integer in %d..%d" % self.MTU_RANGE
@@ -115,9 +136,26 @@ class NetworkCRUDController(
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
+        if "driver_spec" in kwargs:
+            from gcl_sdk.agents.universal.clients.backend.db import (
+                merge_declared_object,
+            )
+
+            stored = self.get(uuid=uuid)
+            kwargs["driver_spec"] = merge_declared_object(
+                stored.driver_spec, kwargs["driver_spec"]
+            )
+            self._validate_driver_spec(kwargs["driver_spec"])
         if kwargs.get("access") == "public":
             self._enforce("share")
         return super().update(uuid, **kwargs)
+
+    def get(self, uuid, **kwargs):
+        self._enforce("read")
+        filters = {"uuid": dm_filters.EQ(uuid)}
+        if self._ctx_project_id is not None:
+            filters = self._visible_scope(filters)
+        return self.model.objects.get_one(filters=filters)
 
     def _visible_scope(self, filters):
         """Own networks plus every ``access=public`` one."""
@@ -127,6 +165,7 @@ class NetworkCRUDController(
 
 
 class SubnetController(
+    StoredFieldsQueryMixin,
     _VisibleScopeMixin,
     iam_controllers.PolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
@@ -136,17 +175,36 @@ class SubnetController(
     __policy_service_name__ = "network"
     __policy_name__ = "subnet"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         compute_models.Subnet,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
                 # Ownership is checked on create only.
-                "network": {constants.UPDATE: field_p.Permissions.RO},
+                "network": {constants.ALL: field_p.Permissions.RW},
+                "effective_routers": {constants.ALL: field_p.Permissions.RO},
+                "effective_dns_servers": {constants.ALL: field_p.Permissions.RO},
             },
         ),
     )
+
+    def create(self, **kwargs):
+        if kwargs.get("floating_pool"):
+            self._enforce("floating_pool")
+        return super().create(**kwargs)
+
+    def update(self, uuid, **kwargs):
+        if "floating_pool" in kwargs:
+            self._enforce("floating_pool")
+        return super().update(uuid, **kwargs)
+
+    def get(self, uuid, **kwargs):
+        self._enforce("read")
+        filters = {"uuid": dm_filters.EQ(uuid)}
+        if self._ctx_project_id is not None:
+            filters = self._visible_scope(filters)
+        return self.model.objects.get_one(filters=filters)
 
     def _visible_scope(self, filters):
         """Own subnets plus those of public networks, to allocate from."""
@@ -247,6 +305,7 @@ class BackendPoolController(
 
 
 class NetworkFunctionController(
+    StoredFieldsQueryMixin,
     iam_controllers.PolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
 ):
@@ -259,7 +318,7 @@ class NetworkFunctionController(
     __policy_service_name__ = "network"
     __policy_name__ = "nf"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         models.NetworkFunction,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
@@ -268,6 +327,8 @@ class NetworkFunctionController(
                 # The compiler's: a nulled owner orphans the function while
                 # a second one is seeded beside it.
                 "provenance": {constants.ALL: field_p.Permissions.RO},
+                "generated_config": {constants.ALL: field_p.Permissions.RO},
+                "effective_config": {constants.ALL: field_p.Permissions.RO},
                 "kind": {constants.UPDATE: field_p.Permissions.RO},
                 "owner_subnet": {constants.ALL: field_p.Permissions.RO},
                 "owner_network": {constants.ALL: field_p.Permissions.RO},
@@ -279,12 +340,22 @@ class NetworkFunctionController(
         raise ex_exceptions.ValidateException(
             err=(
                 "network functions are not created on their own: a subnet is "
-                "seeded with its DHCP and its default group, a network with "
+                "seeded with its DHCP, a network with "
                 "its resolver and metadata proxy, and a port with what it "
                 "expands into. Edit the one that already serves the object "
                 "you mean"
             )
         )
+
+    def update(self, uuid, **kwargs):
+        if "config" in kwargs:
+            from gcl_sdk.agents.universal.clients.backend.db import (
+                merge_declared_object,
+            )
+
+            stored = self.get(uuid=uuid)
+            kwargs["config"] = merge_declared_object(stored.config, kwargs["config"])
+        return super().update(uuid, **kwargs)
 
 
 def _network_of(subnet):
@@ -293,6 +364,7 @@ def _network_of(subnet):
 
 
 class PortController(
+    StoredFieldsQueryMixin,
     _VisibleScopeMixin,
     iam_controllers.PolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
@@ -302,22 +374,51 @@ class PortController(
     __policy_service_name__ = "network"
     __policy_name__ = "port"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = PlacementResource(
         compute_models.Port,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
                 "status": {constants.ALL: field_p.Permissions.RO},
+                "activation_barrier": {constants.ALL: field_p.Permissions.HIDDEN},
+                "source": {constants.ALL: field_p.Permissions.RO},
+                "interface": {constants.ALL: field_p.Permissions.RO},
+                "config": {constants.ALL: field_p.Permissions.RO},
+                "target_mask": {constants.ALL: field_p.Permissions.RO},
                 "machine": {constants.ALL: field_p.Permissions.RO},
                 # `generated` rows may sit outside their node's project.
                 "provenance": {constants.ALL: field_p.Permissions.RO},
                 # On the platform's legs the address is IPAM's, and it is
                 # what a door onto the node leads to.
-                "ipv4": {constants.UPDATE: field_p.Permissions.RO},
+                "ipv4": {constants.ALL: field_p.Permissions.RO},
+                "security_groups": {constants.ALL: field_p.Permissions.RO},
+                "identity_groups": {constants.ALL: field_p.Permissions.RO},
+                "network": {constants.ALL: field_p.Permissions.RW},
+                "mask": {constants.ALL: field_p.Permissions.RO},
+                "mac": {constants.ALL: field_p.Permissions.RO},
             },
         ),
     )
+
+    def create(self, **kwargs):
+        self.model.validate_create_input(kwargs)
+        from exordos_core.network.permissions import gate_explicit_address
+
+        gate_explicit_address(
+            self,
+            kwargs,
+            self._ctx_project_id or kwargs.get("project_id", core_constants.ZERO_UUID),
+            private=True,
+        )
+        return super().create(**kwargs)
+
+    def update(self, uuid, **kwargs):
+        stored = self.get(uuid)
+        self.model.validate_update_input(kwargs, stored)
+        # The selector is a read-only projection once placement is resolved.
+        kwargs.pop("network", None)
+        return super().update(uuid, **kwargs)
 
     def _own_overlay_subnets(self):
         """The caller's overlay subnets, where foreign ports are shown.
@@ -389,6 +490,7 @@ class CatalogController(ra_controllers.RoutesListController):
 
 
 class SecurityGroupController(
+    StoredFieldsQueryMixin,
     iam_controllers.PolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
 ):
@@ -397,9 +499,46 @@ class SecurityGroupController(
     __policy_service_name__ = "network"
     __policy_name__ = "security_group"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = resources.ResourceByModelWithCustomProps(
         models.SecurityGroup,
         convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={"rules": {constants.ALL: field_p.Permissions.RO}},
+        ),
+    )
+
+
+class SecurityGroupRuleController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    __policy_service_name__ = "network"
+    __policy_name__ = "security_group_rule"
+    __resource__ = resources.ResourceByRAModel(
+        models.SecurityGroupRule, convert_underscore=False
+    )
+
+
+class PortSecurityGroupController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    __policy_service_name__ = "network"
+    __policy_name__ = "port_security_group"
+    __resource__ = resources.ResourceByRAModel(
+        models.PortSecurityGroup, convert_underscore=False
+    )
+
+
+class PortIdentityGroupController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    __policy_service_name__ = "network"
+    __policy_name__ = "port_identity_group"
+    __resource__ = resources.ResourceByRAModel(
+        models.PortIdentityGroup, convert_underscore=False
     )
 
 
@@ -419,6 +558,7 @@ class IdentityGroupController(
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
             fields={
+                "automatic": {constants.ALL: field_p.Permissions.RO},
                 # Naming a bit would claim another group's membership.
                 "identity": {constants.ALL: field_p.Permissions.RO},
                 # The bit is only unique within its network.
@@ -426,12 +566,6 @@ class IdentityGroupController(
             },
         ),
     )
-
-    def create(self, **kwargs):
-        kwargs["identity"] = models.IdentityGroup.allocate_identity(
-            kwargs.get("network")
-        )
-        return super().create(**kwargs)
 
 
 class ProxyServiceController(
@@ -485,6 +619,7 @@ class ProxyServiceController(
 
 
 class AddressController(
+    StoredFieldsQueryMixin,
     iam_controllers.PolicyBasedController,
     ra_controllers.BaseResourceControllerPaginated,
 ):
@@ -493,7 +628,7 @@ class AddressController(
     __policy_service_name__ = "network"
     __policy_name__ = "address"
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = PlacementResource(
         models.Address,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
@@ -504,29 +639,64 @@ class AddressController(
                 "origin": {constants.ALL: field_p.Permissions.RO},
                 "owner_port": {constants.ALL: field_p.Permissions.RO},
                 "association": {constants.ALL: field_p.Permissions.RO},
+                "allocation": {constants.ALL: field_p.Permissions.RO},
+                "delete_requested": {constants.ALL: field_p.Permissions.HIDDEN},
+                "status": {constants.ALL: field_p.Permissions.RO},
+                "network": {constants.ALL: field_p.Permissions.RW},
                 # An allocation does not move: an update naming only the
                 # address would pin one past the create-time gate below.
-                "address": {constants.UPDATE: field_p.Permissions.RO},
-                "subnet": {constants.UPDATE: field_p.Permissions.RO},
+                "address": {constants.ALL: field_p.Permissions.RW},
+                "subnet": {constants.ALL: field_p.Permissions.RW},
             },
         ),
     )
 
-    def _gate_explicit_address(self, kwargs) -> None:
-        # Pinning a specific address in a foreign (public) subnet is
-        # privileged; auto-allocation there is not.
-        if kwargs.get("address") is not None and kwargs.get("subnet") is not None:
-            subnet = compute_models.Subnet.objects.get_one_or_none(
-                filters={"uuid": dm_filters.EQ(kwargs["subnet"])}
-            )
-            if subnet is not None and str(subnet.project_id) != str(
-                self._ctx_project_id
-            ):
-                self._enforce("explicit_address")
+    def _gate_explicit_address(self, kwargs, stored=None) -> None:
+        if kwargs.get("address") is None:
+            return
+        from exordos_core.network.contracts import resolve_subnet
+
+        subnet = resolve_subnet(
+            self._ctx_project_id
+            or kwargs.get("project_id")
+            or getattr(stored, "project_id", core_constants.ZERO_UUID),
+            subnet=kwargs.get("subnet", getattr(stored, "subnet", None)),
+            network=kwargs.get("network"),
+            address=kwargs["address"],
+            floating=True
+            if kwargs.get("kind", getattr(stored, "kind", None)) == "floating"
+            else None,
+        )
+        owner = (
+            self._ctx_project_id
+            or kwargs.get("project_id")
+            or getattr(stored, "project_id", core_constants.ZERO_UUID)
+        )
+        if str(subnet.project_id) != str(owner):
+            self._enforce("explicit_address")
 
     def create(self, **kwargs):
+        self.model.validate_create_input(kwargs)
         self._gate_explicit_address(kwargs)
         return super().create(**kwargs)
+
+    def update(self, uuid, **kwargs):
+        stored = self.get(uuid=uuid)
+        # Allocation placement and value are immutable; reject changes before
+        # resolving a new location (which could otherwise mask a 409).
+        for field in ("subnet", "address", "kind"):
+            if field in kwargs and str(kwargs[field]) != str(getattr(stored, field)):
+                if field == "address":
+                    self._gate_explicit_address({"address": stored.address}, stored)
+                from restalchemy.storage import exceptions as storage_exc
+
+                raise storage_exc.ConflictRecords(
+                    model="Address", msg=f"{field} is immutable"
+                )
+        self._gate_explicit_address(kwargs, stored)
+        self.model.validate_update_input(kwargs, stored)
+        kwargs.pop("network", None)
+        return super().update(uuid, **kwargs)
 
 
 class BorderController(

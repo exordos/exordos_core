@@ -82,6 +82,18 @@ class IdentityGroupRoute(routes.Route):
     __controller__ = controllers.IdentityGroupController
 
 
+class SecurityGroupRuleRoute(routes.Route):
+    __controller__ = controllers.SecurityGroupRuleController
+
+
+class PortSecurityGroupRoute(routes.Route):
+    __controller__ = controllers.PortSecurityGroupController
+
+
+class PortIdentityGroupRoute(routes.Route):
+    __controller__ = controllers.PortIdentityGroupController
+
+
 class AddressRoute(routes.Route):
     """Handler for /v1/network/catalog/addresses/ endpoint"""
 
@@ -113,6 +125,7 @@ class CatalogRoute(routes.Route):
     __allow_methods__ = [routes.FILTER]
 
     security_groups = routes.route(SecurityGroupRoute)
+    security_group_rules = routes.route(SecurityGroupRuleRoute)
     identity_groups = routes.route(IdentityGroupRoute)
     addresses = routes.route(AddressRoute)
     proxy_services = routes.route(ProxyServiceRoute)
@@ -127,6 +140,8 @@ class NetworkRoute(routes.Route):
     networks = routes.route(NetworkCRUDRoute)
     subnets = routes.route(SubnetRoute)
     ports = routes.route(PortRoute)
+    port_security_groups = routes.route(PortSecurityGroupRoute)
+    port_identity_groups = routes.route(PortIdentityGroupRoute)
     nfs = routes.route(NetworkFunctionRoute)
     catalog = routes.route(CatalogRoute)
     lb = routes.route(LBRoute)

@@ -355,6 +355,13 @@ def _migrate_installed_elements_configs() -> None:
 # not be in its section.
 _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
+        "em_core_network_ports": "exordos_core.compute.dm.models:Port",
+        "em_core_network_port_security_groups": "exordos_core.user_api.network.dm.models:PortSecurityGroup",
+        "em_core_network_port_identity_groups": "exordos_core.user_api.network.dm.models:PortIdentityGroup",
+        "em_core_network_catalog_security_groups": "exordos_core.user_api.network.dm.models:SecurityGroup",
+        "em_core_network_catalog_security_group_rules": "exordos_core.user_api.network.dm.models:SecurityGroupRule",
+        "em_core_network_catalog_identity_groups": "exordos_core.user_api.network.dm.models:IdentityGroup",
+        "em_core_network_catalog_proxy_services": "exordos_core.user_api.network.dm.models:ProxyService",
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
         "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
@@ -365,6 +372,15 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
         ),
     },
     "filters": {
+        "em_core_compute_nodes": None,
+        "em_core_compute_sets": None,
+        "em_core_network_ports": None,
+        "em_core_network_port_security_groups": None,
+        "em_core_network_port_identity_groups": None,
+        "em_core_network_catalog_security_groups": None,
+        "em_core_network_catalog_security_group_rules": None,
+        "em_core_network_catalog_identity_groups": None,
+        "em_core_network_catalog_proxy_services": None,
         "em_core_iam_idp": "project_id:12345678-c625-4fee-81d5-f691897b8142",
         # Written by earlier images. A manifest declares the project its
         # secret belongs to, and it is not the service project. Scoping the
@@ -372,11 +388,9 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
         # agent: it keeps creating a row it cannot see and the insert
         # conflicts on the primary key forever.
         "em_core_secret_secrets": None,
-        "em_core_network_networks": "project_id:12345678-c625-4fee-81d5-f691897b8142",
-        "em_core_network_subnets": "project_id:12345678-c625-4fee-81d5-f691897b8142",
-        "em_core_network_catalog_addresses": (
-            "project_id:12345678-c625-4fee-81d5-f691897b8142"
-        ),
+        "em_core_network_networks": None,
+        "em_core_network_subnets": None,
+        "em_core_network_catalog_addresses": None,
     },
     # Without the transformer a secret with no value yet reports
     # `value: null` instead of dropping the field, and an element
@@ -871,6 +885,8 @@ def main() -> None:
         try:
             LOG.info("GC Bootstrap script")
             bootstrap_defaults.apply_startup_db(spec)
+            _ensure_ua_config_current(bootstrap_defaults.overlay_is_wanted(spec))
+            bootstrap_defaults.ensure_local_ua_transport()
             bootstrap_defaults.init_secrets(
                 spec,
                 CONF["iam"].global_salt,
