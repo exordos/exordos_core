@@ -52,3 +52,33 @@ resources:
         - "jenkins.internal.example.com"
       expiration_threshold: 7
       overcome_threshold: true
+
+    # Import an existing PEM certificate (or full chain) and matching private key.
+    # This public, self-signed demonstration pair is for examples only.
+    # Replace BOTH PEM blocks with your own certificate and unencrypted key.
+    # Manual certificates are never issued, renewed, or revoked via ACME.
+    manual_cert:
+      name: "manual-cert"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      email: "admin@example.com"
+      method:
+        kind: manual
+      domains:
+        - "manual.example.com"
+      cert: |
+        -----BEGIN CERTIFICATE-----
+        MIIBXTCCAQOgAwIBAgIUVahXfBgHAZT1MPsmKoh/Xw2FiowwCgYIKoZIzj0EAwIw
+        HTEbMBkGA1UEAwwSbWFudWFsLmV4YW1wbGUuY29tMB4XDTI2MDEwMTAwMDAwMFoX
+        DTM2MDEwMTAwMDAwMFowHTEbMBkGA1UEAwwSbWFudWFsLmV4YW1wbGUuY29tMFkw
+        EwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2T0qIJ9EozvHbOy0V/jAqTgETJWm6C9H
+        6uBIa85cpn4em2F6bovufbwGRrevCDkhisP/5fBgkCWN0eg34Z9T8qMhMB8wHQYD
+        VR0RBBYwFIISbWFudWFsLmV4YW1wbGUuY29tMAoGCCqGSM49BAMCA0gAMEUCIHAw
+        ZKk8NZ9lJh3c5wqikX8ZyBRse7EZ2IVLRMX123WmAiEAk1bPhoP7cYE+lqvLDAw+
+        jJcTZ3S4W3KtEFDlNGfE7to=
+        -----END CERTIFICATE-----
+      key: |
+        -----BEGIN PRIVATE KEY-----
+        MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg4Br09CJI6Ifndsno
+        PVv+xP/d3DouHqAaG1p+w10R3WGhRANCAATZPSogn0SjO8ds7LRX+MCpOARMlabo
+        L0fq4Ehrzlymfh6bYXpui+59vAZGt68IOSGKw//l8GCQJY3R6Dfhn1Py
+        -----END PRIVATE KEY-----

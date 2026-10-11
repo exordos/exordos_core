@@ -219,7 +219,6 @@ components:
           maxLength: 10240
           minLength: 1
           nullable: true
-          readOnly: true
           type: string
         constructor:
           default:
@@ -272,7 +271,6 @@ components:
           maxLength: 10240
           minLength: 1
           nullable: true
-          readOnly: true
           type: string
         method:
           default:
@@ -286,6 +284,14 @@ components:
               kind:
                 enum:
                 - dns_core
+                type: string
+            type: object
+          - example:
+              key: value
+            properties:
+              kind:
+                enum:
+                - manual
                 type: string
             type: object
           type: object

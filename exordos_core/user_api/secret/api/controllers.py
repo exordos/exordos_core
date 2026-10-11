@@ -154,15 +154,37 @@ class CertificatesController(iam_controllers.PolicyBasedController):
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
-                "key": {ra_c.ALL: field_p.Permissions.RO},
-                "cert": {ra_c.ALL: field_p.Permissions.RO},
                 "expiration_threshold": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "overcome_threshold": {ra_c.ALL: field_p.Permissions.HIDDEN},
             },
         ),
     )
 
+    @staticmethod
+    def _validate_certificate(kwargs, current=None):
+        method = kwargs.get(
+            "method", current.method if current else {"kind": "dns_core"}
+        )
+        kind = method.get("kind") if isinstance(method, dict) else method.KIND
+        if kind != "manual":
+            if "key" in kwargs or "cert" in kwargs:
+                raise common_exceptions.ValidateException(
+                    err="key and cert are allowed only for manual method"
+                )
+            return
+        key = kwargs.get("key", current.key if current else None)
+        cert = kwargs.get("cert", current.cert if current else None)
+        try:
+            models.Certificate.validate_manual_certificate(key, cert)
+        except (ValueError, TypeError) as exc:
+            raise common_exceptions.ValidateException(err=str(exc)) from exc
+
+    def create(self, **kwargs):
+        self._validate_certificate(kwargs)
+        return super().create(**kwargs)
+
     def update(self, uuid, **kwargs):
+        self._validate_certificate(kwargs, self.get(uuid=uuid))
         # Force config to be NEW
         # In order to regenerate renders
         kwargs["status"] = sc.SecretStatus.NEW.value

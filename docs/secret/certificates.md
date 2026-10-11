@@ -5,8 +5,8 @@ icon: lucide/badge-check
 
 Certificates are a part for the Secret Manager service. The service allows to issue and manage certificates, store them in specified storage and use them for different purposes.
 
-The current implementation only support `dns_core` method (provider) to issue and manage certificates. This method supposed DNS challenges via Core DNS that is
-available from the internet.
+The `dns_core` method issues and renews certificates using DNS challenges via Core DNS, which must be
+available from the internet. The `manual` method imports an existing certificate and private key.
 
 Examples:
 
@@ -70,3 +70,39 @@ The `dns_core` provider allows to issue and manage certificates via Core DNS. It
 - Request a certificate for domains.
 - Pass the DNS challenge.
 - Some final preparation.
+
+### manual
+
+Use `method: {kind: manual}` to import a PEM certificate (leaf first, optionally followed by its chain)
+and its matching, unencrypted PEM private key. Both `cert` and `key` are required when creating a manual
+certificate. The API rejects invalid PEM and mismatched keys. Keep the usual `project_id`, `email`, and
+`domains` fields; set `domains` to the names covered by your certificate.
+
+```yaml
+resources:
+  $core.secret.certificates:
+    manual_cert:
+      name: manual-cert
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      email: "admin@example.com"
+      method:
+        kind: manual
+      domains:
+        - "manual.example.com"
+      cert: |
+        -----BEGIN CERTIFICATE-----
+        <your PEM certificate and optional chain>
+        -----END CERTIFICATE-----
+      key: |
+        -----BEGIN PRIVATE KEY-----
+        <your matching unencrypted PEM private key>
+        -----END PRIVATE KEY-----
+```
+
+See [the complete manifest example](https://github.com/exordos/exordos_core/blob/master/exordos/manifests/examples/certificates.yaml)
+for a valid demonstration pair. Replace both PEM blocks before using it for a service.
+
+Manual certificates are stored and delivered without ACME issuance, renewal, or revocation. Expiration
+is derived from the certificate. Renew them by updating `cert` and `key` together in the manifest or API.
+A partial API update can reuse the existing key if it still matches. Removing a manual certificate
+removes its stored copy without revoking it. Imported PEM fields are accepted only for `manual`.
