@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import uuid
 
 from cryptography import x509
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from gcl_sdk.agents.universal.dm import models
@@ -59,8 +60,9 @@ def test_manual_example_provisions_and_updates_without_acme(example):
         patch.object(backend.acme, "renew_cert") as renew,
         patch.object(backend.acme, "revoke_cert") as revoke,
         patch.object(storage.Certificate, "objects") as objects,
-        patch.object(storage.Certificate, "save"),
-        patch.object(storage.Certificate, "delete"),
+        patch.object(storage.Certificate, "save") as save,
+        patch.object(storage.Certificate, "update") as persist,
+        patch.object(storage.Certificate, "delete") as delete,
     ):
         client = backend.CertBotBackendClient(
             MagicMock(), "admin@example.com", "/unused"
@@ -69,6 +71,10 @@ def test_manual_example_provisions_and_updates_without_acme(example):
             model="Certificate", filters={}
         )
         created = client.create(target)
+        save.assert_called_once()
+        persist.assert_not_called()
+        delete.assert_not_called()
+        assert created["overcome_threshold"] is False
         assert created["cert"] == example["cert"]
         assert created["key"] == example["key"]
         assert created["expiration_at"].startswith("2036-01-01")
@@ -98,6 +104,9 @@ def test_manual_example_provisions_and_updates_without_acme(example):
             ).decode(),
         )
         updated = client.update(resource(changed))
+        persist.assert_called_once()
+        save.assert_called_once()
+        delete.assert_not_called()
         assert updated["name"] == "replacement"
         assert updated["domains"] == ["new.example.com"]
         assert updated["cert"] == changed["cert"]
@@ -105,6 +114,7 @@ def test_manual_example_provisions_and_updates_without_acme(example):
         assert updated["expiration_at"].startswith("2037-01-01")
         objects.get_one.return_value = client._manual_certificate(resource(changed))
         client.delete(target)
+        delete.assert_called_once()
         issue.assert_not_called()
         renew.assert_not_called()
         revoke.assert_not_called()
@@ -157,3 +167,80 @@ def test_manual_builder_preserves_pending_replacement(example):
     assert current.cert == example["cert"]
     assert current.key == example["key"]
     assert current.expiration_at == actual.expiration_at
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    ["garbage", "-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----"],
+)
+def test_manual_rejects_malformed_chain(example, suffix):
+    example["cert"] += suffix
+    with pytest.raises(exceptions.ValidateException):
+        CertificatesController._validate_certificate(example)
+
+
+def test_manual_rejects_unrelated_chain(example):
+    key = ec.generate_private_key(ec.SECP256R1())
+    leaf = x509.load_pem_x509_certificate(example["cert"].encode())
+    unrelated = (
+        x509.CertificateBuilder()
+        .subject_name(leaf.subject)
+        .issuer_name(leaf.issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(leaf.not_valid_before_utc)
+        .not_valid_after(leaf.not_valid_after_utc)
+        .sign(key, hashes.SHA256())
+    )
+    example["cert"] += unrelated.public_bytes(serialization.Encoding.PEM).decode()
+    with pytest.raises(exceptions.ValidateException):
+        CertificatesController._validate_certificate(example)
+
+
+def test_manual_accepts_valid_chain(example):
+    key = serialization.load_pem_private_key(example["key"].encode(), password=None)
+    leaf = x509.load_pem_x509_certificate(example["cert"].encode())
+    issuer = (
+        x509.CertificateBuilder()
+        .subject_name(leaf.issuer)
+        .issuer_name(leaf.issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(leaf.not_valid_before_utc)
+        .not_valid_after(leaf.not_valid_after_utc)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256())
+    )
+    example["cert"] += issuer.public_bytes(serialization.Encoding.PEM).decode()
+    CertificatesController._validate_certificate(example)
+
+
+def test_manual_reports_unsupported_algorithm_as_validation_error(example):
+    with patch.object(
+        secrets.serialization,
+        "load_pem_private_key",
+        side_effect=UnsupportedAlgorithm("unsupported"),
+    ):
+        with pytest.raises(exceptions.ValidateException):
+            CertificatesController._validate_certificate(example)
+
+
+def test_manual_failed_replacement_does_not_delete_stored_certificate(example):
+    target = resource(example)
+    with (
+        patch.object(backend.acme, "get_or_create_client_private_key"),
+        patch.object(storage.Certificate, "objects") as objects,
+        patch.object(
+            storage.Certificate, "update", side_effect=RuntimeError("write failed")
+        ),
+        patch.object(storage.Certificate, "delete") as delete,
+        patch.object(storage.Certificate, "save") as save,
+    ):
+        client = backend.CertBotBackendClient(
+            MagicMock(), "admin@example.com", "/unused"
+        )
+        objects.get_one.return_value = client._manual_certificate(target)
+        with pytest.raises(RuntimeError, match="write failed"):
+            client.update(target)
+        delete.assert_not_called()
+        save.assert_not_called()

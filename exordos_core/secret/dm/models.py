@@ -14,10 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import re
 import typing as tp
 import uuid as sys_uuid
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from gcl_iam import algorithms as iam_algorithms
 from gcl_sdk.agents.universal.dm import models as ua_models
@@ -245,7 +247,21 @@ class Certificate(
         if not key or not cert:
             raise ValueError("manual certificates require both key and cert")
         private_key = serialization.load_pem_private_key(key.encode(), password=None)
-        certificate = x509.load_pem_x509_certificate(cert.encode())
+        chain = x509.load_pem_x509_certificates(cert.encode())
+        remainder = re.sub(
+            r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+            "",
+            cert,
+            flags=re.DOTALL,
+        )
+        if remainder.strip():
+            raise ValueError("certificate chain contains non-certificate data")
+        for child, issuer in zip(chain, chain[1:]):
+            try:
+                child.verify_directly_issued_by(issuer)
+            except InvalidSignature as exc:
+                raise ValueError("certificate chain has an invalid signature") from exc
+        certificate = chain[0]
         encoding = serialization.Encoding.DER
         form = serialization.PublicFormat.SubjectPublicKeyInfo
         if private_key.public_key().public_bytes(

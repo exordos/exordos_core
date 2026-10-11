@@ -151,9 +151,18 @@ class CertBotBackendClient(base.AbstractBackendClient):
 
         if resource.value.get("method", {}).get("kind") == "manual":
             driver_cert = self._manual_certificate(resource)
-            cert.delete()
-            driver_cert.save()
-            return driver_cert.to_resource_value()
+            # Update the existing row atomically so a failed write keeps the old pair.
+            for field in (
+                "pkey",
+                "csr",
+                "fullchain",
+                "expiration_at",
+                "meta",
+                "status",
+            ):
+                setattr(cert, field, getattr(driver_cert, field))
+            cert.update()
+            return cert.to_resource_value()
 
         # If domains changed, issue a new certificate.
         # We use create_cert (not renew_cert) because the domain set is

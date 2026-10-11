@@ -75,7 +75,9 @@ The `dns_core` provider allows to issue and manage certificates via Core DNS. It
 
 Use `method: {kind: manual}` to import a PEM certificate (leaf first, optionally followed by its chain)
 and its matching, unencrypted PEM private key. Both `cert` and `key` are required when creating a manual
-certificate. The API rejects invalid PEM and mismatched keys. Keep the usual `project_id`, `email`, and
+certificate. The API rejects invalid PEM, mismatched keys, and malformed or unrelated chain entries.
+Adjacent certificates must have matching issuer names and valid signatures; this does not establish
+trust in a public root. Keep the usual `project_id`, `email`, and
 `domains` fields; set `domains` to the names covered by your certificate.
 
 ```yaml

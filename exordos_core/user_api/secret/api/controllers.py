@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from gcl_iam.api import controllers as iam_controllers
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
@@ -176,7 +177,7 @@ class CertificatesController(iam_controllers.PolicyBasedController):
         cert = kwargs.get("cert", current.cert if current else None)
         try:
             models.Certificate.validate_manual_certificate(key, cert)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, UnsupportedAlgorithm) as exc:
             raise common_exceptions.ValidateException(err=str(exc)) from exc
 
     def create(self, **kwargs):
