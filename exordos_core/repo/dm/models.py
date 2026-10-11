@@ -203,6 +203,7 @@ class Repository(
         ),
         required=True,
     )
+    refresh_requested = properties.property(ra_types.Boolean(), default=False)
     next_refresh = properties.property(
         ra_types.UTCDateTimeZ(),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -306,10 +307,9 @@ class Repository(
             artifact.save()
 
     def refresh(self) -> None:
-        """Trigger repository refresh by setting next_refresh to current time."""
-        if self.refresh_rate:
-            self.next_refresh = datetime.datetime.now(datetime.timezone.utc)
-            self.update()
+        """Request one refresh, independently of the periodic interval."""
+        self.refresh_requested = True
+        self.update()
 
     def upload(
         self,
