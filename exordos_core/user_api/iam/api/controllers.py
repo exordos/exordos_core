@@ -746,21 +746,11 @@ class TokenController(
         return filters
 
     def create(self, **kwargs):
-        # A token is issued for the account asking for it. Issuing one for
-        # somebody else is handing over their identity, so it takes a
-        # permission of its own; the model falls back to the caller when
-        # the body names nobody.
-        user = kwargs.get("user")
-        if (
-            user is not None
-            and user.uuid != models.User.me().uuid
-            and not self.enforce(c.PERMISSION_TOKEN_CREATE_ALL)
-        ):
-            raise iam_e.CanNotIssueTokenForAnotherUser(
-                rule=str(c.PERMISSION_TOKEN_CREATE_ALL)
-            )
-
-        token = super().create(**kwargs)
+        self._enforce("create")
+        kwargs = self._apply_autovalues(kwargs)
+        token = self.model(**kwargs)
+        self._enforce_token_permissions(token.user, token.project)
+        token.insert()
         ctx = self.get_context()
         LOG.info(
             "IAM AUDIT: token issued user=%s user_uuid=%s token_uuid=%s ip=%s",
@@ -771,11 +761,47 @@ class TokenController(
         )
         return token
 
+    def _enforce_token_permissions(self, user, project):
+        if self.enforce(c.PERMISSION_TOKEN_CREATE_ALL):
+            return
+        # Issuing or regenerating another account's token hands over its identity.
+        if user.uuid != models.User.me().uuid:
+            raise iam_e.CanNotIssueTokenForAnotherUser(
+                rule=str(c.PERMISSION_TOKEN_CREATE_ALL)
+            )
+        # A project-scoped caller cannot issue a token outside that project.
+        if self._ctx_project_id is not None and (
+            project is None or project.uuid != self._ctx_project_id
+        ):
+            raise gcl_iam_e.Forbidden()
+        for binding in models.PermissionFastView.objects.get_all(
+            filters={
+                "user": ra_filters.EQ(user),
+                "project": ra_filters.Is(project),
+            }
+        ):
+            self._enforcer.enforce(
+                rules.Rule.from_raw(binding.permission.name), do_raise=True
+            )
+
+    def update(self, uuid, **kwargs):
+        self._enforce("update")
+        if "user" in kwargs:
+            raise ra_e.FieldPermissionError(field="user")
+        token = controllers.BaseResourceController.get(self, uuid)
+        kwargs = self._apply_autovalues(kwargs)
+        if "scope" in kwargs:
+            project = token._get_project_by_scope(token.user, kwargs["scope"])
+            self._enforce_token_permissions(token.user, project)
+        token.update_dm(values=kwargs)
+        token.update()
+        return token
+
     @actions.post
     def regenerate(self, resource):
-        # Resolving the resource already enforced `read` and scoped it to
-        # the tokens of the account asking, so only the write is left.
+        # Reading a token does not authorize issuing its signed value.
         self._enforce("update")
+        self._enforce_token_permissions(resource.user, resource.project)
         resource.regenerate()
         ctx = self.get_context()
         LOG.info(

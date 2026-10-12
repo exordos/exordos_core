@@ -105,6 +105,19 @@ class TestTokens:
         with pytest.raises(bazooka_exc.BadRequestError):
             create_token(expiration_delta=59)
 
+    def test_update_cannot_change_user(self, admin_client, create_token):
+        output = create_token().json()
+        original_user = _get_token(output["uuid"]).user.uuid
+        other = admin_client.create_user(
+            username="other_token_user", password="12345678"
+        )
+        url = admin_client.build_resource_uri(["iam/tokens", output["uuid"]])
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            admin_client.put(url, json={"user": f"/v1/iam/users/{other['uuid']}"})
+
+        assert _get_token(output["uuid"]).user.uuid == original_user
+
     def test_login_sessions_are_out_of_reach(self, admin_client, service_user):
         login_token = iam_models.Token(
             user=iam_models.User.objects.get_one(
@@ -409,6 +422,28 @@ class TestOwnTokens:
                 url, json=self._body(user=f"/v1/iam/users/{other['uuid']}")
             )
 
+    def test_cannot_issue_a_token_with_more_permissions(
+        self, owner_client, user_api_client, auth_user_admin, auth_test1_user
+    ):
+        admin = user_api_client(auth_user_admin)
+        organization = admin.create_organization(name="restricted-token-org")
+        project = admin.create_project(
+            organization_uuid=organization["uuid"], name="restricted-token-project"
+        )
+        role = admin.create_role(name="extra-project-permission")
+        permission = admin.create_or_get_permission(name="compute.node.delete")
+        admin.create_permission_binding(
+            permission_uuid=permission["uuid"], role_uuid=role["uuid"]
+        )
+        admin.bind_role_to_user(role["uuid"], auth_test1_user.uuid, project["uuid"])
+        url = owner_client.build_collection_uri(["iam/tokens"])
+        before = owner_client.get(url).json()
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            owner_client.post(url, json=self._body(scope=f"project:{project['uuid']}"))
+
+        assert owner_client.get(url).json() == before
+
     def test_reads_only_its_own_tokens(
         self, owner_client, user_api_client, auth_user_admin, auth_test1_user
     ):
@@ -435,6 +470,48 @@ class TestOwnTokens:
             owner_client.delete(other_url)
         # An admin sees both
         assert len(admin_client.get(admin_url).json()) == 2
+
+    @pytest.mark.parametrize("other_user", [False, True])
+    def test_cannot_regenerate_a_token_with_more_rights(
+        self, user_api_client, auth_user_admin, auth_test1_user, other_user
+    ):
+        admin = user_api_client(auth_user_admin)
+        client = user_api_client(
+            auth_test1_user,
+            permissions=[
+                iam_c.PERMISSION_TOKEN_READ,
+                iam_c.PERMISSION_TOKEN_READ_ALL,
+                iam_c.PERMISSION_TOKEN_UPDATE,
+            ],
+        )
+        body = self._body()
+        if not other_user:
+            organization = admin.create_organization(name="regenerate-org")
+            project = admin.create_project(
+                organization_uuid=organization["uuid"], name="regenerate-project"
+            )
+            role = admin.create_role(name="regenerate-extra-permission")
+            permission = admin.create_or_get_permission(name="compute.node.delete")
+            admin.create_permission_binding(
+                permission_uuid=permission["uuid"], role_uuid=role["uuid"]
+            )
+            admin.bind_role_to_user(role["uuid"], auth_test1_user.uuid, project["uuid"])
+            body.update(
+                user=f"/v1/iam/users/{auth_test1_user.uuid}",
+                scope=f"project:{project['uuid']}",
+            )
+        output = admin.post(
+            admin.build_collection_uri(["iam/tokens"]), json=body
+        ).json()
+        before = _get_token(output["uuid"])
+
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(_regenerate_url(client, output["uuid"]), json={})
+
+        after = _get_token(output["uuid"])
+        assert after.generation == before.generation
+        assert after.expiration_at == before.expiration_at
+        assert after.access_token == output["access_token"]
 
 
 class TestTokenRenewal:
