@@ -5,8 +5,8 @@ icon: lucide/layers
 
 This page documents the most common resource kinds available in Exordos Core manifests. Each kind is a
 top-level key under the `resources` section of a manifest. For the manifest structure and the resource
-concept, see the [Manifest Guide](manifest.md). The complete set of kinds accepted by manifest validation
-is defined in `exordos/manifests/specification/full_spec.yaml`.
+concept, see the [Manifest Guide](manifest.md). The complete set of resource kinds is derived from the user API create endpoints; see the
+[API resource table](api_documentation.md).
 
 ## Overview
 

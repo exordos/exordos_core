@@ -125,9 +125,5 @@ All source files must include Apache 2.0 license header:
   docs`/`docs-build` writes them with `ec-openapi-spec` and `ec-em-api-docs`
   before building the site. Never commit them; to look at one, run the
   command that writes it.
-- `exordos/manifests/specification/full_spec.yaml` is committed, because
-  installations validate manifests against it. After changing anything the
-  user API creates, run `ec-manifest-schema` to rewrite it —
-  `test_full_spec_is_current` fails until you do.
 - Run `make mdlint` for Markdown linting
 - Keep `README.md` synchronized with new features
