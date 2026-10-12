@@ -222,26 +222,6 @@ def load_base_manifest_schema() -> dict:
         return yaml.safe_load(f)
 
 
-def load_full_manifest_schema() -> dict:
-    with open(
-        os.path.join(
-            PROJECT_PATH, "exordos", "manifests", "specification", "full_spec.yaml"
-        ),
-        "r",
-    ) as f:
-        return yaml.safe_load(f)
-
-
-def dump_full_manifest_schema(data):
-    with open(
-        os.path.join(
-            PROJECT_PATH, "exordos", "manifests", "specification", "full_spec.yaml"
-        ),
-        "w",
-    ) as f:
-        yaml.safe_dump(data, f)
-
-
 def load_user_api_spec() -> dict:
     """The user API document the manifest schema is derived from.
 

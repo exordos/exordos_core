@@ -165,7 +165,6 @@ ec-bootstrap = "exordos_core.cmd.bootstrap:main"
 ec-bootstrap-templates = "exordos_core.cmd.bootstrap_templates:main"
 ec-openapi-spec = "exordos_core.cmd.openapi_spec:main"
 ec-em-api-docs = "exordos_core.cmd.em_api_docs:main"
-ec-manifest-schema = "exordos_core.cmd.manifest_schema:main"
 exordos-repo-proxy-gservice = "exordos_core.cmd.repo_proxy_gservice:main"
 
 [project.entry-points."gcn_network_driver"]
