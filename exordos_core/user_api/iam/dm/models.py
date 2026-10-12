@@ -1426,6 +1426,23 @@ class IamClient(
         for auth_info in IdpAuthorizationInfo.objects.get_all(
             filters={"code": ra_filters.EQ(code)}
         ):
+            if auth_info.expiration_time_at <= datetime.datetime.now(
+                datetime.timezone.utc
+            ):
+                LOG.warning(
+                    "IAM OIDC: authorization code expired "
+                    "auth_info_uuid=%s expiration_time_at=%s",
+                    auth_info.uuid,
+                    auth_info.expiration_time_at,
+                )
+            if auth_info.idp.iam_client.uuid != self.uuid:
+                LOG.warning(
+                    "IAM OIDC: authorization code client mismatch "
+                    "auth_info_uuid=%s stored_client_uuid=%s requested_client_uuid=%s",
+                    auth_info.uuid,
+                    auth_info.idp.iam_client.uuid,
+                    self.uuid,
+                )
             if auth_info.redirect_uri != redirect_uri:
                 LOG.warning(
                     "IAM OIDC: authorization code redirect_uri mismatch "
