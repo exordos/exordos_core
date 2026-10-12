@@ -48,7 +48,8 @@ def resource(value):
     return models.Resource.from_value(view, "certificate", frozenset(fields))
 
 
-def test_manual_example_provisions_and_updates_without_acme(example):
+@pytest.mark.parametrize("change_domains", [False, True])
+def test_manual_example_provisions_and_updates_without_acme(example, change_domains):
     CertificatesController._validate_certificate(example)
     target = resource(example)
     assert {"cert", "key"} <= service.Certificate(
@@ -95,7 +96,7 @@ def test_manual_example_provisions_and_updates_without_acme(example):
         changed = dict(
             example,
             name="replacement",
-            domains=["new.example.com"],
+            domains=["new.example.com"] if change_domains else example["domains"],
             cert=replacement.public_bytes(serialization.Encoding.PEM).decode(),
             key=new_key.private_bytes(
                 serialization.Encoding.PEM,
@@ -108,7 +109,7 @@ def test_manual_example_provisions_and_updates_without_acme(example):
         save.assert_called_once()
         delete.assert_not_called()
         assert updated["name"] == "replacement"
-        assert updated["domains"] == ["new.example.com"]
+        assert updated["domains"] == changed["domains"]
         assert updated["cert"] == changed["cert"]
         assert updated["key"] == changed["key"]
         assert updated["expiration_at"].startswith("2037-01-01")

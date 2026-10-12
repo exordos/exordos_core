@@ -164,7 +164,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
             cert.update()
             return cert.to_resource_value()
 
-        # If domains changed, issue a new certificate.
+        # If switching from manual or changing domains, issue a new certificate.
         # We use create_cert (not renew_cert) because the domain set is
         # fundamentally different – the old key/CSR may not cover the
         # new domains.
@@ -172,8 +172,10 @@ class CertBotBackendClient(base.AbstractBackendClient):
             cert["meta"]["domains"]
         ) != set(resource.value["domains"]):
             LOG.info(
-                "Domains changed for cert %s, re-issuing: %s -> %s",
+                "Certificate %s requires re-issuing: method %s -> %s, domains %s -> %s",
                 resource.uuid,
+                cert.meta.get("method", {}).get("kind"),
+                resource.value.get("method", {}).get("kind"),
                 cert["meta"]["domains"],
                 resource.value["domains"],
             )
