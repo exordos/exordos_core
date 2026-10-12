@@ -1912,11 +1912,10 @@ class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomProperties
         ra_types.TimeDelta(min_value=60, integer_seconds=True),
         default=Token.get_default_expiration_delta,
     )
-    # Unset claims follow the client that signs the token, so switching
-    # the client does not leave the claims of the previous one behind.
+    # The API fills the issuer from its request URL; manifests supply it.
     issuer = properties.property(
-        ra_types.AllowNone(ra_types.String(max_length=256)),
-        default=None,
+        ra_types.String(max_length=256),
+        required=True,
     )
     audience = properties.property(
         ra_types.AllowNone(ra_types.String(max_length=64)),
@@ -1946,8 +1945,8 @@ class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomProperties
 
     def _get_access_token_info(self):
         info = super()._get_access_token_info()
-        if self.issuer is None:
-            info["iss"] = f"{c.DEFAULT_ROOT_ENDPOINT}iam/clients/{self.iam_client.uuid}"
+        # Each renewal starts a new lifetime while auth_time stays at creation.
+        info["iat"] = int((self.expiration_at - self.expiration_delta).timestamp())
         if self.audience is None:
             info["aud"] = self.iam_client.client_id
         return info

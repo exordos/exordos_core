@@ -1145,7 +1145,7 @@ element can hand a service a credential that keeps working without anyone loggin
 | `expiration_delta` | integer | Lifetime in seconds, at least 60 (default: 3600). |
 | `auto_renew` | boolean | Keep the token alive past its expiration (default: `true`). With `false` the token is spent when it expires. |
 | `audience` | string | The `aud` claim. Unset, it is the `client_id` of the current client. |
-| `issuer` | string | The `iss` claim. Unset, it is the URL of the current client. |
+| `issuer` | string | The `iss` claim. **Required in manifests.** The API defaults it to the client URL derived from the creation request. |
 
 ### Example
 
@@ -1155,6 +1155,7 @@ resources:
     exporter_token:
       user: $core.iam.users.$exporter:uuid
       iam_client: "00000000-0000-0000-0000-000000000000"
+      issuer: "https://api.example.com/api/core/v1/iam/clients/00000000-0000-0000-0000-000000000000"
       scope: "project:12345678-c625-4fee-81d5-f691897b8142"
       expiration_delta: 604800
 ```

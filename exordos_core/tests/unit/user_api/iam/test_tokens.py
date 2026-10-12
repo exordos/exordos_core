@@ -183,3 +183,16 @@ def test_regenerate_create_all_keeps_delegation(setup_token_controller):
     }
     token.regenerate.assert_called_once()
     permissions.assert_not_called()
+
+
+def test_create_defaults_issuer_to_request_url(setup_token_controller):
+    controller, token, _ = setup_token_controller
+    controller.get_context().get_real_url_with_prefix.return_value = (
+        "https://api.example/api/core"
+    )
+    client = SimpleNamespace(uuid=uuid.uuid4())
+    controller.create(iam_client=client)
+    controller.model.assert_called_once_with(
+        iam_client=client,
+        issuer=f"https://api.example/api/core/v1/iam/clients/{client.uuid}",
+    )

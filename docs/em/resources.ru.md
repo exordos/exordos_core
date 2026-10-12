@@ -1152,7 +1152,7 @@ resources:
 | `expiration_delta` | integer | Время жизни в секундах, не меньше 60 (по умолчанию: 3600). |
 | `auto_renew` | boolean | Поддерживать токен после истечения срока (по умолчанию: `true`). При `false` токен заканчивается вместе со сроком. |
 | `audience` | string | Claim `aud`. Если не задан — `client_id` текущего клиента. |
-| `issuer` | string | Claim `iss`. Если не задан — URL текущего клиента. |
+| `issuer` | string | Claim `iss`. **Обязательно в манифесте.** API по умолчанию использует URL клиента из запроса создания. |
 
 ### Пример
 
@@ -1162,6 +1162,7 @@ resources:
     exporter_token:
       user: $core.iam.users.$exporter:uuid
       iam_client: "00000000-0000-0000-0000-000000000000"
+      issuer: "https://api.example.com/api/core/v1/iam/clients/00000000-0000-0000-0000-000000000000"
       scope: "project:12345678-c625-4fee-81d5-f691897b8142"
       expiration_delta: 604800
 ```

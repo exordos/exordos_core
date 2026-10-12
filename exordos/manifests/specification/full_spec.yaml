@@ -1403,7 +1403,6 @@ components:
         issuer:
           example: any_string
           maxLength: 256
-          nullable: true
           type: string
         project:
           readOnly: true
@@ -1441,6 +1440,7 @@ components:
       required:
       - user
       - iam_client
+      - issuer
       type: object
     Manifest_Create:
       path: /v1/em/manifests/

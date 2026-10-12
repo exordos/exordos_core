@@ -178,7 +178,7 @@ class TestTokens:
         )
         output = create_token().json()
 
-        # Switching the client moves the claims along with the signature
+        # Switching the client preserves the issuer selected at issuance
         admin_client.put(
             admin_client.build_resource_uri(["iam/tokens", output["uuid"]]),
             json={"iam_client": f"/v1/iam/clients/{iam_client['uuid']}"},
@@ -188,7 +188,7 @@ class TestTokens:
 
         assert claims["jti"] == str(token.uuid)
         assert claims["aud"] == "token-client"
-        assert claims["iss"].endswith(f"iam/clients/{iam_client['uuid']}")
+        assert claims["iss"] == output["issuer"]
         response = bazooka.Client().get(
             f"{user_api.get_endpoint()}v1/iam/clients/{iam_client['uuid']}/actions/me",
             headers={"Authorization": f"Bearer {token.get_access_token()}"},
@@ -204,6 +204,13 @@ class TestTokens:
 
         assert claims["iss"] == "https://issuer.example"
         assert claims["aud"] == "exporter"
+
+    def test_default_issuer_uses_request_url(self, user_api, create_token):
+        output = create_token().json()
+        token = _get_token(output["uuid"])
+        expected = f"{user_api.get_endpoint()}v1/iam/clients/{token.iam_client.uuid}"
+        assert output["issuer"] == expected
+        assert _claims(token)["iss"] == expected
 
     def test_fixed_term_token_is_not_renewed(self, admin_client, create_token):
         output = create_token(expiration_delta=120, auto_renew=False).json()
@@ -529,6 +536,7 @@ class TestTokenRenewal:
         token = model(
             user=admin,
             iam_client=iam_client,
+            issuer="https://issuer.example",
             expiration_delta=datetime.timedelta(hours=1),
             expiration_at=_now() + remaining,
         )
@@ -591,6 +599,7 @@ class TestTokenCoreAgent:
             "uuid": str(uuid),
             "user": str(admin.uuid),
             "iam_client": str(c.ZERO_UUID),
+            "issuer": "https://issuer.example",
             "expiration_delta": DAY,
         }
         return ua_models.TargetResource(

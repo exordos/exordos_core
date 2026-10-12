@@ -748,6 +748,9 @@ class TokenController(
     def create(self, **kwargs):
         self._enforce("create")
         kwargs = self._apply_autovalues(kwargs)
+        if kwargs.get("issuer") is None and "iam_client" in kwargs:
+            app_url = self.get_context().get_real_url_with_prefix()
+            kwargs["issuer"] = f"{app_url}/v1/iam/clients/{kwargs['iam_client'].uuid}"
         token = self.model(**kwargs)
         self._enforce_token_permissions(token.user, token.project)
         token.insert()
