@@ -1723,10 +1723,29 @@ class Token(
 
     def refresh(self, scope=None):
         scope = scope or self.scope
+        project = self._get_project_by_scope(self.user, scope)
+        if self.project is not None:
+            if project is None or project.uuid != self.project.uuid:
+                raise iam_e.Forbidden()
+        elif project is not None and not self.has_permission(
+            iam_c.PERMISSION_WILDCARD_NAME
+        ):
+            if not RoleBinding.objects.get_all(
+                filters={
+                    "user": ra_filters.EQ(self.user.uuid),
+                    "project": ra_filters.EQ(project.uuid),
+                },
+                limit=1,
+            ):
+                raise iam_e.Forbidden()
+        if project is None and any(
+            piece.startswith("project") for piece in scope.lower().split(" ")
+        ):
+            raise iam_e.Forbidden()
         now = datetime.datetime.now(datetime.timezone.utc)
         new_expiration_at = now + self.expiration_delta
         self.expiration_at = new_expiration_at
-        self.project = self._get_project_by_scope(self.user, scope)
+        self.project = project
         self.scope = scope
         self.update()
 

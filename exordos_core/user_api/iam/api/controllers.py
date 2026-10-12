@@ -1059,6 +1059,23 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                 raise iam_e.ServiceAccountUuidRequiredError()
 
             try:
+                ctx.iam_context.enforcer.enforce(
+                    c.PERMISSION_SERVICE_TOKEN_CREATE, do_raise=True
+                )
+                caller_project = ctx.iam_context.introspection_info().get("project_id")
+                requested_project = resource._extract_project_from_scope(
+                    kwargs.get(c.PARAM_SCOPE, "")
+                )
+                if not requested_project:
+                    raise iam_e.ProjectScopeRequiredError()
+                if caller_project is not None:
+                    try:
+                        if sys_uuid.UUID(requested_project) != sys_uuid.UUID(
+                            str(caller_project)
+                        ):
+                            raise iam_e.CanNotCreateServiceToken()
+                    except ValueError:
+                        raise iam_e.CanNotCreateServiceToken()
                 # Get current user from token context
                 current_user = models.User.me()
 

@@ -453,6 +453,65 @@ class TestClients(base.BaseIamResourceTest):
         client.delete_project(project["uuid"])
         client.delete_organization(org["uuid"])
 
+    @pytest.mark.parametrize("target_scope", ["other_project", "openid"])
+    def test_refresh_cannot_leave_its_project(
+        self, user_api_client, auth_test1_user, target_scope
+    ):
+        client = user_api_client(auth_test1_user)
+        org = client.create_organization("RefreshBoundaryOrg")
+        first = client.create_project(org["uuid"], "RefreshBoundaryFirst")
+        second = client.create_project(org["uuid"], "RefreshBoundarySecond")
+        params = auth_test1_user.get_password_auth_params()
+        params["scope"] = f"project:{first['uuid']}"
+        url = auth_test1_user.get_token_url(endpoint=client.endpoint)
+        token_info = client.post(url=url, data=params).json()
+        scope = (
+            f"project:{second['uuid']}" if target_scope == "other_project" else "openid"
+        )
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(
+                url=url,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": token_info["refresh_token"],
+                    "scope": scope,
+                },
+            )
+        result = client.post(
+            url=url,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": token_info["refresh_token"],
+            },
+        ).json()
+        assert result["scope"] == params["scope"]
+        client.delete_project(second["uuid"])
+        client.delete_project(first["uuid"])
+        client.delete_organization(org["uuid"])
+
+    def test_refresh_cannot_select_project_without_membership(
+        self, user_api_client, auth_test1_user, auth_user_admin
+    ):
+        admin = user_api_client(auth_user_admin)
+        org = admin.create_organization("RefreshPrivateOrg")
+        project = admin.create_project(org["uuid"], "RefreshPrivateProject")
+        client = user_api_client(auth_test1_user)
+        url = auth_test1_user.get_token_url(endpoint=client.endpoint)
+        token_info = client.post(
+            url=url, data=auth_test1_user.get_password_auth_params()
+        ).json()
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(
+                url=url,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": token_info["refresh_token"],
+                    "scope": f"project:{project['uuid']}",
+                },
+            )
+        admin.delete_project(project["uuid"])
+        admin.delete_organization(org["uuid"])
+
     def test_garbage_refresh_token_with_scope_error(
         self, user_api_client, auth_test1_user
     ):
@@ -556,6 +615,7 @@ class TestClients(base.BaseIamResourceTest):
             client_uuid=default_client_uuid,
             client_id=default_client_id,
             client_secret=default_client_secret,
+            project_id=project["uuid"],
         )
 
         return {
@@ -604,8 +664,9 @@ class TestClients(base.BaseIamResourceTest):
 
         return regular_binding, service_binding
 
+    @pytest.mark.parametrize("service_role", ["owner", "newcomer"])
     def test_get_service_token_with_access_token_success(
-        self, user_api_client, service_token_environment, decode_id_token
+        self, user_api_client, service_token_environment, decode_id_token, service_role
     ):
         """
         Test successful service token exchange using user token.
@@ -620,7 +681,7 @@ class TestClients(base.BaseIamResourceTest):
 
         # Setup role bindings with owner permissions
         regular_binding, service_binding = self._setup_role_bindings(
-            env, regular_role="owner", service_role="owner"
+            env, regular_role="owner", service_role=service_role
         )
 
         # Create client for regular user
@@ -658,6 +719,57 @@ class TestClients(base.BaseIamResourceTest):
         # cleanup
         regular_binding.delete()
         service_binding.delete()
+
+    def test_service_exchange_cannot_leave_caller_project(
+        self, user_api_client, service_token_environment
+    ):
+        env = service_token_environment
+        first_bindings = self._setup_role_bindings(env)
+        second = env["admin_client"].create_project(
+            name="OtherServiceProject", organization_uuid=env["org"]["uuid"]
+        )
+        second_project = iam_models.Project.objects.get_one(
+            filters={"uuid": second["uuid"]}
+        )
+        second_bindings = []
+        for user in [env["regular_user_obj"], env["service_user_obj"]]:
+            binding = iam_models.RoleBinding(
+                user=user, role=env["owner_role"], project=second_project
+            )
+            binding.save()
+            second_bindings.append(binding)
+        client = user_api_client(env["regular_user_auth"])
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(
+                url=env["regular_user_auth"].get_token_url(endpoint=client.endpoint),
+                data={
+                    "grant_type": "access_token",
+                    "service_account_uuid": str(env["service_user"]["uuid"]),
+                    "scope": f"project:{second['uuid']}",
+                },
+            )
+        for binding in [*first_bindings, *second_bindings]:
+            binding.delete()
+        env["admin_client"].delete_project(second["uuid"])
+
+    def test_service_exchange_requires_permission_in_active_token(
+        self, user_api_client, service_token_environment
+    ):
+        env = service_token_environment
+        bindings = self._setup_role_bindings(env)
+        env["regular_user_auth"]._project_id = None
+        client = user_api_client(env["regular_user_auth"])
+        with pytest.raises(bazooka_exc.ForbiddenError):
+            client.post(
+                url=env["regular_user_auth"].get_token_url(endpoint=client.endpoint),
+                data={
+                    "grant_type": "access_token",
+                    "service_account_uuid": str(env["service_user"]["uuid"]),
+                    "scope": f"project:{env['project']['uuid']}",
+                },
+            )
+        for binding in bindings:
+            binding.delete()
 
     @pytest.mark.parametrize(
         "test_scenario",
