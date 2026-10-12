@@ -413,24 +413,9 @@ class Manifest(
             element_engine.remove_element(element)
         return self
 
-    def view(self) -> dict:
-        element_engine.load_schemas()
-
-        manifest = self.dump_to_simple_view()
-        full_schema = element_engine.full_schema
-
-        utils.mutate_manifest(manifest, full_schema)
-
-        return manifest
-
     def validate_schema_base(self) -> "Manifest":
         element_engine.load_schemas()
         utils.validate_manifest(self.dump_to_simple_view(), element_engine.base_schema)
-        return self
-
-    def validate_schema_full(self) -> "Manifest":
-        element_engine.load_schemas()
-        utils.validate_manifest(self.view(), element_engine.full_schema)
         return self
 
 
@@ -1190,13 +1175,10 @@ class ElementEngine:
         self._namespaces: tp.Dict[str, Namespace] = {}
         self._resource_exports: tp.Dict[str, Resource] = {}
         self.base_schema: tp.Dict[str, tp.Any] = {}
-        self.full_schema: tp.Dict[str, tp.Any] = {}
 
     def load_schemas(self) -> None:
         if not self.base_schema:
             self.base_schema = utils.load_base_manifest_schema()
-        if not self.full_schema:
-            self.full_schema = utils.load_full_manifest_schema()
 
     def load_elements(self) -> None:
         """Load only the elements, leaving their namespaces empty.
