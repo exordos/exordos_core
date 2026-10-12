@@ -1909,7 +1909,7 @@ class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomProperties
     # A renewal runs every few seconds, so a shorter lifetime would renew
     # the token, and rewrite everything rendering it, on every iteration.
     expiration_delta = properties.property(
-        types.Seconds(min_value=60),
+        ra_types.TimeDelta(min_value=60, integer_seconds=True),
         default=Token.get_default_expiration_delta,
     )
     # Unset claims follow the client that signs the token, so switching

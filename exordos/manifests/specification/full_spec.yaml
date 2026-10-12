@@ -1388,7 +1388,7 @@ components:
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         expiration_delta:
           default: 3600
-          example: 3600
+          example: 86400
           maximum: 2147483647
           minimum: 60
           type: integer
