@@ -19,7 +19,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0006-merge-rawstor-secrets-7a8e91.py"]
+        self._depends = ["0009-merge-rawstor-secrets-7a8e91.py"]
 
     @property
     def migration_id(self):

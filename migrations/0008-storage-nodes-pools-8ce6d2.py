@@ -19,7 +19,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0004-storage-clusters-3d8a1c.py"]
+        self._depends = ["0007-storage-clusters-3d8a1c.py"]
 
     @property
     def migration_id(self):

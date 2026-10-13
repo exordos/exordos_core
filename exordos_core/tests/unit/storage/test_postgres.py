@@ -98,14 +98,14 @@ def database(empty_database):
         connection.execute(
             "ALTER TABLE compute_machine_volumes ADD speed varchar(16) DEFAULT 'HOT', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
-        migration("0004-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
-        migration("0005-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
+        migration("0007-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
+        migration("0008-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
             connection
         )
-        migration("0007-managed-storage-nodes-934dc2.py").migration_step.upgrade(
+        migration("0010-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
-        migration("0008-storage-cluster-config-6ab127.py").migration_step.upgrade(
+        migration("0011-storage-cluster-config-6ab127.py").migration_step.upgrade(
             connection
         )
     return uri
@@ -356,7 +356,7 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
             storage_pool="default",
         ).insert()
     with psycopg.connect(database) as connection:
-        step = migration("0005-storage-nodes-pools-8ce6d2.py").migration_step
+        step = migration("0008-storage-nodes-pools-8ce6d2.py").migration_step
         step.downgrade(connection)
         spec = {
             "kind": "rawstor",
@@ -378,10 +378,10 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
             (cluster_uuid, json.dumps(spec), json.dumps(policy)),
         )
         step.upgrade(connection)
-        migration("0007-managed-storage-nodes-934dc2.py").migration_step.upgrade(
+        migration("0010-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
-        migration("0008-storage-cluster-config-6ab127.py").migration_step.upgrade(
+        migration("0011-storage-cluster-config-6ab127.py").migration_step.upgrade(
             connection
         )
         assert connection.execute(
@@ -412,7 +412,7 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
     "previous_head",
     [
         None,
-        "0005-storage-nodes-pools-8ce6d2.py",
+        "0008-storage-nodes-pools-8ce6d2.py",
         "0004-add-opaque-secrets-362f6d21.py",
     ],
 )
