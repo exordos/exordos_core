@@ -71,7 +71,10 @@ def enrich(value, volume=False, mask=False, pool_volume=False):
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0003-volumes-speed-ephemeral-fba1de.py"]
+        self._depends = [
+            "0003-volumes-speed-ephemeral-fba1de.py",
+            "0004-add-opaque-secrets-362f6d21.py",
+        ]
 
     @property
     def migration_id(self):
