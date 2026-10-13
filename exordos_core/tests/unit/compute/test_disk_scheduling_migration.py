@@ -25,7 +25,7 @@ import psycopg
 from psycopg.rows import dict_row
 import pytest
 
-PATH = Path(__file__).parents[4] / "migrations/0004-disk-scheduling-resources-96f43b.py"
+PATH = Path(__file__).parents[4] / "migrations/0006-disk-scheduling-resources-96f43b.py"
 spec = importlib.util.spec_from_file_location("disk_scheduling_migration", PATH)
 migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
