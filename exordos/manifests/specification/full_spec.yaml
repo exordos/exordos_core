@@ -1339,7 +1339,7 @@ components:
                   maxLength: 255
                   type: string
                 ephemeral:
-                  default: false
+                  default: true
                   example: true
                   type: boolean
                 kind:
@@ -1361,7 +1361,7 @@ components:
                   example: any_string
                   type: string
                 speed:
-                  default: WARM
+                  default: HOT
                   enum:
                   - COLD
                   - HOT
@@ -1554,7 +1554,7 @@ components:
               key: value
             properties:
               ephemeral:
-                default: false
+                default: true
                 example: true
                 type: boolean
               image:
@@ -1572,7 +1572,7 @@ components:
                 minimum: 1
                 type: integer
               speed:
-                default: WARM
+                default: HOT
                 enum:
                 - COLD
                 - HOT
@@ -1767,7 +1767,7 @@ components:
               key: value
             properties:
               ephemeral:
-                default: false
+                default: true
                 example: true
                 type: boolean
               image:
@@ -1785,7 +1785,7 @@ components:
                 minimum: 1
                 type: integer
               speed:
-                default: WARM
+                default: HOT
                 enum:
                 - COLD
                 - HOT
@@ -4887,7 +4887,7 @@ components:
           maxLength: 64
           type: string
         ephemeral:
-          default: false
+          default: true
           example: true
           readOnly: true
           type: boolean
@@ -4918,7 +4918,7 @@ components:
           minimum: 1
           type: integer
         speed:
-          default: WARM
+          default: HOT
           enum:
           - COLD
           - HOT

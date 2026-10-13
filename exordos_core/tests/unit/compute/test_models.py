@@ -70,10 +70,10 @@ class TestVolumeSpeedEphemeralReadOnly:
         volume = models.Volume(size=10, project_id=sys_uuid.uuid4())
 
         with pytest.raises(exceptions.ReadOnlyProperty):
-            volume.speed = ic.DiskSpeed.HOT.value
+            volume.speed = ic.DiskSpeed.WARM.value
 
     def test_ephemeral_cannot_be_changed_after_creation(self):
         volume = models.Volume(size=10, project_id=sys_uuid.uuid4())
 
         with pytest.raises(exceptions.ReadOnlyProperty):
-            volume.ephemeral = True
+            volume.ephemeral = False

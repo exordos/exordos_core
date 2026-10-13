@@ -130,12 +130,10 @@ class Volume(
     # lives.
     speed = properties.property(
         types.Enum([s.value for s in ic.DiskSpeed]),
-        default=ic.DiskSpeed.WARM.value,
+        default=ic.DiskSpeed.HOT.value,
         read_only=True,
     )
-    ephemeral = properties.property(
-        types.Boolean(), default=False, read_only=True
-    )
+    ephemeral = properties.property(types.Boolean(), default=True, read_only=True)
 
     # Internal field for scheduling purposes
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
@@ -375,9 +373,9 @@ class MachineVolume(
     device_type = properties.property(types.String(max_length=64), default="")
     speed = properties.property(
         types.Enum([s.value for s in ic.DiskSpeed]),
-        default=ic.DiskSpeed.WARM.value,
+        default=ic.DiskSpeed.HOT.value,
     )
-    ephemeral = properties.property(types.Boolean(), default=False)
+    ephemeral = properties.property(types.Boolean(), default=True)
     # Name of the storage pool (within this compute pool) the scheduler
     # placed the volume on - needed to re-locate it by name (rather than
     # by speed/ephemeral, which several pools could match) when
