@@ -95,8 +95,13 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 old = row[column]
                 new = enrich({column: old})[column]
                 if new != old:
+                    expression = (
+                        "ARRAY(SELECT jsonb_array_elements(CAST(%s AS jsonb)))"
+                        if column == "storage_pools"
+                        else "CAST(%s AS jsonb)"
+                    )
                     session.execute(
-                        f"UPDATE {table} SET {column} = CAST(%s AS jsonb), "
+                        f"UPDATE {table} SET {column} = {expression}, "
                         "updated_at = current_timestamp WHERE uuid = %s",
                         (json.dumps(new), row["uuid"]),
                     )

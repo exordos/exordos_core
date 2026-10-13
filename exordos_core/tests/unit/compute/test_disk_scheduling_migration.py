@@ -82,16 +82,22 @@ def test_migration_updates_target_actual_and_persisted_sources():
             ("compute_sets", "disk_spec"),
             ("machine_pools", "storage_pools"),
         ):
+            column_type = "jsonb[]" if column == "storage_pools" else "jsonb"
             connection.execute(
-                f"CREATE TEMP TABLE {table} (uuid uuid, {column} jsonb, updated_at timestamptz)"
+                f"CREATE TEMP TABLE {table} (uuid uuid, {column} {column_type}, updated_at timestamptz)"
             )
             value = (
                 [{"name": "default"}]
                 if column == "storage_pools"
                 else {"kind": "root_disk", "size": 10}
             )
+            expression = (
+                "ARRAY(SELECT jsonb_array_elements(CAST(%s AS jsonb)))"
+                if column == "storage_pools"
+                else "CAST(%s AS jsonb)"
+            )
             connection.execute(
-                f"INSERT INTO {table} (uuid, {column}) VALUES (%s, %s)",
+                f"INSERT INTO {table} (uuid, {column}) VALUES (%s, {expression})",
                 (uuid.uuid4(), json.dumps(value)),
             )
         for table in ("machines", "node_volumes", "compute_machine_volumes"):
