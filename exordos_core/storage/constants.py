@@ -15,3 +15,5 @@
 #    under the License.
 
 POLICY_SERVICE_NAME = "storage"
+
+CLUSTER_DELETING = "DELETING"

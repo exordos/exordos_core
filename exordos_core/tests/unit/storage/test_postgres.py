@@ -303,14 +303,20 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             volume.delete()
         from restalchemy.storage import exceptions
 
-        with pytest.raises(exceptions.ConflictRecords):
-            cluster_api.delete(cluster.uuid)
+        with patch.dict(
+            "sys.modules",
+            rawstor=MagicMock(Location=MagicMock(side_effect=[[], [object()]])),
+        ):
+            with pytest.raises(exceptions.ConflictRecords):
+                cluster_api.delete(cluster.uuid)
+        assert len(models.StorageNode.objects.get_all()) == 2
+        assert cluster_api.get(uuid=cluster.uuid).status != "DELETING"
         with patch.dict(
             "sys.modules", rawstor=MagicMock(Location=MagicMock(return_value=[]))
         ):
-            node_api.delete(first.uuid)
-            node_api.delete(second.uuid)
-        cluster_api.delete(cluster.uuid)
+            cluster_api.delete(cluster.uuid)
+        assert models.StorageNode.objects.get_all() == []
+        assert models.StoragePool.objects.get_all() == []
         assert models.StorageCluster.objects.get_all() == []
 
 
@@ -533,8 +539,15 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
                 endpoint=node.endpoint,
                 failure_domain_path="server",
             )
-        with pytest.raises(exceptions.ConflictRecords):
-            cluster_api.delete(cluster.uuid)  # Still awaiting the host's stop report.
+        cluster_api.delete(cluster.uuid)  # Accepted while the host is still stopping.
+        cluster = cluster_api.get(uuid=cluster.uuid)
+        assert cluster.status == "DELETING"
+        assert not state.finish_cluster_deletion(cluster)
+        service.actualize_outdated_instance(
+            models.Cluster.restore_from_simple_view(**cluster.dump_to_simple_view()),
+            models.Cluster.from_ua_resource(mds_actual),
+        )
+        assert cluster_api.get(uuid=cluster.uuid).status == "DELETING"
         backing = tmp_path / "data"
         backing.mkdir()
         (backing / "keep").write_text("data")
@@ -552,14 +565,16 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
         assert not (tmp_path / "units" / f"rawstor-ost@{node.uuid}.service").exists()
         assert (backing / "keep").read_text() == "data"
         actual.delete()  # Host acknowledges deletion through the status API.
-        replacement = node_api.create(
-            name="replacement",
-            cluster=cluster.uuid,
-            agent=agent.uuid,
-            endpoint=node.endpoint,
-            failure_domain_path="server",
-        )
-        assert replacement.uuid != node.uuid
+        with pytest.raises(exceptions.ConflictRecords):
+            node_api.create(
+                name="replacement",
+                cluster=cluster.uuid,
+                agent=agent.uuid,
+                endpoint=node.endpoint,
+                failure_domain_path="server",
+            )
+        assert state.finish_cluster_deletion(cluster_api.get(uuid=cluster.uuid))
+        assert models.StorageCluster.objects.get_all() == []
         driver.finalize()
 
 

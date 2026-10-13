@@ -27,6 +27,7 @@ from restalchemy.dm import types_dynamic
 from restalchemy.storage.sql import orm
 
 from exordos_core.compute.pool.dm import models as pool_models
+from exordos_core.storage import constants as sc
 
 
 class StorageCluster(
@@ -59,7 +60,9 @@ class StorageCluster(
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     status = properties.property(
-        types.Enum([s.value for s in ua_pool.MachinePoolStatus]),
+        types.Enum(
+            [s.value for s in ua_pool.MachinePoolStatus] + [sc.CLUSTER_DELETING]
+        ),
         default=ua_pool.MachinePoolStatus.DISABLED.value,
     )
     storage_pools = properties.property(
@@ -100,6 +103,8 @@ class Cluster(
 
         value, target = super().get_ua_all_and_target_values()
         snapshot = state.agent_driver_spec(self).dump_to_simple_view()
+        if self.status == sc.CLUSTER_DELETING:
+            value["status"] = ua_pool.MachinePoolStatus.IN_PROGRESS.value
         value["driver_spec"] = snapshot
         target["driver_spec"] = snapshot
         return value, target

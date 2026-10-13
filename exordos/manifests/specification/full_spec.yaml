@@ -4439,6 +4439,7 @@ components:
           default: DISABLED
           enum:
           - ACTIVE
+          - DELETING
           - DISABLED
           - IN_PROGRESS
           - MAINTENANCE

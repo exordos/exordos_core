@@ -116,6 +116,7 @@ class StorageClustersController(
     def update(self, uuid, **kwargs):
         with models.StorageCluster._get_engine().session_manager() as session:
             state.lock(session)
+            _require_cluster_not_deleting(self.get(uuid=uuid))
             if "driver_spec" in kwargs:
                 self._validate_driver_spec_uniqueness(kwargs, exclude_uuid=uuid)
                 if isinstance(kwargs["driver_spec"], dict):
@@ -133,25 +134,18 @@ class StorageClustersController(
             state.lock(session)
             cluster = self.get(uuid=uuid)
             _require_no_disks(cluster)
-            if models.StorageNode.objects.get_all(
+            members = models.StorageNode.objects.get_all(
                 filters={"cluster": dm_filters.EQ(cluster.uuid)}
-            ):
-                raise storage_exc.ConflictRecords(
-                    model="StorageCluster", msg="Remove storage nodes first"
-                )
-            if any(
-                str(resource.value.get("cluster")) == str(cluster.uuid)
-                for resource in _node_resources()
-            ):
-                raise storage_exc.ConflictRecords(
-                    model="StorageCluster",
-                    msg="Wait for storage node removal to reconcile",
-                )
-            for policy in models.StoragePool.objects.get_all(
-                filters={"cluster": dm_filters.EQ(cluster.uuid)}
-            ):
-                policy.delete()
-            return super().delete(uuid)
+            )
+            # Validate all members before deleting any of them.
+            for member in members:
+                StorageNodesController.validate_delete(member, cluster)
+            cluster.status = sc.CLUSTER_DELETING
+            cluster.update()
+            for member in members:
+                member.delete()
+            if not state.finish_cluster_deletion(cluster):
+                state.sync_cluster(cluster)
 
     def _validate_driver_spec_uniqueness(self, kwargs: dict, exclude_uuid=None) -> None:
         """Validate the public cluster configuration and unique MDS port."""
@@ -194,6 +188,13 @@ class StorageClustersController(
                 )
 
 
+def _require_cluster_not_deleting(cluster):
+    if cluster.status == sc.CLUSTER_DELETING:
+        raise storage_exc.ConflictRecords(
+            model="StorageCluster", msg="Cluster is being deleted"
+        )
+
+
 def _require_no_disks(cluster, pool_uuid=None):
     volumes = compute_models.MachineVolume.objects.get_all(
         filters={"storage_location": dm_filters.EQ(cluster.driver_spec.endpoint)}
@@ -230,6 +231,7 @@ class ClusterMemberController(
             cluster = models.StorageCluster.objects.get_one(
                 filters={"uuid": dm_filters.EQ(kwargs["cluster"])}
             )
+            _require_cluster_not_deleting(cluster)
             self.validate_member(kwargs, cluster)
             member = super().create(**kwargs)
             state.sync_cluster(cluster)
@@ -242,6 +244,7 @@ class ClusterMemberController(
             cluster = models.StorageCluster.objects.get_one(
                 filters={"uuid": dm_filters.EQ(member.cluster)}
             )
+            _require_cluster_not_deleting(cluster)
             if "cluster" in kwargs and str(kwargs["cluster"]) != str(member.cluster):
                 raise storage_exc.ConflictRecords(
                     model="StorageCluster",
@@ -396,7 +399,8 @@ class StorageNodesController(ClusterMemberController):
                         msg="OST backing location or port is still reconciled on this host; wait for removal",
                     )
 
-    def validate_delete(self, member, cluster):
+    @staticmethod
+    def validate_delete(member, cluster):
         # No new writes may race an OST removal. Also protect unmanaged objects.
         _require_no_disks(cluster)
         if member.agent is not None and member.status != "ACTIVE":
