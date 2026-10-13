@@ -22,7 +22,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
 
     def __init__(self):
         self._depends = [
-            "0005-storage-nodes-pools-8ce6d2.py",
+            "0008-storage-nodes-pools-8ce6d2.py",
             "0004-add-opaque-secrets-362f6d21.py",
         ]
 
