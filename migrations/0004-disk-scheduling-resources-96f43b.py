@@ -39,7 +39,7 @@ RESOURCE_KINDS = (
 def enrich(value, volume=False, mask=False, pool_volume=False):
     """Fill missing disk scheduling fields without changing existing policy."""
     result = copy.deepcopy(value)
-    defaults = {"speed": ic.DiskSpeed.WARM.value, "ephemeral": False}
+    defaults = {"speed": ic.DiskSpeed.HOT.value, "ephemeral": True}
     if mask:
         defaults = dict.fromkeys(defaults)
     if volume:

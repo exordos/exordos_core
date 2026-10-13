@@ -37,8 +37,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
             f"""
             ALTER TABLE node_volumes
                 ADD COLUMN speed character varying(16)
-                    DEFAULT 'WARM' NOT NULL,
-                ADD COLUMN ephemeral boolean DEFAULT false NOT NULL,
+                    DEFAULT 'HOT' NOT NULL,
+                ADD COLUMN ephemeral boolean DEFAULT true NOT NULL,
                 ADD CONSTRAINT node_volumes_speed_check
                     CHECK (speed IN {DISK_SPEED_CHECK});
             """
@@ -47,8 +47,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
             f"""
             ALTER TABLE compute_machine_volumes
                 ADD COLUMN speed character varying(16)
-                    DEFAULT 'WARM' NOT NULL,
-                ADD COLUMN ephemeral boolean DEFAULT false NOT NULL,
+                    DEFAULT 'HOT' NOT NULL,
+                ADD COLUMN ephemeral boolean DEFAULT true NOT NULL,
                 ADD COLUMN storage_pool character varying(255),
                 ADD CONSTRAINT compute_machine_volumes_speed_check
                     CHECK (speed IN {DISK_SPEED_CHECK});
