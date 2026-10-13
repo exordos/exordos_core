@@ -35,6 +35,7 @@ from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import contexts as ra_a_contexts
 from restalchemy.api import controllers
+from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
 from restalchemy.common import contexts
 from restalchemy.common import exceptions as ra_e
@@ -688,6 +689,136 @@ class RoleBindingController(
             ctx.get_user_ip(),
         )
         return role_binding
+
+
+class TokenController(
+    iam_controllers.PolicyBasedWithoutProjectController,
+    controllers.BaseResourceControllerPaginated,
+    EnforceMixin,
+):
+    """Controller for /v1/iam/tokens/ endpoint"""
+
+    __resource__ = resources.ResourceByModelWithCustomProps(
+        models.ManagedToken,
+        convert_underscore=False,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                # Answered once, on the create that issues the token, and
+                # never again: an account that loses it issues another one.
+                "access_token": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RO,
+                },
+                # Whether the token renews is what it was issued as: a
+                # token issued for a fixed term must not be turned into a
+                # standing one behind the back of whoever issued it.
+                "auto_renew": {ra_c.UPDATE: field_p.Permissions.RO},
+                # The account a token authenticates is the one it was
+                # issued for: an update must not hand it to somebody else.
+                "user": {ra_c.UPDATE: field_p.Permissions.RO},
+                # Derived from the scope and the lifetime
+                "project": {ra_c.ALL: field_p.Permissions.RO},
+                "expiration_at": {ra_c.ALL: field_p.Permissions.RO},
+                # Only a regenerate moves this: setting it by hand would
+                # refuse a token that is still good, or bring a
+                # regenerated one back into use.
+                "generation": {ra_c.ALL: field_p.Permissions.RO},
+                "refresh_expiration_at": {ra_c.ALL: field_p.Permissions.RO},
+                # A managed token is never refreshed
+                "refresh_expiration_delta": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "refresh_token_uuid": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "nonce": {ra_c.ALL: field_p.Permissions.HIDDEN},
+                "managed": {ra_c.ALL: field_p.Permissions.HIDDEN},
+            },
+        ),
+    )
+
+    __policy_service_name__ = "iam"
+    __policy_name__ = "token"
+
+    def get_autofilters(self):
+        # Login sessions share the table and stay out of reach, and an
+        # account reaches its own tokens unless it may see every one.
+        filters = {"managed": ra_filters.EQ(True)}
+        if not self.enforce(c.PERMISSION_TOKEN_READ_ALL):
+            filters["user"] = ra_filters.EQ(models.User.me().uuid)
+        return filters
+
+    def create(self, **kwargs):
+        self._enforce("create")
+        kwargs = self._apply_autovalues(kwargs)
+        if kwargs.get("issuer") is None and "iam_client" in kwargs:
+            app_url = self.get_context().get_real_url_with_prefix()
+            kwargs["issuer"] = f"{app_url}/v1/iam/clients/{kwargs['iam_client'].uuid}"
+        token = self.model(**kwargs)
+        self._enforce_token_permissions(token.user, token.project)
+        token.insert()
+        ctx = self.get_context()
+        LOG.info(
+            "IAM AUDIT: token issued user=%s user_uuid=%s token_uuid=%s ip=%s",
+            token.user.name,
+            token.user.uuid,
+            token.uuid,
+            ctx.get_user_ip(),
+        )
+        return token
+
+    def _enforce_token_permissions(self, user, project):
+        if self.enforce(c.PERMISSION_TOKEN_CREATE_ALL):
+            return
+        # Issuing or regenerating another account's token hands over its identity.
+        if user.uuid != models.User.me().uuid:
+            raise iam_e.CanNotIssueTokenForAnotherUser(
+                rule=str(c.PERMISSION_TOKEN_CREATE_ALL)
+            )
+        # A project-scoped caller cannot issue a token outside that project.
+        if self._ctx_project_id is not None and (
+            project is None or project.uuid != self._ctx_project_id
+        ):
+            raise gcl_iam_e.Forbidden()
+        for binding in models.PermissionFastView.objects.get_all(
+            filters={
+                "user": ra_filters.EQ(user),
+                "project": ra_filters.Is(project),
+            }
+        ):
+            self._enforcer.enforce(
+                rules.Rule.from_raw(binding.permission.name), do_raise=True
+            )
+
+    def update(self, uuid, **kwargs):
+        self._enforce("update")
+        if "user" in kwargs:
+            raise ra_e.FieldPermissionError(field="user")
+        token = controllers.BaseResourceController.get(self, uuid)
+        kwargs = self._apply_autovalues(kwargs)
+        if "scope" in kwargs:
+            project = token._get_project_by_scope(token.user, kwargs["scope"])
+            self._enforce_token_permissions(token.user, project)
+        token.update_dm(values=kwargs)
+        token.update()
+        return token
+
+    @actions.post
+    def regenerate(self, resource):
+        # Reading a token does not authorize issuing its signed value.
+        self._enforce("update")
+        self._enforce_token_permissions(resource.user, resource.project)
+        resource.regenerate()
+        ctx = self.get_context()
+        LOG.info(
+            "IAM AUDIT: token regenerated user=%s user_uuid=%s token_uuid=%s "
+            "generation=%s ip=%s",
+            resource.user.name,
+            resource.user.uuid,
+            resource.uuid,
+            resource.generation,
+            ctx.get_user_ip(),
+        )
+        # Answered here and nowhere else, the same as on the create that
+        # issues a token.
+        return {"access_token": resource.access_token}
 
 
 class PermissionController(
