@@ -46,6 +46,7 @@ from exordos_core.config import service as config_service
 from exordos_core.dns_sync import service as dns_sync_service
 from exordos_core.elements.builders import service as service_builder_svc
 from exordos_core.elements.services import builders as em_builders
+from exordos_core.iam import service as iam_service
 from exordos_core.janitor import service as janitor_service
 from exordos_core.metrics import opts as metrics_opts
 from exordos_core.metrics import service as metrics_service
@@ -59,7 +60,6 @@ from exordos_core.network.lb.dm import models as lb_models
 from exordos_core.secret import service as secret_service
 from exordos_core.secret.builders import service as secret_builder_svc
 from exordos_core.telemetry import service as telemetry_service
-from exordos_core.user_api.iam import service as iam_service
 from exordos_core.vs.builders import service as vs_builder_svc
 
 LOG = logging.getLogger(__name__)

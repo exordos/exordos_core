@@ -26,8 +26,8 @@ from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
 import pytest
 
 from exordos_core.common import constants as c
+from exordos_core.iam import service as iam_service
 from exordos_core.user_api.iam import constants as iam_c
-from exordos_core.user_api.iam import service as iam_service
 from exordos_core.user_api.iam.dm import models as iam_models
 
 TOKEN_KIND = "em_core_iam_tokens"
