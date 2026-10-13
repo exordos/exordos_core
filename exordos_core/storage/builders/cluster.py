@@ -22,6 +22,7 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 
+from exordos_core.storage import constants as sc
 from exordos_core.storage import state
 from exordos_core.storage.dm import models as storage_models
 
@@ -86,7 +87,8 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
             return
         current_instance.storage_pools = actual_instance.storage_pools
         current_instance.capacity_info = actual_instance.capacity_info
-        current_instance.status = actual_instance.status
+        if current_instance.status != sc.CLUSTER_DELETING:
+            current_instance.status = actual_instance.status
 
     def can_delete_instance_resource(self, resource):
         if resource.kind != "storage_node":
