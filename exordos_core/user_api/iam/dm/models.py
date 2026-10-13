@@ -1443,6 +1443,9 @@ class IamClient(
         parent_user: User,
     ) -> dict:
         """Create a project-bound service identity and a one-time exchange code."""
+        email_domain = parent_user.email.rsplit("@", 1)[1]
+        if len(email_domain) > 95:
+            raise iam_exceptions.ServiceUserEmailDomainTooLong()
         now = datetime.datetime.now(datetime.timezone.utc)
         if expiration_at is None:
             expiration_at = now + datetime.timedelta(minutes=10)
@@ -1453,20 +1456,40 @@ class IamClient(
                 )
                 for name in permission_names
             ]
-            user_uuid = sys_uuid.uuid4()
-            email_domain = parent_user.email.rsplit("@", 1)[1]
-            user = User(
-                uuid=user_uuid,
-                name=username,
-                description=description,
-                first_name=first_name,
-                last_name=last_name,
-                email=f"service-{user_uuid}@{email_domain}",
-                secret="",
-                type=iam_c.UserType.SERVICE.value,
-                registration_client=self.uuid,
-            )
-            role = Role(name=f"service-{user_uuid}", project_id=project.uuid)
+            reusable = self._find_reusable_service_user(username, project, session)
+            if reusable is not None:
+                # Replace the leftover user's profile, permissions and any
+                # pending code with the ones from this request.
+                user, role = reusable
+                user.description = description
+                user.first_name = first_name
+                user.last_name = last_name
+                user.update(session=session)
+                for binding in PermissionBinding.objects.get_all(
+                    filters={"role": ra_filters.EQ(role)}, session=session
+                ):
+                    binding.delete(session=session)
+                for old_code in ServiceAuthorizationCode.objects.get_all(
+                    filters={"user": ra_filters.EQ(user)}, session=session, locked=True
+                ):
+                    old_code.delete(session=session)
+            else:
+                user_uuid = sys_uuid.uuid4()
+                email = f"service-{user_uuid}@{email_domain}"
+                if len(email) > 128:
+                    email = f"{user_uuid.hex}@{email_domain}"
+                user = User(
+                    uuid=user_uuid,
+                    name=username,
+                    description=description,
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email,
+                    secret="",
+                    type=iam_c.UserType.SERVICE.value,
+                    registration_client=self.uuid,
+                )
+                role = Role(name=f"service-{user_uuid}", project_id=project.uuid)
             code = "service." + secrets.token_urlsafe(32)
             authorization = ServiceAuthorizationCode(
                 user=user,
@@ -1475,13 +1498,17 @@ class IamClient(
                 code_hash=hashlib.sha256(code.encode()).hexdigest(),
                 expiration_at=expiration_at,
             )
-            user.insert(session=session)
-            role.insert(session=session)
+            if reusable is None:
+                user.insert(session=session)
+                role.insert(session=session)
             for permission in permissions:
                 PermissionBinding(
                     role=role, permission=permission, project_id=project.uuid
                 ).insert(session=session)
-            RoleBinding(user=user, role=role, project=project).insert(session=session)
+            if reusable is None:
+                RoleBinding(user=user, role=role, project=project).insert(
+                    session=session
+                )
             authorization.insert(session=session)
         return {
             "service_user_uuid": str(user.uuid),
@@ -1489,6 +1516,48 @@ class IamClient(
             "expires_in": int((expiration_at - now).total_seconds()),
             "scope": f"project:{project.uuid}",
         }
+
+    def _find_reusable_service_user(
+        self, username: str, project: Project, session
+    ) -> "tuple[User, Role] | None":
+        """Return a never-exchanged service user of this client and project.
+
+        A revoked code leaves its service user behind, and user names are
+        unique, so a new code for the same name reuses that user. Any other
+        user with the name is not reused and the insert reports the conflict.
+        """
+        user = next(
+            iter(
+                User.objects.query(
+                    where_conditions="LOWER(name) = %s",
+                    where_values=(username.lower(),),
+                    limit=1,
+                    session=session,
+                    locked=True,
+                )
+            ),
+            None,
+        )
+        if (
+            user is None
+            or user.type != iam_c.UserType.SERVICE.value
+            or user.registration_client != self.uuid
+            or Token.objects.get_all(
+                filters={"user": ra_filters.EQ(user)}, session=session, limit=1
+            )
+        ):
+            return None
+        bindings = RoleBinding.objects.get_all(
+            filters={"user": ra_filters.EQ(user)}, session=session
+        )
+        if (
+            len(bindings) != 1
+            or bindings[0].project is None
+            or bindings[0].project.uuid != project.uuid
+            or bindings[0].role.name != f"service-{user.uuid}"
+        ):
+            return None
+        return user, bindings[0].role
 
     def _get_service_authorization_code(
         self, code: str, session, project: Project | None = None, *, locked=False

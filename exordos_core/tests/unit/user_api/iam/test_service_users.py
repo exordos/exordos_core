@@ -187,6 +187,7 @@ def client_session():
     client._service_authorization_active = (
         models.IamClient._service_authorization_active.__get__(client)
     )
+    client._find_reusable_service_user.return_value = None
     client._get_engine.return_value.session_manager.side_effect = lambda: (
         contextlib.nullcontext(session)
     )
@@ -752,3 +753,170 @@ def test_invalid_optional_user_fields_create_no_records(client_session, fields):
     insert.assert_not_called()
     role.assert_not_called()
     code.assert_not_called()
+
+
+@pytest.mark.parametrize("domain_length", [83, 84, 95])
+def test_creation_preserves_long_domains_with_valid_unique_emails(client_session, domain_length):
+    client, session = client_session
+    domain = "a" * 40 + "." + "b" * (domain_length - 45) + ".com"
+    email_type = models.User.properties.properties["email"].get_property_type()
+    assert email_type.validate("owner@" + domain)
+    with (
+        mock.patch.object(models.User, "_global_salt", new_callable=mock.PropertyMock, return_value="dGVzdA=="),
+        mock.patch.object(models.User, "insert", autospec=True) as insert,
+        mock.patch.object(models, "Role"),
+        mock.patch.object(models, "Permission"),
+        mock.patch.object(models, "PermissionBinding"),
+        mock.patch.object(models, "RoleBinding"),
+        mock.patch.object(models, "ServiceAuthorizationCode"),
+    ):
+        for name in ("automation-one", "automation-two"):
+            models.IamClient.create_service_user_authorization(
+                client, name, mock.Mock(), ["compute.node.read"],
+                parent_user=mock.Mock(email="owner@" + domain),
+            )
+    users = [call.args[0] for call in insert.call_args_list]
+    assert users[0].email != users[1].email
+    for user in users:
+        assert email_type.validate(user.email)
+        assert user.email.rsplit("@", 1)[1] == domain
+        local_part = user.email.split("@", 1)[0]
+        assert local_part == (f"service-{user.uuid}" if domain_length == 83 else user.uuid.hex)
+    assert all(call.kwargs["session"] is session for call in insert.call_args_list)
+
+
+@pytest.mark.parametrize("domain_length", [96, 125])
+def test_creation_rejects_oversized_domains_before_creating_records(client_session, domain_length):
+    client, _ = client_session
+    domain = "a" * 60 + "." + "b" * (domain_length - 65) + ".com"
+    assert models.User.properties.properties["email"].get_property_type().validate("a@" + domain)
+    with mock.patch.object(models, "User") as user:
+        with pytest.raises(iam_exc.ServiceUserEmailDomainTooLong) as error:
+            models.IamClient.create_service_user_authorization(
+                client, "automation", mock.Mock(), ["compute.node.read"],
+                parent_user=mock.Mock(email="a@" + domain),
+            )
+    assert error.value.code == 400
+    user.assert_not_called()
+    client._get_engine.assert_not_called()
+
+
+def test_creation_reuses_a_service_user_left_by_a_revoked_code(client_session):
+    client, session = client_session
+    project = mock.Mock(uuid=uuid.uuid4())
+    leftover = mock.Mock(uuid=uuid.uuid4())
+    role = mock.Mock()
+    client._find_reusable_service_user.return_value = (leftover, role)
+    with (
+        mock.patch.object(models, "User") as user,
+        mock.patch.object(models, "Role") as new_role,
+        mock.patch.object(models, "Permission"),
+        mock.patch.object(models, "PermissionBinding") as permission_binding,
+        mock.patch.object(models, "RoleBinding") as role_binding,
+        mock.patch.object(models, "ServiceAuthorizationCode") as authorization,
+    ):
+        old_binding, old_code = mock.Mock(), mock.Mock()
+        permission_binding.objects.get_all.return_value = [old_binding]
+        authorization.objects.get_all.return_value = [old_code]
+        result = models.IamClient.create_service_user_authorization(
+            client,
+            "automation",
+            project,
+            ["compute.node.read"],
+            description="again",
+            parent_user=mock.Mock(email="owner@example.com"),
+        )
+    client._find_reusable_service_user.assert_called_once_with(
+        "automation", project, session
+    )
+    assert result["service_user_uuid"] == str(leftover.uuid)
+    assert leftover.description == "again"
+    leftover.update.assert_called_once_with(session=session)
+    old_binding.delete.assert_called_once_with(session=session)
+    old_code.delete.assert_called_once_with(session=session)
+    assert authorization.objects.get_all.call_args.kwargs["locked"] is True
+    assert permission_binding.call_args.kwargs["role"] is role
+    permission_binding.return_value.insert.assert_called_once_with(session=session)
+    assert authorization.call_args.kwargs["user"] is leftover
+    assert (
+        authorization.call_args.kwargs["code_hash"]
+        == hashlib.sha256(result["code"].encode()).hexdigest()
+    )
+    authorization.return_value.insert.assert_called_once_with(session=session)
+    user.assert_not_called()
+    new_role.assert_not_called()
+    role_binding.assert_not_called()
+
+
+@pytest.fixture
+def reusable_lookup():
+    client = mock.Mock(uuid=uuid.uuid4())
+    project = mock.Mock(uuid=uuid.uuid4())
+    user = mock.Mock(uuid=uuid.uuid4(), type="service", registration_client=client.uuid)
+    binding = mock.Mock(project=mock.Mock(uuid=project.uuid))
+    binding.role.name = f"service-{user.uuid}"
+    with (
+        mock.patch.object(models, "User") as users,
+        mock.patch.object(models, "Token") as tokens,
+        mock.patch.object(models, "RoleBinding") as bindings,
+    ):
+        users.objects.query.return_value = [user]
+        tokens.objects.get_all.return_value = []
+        bindings.objects.get_all.return_value = [binding]
+        yield SimpleNamespace(
+            client=client,
+            project=project,
+            user=user,
+            binding=binding,
+            users=users,
+            tokens=tokens,
+            bindings=bindings,
+        )
+
+
+def _find(lookup):
+    return models.IamClient._find_reusable_service_user(
+        lookup.client, "Automation", lookup.project, "session"
+    )
+
+
+def test_reusable_lookup_returns_unused_service_user_and_role(reusable_lookup):
+    assert _find(reusable_lookup) == (
+        reusable_lookup.user,
+        reusable_lookup.binding.role,
+    )
+    kwargs = reusable_lookup.users.objects.query.call_args.kwargs
+    assert kwargs["where_values"] == ("automation",)
+    assert kwargs["locked"] is True
+    assert kwargs["session"] == "session"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing",
+        "human",
+        "other_client",
+        "has_token",
+        "other_project",
+        "extra_binding",
+        "foreign_role",
+    ],
+)
+def test_reusable_lookup_refuses_users_it_must_not_take_over(reusable_lookup, case):
+    lookup = reusable_lookup
+    if case == "missing":
+        lookup.users.objects.query.return_value = []
+    elif case == "human":
+        lookup.user.type = "user"
+    elif case == "other_client":
+        lookup.user.registration_client = uuid.uuid4()
+    elif case == "has_token":
+        lookup.tokens.objects.get_all.return_value = [mock.Mock()]
+    elif case == "other_project":
+        lookup.binding.project.uuid = uuid.uuid4()
+    elif case == "extra_binding":
+        lookup.bindings.objects.get_all.return_value = [lookup.binding, mock.Mock()]
+    elif case == "foreign_role":
+        lookup.binding.role.name = "admin"
+    assert _find(lookup) is None

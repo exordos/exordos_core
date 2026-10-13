@@ -9,17 +9,32 @@
 
 ## Создание сервисного пользователя
 
+Пример манифеста `exordos/manifests/examples/iam-clients.yaml` содержит
+`service_codes_client` с `client_id: service-codes` и отдельным ключом подписи
+HS256. Перед установкой задайте `project_id` и замените пример `secret`.
+Используйте UUID установленного клиента в действиях, а его `client_id` и
+`secret` — при обмене кода и обновлении токена. Для этого сценария IdP не нужен.
+
+В примерах ниже используются следующие переменные оболочки:
+
+```bash
+API=http://10.20.0.2:80/api/core
+CLIENT_UUID=<client_uuid>
+CLIENT_ID=service-codes
+CLIENT_SECRET=<client_secret>
+TOKEN=<caller_project_token>
+```
+
 Вызовите действие у того IAM-клиента, который будет обменивать код на токен:
 
-```http
-POST /v1/iam/clients/<client_uuid>/actions/create_service_code/invoke
-Authorization: Bearer <caller_project_token>
-Content-Type: application/json
-
-{
-  "username": "automation-reader",
-  "permissions": ["compute.node.read"]
-}
+```bash
+curl --location "$API/v1/iam/clients/$CLIENT_UUID/actions/create_service_code/invoke" \
+    --header 'Content-Type: application/json' \
+    --header "Authorization: Bearer $TOKEN" \
+    --data-raw '{
+        "username": "automation-reader",
+        "permissions": ["compute.node.read"]
+    }'
 ```
 
 Необязательные поля сервисного пользователя: `description` (до 255 символов),
@@ -55,11 +70,13 @@ Email создаётся в формате `service-<uuid>@<caller_email_domain>
 
 До истечения срока действия кода отправьте форму тому же IAM-клиенту:
 
-```http
-POST /v1/iam/clients/<client_uuid>/actions/get_token/invoke
-Content-Type: application/x-www-form-urlencoded
-
-grant_type=authorization_code&code=service.<random_value>&client_id=<client_id>&client_secret=<client_secret>
+```bash
+curl --location "$API/v1/iam/clients/$CLIENT_UUID/actions/get_token/invoke" \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'grant_type=authorization_code' \
+    --data-urlencode 'code=service.<random_value>' \
+    --data-urlencode "client_id=$CLIENT_ID" \
+    --data-urlencode "client_secret=$CLIENT_SECRET"
 ```
 
 Для обмена кодов сервисных пользователей обязательны учётные данные клиента.
@@ -84,12 +101,11 @@ grant_type=authorization_code&code=service.<random_value>&client_id=<client_id>&
 действия проекта. Вызывающей стороне нужно разрешение `iam.service_token.create`
 в проекте, где был создан код. Отправьте код тому же IAM-клиенту:
 
-```http
-POST /v1/iam/clients/<client_uuid>/actions/revoke_service_code/invoke
-Authorization: Bearer <caller_project_token>
-Content-Type: application/json
-
-{"code": "service.<random_value>"}
+```bash
+curl --location "$API/v1/iam/clients/$CLIENT_UUID/actions/revoke_service_code/invoke" \
+    --header 'Content-Type: application/json' \
+    --header "Authorization: Bearer $TOKEN" \
+    --data-raw '{"code": "service.<random_value>"}'
 ```
 
 Ответ `{"revoked": true}` означает, что соответствующий код удалён.
@@ -103,18 +119,26 @@ Content-Type: application/json
 Это действие не отзывает уже выданные токены доступа или обновления,
 не удаляет сервисного пользователя и не снимает его разрешения.
 
+Сервисный пользователь отозванного кода сохраняет своё имя. Чтобы получить
+новый код, снова вызовите `create_service_code` с тем же `username` у того же
+клиента и в том же проекте. Если этому сервисному пользователю ни разу не
+выдавался токен, он используется повторно: его описание и имена, разрешения
+и ожидающий обмена код заменяются значениями из нового запроса, а ответ
+содержит тот же `service_user_uuid`. Имя любого другого пользователя, в том числе
+сервисного пользователя, который уже обменял код, использовать нельзя:
+имена пользователей уникальны.
+
 ## Информация о коде до обмена
 
 Чтобы получить информацию без обмена и расходования кода, используйте свой
 токен с областью действия проекта. Вызывающей стороне нужно разрешение
 `iam.service_token.create` в проекте кода. Отправьте код его IAM-клиенту:
 
-```http
-POST /v1/iam/clients/<client_uuid>/actions/get_service_code_info/invoke
-Authorization: Bearer <caller_project_token>
-Content-Type: application/json
-
-{"code": "service.<random_value>"}
+```bash
+curl --location "$API/v1/iam/clients/$CLIENT_UUID/actions/get_service_code_info/invoke" \
+    --header 'Content-Type: application/json' \
+    --header "Authorization: Bearer $TOKEN" \
+    --data-raw '{"code": "service.<random_value>"}'
 ```
 
 Ответ содержит `service_user_uuid`, `username`, `client_id`, `project_id`,
@@ -130,6 +154,15 @@ Content-Type: application/json
 IAM-клиента. Токен сервисного пользователя нельзя обновить через другого
 клиента или изменить его область действия на другой проект. Чтобы сохранить
 область действия, не передавайте `scope` либо передайте его исходное значение.
+
+```bash
+curl --location "$API/v1/iam/clients/$CLIENT_UUID/actions/get_token/invoke" \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'grant_type=refresh_token' \
+    --data-urlencode 'refresh_token=<refresh_token>' \
+    --data-urlencode "client_id=$CLIENT_ID" \
+    --data-urlencode "client_secret=$CLIENT_SECRET"
+```
 
 ## Журналирование
 
