@@ -66,8 +66,8 @@ disk_spec:
   kind: "root_disk"
   size: 10
   image: "https://repo.exordos.com/exordos-base/1.1.0/exordos-base.raw.zst"
-  speed: "HOT"      # optional: COLD | WARM (default) | HOT
-  ephemeral: true   # optional: default false
+  speed: "HOT"      # optional: COLD | WARM | HOT (default)
+  ephemeral: true   # optional: default true
 ```
 
 **`disks`** — multiple disks, each with its own size and optional image/label:
@@ -91,8 +91,8 @@ identify the disk within the node.
 
 Each disk (root or additional) accepts two optional properties used to pick a storage pool:
 
-- `speed` — `COLD`, `WARM` (default), or `HOT`.
-- `ephemeral` — `true` or `false` (default `false`).
+- `speed` — `COLD`, `WARM`, or `HOT` (default).
+- `ephemeral` — `true` or `false` (default `true`).
 
 The scheduler prefers a storage pool with an exact `speed` match and enough free capacity; if no pool
 matches exactly, or the matching pool is full, placement falls back to any pool with room rather than
