@@ -992,11 +992,6 @@ resources:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       type:
         kind: core_agent
-    oidc_lb:
-      name: oidc_lb
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      type:
-        kind: core_agent
   $core.network.lb.$core_lb.backend_pools:
     core_lb_core_backend_http:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
@@ -1020,6 +1015,15 @@ resources:
       parent: $core.network.lb.$core_lb:uuid
       domains:
         - "_"
+      protocol: http
+      port: 80
+# OIDC UI uses a separate hostname on the existing Core LB.
+# The oidc_ui element owns its root SPA route and versioned archive.
+    oidc_lb_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb:uuid
+      domains:
+        - $core.vs.variables.$oidc_ui_domain:value
       protocol: http
       port: 80
   $core.network.lb.$core_lb.vhosts.$core_lb_core_http.routes:
@@ -1102,41 +1106,10 @@ resources:
             regex: "^/api/core/v1/iam/clients/default(.*)"
             replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
 
-# OIDC UI LB. A dedicated core_agent LB (shares the core node's nginx
-# dataplane with core_lb, just another vhost/server block) so the UI is
-# only served on its own domain and never on core_lb's catch-all "_"
-# vhost, which any other hostname pointed at the core node can hit.
-# The oidc_ui element owns the root SPA route and its versioned archive.
-# Install it after Core; this manifest provides only the OIDC API routes.
-  $core.network.lb.$oidc_lb.backend_pools:
-    oidc_lb_core_backend_http:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb:uuid
-      endpoints:
-        - kind: host
-          host: 127.0.0.1
-          port: 11010
-          weight: 1
-    oidc_lb_iam_cache_backend_http:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb:uuid
-      endpoints:
-        - kind: host
-          host: 127.0.0.1
-          port: 11110
-          weight: 1
-  $core.network.lb.$oidc_lb.vhosts:
-    oidc_lb_http:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb:uuid
-      domains:
-        - $core.vs.variables.$oidc_ui_domain:value
-      protocol: http
-      port: 80
-  $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http.routes:
+  $core.network.lb.$core_lb.vhosts.$oidc_lb_http.routes:
     oidc_lb_core_route:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      parent: $core.network.lb.$core_lb.vhosts.$oidc_lb_http:uuid
       condition:
         kind: prefix
         value: /api/core/
@@ -1144,7 +1117,7 @@ resources:
           - 0.0.0.0/0
         actions:
           - kind: backend
-            pool: $core.network.lb.$oidc_lb.backend_pools.$oidc_lb_core_backend_http:uuid
+            pool: $core.network.lb.$core_lb.backend_pools.$core_lb_core_backend_http:uuid
             protocol:
               kind: http
         modifiers:
@@ -1160,7 +1133,7 @@ resources:
             replacement: "/$1"
     oidc_lb_iam_clients:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      parent: $core.network.lb.$core_lb.vhosts.$oidc_lb_http:uuid
       condition:
         kind: prefix
         value: /api/core/v1/iam/clients/
@@ -1168,7 +1141,7 @@ resources:
           - 0.0.0.0/0
         actions:
           - kind: backend
-            pool: $core.network.lb.$oidc_lb.backend_pools.$oidc_lb_iam_cache_backend_http:uuid
+            pool: $core.network.lb.$core_lb.backend_pools.$core_lb_iam_cache_backend_http:uuid
             protocol:
               kind: http
         modifiers:
@@ -1184,7 +1157,7 @@ resources:
             replacement: "/$1"
     oidc_lb_iam_default_client:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
+      parent: $core.network.lb.$core_lb.vhosts.$oidc_lb_http:uuid
       condition:
         kind: prefix
         value: /api/core/v1/iam/clients/default
@@ -1192,7 +1165,7 @@ resources:
           - 0.0.0.0/0
         actions:
           - kind: backend
-            pool: $core.network.lb.$oidc_lb.backend_pools.$oidc_lb_iam_cache_backend_http:uuid
+            pool: $core.network.lb.$core_lb.backend_pools.$core_lb_iam_cache_backend_http:uuid
             protocol:
               kind: http
         modifiers:
@@ -1236,10 +1209,8 @@ exports:
     link: "$core.vs.variables.$iam_default_client_uuid"
   var_oidc_ui_domain:
     link: "$core.vs.variables.$oidc_ui_domain"
-  oidc_lb:
-    link: "$core.network.lb.$oidc_lb"
   oidc_lb_http_vhost:
-    link: "$core.network.lb.$oidc_lb.vhosts.$oidc_lb_http"
+    link: "$core.network.lb.$core_lb.vhosts.$oidc_lb_http"
   profile_develop:
     link: "$core.vs.profiles.$develop"
   profile_small:
