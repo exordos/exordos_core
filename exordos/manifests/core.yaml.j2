@@ -1106,6 +1106,8 @@ resources:
 # dataplane with core_lb, just another vhost/server block) so the UI is
 # only served on its own domain and never on core_lb's catch-all "_"
 # vhost, which any other hostname pointed at the core node can hit.
+# The oidc_ui element owns the root SPA route and its versioned archive.
+# Install it after Core; this manifest provides only the OIDC API routes.
   $core.network.lb.$oidc_lb.backend_pools:
     oidc_lb_core_backend_http:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
@@ -1132,20 +1134,6 @@ resources:
       protocol: http
       port: 80
   $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http.routes:
-    oidc_lb_ui_route:
-      project_id: "12345678-c625-4fee-81d5-f691897b8142"
-      parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
-      condition:
-        kind: prefix
-        value: /
-        allowed_ips:
-          - 0.0.0.0/0
-        actions:
-          - kind: local_dir_download
-            # A separate var from `repository`: that one is the elements
-            # root (.../exordos-elements, see the core image URL above),
-            # while exordos-oidc-ui is published at the repo host's root.
-            url: "{{ oidc_ui_repository | default('https://repo.exordos.com') }}/exordos-oidc-ui/0.0.2/dist.tar.gz"
     oidc_lb_core_route:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       parent: $core.network.lb.$oidc_lb.vhosts.$oidc_lb_http:uuid
