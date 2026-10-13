@@ -19,7 +19,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0007-managed-storage-nodes-934dc2.py"]
+        self._depends = ["0010-managed-storage-nodes-934dc2.py"]
 
     @property
     def migration_id(self):
