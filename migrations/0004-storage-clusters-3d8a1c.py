@@ -16,7 +16,7 @@
 
 from restalchemy.storage.sql import migrations
 
-POOL_STATUSES = ("ACTIVE", "DISABLED", "MAINTENANCE", "IN_PROGRESS")
+POOL_STATUSES = ("ACTIVE", "DISABLED", "MAINTENANCE", "IN_PROGRESS", "DELETING")
 POOL_STATUS_CHECK = "('" + "', '".join(POOL_STATUSES) + "')"
 
 

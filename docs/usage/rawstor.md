@@ -121,16 +121,18 @@ exordos storages pools update POOL_UUID --mirrors 2 --failure-domain rack \
 Mirrors, failure domain, chunk size, speed and ephemeral belong to the pool.
 Changing a policy applies to newly created disks; existing disks retain the
 policy recorded when scheduled. Chunk sizes must be powers of two, up to 1 GiB.
-MDS endpoints cannot change after registration. Remove empty nodes before
-removing a cluster; node removal is blocked while the cluster has managed
+MDS endpoints cannot change after registration. Cluster deletion automatically
+removes its empty nodes and pools; deletion is blocked while the cluster has managed
 or pending disks, or the OST contains unmanaged objects. Pool removal is
 blocked while disks still reference it. Unregistering a cluster retains
 its database and data. Node deletion first removes the OST from MDS topology;
 after the MDS agent successfully requests reload and reports the desired state,
 the host agent stops the OST and removes its config/drop-in. Reload is asynchronous;
 Exordos trusts the generated topology and does not parse journal messages.
-Backing directories and their data remain. Wait for node deletion to reconcile
-before deleting the cluster. The assigned agent and backing location are immutable;
+Backing directories and their data remain. A deleting cluster stays in `DELETING`
+until the agents acknowledge stopping every OST; then its MDS is stopped through
+reconciliation. New disks, nodes and pools cannot be added while it is deleting.
+The assigned agent and backing location are immutable;
 `nodes update --bind IP:PORT --endpoint ost://HOST:PORT` changes connectivity only
 when the cluster has no managed disks. Nodes registered before this lifecycle
 remain externally managed; their services are not automatically adopted or stopped.

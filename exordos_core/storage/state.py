@@ -20,6 +20,7 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool
 from restalchemy.dm import filters
 
+from exordos_core.storage import constants as sc
 from exordos_core.storage.dm import models
 
 # Serializes API topology edits and scheduler admission across processes.
@@ -76,5 +77,28 @@ def sync_cluster(cluster):
     )
     snapshot = agent_driver_spec(cluster).dump_to_simple_view()
     if not targets or targets[0].value.get("driver_spec") != snapshot:
-        cluster.status = pool.MachinePoolStatus.IN_PROGRESS.value
+        if cluster.status != sc.CLUSTER_DELETING:
+            cluster.status = pool.MachinePoolStatus.IN_PROGRESS.value
         cluster.update()
+
+
+def finish_cluster_deletion(cluster):
+    """Keep MDS until the OST targets and actual resources have disappeared."""
+    if models.StorageNode.objects.get_all(
+        filters={"cluster": filters.EQ(cluster.uuid)}
+    ):
+        return False
+    for resource_model in (ua_models.TargetResource, ua_models.Resource):
+        if any(
+            str(r.value.get("cluster")) == str(cluster.uuid)
+            for r in resource_model.objects.get_all(
+                filters={"kind": filters.EQ("storage_node")}
+            )
+        ):
+            return False
+    for policy in models.StoragePool.objects.get_all(
+        filters={"cluster": filters.EQ(cluster.uuid)}
+    ):
+        policy.delete()
+    cluster.delete()
+    return True
