@@ -4483,7 +4483,7 @@ components:
                   maxLength: 255
                   type: string
                 ephemeral:
-                  default: false
+                  default: true
                   example: true
                   type: boolean
                 failure_domain:
@@ -4521,7 +4521,7 @@ components:
                   example: any_string
                   type: string
                 speed:
-                  default: WARM
+                  default: HOT
                   enum:
                   - COLD
                   - HOT
