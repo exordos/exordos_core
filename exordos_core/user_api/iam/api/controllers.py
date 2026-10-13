@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import datetime
 import errno
 import logging
 import mimetypes
@@ -927,6 +928,113 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
             rule=c.PERMISSION_IAM_CLIENT_DELETE,
         )
 
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_CREATE_SERVICE_CODE)
+    @actions.post
+    def create_service_code(
+        self,
+        resource: models.IamClient,
+        username: str | None = None,
+        permissions: list[str] | None = None,
+        expiration_at: str | None = None,
+        description: str = "",
+        first_name: str | None = None,
+        last_name: str | None = None,
+    ) -> dict:
+        """Delegate only permissions held in the caller's current project."""
+        if not self.enforce(c.PERMISSION_SERVICE_TOKEN_CREATE):
+            raise iam_e.CanNotCreateServiceToken()
+        self.enforce(
+            c.PERMISSION_USER_CREATE, do_raise=True, exc=iam_e.CanNotCreateUser
+        )
+        if (
+            not isinstance(username, str)
+            or not username
+            or not isinstance(permissions, list)
+            or not permissions
+            or any(
+                not isinstance(name, str)
+                or len(name.split(".")) != 3
+                or any(not part for part in name.split("."))
+                for name in permissions
+            )
+        ):
+            raise ValidationException(
+                description="A username and permission names are required"
+            )
+        caller = models.Token.my()
+        if caller.project is None:
+            raise iam_e.ProjectScopeRequiredError()
+        granted = self.get_context().iam_context.introspection_info()["permissions"]
+        for requested in permissions:
+            if not any(
+                len(held.split(".")) == 3
+                and all(
+                    own == "*" or own == wanted
+                    for own, wanted in zip(held.split("."), requested.split("."))
+                )
+                for held in granted
+            ):
+                raise iam_e.CanNotCreateServiceToken()
+        if expiration_at is not None:
+            try:
+                if not isinstance(expiration_at, str):
+                    raise ValueError()
+                expiration_at = datetime.datetime.fromisoformat(
+                    expiration_at.replace("Z", "+00:00")
+                )
+            except (TypeError, ValueError):
+                raise ValidationException(
+                    description="expiration_at must be an ISO 8601 timestamp with a timezone"
+                ) from None
+            now = datetime.datetime.now(datetime.timezone.utc)
+            if expiration_at.tzinfo is None or not (
+                now < expiration_at <= now + datetime.timedelta(hours=24)
+            ):
+                raise ValidationException(
+                    description="expiration_at must be in the future and within 24 hours, with a timezone"
+                )
+            expiration_at = expiration_at.astimezone(datetime.timezone.utc)
+        return resource.create_service_user_authorization(
+            username=username,
+            parent_user=caller.user,
+            project=caller.project,
+            permission_names=list(dict.fromkeys(permissions)),
+            expiration_at=expiration_at,
+            description=description,
+            first_name=first_name,
+            last_name=last_name,
+        )
+
+    def _service_user_code_project(self, code: str | None) -> models.Project:
+        if not self.enforce(c.PERMISSION_SERVICE_TOKEN_CREATE):
+            raise iam_e.CanNotCreateServiceToken()
+        if not isinstance(code, str) or not code.startswith("service."):
+            raise ValidationException(
+                description="A service-user authorization code is required"
+            )
+        project = models.Token.my().project
+        if project is None:
+            raise iam_e.ProjectScopeRequiredError()
+        return project
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_GET_SERVICE_CODE_INFO)
+    @actions.post
+    def get_service_code_info(
+        self, resource: models.IamClient, code: str | None = None
+    ) -> dict:
+        """Inspect a pending service-user code without consuming it."""
+        project = self._service_user_code_project(code)
+        return resource.get_service_code_info(code, project)
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_REVOKE_SERVICE_CODE)
+    @actions.post
+    def revoke_service_code(
+        self, resource: models.IamClient, code: str | None = None
+    ) -> dict:
+        """Revoke a pending service-user code in the caller's current project."""
+        project = self._service_user_code_project(code)
+        return {"revoked": resource.revoke_service_code(code, project)}
+
     @actions.get
     def auth(self, resource, **kwargs):
         login_url = (
@@ -1018,6 +1126,13 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                 token = resource.get_token_by_refresh_token(
                     refresh_token=kwargs.get("refresh_token"),
                     scope=kwargs.get(c.PARAM_SCOPE, None),
+                    client_id=kwargs.get(
+                        c.PARAM_CLIENT_ID, self._req.headers.get(c.HEADER_CLIENT_ID, "")
+                    ),
+                    client_secret=kwargs.get(
+                        c.PARAM_CLIENT_SECRET,
+                        self._req.headers.get(c.HEADER_CLIENT_SECRET, ""),
+                    ),
                 )
             except Exception:
                 LOG.info(
@@ -1034,10 +1149,22 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                 ctx.get_user_ip(),
             )
         elif grant_type == c.GRANT_TYPE_AUTHORIZATION_CODE:
+            code = kwargs.get(c.PARAM_CODE)
+            if isinstance(code, str) and code.startswith("service."):
+                resource.validate_client_creds(
+                    client_id=kwargs.get(
+                        c.PARAM_CLIENT_ID, self._req.headers.get(c.HEADER_CLIENT_ID, "")
+                    ),
+                    client_secret=kwargs.get(
+                        c.PARAM_CLIENT_SECRET,
+                        self._req.headers.get(c.HEADER_CLIENT_SECRET, ""),
+                    ),
+                )
             try:
                 token = resource.get_token_by_authorization_code(
                     code=kwargs.get(c.PARAM_CODE),
                     redirect_uri=kwargs.get(c.PARAM_REDIRECT_URI),
+                    root_endpoint=ra_utils.lastslash(ctx.get_real_url_with_prefix()),
                 )
             except Exception:
                 LOG.info(

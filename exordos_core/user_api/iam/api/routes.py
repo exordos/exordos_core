@@ -222,6 +222,24 @@ class loginAction(routes.Action):
     __controller__ = controllers.ClientsController
 
 
+class CreateServiceCodeAction(routes.Action):
+    """Create a project-scoped service user and return an authorization code."""
+
+    __controller__ = controllers.ClientsController
+
+
+class RevokeServiceCodeAction(routes.Action):
+    """Revoke a pending service-user authorization code."""
+
+    __controller__ = controllers.ClientsController
+
+
+class GetServiceCodeInfoAction(routes.Action):
+    """Inspect a pending service-user code without exchanging it."""
+
+    __controller__ = controllers.ClientsController
+
+
 class GetTokenAction(routes.Action):
     """Handler for /v1/iam/clients/<uuid>/actions/get_token/invoke endpoint"""
 
@@ -272,6 +290,9 @@ class IamClientsRoute(routes.Route):
     auth = routes.action(AuthAction, invoke=True)
     login = routes.action(loginAction, invoke=True)
     get_token = routes.action(GetTokenAction, invoke=True)
+    create_service_code = routes.action(CreateServiceCodeAction, invoke=True)
+    get_service_code_info = routes.action(GetServiceCodeInfoAction, invoke=True)
+    revoke_service_code = routes.action(RevokeServiceCodeAction, invoke=True)
     introspect = routes.action(IntrospectAction)
     me = routes.action(MeAction)
     userinfo = routes.action(UserinfoAction)
