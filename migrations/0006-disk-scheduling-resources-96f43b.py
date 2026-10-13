@@ -54,11 +54,15 @@ def enrich(value, volume=False, mask=False, pool_volume=False):
                 spec.setdefault(key, default)
         elif isinstance(spec.get("disks"), list):
             for disk in spec["disks"]:
+                if not isinstance(disk, dict):
+                    continue
                 for key, default in defaults.items():
                     disk.setdefault(key, default)
     pools = result.get("storage_pools")
     if isinstance(pools, list):
         for pool in pools:
+            if not isinstance(pool, dict):
+                continue
             for key, default in defaults.items():
                 pool.setdefault(key, default)
     fields = result.get("target_fields")
@@ -66,6 +70,27 @@ def enrich(value, volume=False, mask=False, pool_volume=False):
         result["target_fields"] = enrich(
             fields, volume=volume, mask=True, pool_volume=pool_volume
         )
+    return result
+
+
+COMPUTE_PREFIXES = {
+    "$core.compute.nodes",
+    "$core.compute.sets",
+    "$core.compute.volumes",
+    "$core.compute.hypervisors",
+}
+
+
+def enrich_resources(resources):
+    result = copy.deepcopy(resources)
+    for prefix, instances in result.items():
+        if prefix not in COMPUTE_PREFIXES or not isinstance(instances, dict):
+            continue
+        for name, value in instances.items():
+            if isinstance(value, dict):
+                instances[name] = enrich(
+                    value, volume=prefix == "$core.compute.volumes"
+                )
     return result
 
 
@@ -103,6 +128,44 @@ class MigrationStep(migrations.AbstractMigrationStep):
                     session.execute(
                         f"UPDATE {table} SET {column} = {expression}, "
                         "updated_at = current_timestamp WHERE uuid = %s",
+                        (json.dumps(new), row["uuid"]),
+                    )
+        # EM rebuilds target values from these sources after hashes are reset.
+        rows = session.execute(
+            "SELECT uuid, resource_link_prefix, value FROM em_resources"
+        ).fetchall()
+        for row in rows:
+            if row["resource_link_prefix"] not in COMPUTE_PREFIXES:
+                continue
+            value = enrich(
+                row["value"],
+                volume=row["resource_link_prefix"] == "$core.compute.volumes",
+            )
+            session.execute(
+                "UPDATE em_resources SET value = CAST(%s AS jsonb), full_hash = '', "
+                "updated_at = current_timestamp WHERE uuid = %s",
+                (json.dumps(value), row["uuid"]),
+            )
+        # A manifest upgrade can regenerate EM resources, so update the stored
+        # manifests too, preserving explicit policies and template references.
+        for table, column in (
+            ("em_manifests", "resources"),
+            ("repo_elements", "manifest"),
+        ):
+            rows = session.execute(f"SELECT uuid, {column} FROM {table}").fetchall()
+            for row in rows:
+                old = row[column]
+                if not isinstance(old, dict):
+                    continue
+                if column == "resources":
+                    new = enrich_resources(old)
+                else:
+                    new = copy.deepcopy(old)
+                    if isinstance(new.get("resources"), dict):
+                        new["resources"] = enrich_resources(new["resources"])
+                if new != old:
+                    session.execute(
+                        f"UPDATE {table} SET {column} = CAST(%s AS jsonb), updated_at = current_timestamp WHERE uuid = %s",
                         (json.dumps(new), row["uuid"]),
                     )
         # Touch owners so their builders regenerate the invalidated target hashes.

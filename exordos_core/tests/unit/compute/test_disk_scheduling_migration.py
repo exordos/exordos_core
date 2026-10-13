@@ -100,6 +100,27 @@ def test_migration_updates_target_actual_and_persisted_sources():
                 f"INSERT INTO {table} (uuid, {column}) VALUES (%s, {expression})",
                 (uuid.uuid4(), json.dumps(value)),
             )
+        connection.execute(
+            "CREATE TEMP TABLE em_resources (uuid uuid, resource_link_prefix text, value jsonb, full_hash text, updated_at timestamptz)"
+        )
+        source = {"disk_spec": {"kind": "disks", "disks": [{"size": 10}]}}
+        connection.execute(
+            "INSERT INTO em_resources VALUES (%s, %s, %s, 'old', NULL)",
+            (uuid.uuid4(), "$core.compute.nodes", json.dumps(source)),
+        )
+        for table, column in (
+            ("em_manifests", "resources"),
+            ("repo_elements", "manifest"),
+        ):
+            connection.execute(
+                f"CREATE TEMP TABLE {table} (uuid uuid, {column} jsonb, updated_at timestamptz)"
+            )
+            resources = {"$core.compute.nodes": {"vm": source}}
+            value = resources if column == "resources" else {"resources": resources}
+            connection.execute(
+                f"INSERT INTO {table} VALUES (%s, %s, NULL)",
+                (uuid.uuid4(), json.dumps(value)),
+            )
         for table in ("machines", "node_volumes", "compute_machine_volumes"):
             connection.execute(f"CREATE TEMP TABLE {table} (updated_at timestamptz)")
         for table in ("ua_target_resources", "ua_actual_resources"):
@@ -146,6 +167,21 @@ def test_migration_updates_target_actual_and_persisted_sources():
             ]
             is True
         )
+        em = connection.execute("SELECT value, full_hash FROM em_resources").fetchone()
+        assert em["value"]["disk_spec"]["disks"][0]["ephemeral"] is True
+        assert em["full_hash"] == ""
+        for table, column in (
+            ("em_manifests", "resources"),
+            ("repo_elements", "manifest"),
+        ):
+            value = connection.execute(f"SELECT {column} FROM {table}").fetchone()[
+                column
+            ]
+            resources = value if column == "resources" else value["resources"]
+            assert (
+                resources["$core.compute.nodes"]["vm"]["disk_spec"]["disks"][0]["speed"]
+                == ic.DiskSpeed.HOT.value
+            )
         connection.rollback()
 
 
@@ -193,3 +229,42 @@ def test_full_migration_graph_upgrades_legacy_schema(previous_head):
             admin.execute(
                 sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
             )
+
+
+def test_manifest_enrichment_preserves_policy_links_and_unrelated_resources():
+    resources = {
+        "$core.compute.nodes": {
+            "vm": {
+                "disk_spec": {
+                    "kind": "disks",
+                    "disks": [
+                        {
+                            "size": 10,
+                            "speed": "$core.vs.variables.$speed:value",
+                            "ephemeral": False,
+                        },
+                        "$core.vs.variables.$disk:value",
+                    ],
+                }
+            }
+        },
+        "$core.compute.sets": {"set": {"disk_spec": {"kind": "root_disk", "size": 10}}},
+        "$core.compute.hypervisors": {"host": {"storage_pools": [{"name": "default"}]}},
+        "$core.compute.volumes": {"disk": {"size": 10}},
+        "$other.compute.nodes": {
+            "vm": {"disk_spec": {"kind": "root_disk", "size": 10}}
+        },
+    }
+    result = migration.enrich_resources(resources)
+    assert result["$core.compute.nodes"] == resources["$core.compute.nodes"]
+    assert result["$other.compute.nodes"] == resources["$other.compute.nodes"]
+    assert (
+        result["$core.compute.sets"]["set"]["disk_spec"]["speed"]
+        == ic.DiskSpeed.HOT.value
+    )
+    assert (
+        result["$core.compute.hypervisors"]["host"]["storage_pools"][0]["ephemeral"]
+        is True
+    )
+    assert result["$core.compute.volumes"]["disk"]["ephemeral"] is True
+    assert migration.enrich_resources(result) == result
