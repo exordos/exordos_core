@@ -25,6 +25,7 @@ from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
+from exordos_core.storage import constants as sc
 from exordos_core.storage import state
 from exordos_core.storage.dm import models as storage_models
 
@@ -52,7 +53,10 @@ class StorageClusterSchedulerService(basic.BasicService):
     ) -> tp.List[storage_models.StorageCluster]:
         """Get all unscheduled storage clusters."""
         return storage_models.StorageCluster.objects.get_all(
-            filters={"builder": dm_filters.Is(None)},
+            filters={
+                "builder": dm_filters.Is(None),
+                "status": dm_filters.NE(sc.CLUSTER_DELETING),
+            },
             limit=limit,
         )
 
@@ -60,6 +64,11 @@ class StorageClusterSchedulerService(basic.BasicService):
         with contexts.Context().session_manager() as session:
             state.lock(session)
             for cluster in storage_models.StorageCluster.objects.get_all():
+                if (
+                    cluster.status == sc.CLUSTER_DELETING
+                    and state.finish_cluster_deletion(cluster)
+                ):
+                    continue
                 state.sync_cluster(cluster)
             unscheduled = self._get_unscheduled_clusters()
             nodes = storage_models.StorageNode.objects.get_all(
