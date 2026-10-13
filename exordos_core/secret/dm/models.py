@@ -244,6 +244,8 @@ class Certificate(
     @staticmethod
     def validate_manual_certificate(key: str, cert: str) -> x509.Certificate:
         """Validate an imported PEM pair and return its leaf certificate."""
+        if not isinstance(key, str) or not isinstance(cert, str):
+            raise ValueError("manual certificates require string key and cert")
         if not key or not cert:
             raise ValueError("manual certificates require both key and cert")
         private_key = serialization.load_pem_private_key(key.encode(), password=None)
@@ -269,6 +271,11 @@ class Certificate(
         ) != certificate.public_key().public_bytes(encoding, form):
             raise ValueError("certificate and private key do not match")
         return certificate
+
+    def validate(self):
+        super().validate()
+        if self.method.KIND == "manual":
+            self.validate_manual_certificate(self.key, self.cert)
 
     def get_resource_target_fields(self) -> tp.Set[str]:
         """Return the collection of target fields.

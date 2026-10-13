@@ -166,7 +166,12 @@ class CertificatesController(iam_controllers.PolicyBasedController):
         method = kwargs.get(
             "method", current.method if current else {"kind": "dns_core"}
         )
-        kind = method.get("kind") if isinstance(method, dict) else method.KIND
+        if isinstance(method, dict):
+            kind = method.get("kind")
+        elif isinstance(method, models.AbstractCertificateMethod):
+            kind = method.KIND
+        else:
+            raise common_exceptions.ValidateException(err="invalid certificate method")
         if kind != "manual":
             if "key" in kwargs or "cert" in kwargs:
                 raise common_exceptions.ValidateException(

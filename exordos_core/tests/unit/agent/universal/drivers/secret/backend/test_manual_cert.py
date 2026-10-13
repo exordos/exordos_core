@@ -157,9 +157,61 @@ def test_manual_partial_update_uses_existing_pair(example):
     CertificatesController._validate_certificate({"cert": example["cert"]}, current)
 
 
+@pytest.mark.parametrize("method", [None, "manual", 123, [], True])
+@pytest.mark.parametrize("updating", [False, True])
+def test_certificate_rejects_invalid_method_type(example, method, updating):
+    current = secrets.Certificate(**example) if updating else None
+    with pytest.raises(exceptions.ValidateException):
+        CertificatesController._validate_certificate({"method": method}, current)
+
+
+@pytest.mark.parametrize("field", ["key", "cert"])
+@pytest.mark.parametrize("value", [123, True, ["PEM"], {"pem": "value"}])
+@pytest.mark.parametrize("updating", [False, True])
+def test_manual_rejects_invalid_pem_type(example, field, value, updating):
+    current = secrets.Certificate(**example) if updating else None
+    values = {field: value} if updating else dict(example, **{field: value})
+    with pytest.raises(exceptions.ValidateException):
+        CertificatesController._validate_certificate(values, current)
+
+
+@pytest.mark.parametrize("field", ["key", "cert"])
+@pytest.mark.parametrize("value", [None, "invalid PEM"])
+@pytest.mark.parametrize("from_manifest", [False, True])
+def test_manual_model_rejects_invalid_pair(example, field, value, from_manifest):
+    example[field] = value
+    if from_manifest:
+        example["method"] = {"kind": "manual"}
+    with pytest.raises(ValueError):
+        if from_manifest:
+            secrets.Certificate.restore_from_simple_view(**example)
+        else:
+            secrets.Certificate(**example)
+
+
+def test_manual_model_rejects_mismatched_pair(example):
+    key = ec.generate_private_key(ec.SECP256R1())
+    example["key"] = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    with pytest.raises(ValueError, match="do not match"):
+        secrets.Certificate(**example)
+
+
+def test_manual_model_update_rejects_invalid_pair_before_storage(example):
+    current = secrets.Certificate(**example)
+    current.cert = "invalid PEM"
+    with patch.object(secrets.Certificate, "_get_engine") as engine:
+        with pytest.raises(ra_exc.UnknownStorageException):
+            current.update()
+        engine.assert_not_called()
+
+
 def test_manual_builder_preserves_pending_replacement(example):
     current = service.Certificate(**example)
-    actual = service.Certificate(**dict(example, cert="old cert", key="old key"))
+    actual = service.Certificate(**dict(example, cert=example["cert"] + "\n"))
     actual.expiration_at = x509.load_pem_x509_certificate(
         example["cert"].encode()
     ).not_valid_after_utc
