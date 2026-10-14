@@ -457,3 +457,36 @@ def test_default_disk_selects_local_warm_pool_over_cold_rawstor(scheduler, monke
     assert volume.tier == ic.DiskTier.WARM.value
     assert volume.ephemeral is True
     assert result.storage_pool == "local"
+
+
+def test_failed_placement_restores_shared_rawstor_budget(scheduler, monkeypatch):
+    cluster = _storage_cluster(
+        "remote", ic.DiskTier.WARM.value, True, capacity_usable=6
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    pool = _machine_pool_bundle([], [])
+    previous = {"already-placed": 1 << 30}
+    scheduler._storage_reservations = {str(cluster.uuid): dict(previous)}
+    first = _requested_volume(None, 4, ic.DiskTier.WARM.value, True)
+    second = _requested_volume(None, 3, ic.DiskTier.WARM.value, True)
+    with pytest.raises(ValueError):
+        scheduler._allocate_node_volumes(base.NodeBundle(None, [first, second]), pool)
+    assert scheduler._storage_reservations == {str(cluster.uuid): previous}
+    [placed] = scheduler._allocate_node_volumes(base.NodeBundle(None, [first]), pool)
+    assert placed.storage_pool == str(cluster.storage_pools[0].uuid)
+    assert scheduler._storage_reservations == {
+        str(cluster.uuid): {**previous, str(first.uuid): 4 << 30}
+    }
+
+
+def test_cluster_pool_names_need_not_be_unique_across_clusters(scheduler, monkeypatch):
+    small = _storage_cluster(
+        "same-name", ic.DiskTier.WARM.value, True, capacity_usable=5
+    )
+    big = _storage_cluster(
+        "same-name", ic.DiskTier.WARM.value, True, capacity_usable=20
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [small, big])
+    request = _requested_volume(None, 10, ic.DiskTier.WARM.value, True)
+    result = scheduler._place_volume_into_pool(request, _machine_pool_bundle([], []))
+    assert result.storage_pool == str(big.storage_pools[0].uuid)

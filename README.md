@@ -85,13 +85,14 @@ The chosen storage pool is retained for reuse and resize; an existing disk
 is never moved merely because another pool has more free space. Changing
 `tier` or `ephemeral` after creation is unsupported.
 
-This branch requires the matching `gcl_sdk` branch `feat/disk-scheduling`
-(PR #211) before it can be merged and released. The SDK must provide
+This branch requires `gcl_sdk` branch `feat/rawstor`, including the
+disk scheduling API from PR #211, before it can be merged and released.
+The SDK must provide
 `DiskTier`, the disk policy fields, and `select_storage_pool`; a released
 SDK without these APIs is insufficient.
 
 Until that SDK release is published, `uv.lock` pins the development SDK
-commit `2987730b84e090666ecf46b64a6e6cecdfaf1872` through `tool.uv.sources`.
+commit `946bb0ac337ae59d179e131d09a31eaf3b15e6ef` through `tool.uv.sources`.
 This makes `uv sync --locked` reproducible without resolving an older SDK
 from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.
 
