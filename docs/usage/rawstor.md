@@ -177,3 +177,17 @@ librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 binding version differs. `nodes init --version VERSION` overrides the
 release used for OST and binding installation. Build core with `LOCAL_GENESIS_SDK_PATH`
 pointing to the matching `gcl_sdk` checkout on `feat/rawstor`.
+
+## Driver configuration
+
+Storage pools keep `cluster`, `name`, `speed` and `ephemeral` as common fields.
+Rawstor settings are nested in `driver_spec`:
+
+```json
+{"kind": "rawstor", "mirrors": 2, "chunk_size": 1073741824, "failure_domain": "server"}
+```
+
+Storage nodes keep their identity, cluster, agent and status as common fields.
+Their `driver_spec` contains `kind: rawstor`, `endpoint`, `location`,
+`bind_address`, `failure_domain_path` and `weight`.
+CLI options remain unchanged; commands construct the nested API configuration.

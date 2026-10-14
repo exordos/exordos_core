@@ -1339,40 +1339,54 @@ components:
                   example: 0
                   minimum: 0
                   type: integer
-                chunk_size:
-                  default: 1073741824
-                  example: 1
-                  minimum: 1
-                  type: integer
                 description:
                   default: ''
                   example: any_string
                   maxLength: 255
                   type: string
+                driver_spec:
+                  example:
+                    key: value
+                  nullable: true
+                  oneOf:
+                  - example:
+                      key: value
+                    properties:
+                      chunk_size:
+                        default: 1073741824
+                        example: 1
+                        minimum: 1
+                        type: integer
+                      failure_domain:
+                        default: server
+                        enum:
+                        - dc
+                        - ost
+                        - rack
+                        - row
+                        - server
+                        example: ost
+                        type: string
+                      kind:
+                        enum:
+                        - rawstor
+                        type: string
+                      mirrors:
+                        default: 2
+                        example: 128
+                        maximum: 255
+                        minimum: 1
+                        type: integer
+                    type: object
+                  type: object
                 ephemeral:
                   default: true
                   example: true
                   type: boolean
-                failure_domain:
-                  default: server
-                  enum:
-                  - dc
-                  - ost
-                  - rack
-                  - row
-                  - server
-                  example: ost
-                  type: string
                 kind:
                   enum:
                   - thin_storage_pool
                   type: string
-                mirrors:
-                  default: 1
-                  example: 128
-                  maximum: 255
-                  minimum: 1
-                  type: integer
                 name:
                   default: ''
                   example: any_string
@@ -4472,40 +4486,54 @@ components:
                   example: 0
                   minimum: 0
                   type: integer
-                chunk_size:
-                  default: 1073741824
-                  example: 1
-                  minimum: 1
-                  type: integer
                 description:
                   default: ''
                   example: any_string
                   maxLength: 255
                   type: string
+                driver_spec:
+                  example:
+                    key: value
+                  nullable: true
+                  oneOf:
+                  - example:
+                      key: value
+                    properties:
+                      chunk_size:
+                        default: 1073741824
+                        example: 1
+                        minimum: 1
+                        type: integer
+                      failure_domain:
+                        default: server
+                        enum:
+                        - dc
+                        - ost
+                        - rack
+                        - row
+                        - server
+                        example: ost
+                        type: string
+                      kind:
+                        enum:
+                        - rawstor
+                        type: string
+                      mirrors:
+                        default: 2
+                        example: 128
+                        maximum: 255
+                        minimum: 1
+                        type: integer
+                    type: object
+                  type: object
                 ephemeral:
                   default: true
                   example: true
                   type: boolean
-                failure_domain:
-                  default: server
-                  enum:
-                  - dc
-                  - ost
-                  - rack
-                  - row
-                  - server
-                  example: ost
-                  type: string
                 kind:
                   enum:
                   - thin_storage_pool
                   type: string
-                mirrors:
-                  default: 1
-                  example: 128
-                  maximum: 255
-                  minimum: 1
-                  type: integer
                 name:
                   default: ''
                   example: any_string
@@ -4562,11 +4590,6 @@ components:
           format: uuid
           nullable: true
           type: string
-        bind_address:
-          default: ''
-          example: any_string
-          maxLength: 255
-          type: string
         builder:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
@@ -4589,25 +4612,43 @@ components:
           example: any_string
           maxLength: 255
           type: string
-        endpoint:
-          example: any_string
-          maxLength: 2048
-          type: string
-        failure_domain_path:
-          example: any_string
-          maxLength: 255
-          type: string
-        kind:
-          default: rawstor
-          enum:
-          - rawstor
-          example: rawstor
-          type: string
-        location:
-          default: ''
-          example: any_string
-          maxLength: 2048
-          type: string
+        driver_spec:
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              bind_address:
+                default: ''
+                example: any_string
+                maxLength: 255
+                type: string
+              endpoint:
+                example: any_string
+                maxLength: 2048
+                type: string
+              failure_domain_path:
+                example: any_string
+                maxLength: 255
+                type: string
+              kind:
+                enum:
+                - rawstor
+                type: string
+              location:
+                default: ''
+                example: any_string
+                maxLength: 2048
+                type: string
+              weight:
+                default: 100
+                example: 4611686018427387904
+                maximum: 9223372036854775807
+                minimum: 1
+                type: integer
+            type: object
+          type: object
         name:
           default: ''
           example: any_string
@@ -4635,27 +4676,15 @@ components:
           format: uuid
           readOnly: true
           type: string
-        weight:
-          default: 100
-          example: 4611686018427387904
-          maximum: 9223372036854775807
-          minimum: 1
-          type: integer
       required:
       - cluster
-      - endpoint
-      - failure_domain_path
+      - driver_spec
       type: object
     StoragePool_Create:
       $ref: '#/components/schemas/StoragePool_Get'
       path: /v1/storage/pools/
     StoragePool_Get:
       properties:
-        chunk_size:
-          default: 1073741824
-          example: 1
-          minimum: 1
-          type: integer
         cluster:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
@@ -4672,26 +4701,44 @@ components:
           example: any_string
           maxLength: 255
           type: string
+        driver_spec:
+          example:
+            key: value
+          oneOf:
+          - example:
+              key: value
+            properties:
+              chunk_size:
+                default: 1073741824
+                example: 1
+                minimum: 1
+                type: integer
+              failure_domain:
+                default: server
+                enum:
+                - dc
+                - ost
+                - rack
+                - row
+                - server
+                example: ost
+                type: string
+              kind:
+                enum:
+                - rawstor
+                type: string
+              mirrors:
+                default: 2
+                example: 128
+                maximum: 255
+                minimum: 1
+                type: integer
+            type: object
+          type: object
         ephemeral:
           default: false
           example: true
           type: boolean
-        failure_domain:
-          default: server
-          enum:
-          - dc
-          - ost
-          - rack
-          - row
-          - server
-          example: ost
-          type: string
-        mirrors:
-          default: 2
-          example: 128
-          maximum: 255
-          minimum: 1
-          type: integer
         name:
           default: ''
           example: any_string
@@ -4719,6 +4766,7 @@ components:
           type: string
       required:
       - cluster
+      - driver_spec
       type: object
     UniversalAgent_Create:
       path: /v1/ua/agents/

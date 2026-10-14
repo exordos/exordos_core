@@ -71,9 +71,9 @@ def collect_storage_pool_candidates(
             ]
             for pool in cluster.storage_pools:
                 policy = {
-                    "mirrors": pool.mirrors,
-                    "chunk_size": pool.chunk_size,
-                    "failure_domain": pool.failure_domain,
+                    "mirrors": pool.driver_spec.mirrors,
+                    "chunk_size": pool.driver_spec.chunk_size,
+                    "failure_domain": pool.driver_spec.failure_domain,
                 }
                 available = (
                     storage_capacity.available_by_policy(

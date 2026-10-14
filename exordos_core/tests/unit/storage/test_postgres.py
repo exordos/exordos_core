@@ -31,6 +31,7 @@ import uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as sdk_pool
+from gcl_sdk.agents.universal.drivers import rawstor_specs
 import psycopg
 from psycopg import sql
 import pytest
@@ -122,7 +123,8 @@ def controller(cls):
     return result
 
 
-def test_clusters_nodes_pools_and_shared_pending_budget(database):
+@pytest.mark.parametrize("typed_spec", [False, True])
+def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
     cluster_api = controller(controllers.StorageClustersController)
     node_api = controller(controllers.StorageNodesController)
     pool_api = controller(controllers.StoragePoolsController)
@@ -159,19 +161,32 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             name="ost1",
             agent=agents[0].uuid,
             cluster=cluster.uuid,
-            endpoint="ost://10.0.0.1:7777",
-            failure_domain_path="dc1/row1/rack1/host1",
+            driver_spec=(
+                rawstor_specs.RawstorNodeDriverSpec(
+                    endpoint="ost://10.0.0.1:7777",
+                    failure_domain_path="dc1/row1/rack1/host1",
+                )
+                if typed_spec
+                else {
+                    "kind": "rawstor",
+                    "endpoint": "ost://10.0.0.1:7777",
+                    "failure_domain_path": "dc1/row1/rack1/host1",
+                }
+            ),
         )
-        assert first.bind_address == "10.0.0.1:7777"
-        assert first.weight == 100
-        assert isinstance(node_api.get(uuid=first.uuid).weight, int)
+        assert first.driver_spec.bind_address == "10.0.0.1:7777"
+        assert first.driver_spec.weight == 100
+        assert isinstance(node_api.get(uuid=first.uuid).driver_spec.weight, int)
         second = node_api.create(
             name="ost2",
-            weight=100,
+            driver_spec={
+                "kind": "rawstor",
+                "weight": 100,
+                "endpoint": "ost://10.0.0.2:7777",
+                "failure_domain_path": "dc1/row1/rack2/host2",
+            },
             agent=agents[1].uuid,
             cluster=cluster.uuid,
-            endpoint="ost://10.0.0.2:7777",
-            failure_domain_path="dc1/row1/rack2/host2",
         )
         cluster = cluster_api.get(uuid=cluster.uuid)
         assert (
@@ -185,7 +200,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
             str(first.uuid),
             str(second.uuid),
         }
-        node_api.update(second.uuid, weight=2)
+        node_api.update(second.uuid, driver_spec={"kind": "rawstor", "weight": 2})
         cluster = cluster_api.get(uuid=cluster.uuid)
         assert state.agent_driver_spec(cluster).nodes[str(second.uuid)]["weight"] == 2.0
         ready_target = models.Cluster.restore_from_simple_view(
@@ -203,7 +218,9 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
         )
         policies = models.StoragePool.objects.get_all()
         persistent = next(p for p in policies if not p.ephemeral)
-        pool_api.update(persistent.uuid, failure_domain="rack")
+        pool_api.update(
+            persistent.uuid, driver_spec={"kind": "rawstor", "failure_domain": "rack"}
+        )
         cluster = cluster_api.get(uuid=cluster.uuid)
         assert (
             state.agent_driver_spec(cluster).pools[str(persistent.uuid)][
@@ -224,7 +241,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
         inventory = [
             {
                 "uuid": str(n.uuid),
-                "failure_domain_path": n.failure_domain_path,
+                "failure_domain_path": n.driver_spec.failure_domain_path,
                 "available": 100 << 30,
             }
             for n in (first, second)
@@ -241,9 +258,11 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
                 pool_type="rawstor",
                 speed=p.speed,
                 ephemeral=p.ephemeral,
-                mirrors=p.mirrors,
-                failure_domain=p.failure_domain,
-                chunk_size=p.chunk_size,
+                driver_spec=rawstor_specs.RawstorPoolDriverSpec(
+                    mirrors=p.driver_spec.mirrors,
+                    failure_domain=p.driver_spec.failure_domain,
+                    chunk_size=p.driver_spec.chunk_size,
+                ),
                 capacity_usable=100,
             )
             for p in policies
@@ -398,10 +417,10 @@ def test_migration_preserves_legacy_ost_and_pool(database):
             "SELECT agent,status FROM storage_nodes"
         ).fetchone() == (None, "ACTIVE")
         assert connection.execute(
-            "SELECT uuid,endpoint,failure_domain_path FROM storage_nodes"
+            "SELECT uuid,driver_spec->>'endpoint',driver_spec->>'failure_domain_path' FROM storage_nodes"
         ).fetchone() == (cluster_uuid, "ost://host:7777", str(cluster_uuid))
         assert connection.execute(
-            "SELECT uuid,mirrors FROM storage_pools"
+            "SELECT uuid,(driver_spec->>'mirrors')::integer FROM storage_pools"
         ).fetchone() == (pool_uuid, 1)
 
 
@@ -475,9 +494,12 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
             name="ost",
             cluster=cluster.uuid,
             agent=agent.uuid,
-            endpoint="ost://10.0.0.1:7777",
-            location=f"file://{tmp_path}/data",
-            failure_domain_path="dc/row/rack/server",
+            driver_spec={
+                "kind": "rawstor",
+                "endpoint": "ost://10.0.0.1:7777",
+                "location": f"file://{tmp_path}/data",
+                "failure_domain_path": "dc/row/rack/server",
+            },
         )
         assert node.status == "NEW"
         assert state.agent_driver_spec(cluster_api.get(uuid=cluster.uuid)).nodes == {}
@@ -533,8 +555,11 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
                 name="replacement",
                 cluster=cluster.uuid,
                 agent=agent.uuid,
-                endpoint=node.endpoint,
-                failure_domain_path="server",
+                driver_spec={
+                    "kind": "rawstor",
+                    "endpoint": node.driver_spec.endpoint,
+                    "failure_domain_path": "server",
+                },
             )
         cluster_api.delete(cluster.uuid)  # Accepted while the host is still stopping.
         cluster = cluster_api.get(uuid=cluster.uuid)
@@ -567,8 +592,11 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
                 name="replacement",
                 cluster=cluster.uuid,
                 agent=agent.uuid,
-                endpoint=node.endpoint,
-                failure_domain_path="server",
+                driver_spec={
+                    "kind": "rawstor",
+                    "endpoint": node.driver_spec.endpoint,
+                    "failure_domain_path": "server",
+                },
             )
         assert state.finish_cluster_deletion(cluster_api.get(uuid=cluster.uuid))
         assert models.StorageCluster.objects.get_all() == []

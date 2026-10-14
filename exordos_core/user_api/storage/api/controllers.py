@@ -108,7 +108,17 @@ class StorageClustersController(
             for uuid, policy in storage_capacity.default_policies(cluster.uuid).items():
                 policy["name"] = f"{cluster.name}-{policy['name']}"
                 models.StoragePool(
-                    uuid=sys_uuid.UUID(uuid), cluster=cluster.uuid, **policy
+                    uuid=sys_uuid.UUID(uuid),
+                    cluster=cluster.uuid,
+                    name=policy["name"],
+                    speed=policy["speed"],
+                    ephemeral=policy["ephemeral"],
+                    driver_spec=ua_pool.rawstor_specs.RawstorPoolDriverSpec(
+                        **{
+                            k: policy[k]
+                            for k in ("mirrors", "chunk_size", "failure_domain")
+                        }
+                    ),
                 ).insert()
             state.sync_cluster(cluster)
             return cluster
@@ -223,6 +233,10 @@ def _node_resources():
         )
 
 
+def _driver_spec_values(spec):
+    return dict(spec) if isinstance(spec, dict) else spec.dump_to_simple_view()
+
+
 class ClusterMemberController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
@@ -238,7 +252,11 @@ class ClusterMemberController(
                 filters={"uuid": dm_filters.EQ(kwargs["cluster"])}
             )
             _require_cluster_not_deleting(cluster)
+            kwargs["driver_spec"] = _driver_spec_values(kwargs["driver_spec"])
             self.validate_member(kwargs, cluster)
+            kwargs["driver_spec"] = self.driver_spec_model.restore_from_simple_view(
+                **kwargs["driver_spec"]
+            )
             member = super().create(**kwargs)
             state.sync_cluster(cluster)
             return member
@@ -257,8 +275,17 @@ class ClusterMemberController(
                     msg="Moving members between clusters is unsupported",
                 )
             data = member.dump_to_simple_view()
+            if "driver_spec" in kwargs:
+                kwargs["driver_spec"] = {
+                    **data["driver_spec"],
+                    **_driver_spec_values(kwargs["driver_spec"]),
+                }
             data.update(kwargs)
             self.validate_member(data, cluster, member)
+            if "driver_spec" in kwargs:
+                kwargs["driver_spec"] = self.driver_spec_model.restore_from_simple_view(
+                    **kwargs["driver_spec"]
+                )
             member = super().update(uuid, **kwargs)
             state.sync_cluster(cluster)
             return member
@@ -276,6 +303,7 @@ class ClusterMemberController(
 
 
 class StorageNodesController(ClusterMemberController):
+    driver_spec_model = ua_pool.rawstor_specs.RawstorNodeDriverSpec
     __resource__ = resources.ResourceByRAModel(
         model_class=models.StorageNode,
         process_filters=True,
@@ -291,29 +319,40 @@ class StorageNodesController(ClusterMemberController):
 
     def create(self, **kwargs):
         kwargs.setdefault("uuid", sys_uuid.uuid4())
-        kwargs.setdefault("location", f"file:///var/lib/rawstor/ost/{kwargs['uuid']}")
-        endpoint = _validate_endpoint(kwargs["endpoint"], "ost")
-        kwargs.setdefault("bind_address", endpoint.netloc)
+        spec = _driver_spec_values(kwargs["driver_spec"])
+        spec["location"] = (
+            spec.get("location") or f"file:///var/lib/rawstor/ost/{kwargs['uuid']}"
+        )
+        endpoint = _validate_endpoint(spec["endpoint"], "ost")
+        spec["bind_address"] = spec.get("bind_address") or endpoint.netloc
+        kwargs["driver_spec"] = spec
         kwargs["status"] = "NEW"
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
-        if "endpoint" in kwargs:
-            endpoint = _validate_endpoint(kwargs["endpoint"], "ost")
-            kwargs.setdefault("bind_address", endpoint.netloc)
-        # The API marks changed endpoint/bind configuration as not yet ready.
-        if any(field in kwargs for field in ("endpoint", "bind_address")):
-            kwargs["status"] = "IN_PROGRESS"
+        if "driver_spec" in kwargs:
+            spec = _driver_spec_values(kwargs["driver_spec"])
+            if "endpoint" in spec:
+                endpoint = _validate_endpoint(spec["endpoint"], "ost")
+                spec["bind_address"] = spec.get("bind_address") or endpoint.netloc
+            kwargs["driver_spec"] = spec
+            previous = self.get(uuid=uuid).driver_spec
+            if any(
+                field in spec and spec[field] != getattr(previous, field)
+                for field in ("endpoint", "bind_address", "location")
+            ):
+                kwargs["status"] = "IN_PROGRESS"
         return super().update(uuid, **kwargs)
 
     def validate_member(self, data, cluster, existing=None):
+        data = {**data, **data["driver_spec"]}
         _validate_endpoint(data["endpoint"], "ost")
         agent_uuid = data.get("agent")
         if agent_uuid is None and existing is None:
             raise InvalidRawstorEndpoint(msg="An OST agent is required")
         if existing and (
             str(existing.agent) != str(agent_uuid)
-            or existing.location != data.get("location", "")
+            or existing.driver_spec.location != data.get("location", "")
         ):
             raise storage_exc.ConflictRecords(
                 model="StorageNode", msg="OST agent and backing location cannot change"
@@ -349,8 +388,8 @@ class StorageNodesController(ClusterMemberController):
                 msg="Failure domain path must be dc/row/rack/server (1 to 4 components)"
             )
         if existing and (
-            existing.endpoint != data["endpoint"]
-            or existing.bind_address != data.get("bind_address", "")
+            existing.driver_spec.endpoint != data["endpoint"]
+            or existing.driver_spec.bind_address != data.get("bind_address", "")
         ):
             _require_no_disks(cluster)
         # The SQL unique constraint also protects endpoint/name races.
@@ -363,15 +402,15 @@ class StorageNodesController(ClusterMemberController):
                 )
                 if other_agent.node == agent.node:
                     if (
-                        node.location == data["location"]
-                        or urlparse("ost://" + node.bind_address).port
+                        node.driver_spec.location == data["location"]
+                        or urlparse("ost://" + node.driver_spec.bind_address).port
                         == urlparse("ost://" + data["bind_address"]).port
                     ):
                         raise storage_exc.ConflictRecords(
                             model="StorageNode",
                             msg="OST backing location or bind port already used on this host",
                         )
-            if node.endpoint.rstrip("/") == data["endpoint"].rstrip("/"):
+            if node.driver_spec.endpoint.rstrip("/") == data["endpoint"].rstrip("/"):
                 raise storage_exc.ConflictRecords(
                     model="StorageNode", msg="OST already registered"
                 )
@@ -382,7 +421,7 @@ class StorageNodesController(ClusterMemberController):
         for resource in _node_resources():
             if existing and resource.uuid == existing.uuid:
                 continue
-            value = resource.value
+            value = {**resource.value, **resource.value["driver_spec"]}
             if str(resource.uuid) == str(data.get("uuid")) or value["endpoint"].rstrip(
                 "/"
             ) == data["endpoint"].rstrip("/"):
@@ -421,21 +460,27 @@ class StorageNodesController(ClusterMemberController):
                 return
         import rawstor
 
-        if next(iter(rawstor.Location(member.endpoint)), None) is not None:
+        if next(iter(rawstor.Location(member.driver_spec.endpoint)), None) is not None:
             raise storage_exc.ConflictRecords(
                 model="StorageNode", msg="OST is not empty"
             )
 
 
 class StoragePoolsController(ClusterMemberController):
+    driver_spec_model = ua_pool.rawstor_specs.RawstorPoolDriverSpec
     __resource__ = resources.ResourceByRAModel(
         model_class=models.StoragePool,
         process_filters=True,
         convert_underscore=False,
     )
 
+    def create(self, **kwargs):
+        kwargs.setdefault("driver_spec", {"kind": "rawstor"})
+        return super().create(**kwargs)
+
     def validate_member(self, data, cluster, existing=None):
         # Apply model defaults before validating an add request.
+        data = {**data, **data.get("driver_spec", {"kind": "rawstor"})}
         policy = {
             field: data.get(field, default)
             for field, default in {

@@ -19,6 +19,7 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.agents.universal.drivers import rawstor_specs
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models as ra_models
 from restalchemy.dm import properties
@@ -137,18 +138,14 @@ class StorageNode(
 
     __tablename__ = "storage_nodes"
     cluster = properties.property(types.UUID(), required=True)
-    kind = properties.property(types.Enum(["rawstor"]), default="rawstor")
-    endpoint = properties.property(types.String(max_length=2048), required=True)
-    failure_domain_path = properties.property(
-        types.String(max_length=255), required=True
-    )
-    weight = properties.property(
-        types.Integer(min_value=1, max_value=(1 << 63) - 1), default=100
+    driver_spec = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(rawstor_specs.RawstorNodeDriverSpec),
+        ),
+        required=True,
     )
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
-    location = properties.property(types.String(max_length=2048), default="")
-    bind_address = properties.property(types.String(max_length=255), default="")
     status = properties.property(
         types.Enum(["NEW", "IN_PROGRESS", "ACTIVE", "ERROR"]), default="NEW"
     )
@@ -173,10 +170,7 @@ class Node(
                 "uuid",
                 "cluster",
                 "agent",
-                "endpoint",
-                "location",
-                "bind_address",
-                "failure_domain_path",
+                "driver_spec",
             )
         )
 
@@ -194,8 +188,9 @@ class StoragePool(
     cluster = properties.property(types.UUID(), required=True)
     speed = properties.property(types.Enum(["COLD", "WARM", "HOT"]), default="WARM")
     ephemeral = properties.property(types.Boolean(), default=False)
-    mirrors = properties.property(types.Integer(min_value=1, max_value=255), default=2)
-    chunk_size = properties.property(types.Integer(min_value=1), default=1 << 30)
-    failure_domain = properties.property(
-        types.Enum(["ost", "server", "rack", "row", "dc"]), default="server"
+    driver_spec = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(rawstor_specs.RawstorPoolDriverSpec),
+        ),
+        required=True,
     )
