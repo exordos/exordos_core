@@ -16,8 +16,8 @@
 
 from restalchemy.storage.sql import migrations
 
-DISK_SPEEDS = ("COLD", "WARM", "HOT")
-DISK_SPEED_CHECK = "('" + "', '".join(DISK_SPEEDS) + "')"
+DISK_TIERS = ("COLD", "WARM", "HOT")
+DISK_TIER_CHECK = "('" + "', '".join(DISK_TIERS) + "')"
 
 
 class MigrationStep(migrations.AbstractMigrationStep):
@@ -36,22 +36,22 @@ class MigrationStep(migrations.AbstractMigrationStep):
         session.execute(
             f"""
             ALTER TABLE node_volumes
-                ADD COLUMN speed character varying(16)
-                    DEFAULT 'HOT' NOT NULL,
+                ADD COLUMN tier character varying(16)
+                    DEFAULT 'WARM' NOT NULL,
                 ADD COLUMN ephemeral boolean DEFAULT true NOT NULL,
-                ADD CONSTRAINT node_volumes_speed_check
-                    CHECK (speed IN {DISK_SPEED_CHECK});
+                ADD CONSTRAINT node_volumes_tier_check
+                    CHECK (tier IN {DISK_TIER_CHECK});
             """
         )
         session.execute(
             f"""
             ALTER TABLE compute_machine_volumes
-                ADD COLUMN speed character varying(16)
-                    DEFAULT 'HOT' NOT NULL,
+                ADD COLUMN tier character varying(16)
+                    DEFAULT 'WARM' NOT NULL,
                 ADD COLUMN ephemeral boolean DEFAULT true NOT NULL,
                 ADD COLUMN storage_pool character varying(255),
-                ADD CONSTRAINT compute_machine_volumes_speed_check
-                    CHECK (speed IN {DISK_SPEED_CHECK});
+                ADD CONSTRAINT compute_machine_volumes_tier_check
+                    CHECK (tier IN {DISK_TIER_CHECK});
             """
         )
 
@@ -59,7 +59,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
         session.execute(
             """
             ALTER TABLE compute_machine_volumes
-                DROP COLUMN speed,
+                DROP COLUMN tier,
                 DROP COLUMN ephemeral,
                 DROP COLUMN storage_pool;
             """
@@ -67,7 +67,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
         session.execute(
             """
             ALTER TABLE node_volumes
-                DROP COLUMN speed,
+                DROP COLUMN tier,
                 DROP COLUMN ephemeral;
             """
         )

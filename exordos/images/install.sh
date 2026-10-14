@@ -236,7 +236,7 @@ sudo cp "$GC_PATH/etc/exordos_universal_agent/logging.yaml" /etc/exordos_univers
 # It's required for update the core otherwise the migrations won't be applied on the update.
 # It's fine to apply migrations here as:
 # 1) The bootstrap script will transfer the data to the data disk
-# 2) It's speed up the first run since the migrations are already applied.
+# 2) It's tier up the first run since the migrations are already applied.
 # 3) It's allows to debug the migrations at build time.
 GCL_SDK_MIGRATIONS_PATH=$(python3 -c "import os, gcl_sdk.migrations as m; print(os.path.dirname(m.__file__))")
 OS_DB__CONNECTION_URL="postgresql://$GC_PG_USER:$GC_PG_PASS@127.0.0.1:5432/$GC_PG_DB" ra-apply-migration --path "$GCL_SDK_MIGRATIONS_PATH"

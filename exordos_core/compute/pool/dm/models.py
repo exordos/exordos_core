@@ -138,7 +138,7 @@ class MachineVolume(
                 "boot",
                 "label",
                 "device_type",
-                "speed",
+                "tier",
                 "ephemeral",
                 "storage_pool",
                 "project_id",

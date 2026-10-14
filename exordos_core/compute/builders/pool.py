@@ -270,7 +270,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # Resolve image URN to URI if the image is specified as a URN
         resolved_image = self._resolve_image(volume.image)
 
-        # Save guest agent to speed up scheduling process
+        # Save guest agent to tier up scheduling process
         guest_agent = ua_models.UniversalAgent.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(machine.uuid)}
         )
@@ -480,12 +480,12 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         """Select the storage pool to use for `volume`.
 
         See gcl_sdk's `ua_pool.select_storage_pool` for the matching
-        rules (soft speed/ephemeral match with a capacity fallback; a
+        rules (soft tier/ephemeral match with a capacity fallback; a
         volume already scheduled onto a pool only considers that one).
         """
         return ua_pool.select_storage_pool(
             pool.storage_pools,
-            volume.speed,
+            volume.tier,
             volume.ephemeral,
             size,
             volume.storage_pool or None,

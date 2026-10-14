@@ -37,7 +37,7 @@ def test_enrich_preserves_explicit_policy_and_adds_nested_fields():
             "kind": "disks",
             "disks": [
                 {"size": 10},
-                {"size": 20, "speed": ic.DiskSpeed.WARM.value, "ephemeral": False},
+                {"size": 20, "tier": ic.DiskTier.WARM.value, "ephemeral": False},
             ],
         },
         "storage_pools": [{"name": "default", "available_actual": 100}],
@@ -45,12 +45,12 @@ def test_enrich_preserves_explicit_policy_and_adds_nested_fields():
     result = migration.enrich(value)
     assert result["disk_spec"]["disks"][0] == {
         "size": 10,
-        "speed": ic.DiskSpeed.HOT.value,
+        "tier": ic.DiskTier.WARM.value,
         "ephemeral": True,
     }
     assert result["disk_spec"]["disks"][1] == value["disk_spec"]["disks"][1]
     assert result["storage_pools"][0]["available_actual"] == 100
-    assert "speed" not in value["disk_spec"]["disks"][0]
+    assert "tier" not in value["disk_spec"]["disks"][0]
     assert migration.enrich(result) == result
 
 
@@ -59,7 +59,7 @@ def test_enrich_volume_and_target_fields():
     result = migration.enrich(value, volume=True, pool_volume=True)
     assert result["storage_pool"] == "existing"
     assert result["ephemeral"] is True
-    assert result["target_fields"]["speed"] is None
+    assert result["target_fields"]["tier"] is None
     assert "storage_pool" in result["target_fields"]
     assert "storage_pool" not in migration.enrich({"size": 10}, volume=True)
 
@@ -150,14 +150,14 @@ def test_migration_updates_target_actual_and_persisted_sources():
                 r["kind"]: r
                 for r in connection.execute(f"SELECT * FROM {table}").fetchall()
             }
-            assert rows["node"]["value"]["disk_spec"]["speed"] == ic.DiskSpeed.HOT.value
+            assert rows["node"]["value"]["disk_spec"]["tier"] == ic.DiskTier.WARM.value
             assert (
                 rows["node"]["value"]["target_fields"]["disk_spec"]["ephemeral"] is None
             )
             assert rows["pool_volume"]["value"]["ephemeral"] is True
             assert (
-                rows["pool"]["value"]["storage_pools"][0]["speed"]
-                == ic.DiskSpeed.HOT.value
+                rows["pool"]["value"]["storage_pools"][0]["tier"]
+                == ic.DiskTier.WARM.value
             )
             assert rows["machine"]["hash"] == rows["node"]["hash"] == ""
             assert rows["unrelated"]["hash"] == "old"
@@ -179,8 +179,8 @@ def test_migration_updates_target_actual_and_persisted_sources():
             ]
             resources = value if column == "resources" else value["resources"]
             assert (
-                resources["$core.compute.nodes"]["vm"]["disk_spec"]["disks"][0]["speed"]
-                == ic.DiskSpeed.HOT.value
+                resources["$core.compute.nodes"]["vm"]["disk_spec"]["disks"][0]["tier"]
+                == ic.DiskTier.WARM.value
             )
         connection.rollback()
 
@@ -219,9 +219,9 @@ def test_full_migration_graph_upgrades_legacy_schema(previous_head):
         with psycopg.connect(dsn) as connection:
             assert (
                 connection.execute(
-                    "SELECT column_default FROM information_schema.columns WHERE table_name='node_volumes' AND column_name='speed'"
+                    "SELECT column_default FROM information_schema.columns WHERE table_name='node_volumes' AND column_name='tier'"
                 ).fetchone()[0]
-                == "'HOT'::character varying"
+                == "'WARM'::character varying"
             )
     finally:
         engines.engine_factory.destroy_engine()
@@ -240,7 +240,7 @@ def test_manifest_enrichment_preserves_policy_links_and_unrelated_resources():
                     "disks": [
                         {
                             "size": 10,
-                            "speed": "$core.vs.variables.$speed:value",
+                            "tier": "$core.vs.variables.$tier:value",
                             "ephemeral": False,
                         },
                         "$core.vs.variables.$disk:value",
@@ -259,8 +259,8 @@ def test_manifest_enrichment_preserves_policy_links_and_unrelated_resources():
     assert result["$core.compute.nodes"] == resources["$core.compute.nodes"]
     assert result["$other.compute.nodes"] == resources["$other.compute.nodes"]
     assert (
-        result["$core.compute.sets"]["set"]["disk_spec"]["speed"]
-        == ic.DiskSpeed.HOT.value
+        result["$core.compute.sets"]["set"]["disk_spec"]["tier"]
+        == ic.DiskTier.WARM.value
     )
     assert (
         result["$core.compute.hypervisors"]["host"]["storage_pools"][0]["ephemeral"]

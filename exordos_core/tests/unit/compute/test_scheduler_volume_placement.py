@@ -25,11 +25,11 @@ from exordos_core.compute.scheduler import service
 from exordos_core.compute.scheduler.driver import base
 
 
-def _storage_pool(name, speed, ephemeral, capacity_usable, capacity_provisioned=0):
+def _storage_pool(name, tier, ephemeral, capacity_usable, capacity_provisioned=0):
     return ua_pool.ThinStoragePool(
         name=name,
         pool_type="dir",
-        speed=speed,
+        tier=tier,
         ephemeral=ephemeral,
         capacity_usable=capacity_usable,
         capacity_provisioned=capacity_provisioned,
@@ -46,25 +46,25 @@ def _machine_pool_bundle(storage_pools, volumes):
     return base.MachinePoolBundle(pool=machine_pool, volumes=volumes)
 
 
-def _machine_volume(image, size, speed, ephemeral, storage_pool):
+def _machine_volume(image, size, tier, ephemeral, storage_pool):
     return models.MachineVolume(
         uuid=sys_uuid.uuid4(),
         project_id=sys_uuid.uuid4(),
         size=size,
         image=image,
-        speed=speed,
+        tier=tier,
         ephemeral=ephemeral,
         storage_pool=storage_pool,
     )
 
 
-def _requested_volume(image, size, speed, ephemeral):
+def _requested_volume(image, size, tier, ephemeral):
     return models.Volume(
         uuid=sys_uuid.uuid4(),
         project_id=sys_uuid.uuid4(),
         size=size,
         image=image,
-        speed=speed,
+        tier=tier,
         ephemeral=ephemeral,
     )
 
@@ -89,30 +89,28 @@ class TestPlaceVolumeIntoPoolFallback:
     ):
         warm_pool = _storage_pool(
             "warm-pool",
-            ic.DiskSpeed.WARM.value,
+            ic.DiskTier.WARM.value,
             False,
             capacity_usable=10,
             capacity_provisioned=10,
         )
         cold_pool = _storage_pool(
             "cold-pool",
-            ic.DiskSpeed.COLD.value,
+            ic.DiskTier.COLD.value,
             False,
             capacity_usable=20,
             capacity_provisioned=19,
         )
 
         warm_volume = _machine_volume(
-            "img1", 10, ic.DiskSpeed.WARM.value, False, "warm-pool"
+            "img1", 10, ic.DiskTier.WARM.value, False, "warm-pool"
         )
         cold_volume = _machine_volume(
-            "img1", 19, ic.DiskSpeed.COLD.value, False, "cold-pool"
+            "img1", 19, ic.DiskTier.COLD.value, False, "cold-pool"
         )
 
-        pool = _machine_pool_bundle(
-            [warm_pool, cold_pool], [warm_volume, cold_volume]
-        )
-        requested = _requested_volume("img1", 20, ic.DiskSpeed.WARM.value, False)
+        pool = _machine_pool_bundle([warm_pool, cold_pool], [warm_volume, cold_volume])
+        requested = _requested_volume("img1", 20, ic.DiskTier.WARM.value, False)
 
         # The exact (warm) match has no room for the resize and no pool
         # has 20GiB free for a brand new volume either - reuse must fall
@@ -129,16 +127,16 @@ class TestPlaceVolumeIntoPoolFallback:
         """
         warm_pool = _storage_pool(
             "warm-pool",
-            ic.DiskSpeed.WARM.value,
+            ic.DiskTier.WARM.value,
             False,
             capacity_usable=10,
             capacity_provisioned=10,
         )
         warm_volume = _machine_volume(
-            "img1", 10, ic.DiskSpeed.WARM.value, False, "warm-pool"
+            "img1", 10, ic.DiskTier.WARM.value, False, "warm-pool"
         )
         pool = _machine_pool_bundle([warm_pool], [warm_volume])
-        requested = _requested_volume("img1", 20, ic.DiskSpeed.WARM.value, False)
+        requested = _requested_volume("img1", 20, ic.DiskTier.WARM.value, False)
 
         with pytest.raises(ValueError):
             scheduler._place_volume_into_pool(requested, pool)
@@ -152,26 +150,22 @@ class TestPlaceVolumeIntoPoolActualTier:
 
     def test_prefers_the_volume_actually_on_the_matching_pool(self, scheduler):
         hot_pool = _storage_pool(
-            "hot-pool", ic.DiskSpeed.HOT.value, False, capacity_usable=100
+            "hot-pool", ic.DiskTier.HOT.value, False, capacity_usable=100
         )
         cold_pool = _storage_pool(
-            "cold-pool", ic.DiskSpeed.COLD.value, False, capacity_usable=100
+            "cold-pool", ic.DiskTier.COLD.value, False, capacity_usable=100
         )
 
         # Recorded as "hot" (the original request) but a soft-match
         # fallback actually placed it on cold-pool.
         misplaced = _machine_volume(
-            "img1", 10, ic.DiskSpeed.HOT.value, False, "cold-pool"
+            "img1", 10, ic.DiskTier.HOT.value, False, "cold-pool"
         )
         # Recorded as "cold" but actually sitting on hot-pool.
-        genuine = _machine_volume(
-            "img1", 10, ic.DiskSpeed.COLD.value, False, "hot-pool"
-        )
+        genuine = _machine_volume("img1", 10, ic.DiskTier.COLD.value, False, "hot-pool")
 
-        pool = _machine_pool_bundle(
-            [hot_pool, cold_pool], [misplaced, genuine]
-        )
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.HOT.value, False)
+        pool = _machine_pool_bundle([hot_pool, cold_pool], [misplaced, genuine])
+        requested = _requested_volume("img1", 10, ic.DiskTier.HOT.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
@@ -191,17 +185,17 @@ class TestPlaceVolumeIntoPoolBrokenCandidates:
         # "ghost-pool" was renamed/removed after this volume was pinned
         # to it - _find_storage_pool_by_name can no longer resolve it.
         good_pool = _storage_pool(
-            "good-pool", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+            "good-pool", ic.DiskTier.WARM.value, False, capacity_usable=100
         )
         stale_volume = _machine_volume(
-            "img1", 10, ic.DiskSpeed.WARM.value, False, "ghost-pool"
+            "img1", 10, ic.DiskTier.WARM.value, False, "ghost-pool"
         )
         good_volume = _machine_volume(
-            "img1", 10, ic.DiskSpeed.WARM.value, False, "good-pool"
+            "img1", 10, ic.DiskTier.WARM.value, False, "good-pool"
         )
 
         pool = _machine_pool_bundle([good_pool], [stale_volume, good_volume])
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+        requested = _requested_volume("img1", 10, ic.DiskTier.WARM.value, False)
 
         # Must not raise despite the first candidate's pool being
         # unresolvable - it must be skipped in favor of the next one.
@@ -215,20 +209,20 @@ class TestPlaceVolumeIntoPoolBrokenCandidates:
         # storage_pool unset actually lives on - rather than guessing
         # via a fresh soft match, skip it and create a new volume.
         only_pool = _storage_pool(
-            "only-pool", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+            "only-pool", ic.DiskTier.WARM.value, False, capacity_usable=100
         )
         legacy_volume = models.MachineVolume(
             uuid=sys_uuid.uuid4(),
             project_id=sys_uuid.uuid4(),
             size=10,
             image="img1",
-            speed=ic.DiskSpeed.WARM.value,
+            tier=ic.DiskTier.WARM.value,
             ephemeral=False,
             storage_pool=None,
         )
 
         pool = _machine_pool_bundle([only_pool], [legacy_volume])
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+        requested = _requested_volume("img1", 10, ic.DiskTier.WARM.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 

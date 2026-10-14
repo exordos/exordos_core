@@ -123,14 +123,14 @@ class Volume(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
     )
-    # Changing a disk's speed/ephemeral tier after creation would mean
+    # Changing a disk's tier/ephemeral tier after creation would mean
     # migrating it to a different storage pool, which isn't implemented -
     # read-only makes that unsupported change fail loudly instead of
     # being silently accepted with no actual effect on where the disk
     # lives.
-    speed = properties.property(
-        types.Enum([s.value for s in ic.DiskSpeed]),
-        default=ic.DiskSpeed.HOT.value,
+    tier = properties.property(
+        types.Enum([s.value for s in ic.DiskTier]),
+        default=ic.DiskTier.WARM.value,
         read_only=True,
     )
     ephemeral = properties.property(types.Boolean(), default=True, read_only=True)
@@ -371,14 +371,14 @@ class MachineVolume(
     )
     # TODO(g.melikov): DON'T USE! Should be dropped.
     device_type = properties.property(types.String(max_length=64), default="")
-    speed = properties.property(
-        types.Enum([s.value for s in ic.DiskSpeed]),
-        default=ic.DiskSpeed.HOT.value,
+    tier = properties.property(
+        types.Enum([s.value for s in ic.DiskTier]),
+        default=ic.DiskTier.WARM.value,
     )
     ephemeral = properties.property(types.Boolean(), default=True)
     # Name of the storage pool (within this compute pool) the scheduler
     # placed the volume on - needed to re-locate it by name (rather than
-    # by speed/ephemeral, which several pools could match) when
+    # by tier/ephemeral, which several pools could match) when
     # allocating extra capacity for a resize or a reused volume.
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None

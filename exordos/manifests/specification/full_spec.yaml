@@ -1246,12 +1246,12 @@ components:
                 example:
                 - ephemeral: true
                   name: any_string
-                  speed: COLD
+                  tier: COLD
                 items:
                   example:
                     ephemeral: true
                     name: any_string
-                    speed: COLD
+                    tier: COLD
                   properties:
                     ephemeral:
                       example: true
@@ -1260,7 +1260,7 @@ components:
                       example: any_string
                       maxLength: 255
                       type: string
-                    speed:
+                    tier:
                       enum:
                       - COLD
                       - HOT
@@ -1360,8 +1360,8 @@ components:
                 pool_type:
                   example: any_string
                   type: string
-                speed:
-                  default: HOT
+                tier:
+                  default: WARM
                   enum:
                   - COLD
                   - HOT
@@ -1571,8 +1571,8 @@ components:
                 maximum: 1000000
                 minimum: 1
                 type: integer
-              speed:
-                default: HOT
+              tier:
+                default: WARM
                 enum:
                 - COLD
                 - HOT
@@ -1592,7 +1592,7 @@ components:
                   label: any_string
                   mount_point: any_string
                   size: 500000
-                  speed: COLD
+                  tier: COLD
                 items:
                   example:
                     ephemeral: true
@@ -1601,7 +1601,7 @@ components:
                     label: any_string
                     mount_point: any_string
                     size: 500000
-                    speed: COLD
+                    tier: COLD
                   properties:
                     ephemeral:
                       example: true
@@ -1627,7 +1627,7 @@ components:
                       maximum: 1000000
                       minimum: 1
                       type: integer
-                    speed:
+                    tier:
                       enum:
                       - COLD
                       - HOT
@@ -1784,8 +1784,8 @@ components:
                 maximum: 1000000
                 minimum: 1
                 type: integer
-              speed:
-                default: HOT
+              tier:
+                default: WARM
                 enum:
                 - COLD
                 - HOT
@@ -1805,7 +1805,7 @@ components:
                   label: any_string
                   mount_point: any_string
                   size: 500000
-                  speed: COLD
+                  tier: COLD
                 items:
                   example:
                     ephemeral: true
@@ -1814,7 +1814,7 @@ components:
                     label: any_string
                     mount_point: any_string
                     size: 500000
-                    speed: COLD
+                    tier: COLD
                   properties:
                     ephemeral:
                       example: true
@@ -1840,7 +1840,7 @@ components:
                       maximum: 1000000
                       minimum: 1
                       type: integer
-                    speed:
+                    tier:
                       enum:
                       - COLD
                       - HOT
@@ -4917,15 +4917,6 @@ components:
           maximum: 1000000
           minimum: 1
           type: integer
-        speed:
-          default: HOT
-          enum:
-          - COLD
-          - HOT
-          - WARM
-          example: COLD
-          readOnly: true
-          type: string
         status:
           default: NEW
           enum:
@@ -4934,6 +4925,15 @@ components:
           - IN_PROGRESS
           - NEW
           example: NEW
+          readOnly: true
+          type: string
+        tier:
+          default: WARM
+          enum:
+          - COLD
+          - HOT
+          - WARM
+          example: COLD
           readOnly: true
           type: string
         updated_at:

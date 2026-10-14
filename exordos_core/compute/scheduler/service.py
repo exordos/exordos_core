@@ -188,10 +188,10 @@ class SchedulerService(basic.BasicService):
         since callers also use this for a resize's capacity delta.
 
         See gcl_sdk's `ua_pool.select_storage_pool` for the matching
-        rules (soft speed/ephemeral match with a capacity fallback).
+        rules (soft tier/ephemeral match with a capacity fallback).
         """
         storage_pool = ua_pool.select_storage_pool(
-            pool.pool.storage_pools, volume.speed, volume.ephemeral, size
+            pool.pool.storage_pools, volume.tier, volume.ephemeral, size
         )
         if storage_pool is not None:
             return storage_pool
@@ -232,7 +232,7 @@ class SchedulerService(basic.BasicService):
             boot=volume.boot,
             label=volume.label,
             device_type=volume.device_type,
-            speed=volume.speed,
+            tier=volume.tier,
             ephemeral=volume.ephemeral,
             storage_pool=storage_pool.name,
             node_volume=volume.uuid,
@@ -292,15 +292,15 @@ class SchedulerService(basic.BasicService):
             # Classify by the tier of the pool the volume is actually on,
             # not the tier it was originally requested with: a soft-match
             # fallback (see _select_storage_pool) can place a volume on a
-            # pool with different speed/ephemeral than pool_volume.speed/
+            # pool with different tier/ephemeral than pool_volume.tier/
             # .ephemeral, which only ever record the original request.
             if (
-                actual_pool.speed == volume.speed
+                actual_pool.tier == volume.tier
                 and actual_pool.ephemeral == volume.ephemeral
             ):
                 exact_volumes.append(pool_volume)
 
-        # Prefer a volume already on the requested speed/ephemeral tier,
+        # Prefer a volume already on the requested tier/ephemeral tier,
         # but reusing one from a different tier (soft match, like storage
         # pool placement above) beats downloading the image again onto a
         # brand new volume - try exact matches first, then anything else,

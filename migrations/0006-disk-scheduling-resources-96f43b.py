@@ -39,7 +39,7 @@ RESOURCE_KINDS = (
 def enrich(value, volume=False, mask=False, pool_volume=False):
     """Fill missing disk scheduling fields without changing existing policy."""
     result = copy.deepcopy(value)
-    defaults = {"speed": ic.DiskSpeed.HOT.value, "ephemeral": True}
+    defaults = {"tier": ic.DiskTier.WARM.value, "ephemeral": True}
     if mask:
         defaults = dict.fromkeys(defaults)
     if volume:
@@ -97,7 +97,7 @@ def enrich_resources(resources):
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
         self._depends = [
-            "0005-volumes-speed-ephemeral-fba1de.py",
+            "0005-volumes-tier-ephemeral-fba1de.py",
         ]
 
     @property

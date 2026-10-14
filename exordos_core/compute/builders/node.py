@@ -135,7 +135,7 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         actual.description = target.description
         actual.boot = target.boot
         actual.device_type = target.device_type
-        actual.speed = target.speed
+        actual.tier = target.tier
         actual.ephemeral = target.ephemeral
         actual.label = target.label
         actual.status = ua_pool.VolumeStatus.IN_PROGRESS.value
@@ -179,7 +179,7 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
                 or target.image != actual.image
                 or target.label != actual.label
                 or target.device_type != actual.device_type
-                or target.speed != actual.speed
+                or target.tier != actual.tier
                 or target.ephemeral != actual.ephemeral
                 or target.boot != actual.boot
             ):
