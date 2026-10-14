@@ -68,3 +68,10 @@ def test_resize_rejects_duplicate_pool_names():
         is None
     )
     assert all(pool.capacity_provisioned == 0 for pool in pools)
+
+
+@pytest.fixture(autouse=True)
+def no_storage_clusters(monkeypatch):
+    from exordos_core.storage.scheduler import select
+
+    monkeypatch.setattr(select, "_active_clusters", lambda: [])
