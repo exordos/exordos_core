@@ -102,7 +102,7 @@ def test_invalid_endpoint_returns_validation_error(field, value):
         ("nodes", {}),
         ("pools", {}),
         ("managed", True),
-        ("speed", "HOT"),
+        ("tier", "HOT"),
         ("ephemeral", False),
     ],
 )

@@ -47,7 +47,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 uuid uuid PRIMARY KEY, name varchar(255) NOT NULL,
                 description varchar(255) NOT NULL DEFAULT '',
                 cluster uuid NOT NULL REFERENCES storage_clusters(uuid),
-                speed varchar(16) NOT NULL CHECK (speed IN ('COLD','WARM','HOT')),
+                tier varchar(16) NOT NULL CHECK (tier IN ('COLD','WARM','HOT')),
                 ephemeral boolean NOT NULL,
                 driver_spec jsonb NOT NULL,
                 created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -66,8 +66,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
             FROM storage_clusters WHERE COALESCE(driver_spec->>'ost_endpoint','') <> '';
         """)
         session.execute("""
-            INSERT INTO storage_pools(uuid,name,cluster,speed,ephemeral,driver_spec)
-            SELECT (p->>'uuid')::uuid,p->>'name',c.uuid,p->>'speed',
+            INSERT INTO storage_pools(uuid,name,cluster,tier,ephemeral,driver_spec)
+            SELECT (p->>'uuid')::uuid,p->>'name',c.uuid,p->>'tier',
                    (p->>'ephemeral')::boolean,jsonb_build_object('kind','rawstor','mirrors',1,'chunk_size',1073741824,'failure_domain','server')
             FROM storage_clusters c, unnest(c.storage_pools) p
             WHERE p->>'uuid' IS NOT NULL;
