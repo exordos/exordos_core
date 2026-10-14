@@ -1931,7 +1931,7 @@ class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomProperties
         # The project follows the scope, and a new lifetime starts now.
         # Both are derived at creation, so an update has to derive them
         # again or they keep the values of the old scope and lifetime.
-        if self.properties["scope"].is_dirty() or self.project is None:
+        if self.properties["scope"].is_dirty():
             self.project = self._get_project_by_scope(self.user, self.scope)
         if self.properties["expiration_delta"].is_dirty():
             now = datetime.datetime.now(datetime.timezone.utc)

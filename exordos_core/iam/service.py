@@ -39,11 +39,6 @@ class TokenRenewalService(basic.BasicService):
         for token in tokens:
             try:
                 with contexts.Context().session_manager():
-                    if token.project is None and any(
-                        piece.startswith("project:")
-                        for piece in token.scope.lower().split()
-                    ):
-                        token.update()
                     if token.auto_renew and token.needs_renewal(now):
                         token.renew(now)
                         LOG.info(

@@ -120,27 +120,23 @@ def test_managed_token_creation_retries_missing_project(managed_token):
     assert token.project is project
 
 
-def test_managed_token_update_repairs_project_without_scope_change(managed_token):
-    project = models.Project(
-        name="token-project", organization=models.Organization(name="token-org")
-    )
-    managed_token.scope = f"project:{project.uuid}"
+def test_managed_token_update_does_not_repair_missing_project(managed_token):
+    managed_token.scope = "project:12345678-c625-4fee-81d5-f691897b8142"
     with (
-        mock.patch.object(
-            type(models.Project.objects), "get_one", return_value=project
-        ),
+        mock.patch.object(type(models.Project.objects), "get_one") as get_project,
         mock.patch.object(models.Token, "update") as update,
         mock.patch.object(
             type(managed_token.properties["scope"]), "is_dirty", return_value=False
         ),
     ):
         managed_token.update()
-    assert managed_token.project is project
+    assert managed_token.project is None
+    get_project.assert_not_called()
     update.assert_called_once()
 
 
 @pytest.mark.parametrize("auto_renew", [False, True])
-def test_token_maintenance_repairs_project_before_renewal(auto_renew):
+def test_token_maintenance_does_not_repair_missing_project(auto_renew):
     from exordos_core.iam import service
 
     token = mock.Mock(
@@ -157,15 +153,16 @@ def test_token_maintenance_repairs_project_before_renewal(auto_renew):
     ):
         context.return_value.session_manager.return_value = mock.MagicMock()
         service.TokenRenewalService()._iteration()
-    token.update.assert_called_once()
+    token.update.assert_not_called()
     token.renew.assert_not_called()
 
 
-def test_token_maintenance_continues_after_project_lookup_failure():
+def test_token_maintenance_continues_after_renewal_failure():
     from exordos_core.iam import service
 
     pending = mock.Mock(project=None, scope="project:missing", auto_renew=True)
-    pending.update.side_effect = RuntimeError("project not ready")
+    pending.needs_renewal.return_value = True
+    pending.renew.side_effect = RuntimeError("renewal failed")
     ready = mock.Mock(project=object(), scope="", auto_renew=True)
     ready.needs_renewal.return_value = True
     with (
@@ -177,7 +174,8 @@ def test_token_maintenance_continues_after_project_lookup_failure():
     ):
         context.return_value.session_manager.return_value = mock.MagicMock()
         service.TokenRenewalService()._iteration()
-    pending.renew.assert_not_called()
+    pending.update.assert_not_called()
+    pending.renew.assert_called_once()
     ready.update.assert_not_called()
     ready.renew.assert_called_once()
     log.assert_called_once()
