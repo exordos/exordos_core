@@ -34,15 +34,15 @@ class TokenRenewalService(basic.BasicService):
         tokens = models.ManagedToken.objects.get_all(
             filters={
                 "managed": dm_filters.EQ(True),
+                "auto_renew": dm_filters.EQ(True),
             },
         )
         for token in tokens:
+            if not token.needs_renewal(now):
+                continue
             try:
                 with contexts.Context().session_manager():
-                    if token.auto_renew and token.needs_renewal(now):
-                        token.renew(now)
-                        LOG.info(
-                            "Token %s renewed until %s", token.uuid, token.expiration_at
-                        )
+                    token.renew(now)
+                LOG.info("Token %s renewed until %s", token.uuid, token.expiration_at)
             except Exception:
-                LOG.exception("Failed to maintain token %s", token.uuid)
+                LOG.exception("Failed to renew token %s", token.uuid)
