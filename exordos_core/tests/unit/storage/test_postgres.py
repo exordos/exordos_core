@@ -97,7 +97,7 @@ def database(empty_database):
                     "ALTER TABLE compute_machine_volumes ADD PRIMARY KEY(uuid)"
                 )
         connection.execute(
-            "ALTER TABLE compute_machine_volumes ADD speed varchar(16) DEFAULT 'HOT', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
+            "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
         migration("0007-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
         migration("0008-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
@@ -256,7 +256,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
                 uuid=p.uuid,
                 name=p.name,
                 pool_type="rawstor",
-                speed=p.speed,
+                tier=p.tier,
                 ephemeral=p.ephemeral,
                 driver_spec=rawstor_specs.RawstorPoolDriverSpec(
                     mirrors=p.driver_spec.mirrors,
@@ -375,13 +375,13 @@ def test_migration_preserves_legacy_ost_and_pool(database):
             "endpoint": endpoint,
             "location": "file:///data/rawstor",
             "ost_endpoint": "ost://host:7777",
-            "speed": "HOT",
+            "tier": "HOT",
             "ephemeral": False,
         }
         policy = {
             "uuid": str(pool_uuid),
             "name": "default",
-            "speed": "HOT",
+            "tier": "HOT",
             "ephemeral": False,
         }
         connection.execute(

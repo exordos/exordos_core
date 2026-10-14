@@ -74,7 +74,7 @@ def _requested_volume(image, size, tier, ephemeral):
 
 
 def _storage_cluster(
-    name, speed, ephemeral, capacity_usable, endpoint="mds://core:7776/"
+    name, tier, ephemeral, capacity_usable, endpoint="mds://core:7776/"
 ):
     from gcl_sdk.agents.universal.drivers import pool as pool_base
 
@@ -86,7 +86,7 @@ def _storage_cluster(
         ),
         status=ua_pool.MachinePoolStatus.ACTIVE.value,
         agent=sys_uuid.uuid4(),
-        storage_pools=[_storage_pool(name, speed, ephemeral, capacity_usable)],
+        storage_pools=[_storage_pool(name, tier, ephemeral, capacity_usable)],
         capacity_info={
             "reported_at": time.time(),
             "objects": {},
@@ -160,7 +160,7 @@ class TestPlaceVolumeIntoPoolFallback:
         )
 
         pool = _machine_pool_bundle([warm_pool, cold_pool], [warm_volume, cold_volume])
-        requested = _requested_volume("img1", 20, ic.DiskSpeed.WARM.value, False)
+        requested = _requested_volume("img1", 20, ic.DiskTier.WARM.value, False)
 
         # The exact (warm) match has no room for the resize and no pool
         # has 20GiB free for a brand new volume either - reuse must fall
@@ -214,7 +214,7 @@ class TestPlaceVolumeIntoPoolActualTier:
         genuine = _machine_volume("img1", 10, ic.DiskTier.COLD.value, False, "hot-pool")
 
         pool = _machine_pool_bundle([hot_pool, cold_pool], [misplaced, genuine])
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.HOT.value, False)
+        requested = _requested_volume("img1", 10, ic.DiskTier.HOT.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
@@ -395,15 +395,15 @@ class TestPlaceVolumeIntoPoolWithClusters:
         self, scheduler, monkeypatch
     ):
         small_local = _storage_pool(
-            "small-local", ic.DiskSpeed.WARM.value, False, capacity_usable=20
+            "small-local", ic.DiskTier.WARM.value, False, capacity_usable=20
         )
         big_cluster = _storage_cluster(
-            "big-cluster", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+            "big-cluster", ic.DiskTier.WARM.value, False, capacity_usable=100
         )
         monkeypatch.setattr(storage_select, "_active_clusters", lambda: [big_cluster])
 
         pool = _machine_pool_bundle([small_local], [])
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+        requested = _requested_volume("img1", 10, ic.DiskTier.WARM.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
@@ -412,15 +412,15 @@ class TestPlaceVolumeIntoPoolWithClusters:
 
     def test_a_local_pool_is_used_when_no_cluster_fits(self, scheduler, monkeypatch):
         local_pool = _storage_pool(
-            "local", ic.DiskSpeed.WARM.value, False, capacity_usable=100
+            "local", ic.DiskTier.WARM.value, False, capacity_usable=100
         )
         small_cluster = _storage_cluster(
-            "small-cluster", ic.DiskSpeed.WARM.value, False, capacity_usable=5
+            "small-cluster", ic.DiskTier.WARM.value, False, capacity_usable=5
         )
         monkeypatch.setattr(storage_select, "_active_clusters", lambda: [small_cluster])
 
         pool = _machine_pool_bundle([local_pool], [])
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.WARM.value, False)
+        requested = _requested_volume("img1", 10, ic.DiskTier.WARM.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
@@ -431,14 +431,29 @@ class TestPlaceVolumeIntoPoolWithClusters:
         self, scheduler, monkeypatch
     ):
         cluster = _storage_cluster(
-            "only-cluster", ic.DiskSpeed.HOT.value, False, capacity_usable=50
+            "only-cluster", ic.DiskTier.HOT.value, False, capacity_usable=50
         )
         monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
 
         pool = _machine_pool_bundle([], [])
-        requested = _requested_volume("img1", 10, ic.DiskSpeed.HOT.value, False)
+        requested = _requested_volume("img1", 10, ic.DiskTier.HOT.value, False)
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
         assert result.storage_pool == str(cluster.storage_pools[0].uuid)
         assert "storage_location" not in result.properties
+
+
+def test_default_disk_selects_local_warm_pool_over_cold_rawstor(scheduler, monkeypatch):
+    local = _storage_pool("local", ic.DiskTier.WARM.value, True, capacity_usable=100)
+    remote = _storage_cluster(
+        "rawstor", ic.DiskTier.COLD.value, True, capacity_usable=1000
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [remote])
+    volume = models.Volume(project_id=sys_uuid.uuid4(), size=10, image="img1")
+    result = scheduler._place_volume_into_pool(
+        volume, _machine_pool_bundle([local], [])
+    )
+    assert volume.tier == ic.DiskTier.WARM.value
+    assert volume.ephemeral is True
+    assert result.storage_pool == "local"

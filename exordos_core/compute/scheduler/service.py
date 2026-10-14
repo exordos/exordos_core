@@ -319,7 +319,7 @@ class SchedulerService(basic.BasicService):
             ):
                 exact_volumes.append(pool_volume)
 
-        # Prefer a volume already on the requested tier/ephemeral tier,
+        # Prefer a volume already on the requested tier/ephemeral policy,
         # but reusing one from a different tier (soft match, like storage
         # pool placement above) beats downloading the image again onto a
         # brand new volume - try exact matches first, then anything else,

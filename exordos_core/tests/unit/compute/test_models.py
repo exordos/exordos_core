@@ -49,7 +49,7 @@ class TestNodeInsert:
 
 
 class TestVolumeSpeedEphemeralReadOnly:
-    """Changing a disk's tier/ephemeral tier after creation would mean
+    """Changing a disk's tier/ephemeral policy after creation would mean
     migrating it to a different storage pool, which isn't implemented -
     updates fail loudly instead of being silently accepted with no actual effect.
     """

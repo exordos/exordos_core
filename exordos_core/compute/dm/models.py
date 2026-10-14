@@ -124,7 +124,7 @@ class Volume(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
     )
-    # Changing a disk's tier/ephemeral tier after creation would mean
+    # Changing a disk's tier/ephemeral policy after creation would mean
     # migrating it to a different storage pool, which isn't implemented -
     # read-only makes that unsupported change fail loudly instead of
     # being silently accepted with no actual effect on where the disk

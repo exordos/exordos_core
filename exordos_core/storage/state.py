@@ -52,8 +52,7 @@ def agent_driver_spec(cluster):
     spec["pools"] = {
         str(policy.uuid): {
             **{
-                field: getattr(policy, field)
-                for field in ("name", "speed", "ephemeral")
+                field: getattr(policy, field) for field in ("name", "tier", "ephemeral")
             },
             **{
                 field: getattr(policy.driver_spec, field)

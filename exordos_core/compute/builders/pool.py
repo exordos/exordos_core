@@ -483,7 +483,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         The pool's own local pools and every active StorageCluster's
         pools are equal candidates - see `storage_select.
         select_storage_pool_with_clusters` for the matching rules (soft
-        speed/ephemeral match with a capacity fallback; a volume already
+        tier/ephemeral match with a capacity fallback; a volume already
         scheduled onto a pool only considers that one).
         """
         if (

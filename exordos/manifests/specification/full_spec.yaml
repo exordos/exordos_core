@@ -4548,8 +4548,8 @@ components:
                 pool_type:
                   example: any_string
                   type: string
-                speed:
-                  default: HOT
+                tier:
+                  default: WARM
                   enum:
                   - COLD
                   - HOT
@@ -4736,7 +4736,7 @@ components:
             type: object
           type: object
         ephemeral:
-          default: false
+          default: true
           example: true
           type: boolean
         name:
@@ -4744,7 +4744,7 @@ components:
           example: any_string
           maxLength: 255
           type: string
-        speed:
+        tier:
           default: WARM
           enum:
           - COLD

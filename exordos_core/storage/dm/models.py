@@ -186,8 +186,8 @@ class StoragePool(
 
     __tablename__ = "storage_pools"
     cluster = properties.property(types.UUID(), required=True)
-    speed = properties.property(types.Enum(["COLD", "WARM", "HOT"]), default="WARM")
-    ephemeral = properties.property(types.Boolean(), default=False)
+    tier = properties.property(types.Enum(["COLD", "WARM", "HOT"]), default="WARM")
+    ephemeral = properties.property(types.Boolean(), default=True)
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(rawstor_specs.RawstorPoolDriverSpec),
