@@ -67,11 +67,24 @@ def enrich(value, volume=False, mask=False, pool_volume=False):
                 continue
             for key, default in defaults.items():
                 pool.setdefault(key, default)
+    driver = result.get("driver_spec")
+    converted = False
+    if isinstance(driver, dict) and driver.get("kind") == "exordos_local_hyper":
+        name = driver.get("storage_pool")
+        if isinstance(name, str):
+            driver["storage_pool"] = [{"name": name, **defaults}] if name else []
+            converted = True
     fields = result.get("target_fields")
     if isinstance(fields, dict):
         result["target_fields"] = enrich(
             fields, volume=volume, mask=True, pool_volume=pool_volume
         )
+    if converted and isinstance(fields, dict):
+        driver_fields = result["target_fields"].get("driver_spec")
+        if isinstance(driver_fields, dict):
+            driver_fields["storage_pool"] = [
+                dict.fromkeys(entry) for entry in driver["storage_pool"]
+            ]
     return result
 
 
@@ -116,6 +129,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             ("nodes", "disk_spec"),
             ("compute_sets", "disk_spec"),
             ("machine_pools", "storage_pools"),
+            ("machine_pools", "driver_spec"),
         ):
             rows = session.execute(f"SELECT uuid, {column} FROM {table}").fetchall()
             for row in rows:

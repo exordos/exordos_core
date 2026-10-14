@@ -250,4 +250,4 @@ output = "cover/coverage.xml"
 
 [tool.uv.sources]
 # Pin the development SDK API until disk scheduling is released on PyPI.
-gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "39a8233e5c518d0e114a02920ad32a6cc4c48194" }
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "2987730b84e090666ecf46b64a6e6cecdfaf1872" }

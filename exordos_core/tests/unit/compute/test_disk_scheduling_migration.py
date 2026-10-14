@@ -100,6 +100,11 @@ def test_migration_updates_target_actual_and_persisted_sources():
                 f"INSERT INTO {table} (uuid, {column}) VALUES (%s, {expression})",
                 (uuid.uuid4(), json.dumps(value)),
             )
+        connection.execute("ALTER TABLE machine_pools ADD COLUMN driver_spec jsonb")
+        connection.execute(
+            "UPDATE machine_pools SET driver_spec = %s",
+            (json.dumps({"kind": "exordos_local_hyper", "storage_pool": "default"}),),
+        )
         connection.execute(
             "CREATE TEMP TABLE em_resources (uuid uuid, resource_link_prefix text, value jsonb, full_hash text, updated_at timestamptz)"
         )
@@ -147,6 +152,9 @@ def test_migration_updates_target_actual_and_persisted_sources():
                     (uuid.uuid4(), kind, json.dumps(value)),
                 )
         migration.migration_step.upgrade(Session())
+        assert connection.execute("SELECT driver_spec FROM machine_pools").fetchone()[
+            "driver_spec"
+        ]["storage_pool"] == [{"name": "default", "tier": "WARM", "ephemeral": True}]
         for table in ("ua_target_resources", "ua_actual_resources"):
             rows = {
                 r["kind"]: r
@@ -275,3 +283,43 @@ def test_manifest_enrichment_preserves_policy_links_and_unrelated_resources():
     )
     assert result["$core.compute.volumes"]["disk"]["ephemeral"] is True
     assert migration.enrich_resources(result) == result
+
+
+def test_migration_normalizes_local_driver_pool_list_and_target_shape():
+    original = {
+        "driver_spec": {"kind": "exordos_local_hyper", "storage_pool": "default"},
+        "target_fields": {"driver_spec": {"kind": None, "storage_pool": None}},
+    }
+    result = migration.enrich(original)
+    assert result["driver_spec"]["storage_pool"] == [
+        {"name": "default", "tier": "WARM", "ephemeral": True}
+    ]
+    assert result["target_fields"]["driver_spec"]["storage_pool"] == [
+        {"name": None, "tier": None, "ephemeral": None}
+    ]
+    assert migration.enrich(result) == result
+    assert original["driver_spec"]["storage_pool"] == "default"
+
+
+def test_bootstrap_converts_local_pool_before_typed_restore():
+    from unittest import mock
+
+    from exordos_core.bootstrap import defaults
+
+    host = {
+        "kind": "exordos_local_hyper",
+        "connection_uri": "test:///default",
+        "node": str(uuid.uuid4()),
+        "storage_pool": "default",
+    }
+    with (
+        mock.patch.object(defaults, "apply_flat_network"),
+        mock.patch.object(
+            defaults.compute_models.MachinePool,
+            "objects",
+            mock.Mock(get_all=mock.Mock(return_value=[])),
+        ),
+        mock.patch.object(defaults.compute_models.MachinePool, "insert"),
+        mock.patch.object(defaults.ua_models.NodeEncryptionKey, "get_or_create"),
+    ):
+        defaults.apply_startup_db({"stand": {"hypervisors": [host]}})

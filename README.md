@@ -71,6 +71,10 @@ This branch requires the matching `gcl_sdk` branch `feat/disk-scheduling`
 SDK without these APIs is insufficient.
 
 Until that SDK release is published, `uv.lock` pins the development SDK
-commit `39a8233e5c518d0e114a02920ad32a6cc4c48194` through `tool.uv.sources`.
+commit `2987730b84e090666ecf46b64a6e6cecdfaf1872` through `tool.uv.sources`.
 This makes `uv sync --locked` reproducible without resolving an older SDK
 from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.
+
+The disk scheduling migration also converts existing local hypervisor driver
+configuration to the list-of-pools schema. Update the CLI together with the
+SDK and core so new hypervisor registrations use that schema too.
