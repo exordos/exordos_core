@@ -490,3 +490,51 @@ def test_cluster_pool_names_need_not_be_unique_across_clusters(scheduler, monkey
     request = _requested_volume(None, 10, ic.DiskTier.WARM.value, True)
     result = scheduler._place_volume_into_pool(request, _machine_pool_bundle([], []))
     assert result.storage_pool == str(big.storage_pools[0].uuid)
+
+
+@pytest.mark.parametrize("sizes, fits", [([10], True), ([30, 30], False)])
+def test_idle_machine_preflight_does_not_reserve_cluster_space(
+    scheduler, monkeypatch, sizes, fits
+):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    scheduler._storage_reservations = {str(cluster.uuid): {"previous": 1 << 30}}
+    pool = _machine_pool_bundle([], [])
+    node = base.NodeBundle(
+        SimpleNamespace(uuid=sys_uuid.uuid4()),
+        [_requested_volume(None, size, "COLD", False) for size in sizes],
+    )
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+    assert (
+        scheduler._machine_has_disk_capacity(node, machine, {pool.pool.uuid: pool})
+        is fits
+    )
+    assert scheduler._storage_reservations == {str(cluster.uuid): {"previous": 1 << 30}}
+    assert cluster.storage_pools[0].capacity_provisioned == 0
+
+
+def test_idle_machine_reuse_preflight_does_not_save_cluster(scheduler, monkeypatch):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    cluster.save = MagicMock()
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    pool = _machine_pool_bundle(
+        [],
+        [
+            _machine_volume(
+                "image", 5, "COLD", False, str(cluster.storage_pools[0].uuid)
+            )
+        ],
+    )
+    node = base.NodeBundle(
+        SimpleNamespace(uuid=sys_uuid.uuid4()),
+        [_requested_volume("image", 10, "COLD", False)],
+    )
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+    assert scheduler._machine_has_disk_capacity(node, machine, {pool.pool.uuid: pool})
+    cluster.save.assert_not_called()
+    assert pool.volumes[0].node_volume is None
+    assert cluster.storage_pools[0].capacity_provisioned == 0

@@ -207,6 +207,8 @@ class SchedulerService(basic.BasicService):
             staged=getattr(self, "_storage_reservations", {}),
         )
         if result is not None:
+            if getattr(self, "_placement_preview", False) and result[1] is not None:
+                return copy.deepcopy(result[0]), result[1]
             return result
 
         raise ValueError(
@@ -222,6 +224,8 @@ class SchedulerService(basic.BasicService):
         if result is None:
             raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
 
+        if getattr(self, "_placement_preview", False) and result[1] is not None:
+            return copy.deepcopy(result[0]), result[1]
         return result
 
     def _build_machine_volume(
@@ -345,7 +349,9 @@ class SchedulerService(basic.BasicService):
 
             # Allocate additional space for the volume
             storage_pool.allocate_capacity(need_size)
-            if owner_cluster is not None:
+            if owner_cluster is not None and not getattr(
+                self, "_placement_preview", False
+            ):
                 owner_cluster.save()
 
             # Remove the volume from the pool
@@ -442,8 +448,13 @@ class SchedulerService(basic.BasicService):
         # Run the same placement algorithm on a copy: sum all allocations,
         # including reusable disks, without changing real capacity or ownership.
         candidate = copy.deepcopy(pool)
+        preview = copy.copy(self)
+        preview._placement_preview = True
+        preview._storage_reservations = copy.deepcopy(
+            getattr(self, "_storage_reservations", {})
+        )
         try:
-            self._allocate_node_volumes(node, candidate)
+            preview._allocate_node_volumes(node, candidate)
         except ValueError:
             return False
         return True
