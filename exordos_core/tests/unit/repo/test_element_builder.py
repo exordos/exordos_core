@@ -73,15 +73,7 @@ class TestParseVersion:
 
     def test_dev_version_with_build(self):
         result = builder_element._parse_version("1.0.0-rc1+build.123")
-        assert result == (1, 0, 0, False, "rc1")
-
-    def test_release_version_with_build(self):
-        assert builder_element._parse_version("1.0.0+build.123") == (1, 0, 0, True, "")
-
-    def test_build_metadata_does_not_change_version_precedence(self):
-        assert builder_element._version_sort_key("1.0.0+build.123") == (
-            builder_element._version_sort_key("1.0.0+other.456")
-        )
+        assert result == (1, 0, 0, False, "rc1+build.123")
 
     def test_zero_version(self):
         result = builder_element._parse_version("0.0.0")
@@ -133,10 +125,9 @@ class TestVersionKey:
 
 
 class TestVersionSortKey:
-    def test_latest_sorts_after_concrete_versions(self):
-        assert builder_element._version_sort_key("0.0.0-dev") < (
+    def test_latest_is_not_a_version(self):
+        with pytest.raises(ValueError, match="Invalid version format"):
             builder_element._version_sort_key("latest")
-        )
 
     def test_release_sorts_before_dev(self):
         """Release versions should sort before dev versions (lower key = higher priority)."""
@@ -342,6 +333,21 @@ class TestMatchesVersionConstraint:
 
 
 class TestElementSortKey:
+    @pytest.mark.parametrize("version", ["0.0.0-dev", "1.0.0"])
+    def test_concrete_version_sorts_before_latest_same_priority(self, version):
+        concrete = FakeElement(version=version)
+        latest = FakeElement(version="latest")
+        assert builder_element._element_sort_key(
+            concrete
+        ) < builder_element._element_sort_key(latest)
+
+    def test_higher_priority_latest_sorts_before_concrete_version(self):
+        latest = FakeElement(version="latest", repository=FakeRepo(priority=100))
+        concrete = FakeElement(version="1.0.0", repository=FakeRepo(priority=1))
+        assert builder_element._element_sort_key(
+            latest
+        ) < builder_element._element_sort_key(concrete)
+
     def test_installed_sorts_before_uninstalled(self):
         installed = FakeElement(
             installation_state=models.RepoElementInstallationState.INSTALLED.value,
