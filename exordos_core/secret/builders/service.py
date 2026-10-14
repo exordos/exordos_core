@@ -178,16 +178,19 @@ class CertificateBuilder(sdk_builder.UniversalBuilderService):
             or current_instance.cert != actual_instance.cert
             or current_instance.expiration_at != actual_instance.expiration_at
         )
-        if cert_updated:
+        if cert_updated and current_instance.method.KIND != "manual":
             current_instance.key = actual_instance.key
             current_instance.cert = actual_instance.cert
+            current_instance.expiration_at = actual_instance.expiration_at
+
+        if current_instance.method.KIND == "manual":
             current_instance.expiration_at = actual_instance.expiration_at
 
         # Detect domain changes from the DP
         domains_updated = sorted(current_instance.domains) != sorted(
             actual_instance.domains
         )
-        if domains_updated:
+        if domains_updated and current_instance.method.KIND != "manual":
             current_instance.domains = actual_instance.domains
 
         if status_updated or cert_updated or domains_updated:

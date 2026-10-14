@@ -14,9 +14,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import re
 import typing as tp
 import uuid as sys_uuid
 
+from cryptography import x509
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
 from gcl_iam import algorithms as iam_algorithms
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.dm import models as ra_models
@@ -190,6 +194,10 @@ class DNSCoreCertificateMethod(AbstractCertificateMethod):
     KIND = "dns_core"
 
 
+class ManualCertificateMethod(AbstractCertificateMethod):
+    KIND = "manual"
+
+
 class Certificate(
     AbstractSecret,
     ra_models.ModelWithTags,
@@ -203,6 +211,7 @@ class Certificate(
     method = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(DNSCoreCertificateMethod),
+            types_dynamic.KindModelType(ManualCertificateMethod),
         ),
         required=True,
         default=DNSCoreCertificateMethod,
@@ -232,12 +241,48 @@ class Certificate(
     # - DP: Is the threshold overcame?
     overcome_threshold = properties.property(types.Boolean(), default=False)
 
+    @staticmethod
+    def validate_manual_certificate(key: str, cert: str) -> x509.Certificate:
+        """Validate an imported PEM pair and return its leaf certificate."""
+        if not isinstance(key, str) or not isinstance(cert, str):
+            raise ValueError("manual certificates require string key and cert")
+        if not key or not cert:
+            raise ValueError("manual certificates require both key and cert")
+        private_key = serialization.load_pem_private_key(key.encode(), password=None)
+        chain = x509.load_pem_x509_certificates(cert.encode())
+        remainder = re.sub(
+            r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+            "",
+            cert,
+            flags=re.DOTALL,
+        )
+        if remainder.strip():
+            raise ValueError("certificate chain contains non-certificate data")
+        for child, issuer in zip(chain, chain[1:]):
+            try:
+                child.verify_directly_issued_by(issuer)
+            except InvalidSignature as exc:
+                raise ValueError("certificate chain has an invalid signature") from exc
+        certificate = chain[0]
+        encoding = serialization.Encoding.DER
+        form = serialization.PublicFormat.SubjectPublicKeyInfo
+        if private_key.public_key().public_bytes(
+            encoding, form
+        ) != certificate.public_key().public_bytes(encoding, form):
+            raise ValueError("certificate and private key do not match")
+        return certificate
+
+    def validate(self):
+        super().validate()
+        if self.method.KIND == "manual":
+            self.validate_manual_certificate(self.key, self.cert)
+
     def get_resource_target_fields(self) -> tp.Set[str]:
         """Return the collection of target fields.
 
         Refer to the Resource model for more details about target fields.
         """
-        return {
+        fields = {
             "method",
             "email",
             "domains",
@@ -249,6 +294,10 @@ class Certificate(
             "expiration_threshold",
             "overcome_threshold",
         }
+
+        if self.method.KIND == "manual":
+            fields.update({"key", "cert"})
+        return fields
 
     @classmethod
     def get_new_certificates(
