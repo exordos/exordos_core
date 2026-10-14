@@ -197,6 +197,39 @@ def test_migration_updates_target_actual_and_persisted_sources():
                 resources["$core.compute.nodes"]["vm"]["disk_spec"]["disks"][0]["tier"]
                 == ic.DiskTier.WARM.value
             )
+        migration.migration_step.downgrade(Session())
+        assert (
+            connection.execute("SELECT driver_spec FROM machine_pools").fetchone()[
+                "driver_spec"
+            ]["storage_pool"]
+            == "default"
+        )
+        assert (
+            "tier"
+            not in connection.execute("SELECT disk_spec FROM nodes").fetchone()[
+                "disk_spec"
+            ]
+        )
+        for table in ("ua_target_resources", "ua_actual_resources"):
+            for row in connection.execute(
+                f"SELECT * FROM {table} WHERE kind = 'pool_volume'"
+            ):
+                assert "tier" not in row["value"]
+                assert "ephemeral" not in row["value"]
+                assert "storage_pool" not in row["value"]
+                assert row["hash"] == ""
+        for table, column in (
+            ("em_manifests", "resources"),
+            ("repo_elements", "manifest"),
+        ):
+            value = connection.execute(f"SELECT {column} FROM {table}").fetchone()[
+                column
+            ]
+            resources = value if column == "resources" else value["resources"]
+            assert (
+                "tier"
+                not in resources["$core.compute.nodes"]["vm"]["disk_spec"]["disks"][0]
+            )
         connection.rollback()
 
 
@@ -238,6 +271,15 @@ def test_full_migration_graph_upgrades_legacy_schema(previous_head):
                 ).fetchone()[0]
                 == "'WARM'::character varying"
             )
+        core_engine.rollback_migration("0005-volumes-tier-ephemeral-fba1de.py")
+        with psycopg.connect(dsn) as connection:
+            assert (
+                connection.execute(
+                    "SELECT count(*) FROM information_schema.columns WHERE table_name='node_volumes' AND column_name='tier'"
+                ).fetchone()[0]
+                == 0
+            )
+        core_engine.apply_migration(core_engine.get_latest_migration())
     finally:
         engines.engine_factory.destroy_engine()
         with psycopg.connect(admin_dsn, autocommit=True) as admin:
@@ -301,7 +343,8 @@ def test_migration_normalizes_local_driver_pool_list_and_target_shape():
     assert original["driver_spec"]["storage_pool"] == "default"
 
 
-def test_bootstrap_converts_local_pool_before_typed_restore():
+@pytest.mark.parametrize("pool_name", ["default", ""])
+def test_bootstrap_converts_local_pool_before_typed_restore(pool_name):
     from unittest import mock
 
     from exordos_core.bootstrap import defaults
@@ -310,8 +353,9 @@ def test_bootstrap_converts_local_pool_before_typed_restore():
         "kind": "exordos_local_hyper",
         "connection_uri": "test:///default",
         "node": str(uuid.uuid4()),
-        "storage_pool": "default",
+        "storage_pool": pool_name,
     }
+    captured = []
     with (
         mock.patch.object(defaults, "apply_flat_network"),
         mock.patch.object(
@@ -319,7 +363,40 @@ def test_bootstrap_converts_local_pool_before_typed_restore():
             "objects",
             mock.Mock(get_all=mock.Mock(return_value=[])),
         ),
-        mock.patch.object(defaults.compute_models.MachinePool, "insert"),
+        mock.patch.object(
+            defaults.compute_models.MachinePool,
+            "insert",
+            new=lambda self: captured.append(self.driver_spec.storage_pool),
+        ),
         mock.patch.object(defaults.ua_models.NodeEncryptionKey, "get_or_create"),
     ):
         defaults.apply_startup_db({"stand": {"hypervisors": [host]}})
+        assert captured == [([{"name": pool_name}] if pool_name else [])]
+
+
+def test_downgrade_restores_local_driver_and_target_shape():
+    original = {
+        "driver_spec": {"kind": "exordos_local_hyper", "storage_pool": "default"},
+        "target_fields": {"driver_spec": {"kind": None, "storage_pool": None}},
+        "disk_spec": {"kind": "root_disk", "size": 10},
+    }
+    assert migration.strip(migration.enrich(original)) == original
+    assert (
+        migration.strip(
+            {"driver_spec": {"kind": "exordos_local_hyper", "storage_pool": []}}
+        )["driver_spec"]["storage_pool"]
+        is None
+    )
+    assert migration.strip(migration.strip(original)) == original
+
+
+def test_downgrade_refuses_to_discard_multiple_local_pools():
+    with pytest.raises(ValueError, match="multiple storage pools"):
+        migration.strip(
+            {
+                "driver_spec": {
+                    "kind": "exordos_local_hyper",
+                    "storage_pool": [{"name": "one"}, {"name": "two"}],
+                }
+            }
+        )

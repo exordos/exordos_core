@@ -106,7 +106,7 @@ Clone the project:
 git clone https://github.com/infraguys/todo_application.git && cd todo_application
 ```
 
-The `exordos init` command allows you to initialize a new element interactively but you can also use it with flags. We will use the flags approach here to tier things up.
+The `exordos init` command allows you to initialize a new element interactively but you can also use it with flags. We will use the flags approach here to speed things up.
 
 ```bash
 exordos init \

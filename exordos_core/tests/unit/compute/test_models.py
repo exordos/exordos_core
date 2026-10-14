@@ -76,3 +76,69 @@ class TestVolumeSpeedEphemeralReadOnly:
 
         with pytest.raises(exceptions.ReadOnlyProperty):
             volume.ephemeral = False
+
+
+@pytest.mark.parametrize("model", [models.Node, models.NodeSet])
+@pytest.mark.parametrize("field,new_value", [("tier", "COLD"), ("ephemeral", False)])
+def test_node_policy_update_is_rejected_before_mutating_other_fields(
+    model, field, new_value
+):
+    original = {
+        "kind": "root_disk",
+        "image": "https://example.com/root.raw",
+        "size": 10,
+    }
+    node = model.restore_from_simple_view(
+        name="original",
+        project_id=sys_uuid.uuid4(),
+        cores=1,
+        ram=512,
+        disk_spec=original,
+    )
+    with pytest.raises(models.ImmutableDiskPolicyError):
+        node.update_dm(
+            {
+                "name": "changed",
+                "disk_spec": node.disk_spec.__class__.restore_from_simple_view(
+                    **{**original, field: new_value}
+                ),
+            }
+        )
+    assert node.name == "original"
+    assert node.disk_spec.size == 10
+
+
+@pytest.mark.parametrize("model", [models.Node, models.NodeSet])
+def test_node_disk_resize_preserves_policy(model):
+    original = {
+        "kind": "disks",
+        "disks": [
+            {
+                "size": 10,
+                "image": "https://example.com/root.raw",
+                "tier": "COLD",
+                "ephemeral": False,
+            }
+        ],
+    }
+    node = model.restore_from_simple_view(
+        name="node", project_id=sys_uuid.uuid4(), cores=1, ram=512, disk_spec=original
+    )
+    node.update_dm(
+        {
+            "disk_spec": node.disk_spec.__class__.restore_from_simple_view(
+                **{
+                    "kind": "disks",
+                    "disks": [
+                        {
+                            "size": 12,
+                            "image": "https://example.com/root.raw",
+                            "tier": "COLD",
+                            "ephemeral": False,
+                        }
+                    ],
+                }
+            )
+        }
+    )
+    assert node.disk_spec.disks[0]["size"] == 12

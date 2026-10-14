@@ -184,6 +184,12 @@ FIELD_OVERRIDES = {
         "properties": {
             "kind": {"type": "string", "enum": ["root_disk"]},
             "image": {"type": "string", "description": "URL of the disk image."},
+            "tier": {
+                "type": "string",
+                "enum": ["COLD", "WARM", "HOT"],
+                "default": "WARM",
+            },
+            "ephemeral": {"type": "boolean", "default": True},
             "size": {
                 "type": "integer",
                 "minimum": 1,

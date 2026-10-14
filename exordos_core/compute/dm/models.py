@@ -23,6 +23,7 @@ from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra import constants as ic
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
+from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -149,7 +150,34 @@ class UnscheduledVolume(models.ModelWithUUID, orm.SQLStorableMixin):
     )
 
 
+class ImmutableDiskPolicyError(ra_e.ValidationErrorException):
+    message = "Changing tier or ephemeral of an existing disk is unsupported"
+
+
+def validate_disk_policy_update(old_spec, new_spec):
+    def disks(spec):
+        value = spec.as_simple_view() if hasattr(spec, "as_simple_view") else spec
+        if value.get("kind") == "root_disk":
+            return [value]
+        return value.get("disks", [])
+
+    for old, new in zip(disks(old_spec), disks(new_spec)):
+        if any(
+            old.get(field, default) != new.get(field, default)
+            for field, default in (("tier", "WARM"), ("ephemeral", True))
+        ):
+            raise ImmutableDiskPolicyError()
+
+
+class ImmutableDiskPolicyMixin:
+    def update_dm(self, values):
+        if "disk_spec" in values:
+            validate_disk_policy_update(self.disk_spec, values["disk_spec"])
+        super().update_dm(values)
+
+
 class NodeSet(
+    ImmutableDiskPolicyMixin,
     infra_models.NodeSet,
     ua_models.InstanceWithDerivativesMixin,
     QuotaModelMixin,
@@ -192,6 +220,7 @@ class NodeSet(
 
 
 class Node(
+    ImmutableDiskPolicyMixin,
     infra_models.Node,
     QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,

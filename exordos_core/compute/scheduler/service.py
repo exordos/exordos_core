@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 import logging
 import random
 import typing as tp
@@ -413,7 +414,24 @@ class SchedulerService(basic.BasicService):
         pool.pool.avail_cores -= machine.cores
         pool.pool.avail_ram -= machine.ram
 
-    def _schedule_on_existing_machines(self) -> tp.Tuple[base.MachineBundle, ...]:
+    def _machine_has_disk_capacity(self, node, machine, pools):
+        if not node.volumes:
+            return True
+        pool = pools.get(machine.machine.pool)
+        if pool is None:
+            return False
+        # Run the same placement algorithm on a copy: sum all allocations,
+        # including reusable disks, without changing real capacity or ownership.
+        candidate = copy.deepcopy(pool)
+        try:
+            self._allocate_node_volumes(node, candidate)
+        except ValueError:
+            return False
+        return True
+
+    def _schedule_on_existing_machines(
+        self, pools=None
+    ) -> tp.Tuple[base.MachineBundle, ...]:
         unscheduled = self._get_unscheduled_nodes()
 
         # TODO(akremenetsky): Idle machines are limited by some number
@@ -421,6 +439,9 @@ class SchedulerService(basic.BasicService):
         # idle machines. The fetched machines may be not suitable for
         # unscheduled nodes and we will create another machines.
         idle_machines = self._get_idle_machines()
+        pools = {
+            p.pool.uuid: p for p in (self._get_pools() if pools is None else pools)
+        }
 
         idle_hws = [
             m
@@ -446,6 +467,12 @@ class SchedulerService(basic.BasicService):
             # placement constraints.
             for filter in self._machine_filters:
                 idle_machines = filter.filter(unscheduled_node, idle_machines)
+
+            idle_machines = [
+                m
+                for m in idle_machines
+                if self._machine_has_disk_capacity(unscheduled_node, m, pools)
+            ]
 
             # There are no available HW machines for this node
             # This means we unable to proceed scheduling process
@@ -721,7 +748,7 @@ class SchedulerService(basic.BasicService):
             # If there are no available machines for a node,
             # the nodes just return
             try:
-                unscheduled_nodes = self._schedule_on_existing_machines()
+                unscheduled_nodes = self._schedule_on_existing_machines(pools)
             except Exception:
                 LOG.exception("Error scheduling nodes:")
                 unscheduled_nodes = []

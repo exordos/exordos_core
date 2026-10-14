@@ -88,6 +88,50 @@ def enrich(value, volume=False, mask=False, pool_volume=False):
     return result
 
 
+def strip(value, volume=False, mask=False, pool_volume=False):
+    """Restore JSON accepted by the pre-scheduling models."""
+    result = copy.deepcopy(value)
+
+    def remove_policy(item):
+        if isinstance(item, dict):
+            item.pop("tier", None)
+            item.pop("ephemeral", None)
+
+    if volume:
+        remove_policy(result)
+    if pool_volume:
+        result.pop("storage_pool", None)
+    spec = result.get("disk_spec")
+    if isinstance(spec, dict):
+        remove_policy(spec)
+        for disk in spec.get("disks", []):
+            remove_policy(disk)
+    for pool in result.get("storage_pools", []):
+        remove_policy(pool)
+    driver = result.get("driver_spec")
+    if isinstance(driver, dict) and driver.get("kind") == "exordos_local_hyper":
+        entries = driver.get("storage_pool")
+        if isinstance(entries, list):
+            if len(entries) > 1:
+                raise ValueError(
+                    "Cannot downgrade a local hypervisor with multiple storage pools"
+                )
+            driver["storage_pool"] = entries[0]["name"] if entries else None
+    fields = result.get("target_fields")
+    if isinstance(fields, dict):
+        result["target_fields"] = strip(
+            fields, volume=volume, mask=True, pool_volume=pool_volume
+        )
+        driver_fields = result["target_fields"].get("driver_spec")
+        if (
+            isinstance(driver, dict)
+            and driver.get("kind") == "exordos_local_hyper"
+            and isinstance(driver_fields, dict)
+        ):
+            driver_fields["storage_pool"] = None
+    return result
+
+
 COMPUTE_PREFIXES = {
     "$core.compute.nodes",
     "$core.compute.sets",
@@ -96,14 +140,14 @@ COMPUTE_PREFIXES = {
 }
 
 
-def enrich_resources(resources):
+def enrich_resources(resources, transform=enrich):
     result = copy.deepcopy(resources)
     for prefix, instances in result.items():
         if prefix not in COMPUTE_PREFIXES or not isinstance(instances, dict):
             continue
         for name, value in instances.items():
             if isinstance(value, dict):
-                instances[name] = enrich(
+                instances[name] = transform(
                     value, volume=prefix == "$core.compute.volumes"
                 )
     return result
@@ -124,6 +168,9 @@ class MigrationStep(migrations.AbstractMigrationStep):
         return False
 
     def upgrade(self, session):
+        self._transform(session, enrich)
+
+    def _transform(self, session, transform):
         # Enrich the persisted sources too, so builders keep the same defaults.
         for table, column in (
             ("nodes", "disk_spec"),
@@ -134,7 +181,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             rows = session.execute(f"SELECT uuid, {column} FROM {table}").fetchall()
             for row in rows:
                 old = row[column]
-                new = enrich({column: old})[column]
+                new = transform({column: old})[column]
                 if new != old:
                     expression = (
                         "ARRAY(SELECT jsonb_array_elements(CAST(%s AS jsonb)))"
@@ -153,7 +200,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
         for row in rows:
             if row["resource_link_prefix"] not in COMPUTE_PREFIXES:
                 continue
-            value = enrich(
+            value = transform(
                 row["value"],
                 volume=row["resource_link_prefix"] == "$core.compute.volumes",
             )
@@ -174,11 +221,11 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 if not isinstance(old, dict):
                     continue
                 if column == "resources":
-                    new = enrich_resources(old)
+                    new = enrich_resources(old, transform)
                 else:
                     new = copy.deepcopy(old)
                     if isinstance(new.get("resources"), dict):
-                        new["resources"] = enrich_resources(new["resources"])
+                        new["resources"] = enrich_resources(new["resources"], transform)
                 if new != old:
                     session.execute(
                         f"UPDATE {table} SET {column} = CAST(%s AS jsonb), updated_at = current_timestamp WHERE uuid = %s",
@@ -200,7 +247,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 (list(RESOURCE_KINDS),),
             ).fetchall()
             for row in rows:
-                value = enrich(
+                value = transform(
                     row["value"],
                     volume=row["kind"]
                     in (
@@ -227,8 +274,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 )
 
     def downgrade(self, session):
-        # Backfilled JSON fields remain valid optional data for the old models.
-        pass
+        self._transform(session, strip)
 
 
 migration_step = MigrationStep()

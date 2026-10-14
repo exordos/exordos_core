@@ -406,7 +406,11 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
         if hypervisor.get("kind") == "exordos_local_hyper" and isinstance(
             hypervisor.get("storage_pool"), str
         ):
-            hypervisor["storage_pool"] = [{"name": hypervisor["storage_pool"]}]
+            hypervisor["storage_pool"] = (
+                [{"name": hypervisor["storage_pool"]}]
+                if hypervisor["storage_pool"]
+                else []
+            )
         pool_data = {
             "name": "hypervisor",
             "machine_type": "VM",

@@ -78,3 +78,13 @@ from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.
 The disk scheduling migration also converts existing local hypervisor driver
 configuration to the list-of-pools schema. Update the CLI together with the
 SDK and core so new hypervisor registrations use that schema too.
+
+Disk policy changes on existing node disks are rejected before persisting API
+or manifest updates. Resizing a disk with its existing policy remains supported.
+The curated MCP node tools expose `tier` and `ephemeral` too.
+
+The disk scheduling JSON migration supports downgrade: it removes the added
+policy fields, restores single local-pool names, and invalidates resource hashes
+for rebuilding by the previous release. A local hypervisor with multiple pools
+cannot be represented by the old schema; downgrade refuses that configuration
+rather than silently discarding pool assignments.

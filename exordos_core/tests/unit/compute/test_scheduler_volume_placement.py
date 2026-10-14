@@ -280,3 +280,57 @@ def test_scheduler_tries_next_compute_pool_after_disk_failure(scheduler, monkeyp
     monkeypatch.setattr(scheduler, "_place_node_into_pool", place)
     scheduler._schedule_on_pools([node], [first, second])
     assert attempted == [first, second]
+
+
+def test_idle_machine_selection_skips_pool_without_requested_disk_policy(
+    scheduler, monkeypatch
+):
+    from types import SimpleNamespace
+    from unittest import mock
+
+    unsuitable = _machine_pool_bundle([_storage_pool("cache", "WARM", True, 100)], [])
+    suitable = _machine_pool_bundle([_storage_pool("durable", "WARM", False, 10)], [])
+    machines = [
+        base.MachineBundle(
+            SimpleNamespace(
+                uuid=sys_uuid.uuid4(),
+                pool=p.pool.uuid,
+                machine_type="VM",
+                save=mock.Mock(),
+            ),
+            [],
+        )
+        for p in (unsuitable, suitable)
+    ]
+    node = base.NodeBundle(
+        SimpleNamespace(
+            uuid=sys_uuid.uuid4(), node_type=ua_pool.NodeType.VM, save=mock.Mock()
+        ),
+        [_requested_volume(None, 10, "WARM", False)],
+    )
+    monkeypatch.setattr(scheduler, "_get_unscheduled_nodes", lambda: [node])
+    monkeypatch.setattr(scheduler, "_get_idle_machines", lambda: machines)
+    assert scheduler._schedule_on_existing_machines([unsuitable, suitable]) == []
+    machines[0].machine.save.assert_not_called()
+    machines[1].machine.save.assert_called_once()
+    assert suitable.pool.storage_pools[0].capacity_provisioned == 0
+
+
+def test_idle_machine_preflight_checks_total_disk_capacity_without_allocating(
+    scheduler,
+):
+    from types import SimpleNamespace
+
+    pool = _machine_pool_bundle([_storage_pool("local", "WARM", True, 10)], [])
+    node = base.NodeBundle(
+        SimpleNamespace(uuid=sys_uuid.uuid4()),
+        [
+            _requested_volume(None, 6, "WARM", True),
+            _requested_volume(None, 6, "WARM", True),
+        ],
+    )
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+    assert not scheduler._machine_has_disk_capacity(
+        node, machine, {pool.pool.uuid: pool}
+    )
+    assert pool.pool.storage_pools[0].capacity_provisioned == 0
