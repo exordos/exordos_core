@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import uuid
 
 from gcl_sdk.agents.universal.drivers import pool as sdk_pool
+from gcl_sdk.agents.universal.drivers import rawstor_specs
 
 from exordos_core.compute.pool.dm import models as compute
 from exordos_core.storage.dm import models as storage
@@ -17,7 +18,11 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
             endpoint="mds://core:7776/"
         ),
     )
-    pool = storage.StoragePool(name="persistent", cluster=cluster.uuid)
+    pool = storage.StoragePool(
+        name="persistent",
+        cluster=cluster.uuid,
+        driver_spec=rawstor_specs.RawstorPoolDriverSpec(),
+    )
     monkeypatch.setattr(
         storage.StoragePool, "objects", MagicMock(get_one=MagicMock(return_value=pool))
     )
@@ -36,9 +41,9 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
     assert "storage_policy" not in volume.dump_to_simple_view()
 
     pool.name = "renamed"
-    pool.mirrors = 3
-    pool.chunk_size = 2 << 30
-    pool.failure_domain = "rack"
+    pool.driver_spec.mirrors = 3
+    pool.driver_spec.chunk_size = 2 << 30
+    pool.driver_spec.failure_domain = "rack"
     cluster.driver_spec.endpoint = "mds://other-core:7778/"
     second = volume.to_ua_resource()
     assert second.value["storage_pool"] == str(pool.uuid)
