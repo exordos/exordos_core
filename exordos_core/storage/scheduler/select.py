@@ -58,7 +58,9 @@ def collect_storage_pool_candidates(
                 continue
             volumes = compute_models.MachineVolume.objects.get_all(
                 filters={
-                    "storage_location": dm_filters.EQ(cluster.driver_spec.endpoint)
+                    "storage_pool": dm_filters.In(
+                        [str(p.uuid) for p in cluster.storage_pools]
+                    )
                 }
             )
             promised = {str(v.uuid): v.size << 30 for v in volumes}
@@ -101,6 +103,16 @@ def select_storage_pool_with_clusters(
     candidates = collect_storage_pool_candidates(local_pools, staged)
     owner_by_id = {id(pool): owner for pool, owner in candidates}
 
+    if assigned_name is not None:
+        assigned = [
+            (p, c)
+            for p, c in candidates
+            if (str(p.uuid) if c else p.name) == assigned_name
+        ]
+        if len(assigned) != 1 or not assigned[0][0].has_capacity(size):
+            return None
+        return assigned[0]
+
     selected = ua_pool.select_storage_pool(
         (pool for pool, _owner in candidates), speed, ephemeral, size, assigned_name
     )
@@ -113,7 +125,6 @@ def select_storage_pool_with_clusters(
 def find_storage_pool_by_name_with_clusters(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     name: str,
-    location: tp.Optional[str] = None,
 ) -> tp.Optional[PoolCandidate]:
     """Find a pool already assigned to a volume by name.
 
@@ -123,8 +134,7 @@ def find_storage_pool_by_name_with_clusters(
     matches = [
         (pool, owner)
         for pool, owner in collect_storage_pool_candidates(local_pools)
-        if pool.name == name
-        and (owner.driver_spec.endpoint if owner else None) == location
+        if (str(pool.uuid) if owner else pool.name) == name
     ]
 
     if not matches:
