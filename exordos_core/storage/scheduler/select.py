@@ -90,7 +90,7 @@ def collect_storage_pool_candidates(
 
 def select_storage_pool_with_clusters(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
-    speed: str,
+    tier: str,
     ephemeral: bool,
     size: int,
     assigned_name: tp.Optional[str] = None,
@@ -114,7 +114,7 @@ def select_storage_pool_with_clusters(
         return assigned[0]
 
     selected = ua_pool.select_storage_pool(
-        (pool for pool, _owner in candidates), speed, ephemeral, size, assigned_name
+        (pool for pool, _owner in candidates), tier, ephemeral, size, assigned_name
     )
     if selected is None:
         return None

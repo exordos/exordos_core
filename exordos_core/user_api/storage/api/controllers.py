@@ -111,7 +111,7 @@ class StorageClustersController(
                     uuid=sys_uuid.UUID(uuid),
                     cluster=cluster.uuid,
                     name=policy["name"],
-                    speed=policy["speed"],
+                    tier=policy["tier"],
                     ephemeral=policy["ephemeral"],
                     driver_spec=ua_pool.rawstor_specs.RawstorPoolDriverSpec(
                         **{
@@ -484,8 +484,8 @@ class StoragePoolsController(ClusterMemberController):
         policy = {
             field: data.get(field, default)
             for field, default in {
-                "speed": "WARM",
-                "ephemeral": False,
+                "tier": "WARM",
+                "ephemeral": True,
                 "mirrors": 2,
                 "chunk_size": 1 << 30,
                 "failure_domain": "server",

@@ -21,14 +21,14 @@ the old single-OST configuration and is no longer a cluster API field.
 
 Each new cluster has two policies sharing the same OST capacity:
 
-| Pool | Speed | Ephemeral | Mirrors | Failure domain | Chunk size |
+| Pool | Tier | Ephemeral | Mirrors | Failure domain | Chunk size |
 | --- | --- | --- | --- | --- | --- |
-| persistent | WARM | false | 2 | server | 1 GiB |
-| ephemeral | WARM | true | 1 | server | 1 GiB |
+| persistent | COLD | false | 2 | server | 1 GiB |
+| ephemeral | COLD | true | 1 | server | 1 GiB |
 
 A persistent disk needs at least two distinct servers. A cluster with one
 server can schedule ephemeral disks only. Local qcow2 pools and new disk
-requests default to HOT and ephemeral; use `--speed warm --no-ephemeral`
+requests default to WARM and ephemeral; use `--tier cold --no-ephemeral`
 for persistent rawstor disks.
 
 A cluster-backed machine volume stores the selected storage pool UUID in
@@ -125,7 +125,7 @@ exordos storages pools update POOL_UUID --mirrors 2 --failure-domain rack \
   --chunk-size 64MiB
 ```
 
-Mirrors, failure domain, chunk size, speed and ephemeral belong to the pool.
+Mirrors, failure domain, chunk size, tier and ephemeral belong to the pool.
 Changing a policy applies to newly created disks; existing disks retain the
 policy recorded when scheduled. Chunk sizes must be powers of two, up to 1 GiB.
 MDS endpoints cannot change after registration. Cluster deletion automatically
@@ -180,7 +180,7 @@ pointing to the matching `gcl_sdk` checkout on `feat/rawstor`.
 
 ## Driver configuration
 
-Storage pools keep `cluster`, `name`, `speed` and `ephemeral` as common fields.
+Storage pools keep `cluster`, `name`, `tier` and `ephemeral` as common fields.
 Rawstor settings are nested in `driver_spec`:
 
 ```json
