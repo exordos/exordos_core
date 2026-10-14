@@ -1717,9 +1717,14 @@ class Port(
                 )
             # The network lock serializes MAC assignment across all its subnets.
             network_ref = getattr(subnet.network, "uuid", subnet.network)
-            Network.objects.get_one(
+            network = Network.objects.get_one(
                 filters={"uuid": dm_filters.EQ(network_ref)}, session=s, locked=True
             )
+            if (
+                self.source is None
+                and network.driver_spec.get("driver") == "flat_bridge"
+            ):
+                self.source = subnet.name
             self._validate_references()
             self._assign_index(s)
             Subnet.objects.get_one(

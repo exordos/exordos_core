@@ -370,6 +370,7 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
         "em_core_network_catalog_addresses": (
             "exordos_core.user_api.network.dm.models:Address"
         ),
+        "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
     },
     "filters": {
         "em_core_compute_nodes": None,

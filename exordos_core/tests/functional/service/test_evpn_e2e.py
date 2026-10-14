@@ -24,6 +24,8 @@ configs (only ``ovs-vsctl``/``systemctl``/``ip`` are mocked).
 
 import json
 import os
+import pathlib
+import runpy
 from unittest import mock
 import uuid as sys_uuid
 
@@ -894,6 +896,73 @@ class _EvpnStand:
 
 
 class TestOvsEvpnE2E(_EvpnStand):
+    @pytest.mark.parametrize("overlay", [False, True])
+    def test_inline_port_sets_flat_source(self, overlay):
+        _, subnet = self._network() if overlay else self._flat_network()
+        subnet.name = "eno1"
+        subnet.update()
+        node = models.Node(
+            name="inline-port-source",
+            cores=1,
+            ram=1024,
+            disk_spec=sdk_models.RootDiskSpec(image="ubuntu_24.04"),
+            project_id=c.ZERO_UUID,
+            networking=[{"port": {"subnet": str(subnet.uuid)}}],
+        )
+        node.insert()
+        port = models.Port.objects.get_one(filters={"node": dm_filters.EQ(node.uuid)})
+        self._created.extend([port, node])
+        assert port.source == (None if overlay else subnet.name)
+
+    @pytest.mark.parametrize(
+        "overlay, source", [(False, None), (False, "custom-network"), (True, None)]
+    )
+    def test_flat_source_migration_preserves_other_ports(self, overlay, source):
+        network, subnet = self._network() if overlay else self._flat_network()
+        subnet.name = "eno1"
+        subnet.update()
+        node = self._pinned_node(network.uuid, "source-migration")
+        pool = self._pool()
+        machine = self._machine(node, pool)
+        port = self._port(subnet, node)
+        machine = models.Machine.objects.get_one(
+            filters={"uuid": dm_filters.EQ(machine.uuid)}
+        )
+        migration = runpy.run_path(
+            str(
+                pathlib.Path(__file__).parents[4]
+                / "migrations/0008-flat-port-source-89f12ab4.py"
+            )
+        )["migration_step"]
+        with contexts.Context().session_manager() as session:
+            session.execute(
+                "UPDATE compute_ports SET source = %s WHERE uuid = %s",
+                (source, str(port.uuid)),
+            )
+            migration.upgrade(session)
+        repaired = models.Port.objects.get_one(
+            filters={"uuid": dm_filters.EQ(port.uuid)}
+        )
+        refreshed = models.Machine.objects.get_one(
+            filters={"uuid": dm_filters.EQ(machine.uuid)}
+        )
+        expected = subnet.name if not overlay and source is None else source
+        assert repaired.source == expected
+        assert repaired.uuid == port.uuid
+        assert repaired.mac == port.mac
+        assert repaired.ipv4 == port.ipv4
+        assert (refreshed.updated_at > machine.updated_at) == (
+            not overlay and source is None
+        )
+        with contexts.Context().session_manager() as session:
+            migration.upgrade(session)
+        assert (
+            models.Machine.objects.get_one(
+                filters={"uuid": dm_filters.EQ(machine.uuid)}
+            ).updated_at
+            == refreshed.updated_at
+        )
+
     def test_binding_prefetch_sql_error_allows_live_fallback(self):
         from exordos_core.user_api.network.dm import models as catalog
 

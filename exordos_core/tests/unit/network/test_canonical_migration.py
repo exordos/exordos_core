@@ -10,9 +10,20 @@ from unittest import mock
 import uuid
 
 import pytest
+from restalchemy.storage.sql import migrations
 
 
 MIGRATIONS = Path(__file__).parents[4] / "migrations"
+
+
+def test_migration_head_includes_tokens_and_sdn():
+    engine = migrations.MigrationEngine(migrations_path=str(MIGRATIONS))
+    engine.get_latest_migration()
+    steps = engine.get_all_migrations()
+    assert set(steps["0007-merge-token-sdn-9673ab8e.py"]["depends"]) == {
+        "0005-add-managed-tokens-5b1e8c47.py",
+        "0006-sdn-api-contract-15df7a.py",
+    }
 
 
 def test_upgrade_refuses_unmaterialized_manifest_rules():

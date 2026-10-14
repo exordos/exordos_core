@@ -18,10 +18,17 @@ import configparser
 import pathlib
 from unittest import mock
 
+from gcl_sdk.agents.universal import utils as sdk_utils
 import pytest
 
 from exordos_core.bootstrap import defaults as bootstrap
 from exordos_core.cmd import bootstrap as cmd_bootstrap
+
+
+@pytest.mark.parametrize("model", cmd_bootstrap._CORE_AGENT_SECTIONS["models"].values())
+def test_core_agent_models_can_be_loaded(model):
+    assert sdk_utils.cfg_load_class(model)
+
 
 # A universal agent config persisted by a pre-border core image.
 _OLD_UA_CONFIG = """\
