@@ -101,7 +101,6 @@ def select_storage_pool_with_clusters(
     `collect_storage_pool_candidates`).
     """
     candidates = collect_storage_pool_candidates(local_pools, staged)
-    owner_by_id = {id(pool): owner for pool, owner in candidates}
 
     if assigned_name is not None:
         assigned = [
@@ -113,13 +112,18 @@ def select_storage_pool_with_clusters(
             return None
         return assigned[0]
 
-    selected = ua_pool.select_storage_pool(
-        (pool for pool, _owner in candidates), tier, ephemeral, size, assigned_name
-    )
-    if selected is None:
-        return None
-
-    return selected, owner_by_id[id(selected)]
+    # Local pools are addressed by name; cluster pools are addressed by UUID.
+    # Identical names in distinct clusters therefore remain valid candidates.
+    local_names = [pool.name for pool, owner in candidates if owner is None]
+    eligible = [
+        (pool, owner)
+        for pool, owner in candidates
+        if pool.ephemeral == ephemeral
+        and pool.has_capacity(size)
+        and (owner is not None or local_names.count(pool.name) == 1)
+    ]
+    exact = [(pool, owner) for pool, owner in eligible if pool.tier == tier]
+    return max(exact or eligible, key=lambda entry: entry[0].available, default=None)
 
 
 def find_storage_pool_by_name_with_clusters(
