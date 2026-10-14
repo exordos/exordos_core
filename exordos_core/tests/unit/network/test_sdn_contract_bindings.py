@@ -69,19 +69,16 @@ def test_node_creation_inputs_are_not_stored():
         cores=1,
         ram=1024,
         disk_spec=infra_models.DisksSpec(disks=[]),
-        networking=[],
-        network_activation_barrier={"rules": [str(uuid.uuid4())]},
+        default_network={},
     )
-    assert node.networking == []
-    assert node.network_activation_barrier["rules"]
+    assert node.default_network == {}
     assert not {"ports", "networking", "network_activation_barrier"} & set(
         node._get_prepared_data()
     )
     restored = compute.Node.restore(
         project_id=node.project_id, cores=1, ram=1024, disk_spec=node.disk_spec
     )
-    assert restored.networking is None
-    assert restored.network_activation_barrier == {}
+    assert restored.default_network is None
 
 
 @pytest.mark.parametrize(
@@ -122,24 +119,6 @@ def test_no_security_group_allows_all_but_an_attached_empty_group_denies():
         assert driver._compile_security_rules(port) == list(driver.DENY_ALL)
         groups.get_one_or_none.return_value = None
         assert driver._compile_security_rules(port) == list(driver.DENY_ALL)
-
-
-def test_inline_barrier_resolves_symbolic_group_reference():
-    from exordos_core.network.manifest import inline_activation_barrier
-
-    group, rule_id, element_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    item = SimpleNamespace(
-        element=SimpleNamespace(uuid=element_id),
-        resource_link_prefix="$core.network.catalog.security_group_rules",
-        value={"security_group": "$core.network.catalog.security_groups.$sg:uuid"},
-        uuid=rule_id,
-        _render_value=lambda value, engine: str(group),
-    )
-    resource = SimpleNamespace(element=item.element)
-    engine = SimpleNamespace(get_resources=lambda: [item])
-    assert inline_activation_barrier(
-        resource, {"networking": [{"security_groups": [str(group)]}]}, engine
-    ) == {"rules": [str(rule_id)]}
 
 
 def test_initial_barrier_includes_dependent_element_bindings():

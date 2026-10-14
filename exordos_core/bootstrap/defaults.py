@@ -18,16 +18,16 @@ import ipaddress
 import logging
 import os
 import pathlib
-import re
 import pwd
+import re
 import subprocess
 import tempfile
 import typing as tp
 import uuid as sys_uuid
 
-from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal import constants as ua_constants
 from gcl_sdk.agents.universal import utils as ua_utils
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as infra_models
 from restalchemy.dm import filters as dm_filters
@@ -160,7 +160,9 @@ def add_core_set(
 
         # Keep the model name: pool drivers add their domain prefix themselves.
         # The core name also prevents reflashing this running bootstrap node.
-        node.insert()
+        # Bootstrap supplies the known ports below, bypassing automatic placement.
+        node.default_network = {}
+        node._insert_node()
 
         if set_active:
             node.set_active()

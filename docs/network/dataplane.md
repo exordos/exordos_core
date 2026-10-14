@@ -173,9 +173,10 @@ flowchart TB
 ```
 
 `flat_bridge` updates the configured ISC DHCP service; it does not build an
-EVPN fabric or apply the overlay SG/NF pipeline. An omitted Node networking
-selector preserves
-the legacy flat default; `networking=[]` requests no automatic Port.
+EVPN fabric or apply the overlay SG/NF pipeline. Node `default_network` selects
+its primary Port. The compatibility policy can reuse an existing project flat
+subnet, even for `{}`; otherwise `{}` disables the automatic Port.
+A FIP request without an explicit private selector always chooses SDN.
 
 LB `type.kind=core_agent` uses the Core agent; `core` provisions a NodeSet
 of LB VMs. Border uses the Core agent by default; `type.kind=core`

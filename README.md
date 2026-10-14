@@ -21,7 +21,12 @@ Exordos Core is an open-source NoOps platform for managing corporate infrastruct
 
 SDN uses independently managed [ports, floating addresses and security group
 bindings](docs/network/sdn-api-contract.md), with declarative manifests,
-multiple NICs and hotplug. Existing flat networking remains supported.
+multiple NICs and hotplug. New VMs receive a port in the project's lazy default
+network; optional compatibility reuses a project's existing flat subnet.
+`default_network` can select a network, request a floating IP, or disable
+the port with `{}` unless compatibility selects flat placement.
+A floating IP request without explicit private placement
+selects SDN even in projects with flat ports. Existing flat networking remains supported.
 The [network dataplane reference](docs/network/dataplane.md) lists the API and
 target entities and diagrams the hypervisor, fabric, service and gateway paths.
 

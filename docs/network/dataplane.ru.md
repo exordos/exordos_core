@@ -173,8 +173,10 @@ flowchart TB
 ```
 
 `flat_bridge` обновляет конфигурацию существующего ISC DHCP. Он не создаёт
-EVPN fabric и не применяет overlay SG/NF pipeline. Отсутствие `Node.networking`
-сохраняет прежний flat default; `networking=[]` отключает автоматический Port.
+EVPN fabric и не применяет overlay SG/NF pipeline. `Node.default_network`
+задаёт основной Port. Политика совместимости может наследовать flat-подсеть
+проекта, в том числе при `{}`; иначе `{}` отключает автопорт.
+Запрос FIP без явного приватного размещения всегда выбирает SDN.
 
 LB `type.kind=core_agent` использует агент Core; `core` создаёт NodeSet
 VM-балансировщиков. Border по умолчанию использует агент Core; `type.kind=core`

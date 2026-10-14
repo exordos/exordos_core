@@ -59,7 +59,7 @@ def test_two_manifests_preserve_independent_links_and_auto_index(user_api, tmp_p
                     "cores": 1,
                     "ram": 1024,
                     "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
-                    "networking": [],
+                    "default_network": {},
                 }
             },
             "$core.network.ports": {
@@ -227,7 +227,7 @@ def test_shipped_sdn_example_validates(user_api):
         for item in em.element_engine.get_resources()
         if isinstance(item, em.Resource) and item.element.name == manifest.name
     ]
-    assert len(resources) == 11
+    assert len(resources) == 10
     port = next(item for item in resources if item.kind == "em_core_network_ports")
     port.actualize()
     barrier = port.target_resource.value.get("activation_barrier")

@@ -24,57 +24,44 @@ def _creation_properties(model, fields, prop_kwargs):
     return result
 
 
-class NetworkingType(types.AllowNone):
+class DefaultNetworkRequestType(types.Dict):
     def __init__(self, template=False):
         self.template = template
-        super().__init__(types.TypedList(types.Dict()))
+        super().__init__()
 
     def to_openapi_spec(self, prop_kwargs):
         from exordos_core.compute.dm.models import Port
         from exordos_core.network.contracts import INLINE_FLOATING_CREATE_FIELDS
-        from exordos_core.network.contracts import INLINE_PORT_CREATE_FIELDS
         from exordos_core.user_api.network.dm.models import Address
 
         prop_kwargs = {"openapi": prop_kwargs.get("openapi")}
-        reference = {"type": "string", "format": "uuid"}
-        selectors = [
-            {"required": ["subnet"], "not": {"required": ["network"]}},
-            {"required": ["network"], "not": {"required": ["subnet"]}},
-        ]
-        port = {
-            "type": "object",
-            "additionalProperties": False,
-            "oneOf": selectors,
-            "properties": _creation_properties(
-                Port, INLINE_PORT_CREATE_FIELDS, prop_kwargs
-            ),
-        }
+        fields = {"network", "subnet", "port_security"}
+        if not self.template:
+            fields.add("target_ipv4")
+        properties = _creation_properties(Port, fields, prop_kwargs)
+        fip_fields = INLINE_FLOATING_CREATE_FIELDS - (
+            {"address"} if self.template else set()
+        )
         fip = {
             "type": "object",
             "additionalProperties": False,
-            "oneOf": selectors,
-            "properties": _creation_properties(
-                Address, INLINE_FLOATING_CREATE_FIELDS, prop_kwargs
-            ),
+            "properties": _creation_properties(Address, fip_fields, prop_kwargs),
+            "oneOf": [
+                {"required": ["network"], "not": {"required": ["subnet"]}},
+                {"required": ["subnet"], "not": {"required": ["network"]}},
+            ],
         }
-        if self.template:
-            port["properties"].pop("target_ipv4")
-            port["properties"].pop("target_mac")
-            fip["properties"].pop("address")
+        properties["floating_ip"] = {
+            "oneOf": [{"type": "boolean", "enum": [True]}, fip]
+        }
         return {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["port"],
-                "properties": {
-                    "port": port if self.template else {"oneOf": [reference, port]},
-                    "index": {"type": "integer", "minimum": 0},
-                    "security_groups": {"type": "array", "items": reference},
-                    "identity_groups": {"type": "array", "items": reference},
-                    "floating_ip": fip
-                    if self.template
-                    else {"oneOf": [reference, fip]},
-                },
-            },
+            "type": "object",
+            "additionalProperties": False,
+            "properties": properties,
+            "not": {"required": ["network", "subnet"]},
         }
+
+
+class DefaultNetworkType(types.AllowNone):
+    def __init__(self, template=False):
+        super().__init__(DefaultNetworkRequestType(template=template))

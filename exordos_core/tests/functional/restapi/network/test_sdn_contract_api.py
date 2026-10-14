@@ -52,7 +52,7 @@ def test_node_and_independent_port_bindings(topology):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[],
+        default_network={},
     )
     assert node["ports"] == []
     port = create(
@@ -78,9 +78,12 @@ def test_node_and_independent_port_bindings(topology):
     )
     url = resource(client, "network", "ports", port["uuid"])
     assert client.get(url).json()["security_groups"] == [group["uuid"]]
-    assert client.get(resource(client, "compute", "nodes", node["uuid"])).json()[
-        "ports"
-    ] == [port["uuid"]]
+    assert (
+        client.get(resource(client, "compute", "nodes", node["uuid"])).json()["ports"][
+            0
+        ]["uuid"]
+        == port["uuid"]
+    )
     assert (
         len(
             client.get(
@@ -106,7 +109,7 @@ def test_node_and_independent_port_bindings(topology):
     assert detached.get("node") is None and detached.get("index") is None
 
 
-def test_inline_create_is_atomic_and_reserves_explicit_indexes_first(topology):
+def test_default_port_and_independent_secondary_port(topology):
     client, network, subnet = topology
     node = create(
         client,
@@ -115,41 +118,15 @@ def test_inline_create_is_atomic_and_reserves_explicit_indexes_first(topology):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[
-            {"port": {"network": network["uuid"]}},
-            {"port": {"subnet": subnet["uuid"]}, "index": 0},
-        ],
+        default_network={"network": network["uuid"]},
     )
-    ports = [
-        client.get(resource(client, "network", "ports", p)).json()
-        for p in node["ports"]
-    ]
-    assert sorted(p["index"] for p in ports) == [0, 1]
-    assert len(node["ports"]) == 2 and "created_resources" not in node
-    bad_uuid = str(uuid.uuid4())
-    with pytest.raises(exceptions.BadRequestError):
-        create(
-            client,
-            ("compute", "nodes"),
-            uuid=bad_uuid,
-            name="bad",
-            cores=1,
-            ram=1024,
-            disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-            networking=[
-                {"port": {"network": network["uuid"]}},
-                {
-                    "port": {"network": network["uuid"]},
-                    "security_groups": [str(uuid.uuid4())],
-                },
-            ],
-        )
-    with pytest.raises(exceptions.NotFoundError):
-        client.get(resource(client, "compute", "nodes", bad_uuid))
-    assert all(
-        p.get("node") != bad_uuid
-        for p in client.get(collection(client, "network", "ports")).json()
+    secondary = create(
+        client, ("network", "ports"), subnet=subnet["uuid"], node=node["uuid"]
     )
+    assert node["ports"][0]["index"] == 0 and secondary["index"] == 1
+    current = client.get(resource(client, "compute", "nodes", node["uuid"])).json()
+    assert len(current["ports"]) == 2
+    assert current["default_network"]["port"] == node["ports"][0]["uuid"]
 
 
 def test_floating_address_can_select_a_network(topology):
@@ -211,7 +188,7 @@ def test_invalid_optional_values_are_rejected(topology, patch):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[],
+        default_network={},
     )
     body = {"network": network["uuid"], "node": node["uuid"], **patch}
     with pytest.raises(exceptions.BadRequestError):
@@ -252,7 +229,7 @@ def test_invalid_inline_port_is_rejected(topology, port):
             cores=1,
             ram=1024,
             disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-            networking=[{"port": port}],
+            default_network=port,
         )
 
 
@@ -357,7 +334,7 @@ def test_address_stays_reserved_until_current_host_withdrawal_ack(topology):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[],
+        default_network={},
     )
     host = uuid.uuid4()
     ua.UniversalAgent(uuid=host, name="host", node=uuid.UUID(guest["uuid"])).insert()
@@ -394,7 +371,7 @@ def test_address_stays_reserved_until_current_host_withdrawal_ack(topology):
     driver = evpn.OvsEvpnNetworkDriver(
         compute.Network.objects.get_one(filters={"uuid": filters.EQ(network["uuid"])})
     )
-    driver._settle_withdrawals()
+    driver._settle_publications()
     assert client.get(url).json()["status"] == "IN_PROGRESS"
     # An offline or stale host cannot make its address reusable.
     second = create(
@@ -407,7 +384,7 @@ def test_address_stays_reserved_until_current_host_withdrawal_ack(topology):
     actual.hash = target.hash
     actual.node = uuid.uuid4()
     actual.update()
-    driver._settle_withdrawals()
+    driver._settle_publications()
     assert client.get(url).json()["status"] == "IN_PROGRESS"
     actual.node = uuid.UUID(guest["uuid"])
     actual.update()
@@ -430,7 +407,7 @@ def test_address_stays_reserved_until_current_host_withdrawal_ack(topology):
         stored_target.dump_to_simple_view(),
         observed.dump_to_simple_view(),
     )
-    driver._settle_withdrawals()
+    driver._settle_publications()
     assert client.get(url).json()["status"] == "UNBOUND"
     client.delete(url)
     reused = create(
@@ -455,7 +432,7 @@ def test_parallel_allocations_have_unique_ip_mac_and_index(topology):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[],
+        default_network={},
     )
 
     def allocate(_):
@@ -489,7 +466,7 @@ def test_private_address_is_held_until_interface_withdrawal_ack(topology):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[],
+        default_network={},
     )
     agent = ua.UniversalAgent(
         uuid=uuid.uuid4(), name="host", node=uuid.UUID(host_node["uuid"])
@@ -567,99 +544,6 @@ def test_node_custom_properties_are_not_filter_expressions(topology):
         )
 
 
-def test_nodeset_barrier_survives_reload_before_replica_creation(topology, tmp_path):
-    from gcl_sdk.agents.universal.clients.backend.db import DatabaseBackendClient
-    from gcl_sdk.agents.universal.clients.backend.db import ModelSpec
-    from gcl_sdk.agents.universal.drivers.direct import DirectAgentDriver
-    from gcl_sdk.agents.universal.storage.fs import TargetFieldsFileStorage
-    from restalchemy.dm import filters
-
-    from exordos_core.compute.dm import models as compute
-    from exordos_core.compute.node_set.dm import models as node_set_models
-    from exordos_core.elements.dm import models as em
-    from exordos_core.network.manifest import barrier_ready
-    from exordos_core.user_api.network.dm import models as catalog
-
-    client, _, subnet = topology
-    group = catalog.SecurityGroup(project_id=uuid.UUID(int=0))
-    group.insert()
-    core = em.Manifest(name="core", version="1.0.0", resources={})
-    core.save()
-    core.install()
-    manifest = em.Manifest(
-        name="guarded_replicas",
-        version="1.0.0",
-        requirements={"core": {"from_version": "0.0.0"}},
-        resources={
-            "$core.compute.sets": {
-                "guests": {
-                    "project_id": str(group.project_id),
-                    "cores": 1,
-                    "ram": 1024,
-                    "replicas": 1,
-                    "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
-                    "networking": [
-                        {
-                            "port": {"subnet": subnet["uuid"]},
-                            "security_groups": [str(group.uuid)],
-                        }
-                    ],
-                }
-            },
-            "$core.network.catalog.security_group_rules": {
-                "ingress": {
-                    "project_id": str(group.project_id),
-                    "security_group": str(group.uuid),
-                    "direction": "ingress",
-                }
-            },
-        },
-    )
-    manifest.save()
-    manifest.validate()
-    manifest.install()
-    declaration = next(
-        item
-        for item in em.element_engine.get_resources()
-        if isinstance(item, em.Resource) and item.kind == "em_core_compute_sets"
-    )
-    declaration.actualize()
-    request = declaration.target_resource
-    rule_id = uuid.UUID(request.value["network_activation_barrier"]["rules"][0])
-    storage = TargetFieldsFileStorage(str(tmp_path / "target-fields.json"))
-    backend = DatabaseBackendClient(
-        [ModelSpec(node_set_models.NodeSet, request.kind, filters={})], storage
-    )
-
-    class Driver(DirectAgentDriver):
-        def get_capabilities(self):
-            return [request.kind]
-
-    driver = Driver(backend, storage)
-    response = driver.create(request)
-    assert response.hash == request.hash
-    assert driver.get(request).hash == request.hash
-    assert driver.update(request).hash == request.hash
-    restored = node_set_models.NodeSet.objects.get_one(
-        filters={"uuid": filters.EQ(request.uuid)}
-    )
-    node = restored.gen_nodes(group.project_id)[0]
-    node.insert()
-    port = compute.Port.objects.get_one(filters={"node": filters.EQ(node.uuid)})
-    assert port.activation_barrier == {"rules": [str(rule_id)]}
-    assert not port.ready_for_activation()
-    catalog.SecurityGroupRule(
-        uuid=rule_id,
-        project_id=group.project_id,
-        security_group=group.uuid,
-        direction="ingress",
-    ).insert()
-    assert barrier_ready(port.activation_barrier)
-    assert port.ready_for_activation() and port.activation_barrier == {}
-    response = client.get(resource(client, "compute", "sets", str(request.uuid))).json()
-    assert "network_activation_barrier" not in response
-
-
 def test_duplicate_mac_on_one_node_across_networks_is_rejected(topology):
     client, _, subnet = topology
     node = create(
@@ -669,7 +553,7 @@ def test_duplicate_mac_on_one_node_across_networks_is_rejected(topology):
         ram=1024,
         name="multi",
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[],
+        default_network={},
     )
     create(
         client,
@@ -745,11 +629,11 @@ def test_declarative_reapply_preserves_generated_and_independent_fields(
         "cores": 1,
         "ram": 1024,
         "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
-        "networking": [{"port": {"network": network["uuid"]}}],
+        "default_network": {"network": network["uuid"]},
     }
     node = backend.create(declaration("node", node_value))
     original = list(node.ports)
-    port_id = str(original[0])
+    port_id = original[0]["uuid"]
     group = create(
         client, ("network", "catalog", "security_groups"), name="independent"
     )
@@ -759,7 +643,7 @@ def test_declarative_reapply_preserves_generated_and_independent_fields(
         port=port_id,
         security_group=group["uuid"],
     )
-    backend.update(declaration("node", {**node_value, "networking": []}))
+    backend.update(declaration("node", {**node_value, "default_network": {}}))
     assert list(backend.get(declaration("node", node_value)).ports) == original
     updated = backend.update(declaration("port", {"uuid": port_id, "name": "changed"}))
     assert updated.index == 0 and updated.security_groups == [uuid.UUID(group["uuid"])]
@@ -797,14 +681,14 @@ def test_nodeset_template_changes_only_new_nodes(topology):
         ram=1024,
         replicas=1,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[{"port": {"network": network["uuid"]}}],
+        default_network={"network": network["uuid"]},
     )
     node_set = sets.NodeSet.objects.get_one(filters={"uuid": filters.EQ(body["uuid"])})
     first = node_set.gen_nodes(project_id=node_set.project_id)[0]
     first.insert()
     original = list(first.ports)
     client.put(
-        resource(client, "compute", "sets", body["uuid"]), json={"networking": []}
+        resource(client, "compute", "sets", body["uuid"]), json={"default_network": {}}
     )
     node_set = sets.NodeSet.objects.get_one(filters={"uuid": filters.EQ(body["uuid"])})
     second = node_set.gen_nodes(project_id=node_set.project_id)[0]
@@ -830,7 +714,7 @@ def test_networking_failure_rolls_back_node_and_ports(topology, monkeypatch):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
-        networking=[{"port": {"network": network["uuid"]}}],
+        default_network={"network": network["uuid"]},
     )
 
     insert_port = compute.Port.insert
@@ -908,6 +792,7 @@ def test_contract_conversion_preserves_flat_nodes(topology):
         cores=1,
         ram=1024,
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
+        default_network={},
     )
     flat = compute.Network(
         name="flat",
@@ -963,6 +848,10 @@ def test_contract_conversion_preserves_flat_nodes(topology):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     with contexts.Context().session_manager() as session:
+        # Exercise migration 0006 with its historical input schema.
+        session.execute(
+            "ALTER TABLE compute_sets ADD COLUMN networking JSONB[], ADD COLUMN network_activation_barrier JSONB NOT NULL DEFAULT '{}'::jsonb"
+        )
         session.execute("DROP INDEX net_addresses_floating_reserved_idx", None)
         module.migration_step._downgrade_contract(session)
         row = session.execute(
@@ -979,6 +868,9 @@ def test_contract_conversion_preserves_flat_nodes(topology):
             "ON net_addresses(address) WHERE kind = 'floating' "
             "AND allocation = 'reserved'",
             None,
+        )
+        session.execute(
+            "ALTER TABLE compute_sets DROP COLUMN networking, DROP COLUMN network_activation_barrier"
         )
     assert not compute.Subnet.objects.get_one(
         filters={"uuid": filters.EQ(private_pool.uuid)}
@@ -1043,15 +935,13 @@ def test_explicit_foreign_address_permission_covers_port_and_wrapper(
             "ram": 1024,
             "name": "pin-wrapper",
             "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
-            "networking": [
-                {
-                    "port": {"network": network["uuid"]},
-                    "floating_ip": {
-                        "network": str(external.uuid),
-                        "address": "192.168.90.50",
-                    },
-                }
-            ],
+            "default_network": {
+                "network": network["uuid"],
+                "floating_ip": {
+                    "network": str(external.uuid),
+                    "address": "192.168.90.50",
+                },
+            },
         }
     else:
         path = ("network", "ports")
@@ -1068,7 +958,7 @@ def test_explicit_foreign_address_permission_covers_port_and_wrapper(
     assert pinner.post(collection(pinner, *path), json=body).status_code == 201
 
 
-def test_creation_wrapper_requires_canonical_resource_permissions(
+def test_default_port_requires_only_node_create_permission(
     topology, user_api_client, auth_test1_user
 ):
     _, network, _ = topology
@@ -1079,10 +969,12 @@ def test_creation_wrapper_requires_canonical_resource_permissions(
         "ram": 1024,
         "name": "no-port-permission",
         "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
-        "networking": [{"port": {"network": network["uuid"]}}],
+        "default_network": {"network": network["uuid"]},
     }
-    with pytest.raises(exceptions.ForbiddenError):
-        caller.post(collection(caller, "compute", "nodes"), json=body)
+    assert (
+        caller.post(collection(caller, "compute", "nodes"), json=body).status_code
+        == 201
+    )
 
 
 def test_owner_role_contains_new_resource_permissions(user_api):

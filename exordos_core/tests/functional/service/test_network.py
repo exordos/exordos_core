@@ -81,7 +81,8 @@ class TestNetworkService:
             project_id=c.ZERO_UUID,
             **kwargs,
         )
-        node.insert()
+        # Exercise reconciliation of nodes stored before synchronous autoports.
+        node._insert_node()
         return node
 
     def _add_network(self, **kwargs) -> tp.Tuple[models.Network, models.Subnet]:

@@ -15,6 +15,7 @@
 #    under the License.
 
 import dataclasses
+from functools import lru_cache
 import logging
 import os
 import re
@@ -234,6 +235,20 @@ def load_full_manifest_schema() -> dict:
         "r",
     ) as f:
         return yaml.safe_load(f)
+
+
+@lru_cache(maxsize=1)
+def create_only_fields_by_resource() -> dict:
+    schema = load_full_manifest_schema()
+    result = {}
+    for resource_type, resource in schema["properties"]["resources"][
+        "properties"
+    ].items():
+        ref = resource["additionalProperties"].get("$ref")
+        if ref:
+            model = resolve_schema(schema["components"]["schemas"], ref.split("/")[-1])
+            result[resource_type] = tuple((model or {}).get("x-create-only", ()))
+    return result
 
 
 def dump_full_manifest_schema(data):

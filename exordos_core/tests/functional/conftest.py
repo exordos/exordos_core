@@ -206,6 +206,8 @@ def user_api_service(context_storage):
 
     yield rest_service
 
+    # Canonical SDN migrations refuse rollback while test resources remain.
+    rest_service.setup_method()
     rest_service.teardown_method()
 
     rest_service.teardown_class()
@@ -530,8 +532,7 @@ def node_factory():
             skip=[
                 "ports",
                 "network_initialized",
-                "network_activation_barrier",
-                *([] if "networking" in kwargs else ["networking"]),
+                *([] if "default_network" in kwargs else ["default_network"]),
             ]
         )
         if status is None:
@@ -570,8 +571,7 @@ def node_factory_with_model():
             skip=[
                 "ports",
                 "network_initialized",
-                "network_activation_barrier",
-                *([] if "networking" in kwargs else ["networking"]),
+                *([] if "default_network" in kwargs else ["default_network"]),
             ]
         )
         if status is None:
@@ -609,8 +609,8 @@ def node_set_factory():
             **kwargs,
         )
         view = obj.dump_to_simple_view(skip=["network_activation_barrier"])
-        if "networking" not in kwargs:
-            view.pop("networking", None)
+        if "default_network" not in kwargs:
+            view.pop("default_network", None)
         return view
 
     return factory
@@ -1088,7 +1088,7 @@ def network_factory():
             **kwargs,
         )
         return network.dump_to_simple_view(
-            skip=["driver_state", "default_identity_group"]
+            skip=["driver_state", "default_identity_group", "is_default"]
         )
 
     return factory
@@ -1248,6 +1248,7 @@ def port_factory():
                 "machine",
                 "provenance",
                 "activation_barrier",
+                "legacy_flat_placement",
                 "ipv4",
                 "mask",
                 "mac",

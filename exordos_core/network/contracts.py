@@ -71,8 +71,13 @@ def resolve_subnet(
     return eligible[0]
 
 
-def validate_placement_input(value, *, create):
-    if create and (value.get("subnet") is None) == (value.get("network") is None):
+def validate_placement_input(value, *, create, allow_default=False):
+    both_missing = value.get("subnet") is None and value.get("network") is None
+    if (
+        create
+        and (value.get("subnet") is None) == (value.get("network") is None)
+        and not (allow_default and both_missing)
+    ):
         raise exceptions.ValidateException(
             err="specify exactly one of subnet or network"
         )
@@ -83,7 +88,7 @@ def validate_placement_input(value, *, create):
 
 def validate_port_input(value, stored=None):
     validate_inline_fields(value, PORT_CREATE_FIELDS | {"activation_barrier"}, "Port")
-    validate_placement_input(value, create=stored is None)
+    validate_placement_input(value, create=stored is None, allow_default=True)
     for field in ("uuid", "project_id", "subnet", "network", "node"):
         if value.get(field) is not None:
             validate_uuid(value[field], field)
@@ -178,7 +183,6 @@ PORT_CREATE_FIELDS = frozenset(
 ADDRESS_CREATE_FIELDS = frozenset(
     ("uuid", "project_id", "subnet", "network", "kind", "port", "address")
 )
-INLINE_PORT_CREATE_FIELDS = PORT_CREATE_FIELDS - {"uuid", "project_id", "node", "index"}
 INLINE_FLOATING_CREATE_FIELDS = ADDRESS_CREATE_FIELDS - {
     "uuid",
     "project_id",

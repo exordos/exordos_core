@@ -1824,6 +1824,11 @@ components:
             key: value
           readOnly: true
           type: object
+        is_default:
+          default: false
+          example: true
+          readOnly: true
+          type: boolean
         name:
           default: ''
           example: any_string
@@ -1864,17 +1869,50 @@ components:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         default_network:
-          additionalProperties:
-            oneOf:
-            - type: string
-            - type: integer
-            - type: boolean
-            - type: object
-            - items: {}
-              type: array
-          default: {}
-          example:
-            key: value
+          additionalProperties: false
+          not:
+            required:
+            - network
+            - subnet
+          properties:
+            floating_ip:
+              oneOf:
+              - enum:
+                - true
+                type: boolean
+              - additionalProperties: false
+                oneOf:
+                - not:
+                    required:
+                    - subnet
+                  required:
+                  - network
+                - not:
+                    required:
+                    - network
+                  required:
+                  - subnet
+                properties:
+                  network:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                  subnet:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                type: object
+            network:
+              example: 00000000-0000-0000-0000-000000000000
+              format: uuid
+              type: string
+            port_security:
+              example: true
+              type: boolean
+            subnet:
+              example: 00000000-0000-0000-0000-000000000000
+              format: uuid
+              type: string
           type: object
         description:
           default: ''
@@ -2089,96 +2127,6 @@ components:
           example: any_string
           maxLength: 255
           type: string
-        networking:
-          items:
-            additionalProperties: false
-            properties:
-              floating_ip:
-                additionalProperties: false
-                oneOf:
-                - not:
-                    required:
-                    - network
-                  required:
-                  - subnet
-                - not:
-                    required:
-                    - subnet
-                  required:
-                  - network
-                properties:
-                  network:
-                    example: 00000000-0000-0000-0000-000000000000
-                    format: uuid
-                    type: string
-                  subnet:
-                    example: 00000000-0000-0000-0000-000000000000
-                    format: uuid
-                    type: string
-                type: object
-              identity_groups:
-                items:
-                  format: uuid
-                  type: string
-                type: array
-              index:
-                minimum: 0
-                type: integer
-              port:
-                additionalProperties: false
-                oneOf:
-                - not:
-                    required:
-                    - network
-                  required:
-                  - subnet
-                - not:
-                    required:
-                    - subnet
-                  required:
-                  - network
-                properties:
-                  description:
-                    example: any_string
-                    maxLength: 255
-                    type: string
-                  dhcp:
-                    example: true
-                    nullable: true
-                    type: boolean
-                  dns:
-                    example: true
-                    nullable: true
-                    type: boolean
-                  name:
-                    example: any_string
-                    maxLength: 255
-                    type: string
-                  network:
-                    example: 00000000-0000-0000-0000-000000000000
-                    format: uuid
-                    type: string
-                  network_identity:
-                    example: true
-                    nullable: true
-                    type: boolean
-                  port_security:
-                    example: true
-                    type: boolean
-                  subnet:
-                    example: 00000000-0000-0000-0000-000000000000
-                    format: uuid
-                    type: string
-                type: object
-              security_groups:
-                items:
-                  format: uuid
-                  type: string
-                type: array
-            required:
-            - port
-            type: object
-          type: array
         node_type:
           default: VM
           enum:
@@ -2274,17 +2222,60 @@ components:
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
         default_network:
-          additionalProperties:
-            oneOf:
-            - type: string
-            - type: integer
-            - type: boolean
-            - type: object
-            - items: {}
-              type: array
-          default: {}
-          example:
-            key: value
+          additionalProperties: false
+          not:
+            required:
+            - network
+            - subnet
+          properties:
+            floating_ip:
+              oneOf:
+              - enum:
+                - true
+                type: boolean
+              - additionalProperties: false
+                oneOf:
+                - not:
+                    required:
+                    - subnet
+                  required:
+                  - network
+                - not:
+                    required:
+                    - network
+                  required:
+                  - subnet
+                properties:
+                  address:
+                    example: any_string
+                    format: ipv4
+                    maxLength: 45
+                    minLength: 2
+                    type: string
+                  network:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                  subnet:
+                    example: 00000000-0000-0000-0000-000000000000
+                    format: uuid
+                    type: string
+                type: object
+            network:
+              example: 00000000-0000-0000-0000-000000000000
+              format: uuid
+              type: string
+            port_security:
+              example: true
+              type: boolean
+            subnet:
+              example: 00000000-0000-0000-0000-000000000000
+              format: uuid
+              type: string
+            target_ipv4:
+              example: 127.0.0.1
+              format: ipv4
+              type: string
           type: object
         description:
           default: ''
@@ -2504,116 +2495,6 @@ components:
           example: any_string
           maxLength: 255
           type: string
-        networking:
-          items:
-            additionalProperties: false
-            properties:
-              floating_ip:
-                oneOf:
-                - format: uuid
-                  type: string
-                - additionalProperties: false
-                  oneOf:
-                  - not:
-                      required:
-                      - network
-                    required:
-                    - subnet
-                  - not:
-                      required:
-                      - subnet
-                    required:
-                    - network
-                  properties:
-                    address:
-                      example: any_string
-                      format: ipv4
-                      maxLength: 45
-                      minLength: 2
-                      type: string
-                    network:
-                      example: 00000000-0000-0000-0000-000000000000
-                      format: uuid
-                      type: string
-                    subnet:
-                      example: 00000000-0000-0000-0000-000000000000
-                      format: uuid
-                      type: string
-                  type: object
-              identity_groups:
-                items:
-                  format: uuid
-                  type: string
-                type: array
-              index:
-                minimum: 0
-                type: integer
-              port:
-                oneOf:
-                - format: uuid
-                  type: string
-                - additionalProperties: false
-                  oneOf:
-                  - not:
-                      required:
-                      - network
-                    required:
-                    - subnet
-                  - not:
-                      required:
-                      - subnet
-                    required:
-                    - network
-                  properties:
-                    description:
-                      example: any_string
-                      maxLength: 255
-                      type: string
-                    dhcp:
-                      example: true
-                      nullable: true
-                      type: boolean
-                    dns:
-                      example: true
-                      nullable: true
-                      type: boolean
-                    name:
-                      example: any_string
-                      maxLength: 255
-                      type: string
-                    network:
-                      example: 00000000-0000-0000-0000-000000000000
-                      format: uuid
-                      type: string
-                    network_identity:
-                      example: true
-                      nullable: true
-                      type: boolean
-                    port_security:
-                      example: true
-                      type: boolean
-                    subnet:
-                      example: 00000000-0000-0000-0000-000000000000
-                      format: uuid
-                      type: string
-                    target_ipv4:
-                      example: 127.0.0.1
-                      format: ipv4
-                      type: string
-                    target_mac:
-                      example: 00:00:00:00:00:00
-                      pattern: ^([0-9a-fA-F]{2,2}:){5,5}[0-9a-fA-F]{2,2}$
-                      type: string
-                  type: object
-              security_groups:
-                items:
-                  format: uuid
-                  type: string
-                type: array
-            required:
-            - port
-            type: object
-          type: array
         node_set:
           readOnly: true
           type: string
@@ -2635,11 +2516,19 @@ components:
           type: array
         ports:
           example:
-          - 00000000-0000-0000-0000-000000000000
+          - key: value
           items:
-            example: 00000000-0000-0000-0000-000000000000
-            format: uuid
-            type: string
+            additionalProperties:
+              oneOf:
+              - type: string
+              - type: integer
+              - type: boolean
+              - type: object
+              - items: {}
+                type: array
+            example:
+              key: value
+            type: object
           readOnly: true
           type: array
         project_id:
@@ -2680,6 +2569,8 @@ components:
       - ram
       - disk_spec
       type: object
+      x-create-only:
+      - default_network
     OrganizationMember_Create:
       $ref: '#/components/schemas/OrganizationMember_Get'
       path: /v1/iam/organizations/{OrganizationUuid}/members/
@@ -3044,6 +2935,12 @@ components:
           - subnet
         required:
         - network
+      - not:
+          anyOf:
+          - required:
+            - subnet
+          - required:
+            - network
       path: /v1/network/ports/
       properties:
         config:
@@ -5524,6 +5421,10 @@ components:
           readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        default_floating_pool:
+          default: false
+          example: true
+          type: boolean
         description:
           default: ''
           example: any_string

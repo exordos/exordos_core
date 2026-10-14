@@ -78,10 +78,8 @@ class NodeSet(compute_models.NodeSet):
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
                 disk_spec=self.disk_spec.node_spec(self, node_uuid),
-                # `default_network` is written back from the index-0 port.
+                default_network=self.default_network,
                 interfaces=self._node_interfaces(),
-                networking=self.networking,
-                network_activation_barrier=self.network_activation_barrier,
             )
             nodes.append(node)
 

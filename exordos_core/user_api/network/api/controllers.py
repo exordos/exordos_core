@@ -42,6 +42,17 @@ class PlacementResource(resources.ResourceByModelWithCustomProps):
                 {"required": ["subnet"], "not": {"required": ["network"]}},
                 {"required": ["network"], "not": {"required": ["subnet"]}},
             ]
+            if issubclass(self.get_model(), compute_models.Port):
+                schema["oneOf"].append(
+                    {
+                        "not": {
+                            "anyOf": [
+                                {"required": ["subnet"]},
+                                {"required": ["network"]},
+                            ]
+                        }
+                    }
+                )
             if self.get_model() is models.Address:
                 schema.setdefault("required", []).append("kind")
         return schema
@@ -93,6 +104,7 @@ class NetworkCRUDController(
             fields={
                 # A VNI named here could be another network's overlay.
                 "driver_state": {constants.ALL: field_p.Permissions.RO},
+                "is_default": {constants.ALL: field_p.Permissions.RO},
                 "default_identity_group": {constants.ALL: field_p.Permissions.RO},
             },
         ),
@@ -190,12 +202,12 @@ class SubnetController(
     )
 
     def create(self, **kwargs):
-        if kwargs.get("floating_pool"):
+        if kwargs.get("floating_pool") or kwargs.get("default_floating_pool"):
             self._enforce("floating_pool")
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
-        if "floating_pool" in kwargs:
+        if "floating_pool" in kwargs or "default_floating_pool" in kwargs:
             self._enforce("floating_pool")
         return super().update(uuid, **kwargs)
 
@@ -382,6 +394,7 @@ class PortController(
             fields={
                 "status": {constants.ALL: field_p.Permissions.RO},
                 "activation_barrier": {constants.ALL: field_p.Permissions.HIDDEN},
+                "legacy_flat_placement": {constants.ALL: field_p.Permissions.HIDDEN},
                 "source": {constants.ALL: field_p.Permissions.RO},
                 "interface": {constants.ALL: field_p.Permissions.RO},
                 "config": {constants.ALL: field_p.Permissions.RO},
@@ -403,6 +416,8 @@ class PortController(
 
     def create(self, **kwargs):
         self.model.validate_create_input(kwargs)
+        from exordos_core.network.contracts import atomic_session
+        from exordos_core.network.permissions import gate_allocated_private_address
         from exordos_core.network.permissions import gate_explicit_address
 
         gate_explicit_address(
@@ -411,7 +426,10 @@ class PortController(
             self._ctx_project_id or kwargs.get("project_id", core_constants.ZERO_UUID),
             private=True,
         )
-        return super().create(**kwargs)
+        with atomic_session(self.model._get_engine()) as session:
+            port = super().create(**kwargs)
+            gate_allocated_private_address(self, port, session)
+            return port
 
     def update(self, uuid, **kwargs):
         stored = self.get(uuid)

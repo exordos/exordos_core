@@ -928,28 +928,16 @@ class Resource(
             return
         self.actual_resource = self._find_actual_resource()
         persistent_target = dict(target_state)
-        if self.kind == "em_core_compute_nodes":
-            persistent_target.pop("networking", None)
-            persistent_target.pop("network_activation_barrier", None)
+        provider_name = self.get_provider_element().name
+        resource_type = f"${provider_name}.{self.resource_link_prefix.split('.', 1)[1]}"
+        for field in utils.create_only_fields_by_resource().get(resource_type, ()):
+            persistent_target.pop(field, None)
         if self.kind == "em_core_network_ports":
             from exordos_core.network.manifest import activation_barrier
 
             target_state["activation_barrier"] = activation_barrier(
                 self, target_state, element_engine
             )
-        if self.kind in (
-            "em_core_compute_nodes",
-            "em_core_compute_sets",
-        ) and target_state.get("networking"):
-            from exordos_core.network.manifest import inline_activation_barrier
-
-            target_state["network_activation_barrier"] = inline_activation_barrier(
-                self, target_state, element_engine
-            )
-            if self.kind == "em_core_compute_sets":
-                persistent_target["network_activation_barrier"] = target_state[
-                    "network_activation_barrier"
-                ]
         hash = sdk_utils.calculate_hash(persistent_target)
         self.full_hash = self.calculate_full_hash(target_state)
         if self.target_resource is None:

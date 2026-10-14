@@ -174,7 +174,7 @@ def test_bootstrap_keeps_the_real_port_through_ownership_validation():
         mock.patch.object(models.Port, "_touch_machine"),
         mock.patch.object(orm.ObjectCollection, "get_one", fetch),
         mock.patch.object(defaults.node_set_models.NodeSet, "insert"),
-        mock.patch.object(models.Node, "insert", autospec=True) as insert_node,
+        mock.patch.object(models.Node, "_insert_node", autospec=True) as insert_node,
         mock.patch.object(defaults, "seed_core_set_target"),
     ):
         defaults.add_core_set(spec)

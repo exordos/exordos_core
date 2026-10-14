@@ -142,7 +142,7 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
             uuid_str = str(actual.uuid)
             actual_nodes[uuid_str] = {}
 
-            if ipv4 := actual.default_network.get("ipv4"):
+            if ipv4 := (actual.default_network or {}).get("ipv4"):
                 actual_nodes[uuid_str]["ipv4"] = ipv4
 
             nodes_status.append(actual.status)

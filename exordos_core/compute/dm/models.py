@@ -338,40 +338,40 @@ class NodeSet(
 
     # Template for every generated node; no per-node address (see below).
     interfaces = properties.property(NODE_INTERFACES_TYPE, default=None)
-    networking = properties.property(
-        networking_types.NetworkingType(template=True), default=None
+    default_network = properties.property(
+        networking_types.DefaultNetworkType(template=True), default=None
     )
 
     @classmethod
     def validate_create_input(cls, value):
-        cls._validate_networking_input(value)
+        cls._validate_default_network_input(value)
 
     @classmethod
     def validate_update_input(cls, value, stored):
-        cls._validate_networking_input(value, stored)
+        cls._validate_default_network_input(value, stored)
 
     @staticmethod
-    def _validate_networking_input(value, stored=None):
-        if "networking" in value:
-            from exordos_core.network.node_creation import validate_networking
+    def _validate_default_network_input(value, stored=None):
+        if "default_network" in value:
+            from exordos_core.network.node_creation import validate_default_network
 
-            validate_networking(value["networking"], template=True)
-        networking = value.get("networking", getattr(stored, "networking", None))
+            validate_default_network(value["default_network"], template=True)
         interfaces = value.get("interfaces", getattr(stored, "interfaces", None))
-        if networking is not None and interfaces is not None:
+        default_network = value.get(
+            "default_network", getattr(stored, "default_network", None)
+        )
+        if default_network is not None and interfaces is not None:
             raise ex_exceptions.ValidateException(
-                err="networking cannot be combined with interfaces"
+                err="default_network cannot be combined with interfaces"
             )
-
-    network_activation_barrier = properties.property(types.Dict(), default=dict)
 
     def _validate_interfaces(self) -> None:
         """A template cannot hand the same address to every replica."""
-        self._validate_networking_input({}, self)
-        if self.networking is not None:
-            from exordos_core.network.node_creation import validate_networking
+        self._validate_default_network_input({}, self)
+        if self.default_network is not None:
+            from exordos_core.network.node_creation import validate_default_network
 
-            validate_networking(self.networking, template=True)
+            validate_default_network(self.default_network, template=True)
         validate_interface_shape(self.interfaces)
         for interface in self.interfaces or []:
             if getattr(interface, "address", None) is not None:
@@ -437,45 +437,34 @@ class Node(
     node_set = properties.property(types.AllowNone(types.UUID()), default=None)
     network_initialized = properties.property(types.Boolean(), default=False)
     __custom_properties__ = {
-        "ports": types.TypedList(types.UUID()),
-        "networking": networking_types.NetworkingType(),
-        "network_activation_barrier": types.Dict(),
+        "ports": types.TypedList(types.Dict()),
     }
-    __create_only_fields__ = ("networking", "network_activation_barrier")
-
-    def __init__(self, networking=None, network_activation_barrier=None, **kwargs):
-        super().__init__(**kwargs)
-        self._check_custom_property_value("networking", networking)
-        barrier = (
-            {} if network_activation_barrier is None else network_activation_barrier
-        )
-        self._check_custom_property_value("network_activation_barrier", barrier)
-        self._networking = networking
-        self._network_activation_barrier = barrier
-
-    @property
-    def network_activation_barrier(self):
-        return getattr(self, "_network_activation_barrier", {})
-
-    @property
-    def networking(self):
-        return getattr(self, "_networking", None)
+    __create_only_fields__ = ("default_network",)
 
     @classmethod
     def validate_create_input(cls, value):
-        if "networking" in value:
-            from exordos_core.network.node_creation import validate_networking
+        if "default_network" in value:
+            from exordos_core.network.node_creation import validate_default_network
 
-            validate_networking(value["networking"])
-            if value.get("interfaces") is not None or value.get("default_network"):
+            validate_default_network(value["default_network"])
+            if value.get("interfaces") is not None:
                 raise ex_exceptions.ValidateException(
-                    err="networking cannot be combined with legacy network input"
+                    err="default_network cannot be combined with interfaces"
                 )
 
     @property
     def ports(self):
         return [
-            port.uuid
+            {
+                "uuid": str(port.uuid),
+                "index": port.index,
+                "network": str(port.network),
+                "subnet": str(port.subnet),
+                "ipv4": str(port.ipv4) if port.ipv4 else None,
+                "mask": str(port.mask) if port.mask else None,
+                "mac": port.mac,
+                "status": port.status,
+            }
             for port in Port.objects.get_all(
                 filters={"node": dm_filters.EQ(self.uuid)}, order_by={"index": "asc"}
             )
@@ -510,13 +499,14 @@ class Node(
             else cc.EM_HIDDEN_PROJECT_ID
         )
 
-    def update_default_network(self, port: "Port") -> None:
+    def update_default_network(self, port: "Port", session=None) -> None:
         """Promote the primary interface's port onto the node.
 
         `default_network` is a read-only view of the port at index 0, kept
         because elements read a node's address by that name.
         """
         self.default_network = {
+            "network": str(port.network),
             "subnet": str(port.subnet),
             "port": str(port.uuid),
             "ipv4": str(port.ipv4) if port.ipv4 else None,
@@ -524,7 +514,7 @@ class Node(
             "mask": str(port.mask) if port.mask else None,
             "mac": port.mac,
         }
-        self.update()
+        self.update(session=session)
 
     def get_resource_target_fields(self) -> tp.Collection[str]:
         """Return the collection of Node target fields.
@@ -549,19 +539,30 @@ class Node(
         )
 
     def insert(self, session=None):
-        if self.networking is None:
+        if self.interfaces is not None or self.node_type != "VM":
+            if self.default_network is None:
+                self.default_network = {}
             return self._insert_node(session=session)
         from exordos_core.network.contracts import atomic_session
-        from exordos_core.network.node_creation import create_networking
-        from exordos_core.network.node_creation import validate_networking
+        from exordos_core.network.node_creation import create_default_port
+        from exordos_core.network.node_creation import validate_default_network
 
         self._validate_interfaces()
-        validate_networking(self.networking)
+        if self.default_network is not None:
+            validate_default_network(self.default_network)
         with atomic_session(self._get_engine(), session) as s:
-            self.interfaces = []
+            project_id = self.project_id
+            if self.node_set is not None and self.project_id == nc.NODE_SET_PROJECT:
+                project_id = NodeSet.objects.get_one(
+                    filters={"uuid": dm_filters.EQ(self.node_set)}, session=s
+                ).project_id
+            request = self.default_network
+            self.default_network = {}
             self.network_initialized = True
             self._insert_node(session=s)
-            create_networking(self, self.networking, s)
+            primary = create_default_port(self, request, project_id, s)
+            if primary is not None:
+                self.update_default_network(primary, session=s)
 
     def _insert_node(self, session=None):
         self._validate_interfaces()
@@ -779,6 +780,7 @@ class Network(
 
     driver_spec = properties.property(types.Dict(), default=lambda: {})
     driver_state = properties.property(types.Dict(), default=dict)
+    is_default = properties.property(types.Boolean(), default=False)
     __custom_properties__ = {
         "default_identity_group": types.AllowNone(types.UUID()),
     }
@@ -1045,6 +1047,7 @@ class Subnet(
         default=False,
     )
     floating_pool = properties.property(types.Boolean(), default=False)
+    default_floating_pool = properties.property(types.Boolean(), default=False)
     __custom_properties__ = {
         "effective_routers": types.TypedList(
             types.SchemeDict({"to": types_net.Network(), "via": types_net.IPAddress()})
@@ -1125,6 +1128,10 @@ class Subnet(
         Only within one network: different networks are separate VRFs and
         overlap on purpose (every realm overlay reuses the same addressing).
         """
+        if self.default_floating_pool and (not self.floating_pool or self.placeable):
+            raise ex_exceptions.ValidateException(
+                err="default_floating_pool requires an address-only floating_pool"
+            )
         if self.cidr is None or self.network is None:
             return
         network_ref = getattr(self.network, "uuid", self.network)
@@ -1323,6 +1330,8 @@ class Port(
 ):
     __tablename__ = "compute_ports"
     activation_barrier = properties.property(types.Dict(), default=dict)
+    # Retain the inherited flat access even after disabling new legacy defaults.
+    legacy_flat_placement = properties.property(types.Boolean(), default=False)
     __create_only_fields__ = ("activation_barrier",)
 
     def ready_for_activation(self):
@@ -1618,6 +1627,11 @@ class Port(
         if not nc.is_overlay(network.driver_spec):
             if self.provenance == nc.PortProvenance.GENERATED.value:
                 return
+            if (
+                self.legacy_flat_placement
+                and network.driver_spec.get("driver") == "flat_bridge"
+            ):
+                return
         elif self._declared_by_its_node(subnet):
             return
         raise ex_exceptions.ValidateException(
@@ -1698,8 +1712,18 @@ class Port(
         from exordos_core.user_api.network.dm import models as catalog
 
         with atomic_session(self._get_engine(), session) as s:
+            if self.subnet is None and self._network_selector is None:
+                from exordos_core.network.defaults import ensure_default_subnet
+                from exordos_core.network.defaults import find_legacy_flat_subnet
+
+                legacy = find_legacy_flat_subnet(self.project_id, s)
+                self.legacy_flat_placement = legacy is not None
+                self.subnet = (legacy or ensure_default_subnet(self.project_id, s)).uuid
             # Generated legacy ports already carry canonical placement/address.
-            if self.subnet is None or self.provenance == nc.PortProvenance.USER.value:
+            if self.subnet is None or (
+                self.provenance == nc.PortProvenance.USER.value
+                and not self.legacy_flat_placement
+            ):
                 subnet = resolve_subnet(
                     self.project_id,
                     self.subnet,

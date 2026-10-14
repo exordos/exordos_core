@@ -4,13 +4,15 @@
 
 This contract requires compatible Core and SDK versions. An older host agent does
 not implement interface withdrawal acknowledgements or multiple NICs.
-Flat networking remains available when `Node.networking` is omitted.
+New VMs receive a primary port according to the compatibility policy.
+Existing flat networking and explicit `interfaces` retain their behavior.
 
 ## Ownership and references
 
 | Resource | Writable relationship | Read-only views |
 | --- | --- | --- |
-| Node | `networking` on creation only | `ports` |
+| Node | `default_network` on creation | `default_network`, `ports` |
+| NodeSet | `default_network` template for new replicas | `nodes[uuid].ipv4` |
 | Port | nullable `node`; automatic or explicit `index` | `ipv4`, `mask`, `mac`, `network`, SG/IG lists |
 | Address | immutable `kind`; nullable `port` for floating addresses | effective network, allocation, origin, publication, status |
 | PortSecurityGroup | immutable `port`, `security_group` pair | — |
@@ -26,18 +28,19 @@ Port `dhcp`, `dns`, and `network_identity` are the only service and automatic
 identity switches. Group membership uses PortSecurityGroup and PortIdentityGroup
 bindings exclusively. `Port.config` and `interfaces[].config` accept only the
 `simple` kind's `public` address request; group lists and switches inside
-`config` are rejected. Existing manifests must use canonical bindings or
-`networking` for group declarations. Saved port settings are migrated;
-NodeSet group templates become `networking` templates. Nodes with group
-requests that have not produced bindings must finish provisioning or have
-their declarations converted before upgrading.
+`config` are rejected. Existing manifests must use canonical binding resources.
+Saved port settings are migrated. Convert NodeSet group templates to independently
+managed bindings before upgrading; unsupported templates stop migration.
+Nodes with pending group requests must finish provisioning or have their
+declarations converted before upgrading.
 
 Addresses bound to a Port are listed through the Address collection with a
 `port` filter. Node creation returns its `ports`; each Port's canonical
 bindings and addresses can be queried through their collections.
 
-Port and floating Address creation accepts exactly one of `subnet` and
-`network`. The latter selects one accessible eligible subnet; ambiguity
+Port creation without `subnet` or `network` uses the project's default network.
+Explicit Port placement and floating Address creation accept exactly one selector.
+`network` selects one accessible eligible subnet; ambiguity
 returns 409 with candidate UUIDs. `floating_pool=true` declares an external
 pool independently of `shared_pool` and Network `access`. An external pool
 may use RFC1918 addresses. Pools are address-only (`placeable=false`);
@@ -58,23 +61,83 @@ Consuming a reservation as a Port's private address is not a defined API.
 
 ## Node creation and attachment
 
+Node and NodeSet support the same primary-port creation template:
+
+| Creation input | Result |
+| --- | --- |
+| `default_network` omitted | Automatic port according to compatibility policy, no FIP |
+| `{}` | Flat port if compatibility selects a flat subnet; otherwise no port |
+| `{network: UUID}` or `{subnet: UUID}` | Selected network/subnet |
+| `{floating_ip: true}` | Default private port and an automatic FIP |
+| `{network: UUID, floating_ip: {network: POOL_UUID}}` | Selected network and FIP pool |
+
+Read-only `Network.is_default` identifies the default independently of its name.
+Each project has at most one default network. It and its `10.128.0.0/20` DHCP
+subnet are created lazily when automatic placement selects SDN.
+An IAM Project record is not required. Node, Network, Subnet, Port and FIP
+creation is atomic; invalid explicit selectors do not fall back to the default.
+
+Upgraded installations without the new option retain compatibility through:
+
+```ini
+[network]
+legacy_flat_default = True
+```
+
+Without `network`/`subnet`, existing project flat ports determine placement.
+A single eligible VM subnet is inherited; multiple eligible flat subnets return
+409. NodeSet replicas use their owner's project. Detached ports also count;
+boot subnets and address-only pools are excluded. No flat ports, or disabling
+the option, selects the project's default SDN network. New configurations set
+`legacy_flat_default = False`; upgrades restore persisted configuration unchanged.
+Explicit placement overrides the heuristic. An empty `default_network: {}`
+retains the automatic flat port when compatibility selects a flat subnet;
+otherwise it disables the automatic port. Existing attachments remain
+intact when the option is disabled.
+
+If `default_network` requests a FIP without an explicit private `network` or
+`subnet`, Node and NodeSet replicas use the project's default SDN network,
+even when flat ports exist. This applies to both `floating_ip: true` and an
+explicit floating pool. Explicit private placement takes precedence.
+
+Automatic FIPs select an accessible `default_floating_pool` subnet, or the only
+accessible `floating_pool` when no default is marked. No pool returns 400;
+ambiguity returns 409. Each owner project can mark one default floating pool;
+multiple accessible marked defaults require explicit selection. The flag requires
+`floating_pool=true`, `placeable=false`, and operator permission
+`network.subnet.floating_pool` to set or clear it. FIP creation requires
+`network.address.create`. Public pools are not created automatically.
+
+The automatic primary port through `default_network`, including explicit
+network/subnet placement, only requires Node/NodeSet creation permission.
+Standalone Port creation requires `network.port.create`.
+
+Node applies the request only on creation. GET keeps `default_network.ipv4`
+as the primary port's address; PUT cannot change the creation template.
+`Node.ports` lists `uuid`, `index`, `network`, `subnet`, `ipv4`, `mask`, `mac`,
+and `status`, ordered by index. IP allocation precedes dataplane application;
+status reports application. Removing the last port does not replace it.
+
+NodeSet stores the template for new replicas, each with its own Port/FIP.
+Changing it preserves existing attachments. Addresses remain in `nodes[uuid].ipv4`.
+Fixed addresses in templates, null, unknown fields, and mixing with
+`interfaces` are rejected. The removed `networking` field is rejected.
+
+For example, an explicit private network with an automatically allocated FIP:
+
 ```json
 {
   "name": "vm", "cores": 1, "ram": 1024,
   "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
-  "networking": [
-    {"port": {"network": "PRIVATE_NETWORK_UUID"},
-     "security_groups": ["SG_UUID"],
-     "floating_ip": {"network": "EXTERNAL_NETWORK_UUID"}}
-  ]
+  "default_network": {
+    "network": "PRIVATE_NETWORK_UUID",
+    "floating_ip": {"network": "EXTERNAL_NETWORK_UUID"}
+  }
 }
 ```
 
-`port` and `floating_ip` also accept existing detached/unbound UUIDs.
-Creation is one transaction, including the Node, Ports, bindings and FIPs.
-`networking=[]` disables automatic ports. Omission preserves flat behavior.
-`networking=null` and mixing with legacy interfaces are rejected. Subsequent
-changes address canonical resources directly.
+The Node, primary Port and FIP are created atomically. Additional NICs, SG/IG
+bindings and subsequent changes use the canonical resources directly.
 
 Detached Port: `node=null`, `index=null`. Attachment with an omitted index
 atomically chooses the lowest free nonnegative index. An explicit attached
@@ -92,12 +155,6 @@ withdrawal acknowledgement. Offline hosts retain IP and MAC holds.
 
 Each Node creation request without a UUID creates a new resource. Clients
 can supply the resource UUID to identify their creation request.
-
-NodeSet networking is a template for new replicas: only create objects with
-automatic IP/MAC/FIP allocation are accepted. Updating the template preserves
-existing replicas and their independent bindings. IDs remain stable while the
-replica/resource exists. Existing UUIDs or fixed addresses in templates are
-rejected by both schema and runtime validation.
 
 ## Security
 
@@ -186,10 +243,13 @@ literal UUIDs during migration. Source manifests must use the
 canonical format. Downgrade with managed SDN declarations requires restoring
 a database backup; unrepresentable NodeSet templates stop downgrade.
 
-For installations that already applied 0006, migration 0009 performs the same
-normalization, including UA actual Node snapshots, adds the stored NodeSet
-activation barrier, and drops the unused creation receipts table. All manifest
-SecurityGroupRule resources must already be materialized before 0009 runs;
-otherwise the migration stops before changing data. This prevents migrated
-NodeSet templates from activating before their initial rules exist. Apply Core
-migrations explicitly before restarting its services.
+Migration 0009 adds `Network.is_default`, `Subnet.default_floating_pool`, an internal
+Port flag for inherited flat placement, and uniqueness constraints. It removes
+the saved `networking` and inline barrier fields. Simple primary-port templates
+and installed declarations become `default_network`; multi-port, adopted-port
+or group templates must be converted to independent resources before upgrading.
+Old empty stored NodeSet templates become absent
+templates, preserving their previous meaning. Existing node attachments remain
+intact. Source YAML with `default_network: {}` retains automatic flat placement
+while compatibility selects a flat subnet; otherwise it disables the automatic
+port. Apply migrations before restarting Core.

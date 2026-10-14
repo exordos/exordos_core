@@ -160,6 +160,7 @@ class TestPortApi:
         node = compute_models.Node(
             uuid=sys_uuid.uuid4(),
             name="leg-owner",
+            default_network={},
             cores=1,
             ram=1024,
             disk_spec=sdk_models.RootDiskSpec(image="ubuntu_24.04"),

@@ -5,8 +5,8 @@ from pathlib import Path
 import runpy
 import uuid
 
-import pytest
 from psycopg.errors import InvalidTextRepresentation
+import pytest
 from restalchemy.storage.sql import engines
 
 from exordos_core.elements.dm import models as em
@@ -55,3 +55,7 @@ def test_rule_preflight_uses_uuid_semantics(user_api, spelling):
     else:
         with engines.engine_factory.get_engine().session_manager() as session:
             step._canonicalize_config(session)
+            # This historical migration predates removal of the inline field.
+            session.execute(
+                "ALTER TABLE compute_sets DROP COLUMN network_activation_barrier"
+            )

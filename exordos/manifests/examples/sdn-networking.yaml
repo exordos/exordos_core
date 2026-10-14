@@ -26,28 +26,28 @@ resources:
       ip_range: 192.168.1.50-192.168.1.99
       placeable: false
       floating_pool: true
+      default_floating_pool: true
       dhcp: false
   $core.compute.nodes:
     vm:
       name: sdn-demo
       cores: 2
       ram: 2048
-      networking: []
+      default_network:
+        network: $core.network.networks.$private:uuid
+        floating_ip:
+          network: $core.network.networks.$external:uuid
       disk_spec:
         kind: root_disk
         size: 10
         image: https://repo.exordos.com/exordos-base/1.1.2/exordos-base.raw.zst
+  # A separately managed second NIC with its own security group.
   $core.network.ports:
     private:
       network: $core.network.networks.$private:uuid
       node: $core.compute.nodes.$vm:uuid
       port_security: true
       # Omit index for automatic assignment; declarative reapply preserves it.
-  $core.network.catalog.addresses:
-    fip:
-      kind: floating
-      network: $core.network.networks.$external:uuid
-      port: $core.network.ports.$private:uuid
   $core.network.catalog.security_groups:
     ssh:
       name: demo-ssh

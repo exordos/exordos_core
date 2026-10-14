@@ -30,9 +30,35 @@ from restalchemy.storage import exceptions as storage_exc
 from exordos_core.common import constants as core_constants
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common.api.controllers import StoredFieldsQueryMixin
+from exordos_core.common.dm import networking as networking_types
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as models
 from exordos_core.user_api.compute.dm import models as user_models
+
+
+class NodeResource(resources.ResourceByModelWithCustomProps):
+    def generate_schema_object(self, method, openapi_version):
+        schema = super().generate_schema_object(method, openapi_version)
+        if method == ra_c.CREATE:
+            schema["properties"]["default_network"] = (
+                networking_types.DefaultNetworkRequestType().to_openapi_spec(
+                    {"openapi": openapi_version}
+                )
+            )
+            schema["x-create-only"] = list(self.get_model().__create_only_fields__)
+        return schema
+
+
+class NodeSetResource(resources.ResourceByRAModel):
+    def generate_schema_object(self, method, openapi_version):
+        schema = super().generate_schema_object(method, openapi_version)
+        if method in (ra_c.CREATE, ra_c.UPDATE):
+            schema["properties"]["default_network"] = (
+                networking_types.DefaultNetworkRequestType(
+                    template=True
+                ).to_openapi_spec({"openapi": openapi_version})
+            )
+        return schema
 
 
 class VolumeAlreadyAttachedError(ra_e.ValidationErrorException):
@@ -156,7 +182,7 @@ class NodesController(
     __policy_name__ = "node"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
 
-    __resource__ = resources.ResourceByModelWithCustomProps(
+    __resource__ = NodeResource(
         model_class=user_models.Node,
         process_filters=True,
         convert_underscore=False,
@@ -165,15 +191,11 @@ class NodesController(
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
                 "ports": {ra_c.ALL: field_p.Permissions.RO},
-                "network_activation_barrier": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "network_initialized": {ra_c.ALL: field_p.Permissions.HIDDEN},
-                "networking": {
-                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                "default_network": {
+                    ra_c.ALL: field_p.Permissions.RO,
                     ra_c.CREATE: field_p.Permissions.RW,
                 },
-                # `default_network` stays writable for one more release:
-                # manifests using the released `target_ipv4` would get a 400.
-                # Deprecated in NetworkService._legacy_interface.
             },
         ),
     )
@@ -182,23 +204,36 @@ class NodesController(
         # Validate disk spec
         self.model.validate_create_input(kwargs)
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
-        from exordos_core.network.permissions import gate_networking
+        from exordos_core.network.permissions import gate_default_network
 
-        gate_networking(
-            self,
-            kwargs.get("networking"),
-            kwargs.get("project_id", core_constants.ZERO_UUID),
+        gate_default_network(
+            self, kwargs, kwargs.get("project_id", core_constants.ZERO_UUID)
         )
         node = self.model(**kwargs)
         node.disk_spec.validate()
         self._enforce_foreign_subnets(node.interfaces)
 
-        return super().create(**kwargs)
+        from exordos_core.network.contracts import atomic_session
+        from exordos_core.network.permissions import gate_allocated_private_address
+
+        with atomic_session(self.model._get_engine()) as session:
+            node = super().create(**kwargs)
+            request = kwargs.get("default_network") or {}
+            if request.get("target_ipv4") is not None and node.node_type == "VM":
+                port = models.Port.objects.get_one(
+                    filters={
+                        "node": dm_filters.EQ(node.uuid),
+                        "index": dm_filters.EQ(0),
+                    },
+                    session=session,
+                )
+                gate_allocated_private_address(self, port, session)
+            return node
 
     def update(self, uuid, **kwargs):
-        if "networking" in kwargs:
+        if "default_network" in kwargs:
             raise ex_exceptions.ValidateException(
-                err="networking is create-only; update ports directly"
+                err="default_network is create-only; update ports directly"
             )
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
         if "interfaces" in kwargs:
@@ -243,7 +278,7 @@ class NodeSetsController(
     __policy_name__ = "node_set"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = NodeSetResource(
         model_class=models.NodeSet,
         process_filters=True,
         convert_underscore=False,
@@ -251,7 +286,6 @@ class NodeSetsController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
-                "network_activation_barrier": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "nodes": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
@@ -260,12 +294,10 @@ class NodeSetsController(
     def create(self, **kwargs):
         self.model.validate_create_input(kwargs)
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
-        from exordos_core.network.permissions import gate_networking
+        from exordos_core.network.permissions import gate_default_network
 
-        gate_networking(
-            self,
-            kwargs.get("networking"),
-            kwargs.get("project_id", core_constants.ZERO_UUID),
+        gate_default_network(
+            self, kwargs, kwargs.get("project_id", core_constants.ZERO_UUID)
         )
         # Validate disk spec
         node_set = self.model(**kwargs)
@@ -277,9 +309,10 @@ class NodeSetsController(
     def update(self, uuid, **kwargs):
         stored = self.get(uuid=uuid)
         self.model.validate_update_input(kwargs, stored)
-        from exordos_core.network.permissions import gate_networking
+        from exordos_core.network.permissions import gate_default_network
 
-        gate_networking(self, kwargs.get("networking"), stored.project_id)
+        if "default_network" in kwargs:
+            gate_default_network(self, kwargs, stored.project_id)
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
         if "interfaces" in kwargs:
             self._enforce_foreign_subnets(kwargs["interfaces"])

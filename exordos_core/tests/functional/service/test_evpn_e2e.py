@@ -907,7 +907,7 @@ class TestOvsEvpnE2E(_EvpnStand):
             ram=1024,
             disk_spec=sdk_models.RootDiskSpec(image="ubuntu_24.04"),
             project_id=c.ZERO_UUID,
-            networking=[{"port": {"subnet": str(subnet.uuid)}}],
+            default_network={"subnet": str(subnet.uuid)},
         )
         node.insert()
         port = models.Port.objects.get_one(filters={"node": dm_filters.EQ(node.uuid)})

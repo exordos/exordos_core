@@ -135,7 +135,7 @@ class TestBothWaysInAreGated:
             mock.patch.object(
                 controller,
                 "get",
-                return_value=mock.MagicMock(networking=None, interfaces=None),
+                return_value=mock.MagicMock(interfaces=None, default_network=None),
             ),
             self._foreign_subnet(),
             mock.patch.object(

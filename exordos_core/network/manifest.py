@@ -67,17 +67,3 @@ def barrier_ready(barrier, session=None):
         if {str(item.uuid) for item in found} != required:
             return False
     return True
-
-
-def inline_activation_barrier(resource, target_state, engine):
-    groups = {
-        str(group)
-        for entry in target_state.get("networking", [])
-        for group in entry.get("security_groups", [])
-    }
-    return {
-        "rules": [
-            str(item.value.get("uuid", item.uuid))
-            for item in _rules_for(groups, engine)
-        ]
-    }

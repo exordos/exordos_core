@@ -43,16 +43,16 @@ ProxyService is HTTP; it is not a private TCP endpoint for database sessions.
 
 ## Data interfaces
 
-Create canonical Ports and bind them through `Port.node`. A Node can be
-created with `networking: []` so that a separately declared Port owns its
-attachment. Node creation can alternatively use inline `networking` entries;
-that wrapper is create-only. Later operations address Port, Address and
-SG/IG binding resources directly.
+Node creation uses `default_network` for the primary Port and optional FIP.
+Omitting the field creates a primary Port according to project placement policy.
+An empty object suppresses SDN placement, but retains automatic flat placement
+when the compatibility policy selects it. Additional canonical Ports attach
+through `Port.node`. Later changes use Port, Address and SG/IG binding resources.
 
-A NodeSet accepts a `networking` template. Replicas allocate their own
-Ports/IPs/MACs/FIPs. Existing Port UUIDs and explicit addresses are not valid
-in that template. Changing the template affects new replicas and preserves
-existing replicas and external policy bindings.
+A NodeSet accepts the same `default_network` template. Replicas allocate their
+own Ports/IPs/MACs/FIPs. Fixed addresses are not valid in that template.
+Changing it affects new replicas and preserves existing replicas and external
+policy bindings.
 
 Attachment allocates the lowest free index when omitted. Index 0 is the
 primary interface for boot/image operations. An attached index is immutable;
