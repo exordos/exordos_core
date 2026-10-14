@@ -214,10 +214,10 @@ class SchedulerService(basic.BasicService):
         )
 
     def _find_storage_pool_by_name(
-        self, pool: base.MachinePoolBundle, name: str, location=None
+        self, pool: base.MachinePoolBundle, name: str
     ) -> storage_select.PoolCandidate:
         result = storage_select.find_storage_pool_by_name_with_clusters(
-            pool.pool.storage_pools, name, location
+            pool.pool.storage_pools, name
         )
         if result is None:
             raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
@@ -229,19 +229,12 @@ class SchedulerService(basic.BasicService):
     ) -> models.MachineVolume:
         storage_pool, cluster = self._select_storage_pool(pool, volume)
         storage_pool.allocate_capacity(volume.size)
-        policy = {}
         if cluster is not None:
             if not hasattr(self, "_storage_reservations"):
                 self._storage_reservations = {}
             self._storage_reservations.setdefault(str(cluster.uuid), {})[
                 str(volume.uuid)
             ] = volume.size << 30
-            policy = {
-                "pool_uuid": str(storage_pool.uuid),
-                "mirrors": storage_pool.mirrors,
-                "chunk_size": storage_pool.chunk_size,
-                "failure_domain": storage_pool.failure_domain,
-            }
 
         pool_volume = models.MachineVolume(
             uuid=volume.uuid,
@@ -254,9 +247,7 @@ class SchedulerService(basic.BasicService):
             device_type=volume.device_type,
             tier=volume.tier,
             ephemeral=volume.ephemeral,
-            storage_pool=storage_pool.name,
-            storage_location=cluster.driver_spec.endpoint if cluster else None,
-            storage_policy=policy,
+            storage_pool=str(storage_pool.uuid) if cluster else storage_pool.name,
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
@@ -271,9 +262,7 @@ class SchedulerService(basic.BasicService):
             return None
 
         try:
-            return self._find_storage_pool_by_name(
-                pool, pool_volume.storage_pool, pool_volume.storage_location
-            )
+            return self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
         except ValueError:
             return None
 
@@ -295,7 +284,8 @@ class SchedulerService(basic.BasicService):
         volumes = []
         exact_volumes = []
         for pool_volume in pool.volumes:
-            if pool_volume.storage_location:
+            assigned = self._existing_storage_pool(pool, pool_volume)
+            if assigned is not None and assigned[1] is not None:
                 continue
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
