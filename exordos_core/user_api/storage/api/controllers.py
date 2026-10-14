@@ -196,13 +196,19 @@ def _require_cluster_not_deleting(cluster):
 
 
 def _require_no_disks(cluster, pool_uuid=None):
-    volumes = compute_models.MachineVolume.objects.get_all(
-        filters={"storage_location": dm_filters.EQ(cluster.driver_spec.endpoint)}
-    )
-    if pool_uuid is not None:
-        volumes = [
-            v for v in volumes if v.storage_policy.get("pool_uuid") == str(pool_uuid)
+    pool_ids = (
+        [str(pool_uuid)]
+        if pool_uuid is not None
+        else [
+            str(p.uuid)
+            for p in models.StoragePool.objects.get_all(
+                filters={"cluster": dm_filters.EQ(cluster.uuid)}
+            )
         ]
+    )
+    volumes = compute_models.MachineVolume.objects.get_all(
+        filters={"storage_pool": dm_filters.In(pool_ids)}
+    )
     if volumes:
         raise storage_exc.ConflictRecords(
             model="StorageCluster", msg="Storage still has allocated or pending disks"

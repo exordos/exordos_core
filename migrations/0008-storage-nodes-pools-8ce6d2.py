@@ -33,9 +33,6 @@ class MigrationStep(migrations.AbstractMigrationStep):
         session.execute(
             "ALTER TABLE storage_clusters ADD COLUMN capacity_info jsonb NOT NULL DEFAULT '{}'::jsonb"
         )
-        session.execute(
-            "ALTER TABLE compute_machine_volumes ADD COLUMN storage_policy jsonb NOT NULL DEFAULT '{}'::jsonb"
-        )
         session.execute("""
             CREATE TABLE storage_nodes (
                 uuid uuid PRIMARY KEY, name varchar(255) NOT NULL,
@@ -78,20 +75,15 @@ class MigrationStep(migrations.AbstractMigrationStep):
             WHERE p->>'uuid' IS NOT NULL;
         """)
 
-        session.execute("""
-            UPDATE compute_machine_volumes v SET storage_policy =
-                jsonb_build_object('pool_uuid',p.uuid::text,'mirrors',p.mirrors,
-                                   'chunk_size',p.chunk_size,'failure_domain',p.failure_domain)
-            FROM storage_pools p JOIN storage_clusters c ON c.uuid=p.cluster
-            WHERE v.storage_location=c.driver_spec->>'endpoint' AND v.storage_pool=p.name;
-        """)
+        # Rebuild agent assignments from SQL after adding the rawstor payload.
+        # This also refreshes existing qcow2 resources without rewriting JSON.
+        session.execute(
+            "UPDATE compute_machine_volumes SET updated_at=CURRENT_TIMESTAMP"
+        )
 
     def downgrade(self, session):
         session.execute(
             "DROP TABLE storage_pools; DROP TABLE storage_nodes; DROP INDEX storage_clusters_name_unique"
-        )
-        session.execute(
-            "ALTER TABLE compute_machine_volumes DROP COLUMN storage_policy"
         )
         session.execute("ALTER TABLE storage_clusters DROP COLUMN capacity_info")
 
