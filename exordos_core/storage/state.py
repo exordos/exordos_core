@@ -42,24 +42,23 @@ def agent_driver_spec(cluster):
     spec["managed"] = True
     spec["nodes"] = {
         str(node.uuid): {
-            "endpoint": node.endpoint,
-            "weight": node.weight,
-            "failure_domain_path": node.failure_domain_path,
+            "endpoint": node.driver_spec.endpoint,
+            "weight": node.driver_spec.weight,
+            "failure_domain_path": node.driver_spec.failure_domain_path,
         }
         for node in nodes
         if node.agent is None or node.status == "ACTIVE"
     }
     spec["pools"] = {
         str(policy.uuid): {
-            field: getattr(policy, field)
-            for field in (
-                "name",
-                "speed",
-                "ephemeral",
-                "mirrors",
-                "chunk_size",
-                "failure_domain",
-            )
+            **{
+                field: getattr(policy, field)
+                for field in ("name", "speed", "ephemeral")
+            },
+            **{
+                field: getattr(policy.driver_spec, field)
+                for field in ("mirrors", "chunk_size", "failure_domain")
+            },
         }
         for policy in policies
     }

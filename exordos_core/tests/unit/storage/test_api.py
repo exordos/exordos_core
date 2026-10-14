@@ -123,11 +123,16 @@ def test_node_rejects_weights_that_cannot_be_parsed_by_mds(weight):
     with pytest.raises(controllers.InvalidRawstorEndpoint, match="positive integer"):
         controller.validate_member(
             {
-                "endpoint": "ost://host:7777",
                 "agent": None,
-                "location": "",
-                "weight": weight,
+                "driver_spec": {
+                    "kind": "rawstor",
+                    "endpoint": "ost://host:7777",
+                    "location": "",
+                    "weight": weight,
+                },
             },
             _cluster(_spec()),
-            existing=SimpleNamespace(agent=None, location=""),
+            existing=SimpleNamespace(
+                agent=None, driver_spec=SimpleNamespace(location="")
+            ),
         )
