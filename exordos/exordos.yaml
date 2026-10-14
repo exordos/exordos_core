@@ -54,7 +54,7 @@ build:
             - ../docs/openapi/openapi_user.yaml
       images:
       - name: exordos-core
-        format: GEN_IMG_FORMAT_CORE=qcow2,zst
+        format: GEN_IMG_FORMAT_CORE=qcow2
 
         # OS profile for the image
         profile: exordos_base
