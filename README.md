@@ -61,7 +61,7 @@ hosts with `storages nodes init`, then create OST resources through
 `storages nodes add --agent AGENT_UUID`. Host agents start OSTs; core adds ready
 OSTs to MDS topology. Each cluster creates WARM
 persistent (two mirrors) and ephemeral (one mirror) pools with a shared capacity
-budget. Local qcow2 disks default to HOT ephemeral.
+budget. Local qcow2 disks default to WARM ephemeral.
 See [Rawstor storage](docs/usage/rawstor.md) for topology, policy CRUD and admission.
 
 # 💡 Contributing

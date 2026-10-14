@@ -44,7 +44,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
         session.execute("""
             UPDATE storage_clusters SET driver_spec=driver_spec ||
                 '{"location":"","ost_endpoint":"","nodes":{},"pools":{},
-                  "managed":true,"speed":"HOT","ephemeral":false}'::jsonb
+                  "managed":true,"tier":"WARM","ephemeral":true}'::jsonb
             WHERE driver_spec->>'kind'='rawstor';
         """)
 
