@@ -136,6 +136,8 @@ def test_migration_updates_target_actual_and_persisted_sources():
                     },
                 ),
                 ("pool_volume", {"size": 10}),
+                ("set_agent_volume", {"size": 10, "target_fields": {"size": None}}),
+                ("target_node_set", {"disk_spec": {"kind": "root_disk", "size": 10}}),
                 ("machine", {"cores": 2}),
                 ("pool", {"storage_pools": [{"name": "default"}]}),
                 ("unrelated", {"size": 10}),
@@ -155,6 +157,11 @@ def test_migration_updates_target_actual_and_persisted_sources():
                 rows["node"]["value"]["target_fields"]["disk_spec"]["ephemeral"] is None
             )
             assert rows["pool_volume"]["value"]["ephemeral"] is True
+            assert rows["set_agent_volume"]["value"]["ephemeral"] is True
+            assert rows["set_agent_volume"]["value"]["target_fields"]["tier"] is None
+            assert rows["set_agent_volume"]["hash"] == ""
+            assert rows["target_node_set"]["value"]["disk_spec"]["ephemeral"] is True
+            assert rows["target_node_set"]["hash"] == ""
             assert (
                 rows["pool"]["value"]["storage_pools"][0]["tier"]
                 == ic.DiskTier.WARM.value

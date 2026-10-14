@@ -483,8 +483,15 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         rules (soft tier/ephemeral match with a capacity fallback; a
         volume already scheduled onto a pool only considers that one).
         """
+        if (
+            volume.storage_pool
+            and sum(sp.name == volume.storage_pool for sp in pool.storage_pools) != 1
+        ):
+            return None
+        names = [sp.name for sp in pool.storage_pools]
+        pools = [sp for sp in pool.storage_pools if names.count(sp.name) == 1]
         return ua_pool.select_storage_pool(
-            pool.storage_pools,
+            pools,
             volume.tier,
             volume.ephemeral,
             size,
@@ -502,7 +509,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         size = actual_volume.size if actual_volume is not None else 0
         size = target_volume.size - size
 
-        if not pool.storage_pools:
+        if not pool.storage_pools or (
+            actual_volume is not None and not target_volume.storage_pool
+        ):
             return False
 
         return self._select_storage_pool(pool, target_volume, size) is not None
@@ -553,6 +562,10 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         """Check if the volume can be updated."""
         target_volume = volume
         actual_volume = pool_models.MachineVolume.from_ua_resource(resource)
+        # Legacy rows may have no pin. Only a pool reported by the data plane
+        # can recover it; capacity-based selection cannot locate existing data.
+        if not volume.storage_pool and actual_volume.storage_pool:
+            volume.storage_pool = actual_volume.storage_pool
 
         # Check pool has enough space
         if not self._has_enough_space_in_pool(

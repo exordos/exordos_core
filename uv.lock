@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -766,7 +766,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.0,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.6.8,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=39a8233e5c518d0e114a02920ad32a6cc4c48194" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -869,8 +869,8 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.6.8"
-source = { registry = "https://pypi.org/simple" }
+version = "3.6.9.dev13+g39a8233e5"
+source = { git = "https://github.com/exordos/gcl_sdk.git?rev=39a8233e5c518d0e114a02920ad32a6cc4c48194#39a8233e5c518d0e114a02920ad32a6cc4c48194" }
 dependencies = [
     { name = "bjoern" },
     { name = "gcl-iam" },
@@ -882,10 +882,6 @@ dependencies = [
     { name = "renameat2", marker = "sys_platform == 'linux'" },
     { name = "restalchemy" },
     { name = "xxhash" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/9c/a010d5da8104c3f30a6a7e3619bd51c64b88a8547d54d0b0df2eb1790bb6/gcl_sdk-3.6.8.tar.gz", hash = "sha256:c636432042a6b205d12ebc866a3464e0ca1aa4cfdaecd5ca2721d31ed5158788", size = 375733, upload-time = "2026-10-06T11:19:04.066Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/b1/b570a8437940b1e2f150e82900888ba293cdb497e5bda1e7b42ad2dd73ef/gcl_sdk-3.6.8-py3-none-any.whl", hash = "sha256:372b422fac6a62cb9e0c4515fca52808737fbc794018fbdee5e35adf134225f6", size = 332169, upload-time = "2026-10-06T11:19:02.094Z" },
 ]
 
 [package.optional-dependencies]

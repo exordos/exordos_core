@@ -80,3 +80,13 @@ class TestBuildSpecification:
 
         assert element_models.element_engine.load_from_database == loader
         assert element_models.element_engine.load_elements == elements_loader
+
+
+def test_volume_policy_is_writable_at_creation_and_readonly_on_update():
+    schemas = openapi.build(openapi.USER_API)["components"]["schemas"]
+    for field in ("tier", "ephemeral"):
+        assert not schemas["Volume_Create"]["properties"][field].get("readOnly", False)
+        update = schemas["Volume_Update"]
+        while "$ref" in update:
+            update = schemas[update["$ref"].rsplit("/", 1)[-1]]
+        assert update["properties"][field]["readOnly"] is True

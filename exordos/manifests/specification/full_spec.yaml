@@ -4889,7 +4889,6 @@ components:
         ephemeral:
           default: true
           example: true
-          readOnly: true
           type: boolean
         image:
           example: any_string
@@ -4934,7 +4933,6 @@ components:
           - HOT
           - WARM
           example: COLD
-          readOnly: true
           type: string
         updated_at:
           default: '2006-01-02T15:04:05.000576Z'

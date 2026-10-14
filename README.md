@@ -52,3 +52,25 @@ Contributing to the project is highly appreciated! However, some rules should be
 - Changes should include not only new functionality or bug fixes, but also tests for the new code.
 - After the changes are completed and **tested**, a Pull Request should be created with a clear description of the new functionality. And add one of the project maintainers as a reviewer.
 - Changes can be merged only after receiving an approve from one of the project maintainers.
+
+## Disk placement
+
+Disk specifications and standalone volumes accept `tier` (`COLD`, `WARM`,
+`HOT`) and `ephemeral` (`true` or `false`). Both default to `WARM`/`true`,
+which identifies local qcow2 storage. The scheduler prefers an exact tier
+match and falls back to another tier with enough space, while always
+preserving `ephemeral`. Persistent disks must request `ephemeral: false`.
+
+The chosen storage pool is retained for reuse and resize; an existing disk
+is never moved merely because another pool has more free space. Changing
+`tier` or `ephemeral` after creation is unsupported.
+
+This branch requires the matching `gcl_sdk` branch `feat/disk-scheduling`
+(PR #211) before it can be merged and released. The SDK must provide
+`DiskTier`, the disk policy fields, and `select_storage_pool`; a released
+SDK without these APIs is insufficient.
+
+Until that SDK release is published, `uv.lock` pins the development SDK
+commit `39a8233e5c518d0e114a02920ad32a6cc4c48194` through `tool.uv.sources`.
+This makes `uv sync --locked` reproducible without resolving an older SDK
+from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.

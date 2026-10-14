@@ -51,8 +51,7 @@ class TestNodeInsert:
 class TestVolumeSpeedEphemeralReadOnly:
     """Changing a disk's tier/ephemeral tier after creation would mean
     migrating it to a different storage pool, which isn't implemented -
-    review feedback on PR #623 (akremenetsky) asked for this to fail
-    loudly instead of being silently accepted with no actual effect.
+    updates fail loudly instead of being silently accepted with no actual effect.
     """
 
     def test_tier_and_ephemeral_are_settable_at_creation(self):

@@ -180,7 +180,10 @@ class SchedulerService(basic.BasicService):
         )
 
     def _select_storage_pool(
-        self, pool: base.MachinePoolBundle, volume: models.Volume, size: int
+        self,
+        pool: base.MachinePoolBundle,
+        volume: models.Volume,
+        size: int | None = None,
     ) -> ua_pool.AbstractStoragePool:
         """Select a storage pool for `volume`.
 
@@ -188,10 +191,13 @@ class SchedulerService(basic.BasicService):
         since callers also use this for a resize's capacity delta.
 
         See gcl_sdk's `ua_pool.select_storage_pool` for the matching
-        rules (soft tier/ephemeral match with a capacity fallback).
+        rules (soft tier match and mandatory ephemeral match).
         """
+        size = volume.size if size is None else size
+        names = [sp.name for sp in pool.pool.storage_pools]
+        pools = [sp for sp in pool.pool.storage_pools if names.count(sp.name) == 1]
         storage_pool = ua_pool.select_storage_pool(
-            pool.pool.storage_pools, volume.tier, volume.ephemeral, size
+            pools, volume.tier, volume.ephemeral, size
         )
         if storage_pool is not None:
             return storage_pool
@@ -220,7 +226,7 @@ class SchedulerService(basic.BasicService):
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        storage_pool = self._select_storage_pool(pool, volume, volume.size)
+        storage_pool = self._select_storage_pool(pool, volume)
         storage_pool.allocate_capacity(volume.size)
 
         pool_volume = models.MachineVolume(
@@ -284,7 +290,7 @@ class SchedulerService(basic.BasicService):
             # actually is - skip it rather than guessing, and let a
             # fresh volume be created instead.
             actual_pool = self._existing_storage_pool(pool, pool_volume)
-            if actual_pool is None:
+            if actual_pool is None or actual_pool.ephemeral != volume.ephemeral:
                 continue
 
             volumes.append(pool_volume)
@@ -341,6 +347,24 @@ class SchedulerService(basic.BasicService):
         # No idle volume could be reused - create a new one.
         return self._build_machine_volume(pool, volume)
 
+    def _allocate_node_volumes(
+        self, node: base.NodeBundle, pool: base.MachinePoolBundle
+    ) -> list[models.MachineVolume]:
+        capacities = [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
+        idle_volumes = list(pool.volumes)
+        owners = [(volume, volume.node_volume) for volume in idle_volumes]
+        try:
+            return [
+                self._place_volume_into_pool(volume, pool) for volume in node.volumes
+            ]
+        except Exception:
+            for storage_pool, capacity in capacities:
+                storage_pool.capacity_provisioned = capacity
+            pool.volumes[:] = idle_volumes
+            for volume, owner in owners:
+                volume.node_volume = owner
+            raise
+
     def _place_node_into_pool(
         self, node: base.NodeBundle, pool: base.MachinePoolBundle
     ) -> None:
@@ -365,9 +389,7 @@ class SchedulerService(basic.BasicService):
         )
 
         # Place volumes into the pool
-        volume_allocations = []
-        for node_volume in node.volumes:
-            volume_allocations.append(self._place_volume_into_pool(node_volume, pool))
+        volume_allocations = self._allocate_node_volumes(node, pool)
 
         # Set pool to machine, node and volumes
         machine.pool = pool.pool.uuid
@@ -529,22 +551,24 @@ class SchedulerService(basic.BasicService):
                     w0 + w1 for w0, w1 in zip(accumulated_weights, weights)
                 ]
 
-            # Choose the best pool, it means the one with the highest weight
-            index = accumulated_weights.index(max(accumulated_weights))
-            pool = pools[index]
-            if not pool:
-                LOG.warning("No pools found to schedule node %s", node.node.uuid)
-                continue
-
-            # The final step is to place the node into the pool
-            try:
-                self._place_node_into_pool(node, pool)
-            except Exception:
-                LOG.exception(
-                    "Error placing node %s into pool %s",
-                    node.node.uuid,
-                    pool.pool.uuid,
-                )
+            # Try eligible pools in descending weight order. A pool can have
+            # enough CPU/RAM while lacking the disk policy or capacity required.
+            ranked = sorted(
+                zip(accumulated_weights, pools),
+                key=lambda entry: entry[0],
+                reverse=True,
+            )
+            for _, pool in ranked:
+                try:
+                    self._place_node_into_pool(node, pool)
+                except Exception:
+                    LOG.exception(
+                        "Error placing node %s into pool %s",
+                        node.node.uuid,
+                        pool.pool.uuid,
+                    )
+                else:
+                    break
 
     def _schedule_pools(self, pool_builders: tp.List[ua_models.UniversalAgent]) -> None:
         unsheduled = self._get_unscheduled_pools()

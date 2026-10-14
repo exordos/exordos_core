@@ -81,7 +81,7 @@ def scheduler():
 
 class TestPlaceVolumeIntoPoolFallback:
     """A full exact-tier candidate must not block reuse of a different,
-    still-fitting candidate (Codex review on PR #623).
+    still-fitting candidate.
     """
 
     def test_falls_back_to_a_fitting_candidate_when_the_exact_match_is_full(
@@ -144,8 +144,7 @@ class TestPlaceVolumeIntoPoolFallback:
 
 class TestPlaceVolumeIntoPoolActualTier:
     """Reuse candidates must be classified by the tier of the pool they
-    actually live on, not the tier they were originally requested with
-    (Codex review on PR #623).
+    actually live on, not the tier they were originally requested with.
     """
 
     def test_prefers_the_volume_actually_on_the_matching_pool(self, scheduler):
@@ -173,8 +172,7 @@ class TestPlaceVolumeIntoPoolActualTier:
 
 
 class TestPlaceVolumeIntoPoolBrokenCandidates:
-    """Review feedback on PR #623 (Sourcery/Codex + akremenetsky): a
-    reuse candidate whose actual storage pool can't be determined
+    """A reuse candidate whose actual storage pool can't be determined
     (predates storage_pool tracking, or was pinned to a pool that no
     longer exists) is skipped rather than guessed at - a scheduled
     volume always knows where it lives, so this should be rare, and
@@ -230,3 +228,55 @@ class TestPlaceVolumeIntoPoolBrokenCandidates:
         assert result.storage_pool == "only-pool"
         # The legacy volume is left alone, not consumed.
         assert legacy_volume in pool.volumes
+
+
+@pytest.mark.parametrize("ephemeral", [True, False])
+def test_reuse_never_crosses_ephemeral_policy(scheduler, ephemeral):
+    wrong = _storage_pool("wrong", ic.DiskTier.WARM.value, not ephemeral, 100)
+    matching = _storage_pool("matching", ic.DiskTier.COLD.value, ephemeral, 100)
+    idle = _machine_volume("img1", 10, ic.DiskTier.WARM.value, not ephemeral, "wrong")
+    pool = _machine_pool_bundle([wrong, matching], [idle])
+    request = _requested_volume("img1", 10, ic.DiskTier.WARM.value, ephemeral)
+    result = scheduler._place_volume_into_pool(request, pool)
+    assert result.uuid == request.uuid
+    assert result.storage_pool == "matching"
+    assert pool.volumes == [idle]
+
+
+def test_failed_disk_placement_restores_capacity_and_reuse_candidates(scheduler):
+    storage = _storage_pool("local", ic.DiskTier.WARM.value, True, 5, 1)
+    idle = _machine_volume("img1", 1, ic.DiskTier.WARM.value, True, "local")
+    pool = _machine_pool_bundle([storage], [idle])
+    first = _requested_volume("img1", 4, ic.DiskTier.WARM.value, True)
+    second = _requested_volume(None, 10, ic.DiskTier.WARM.value, True)
+    node = base.NodeBundle(None, [first, second])
+    with pytest.raises(ValueError):
+        scheduler._allocate_node_volumes(node, pool)
+    assert storage.capacity_provisioned == 1
+    assert pool.volumes == [idle]
+    assert idle.node_volume is None
+    assert scheduler._allocate_node_volumes(base.NodeBundle(None, [first]), pool) == [
+        idle
+    ]
+
+
+def test_scheduler_tries_next_compute_pool_after_disk_failure(scheduler, monkeypatch):
+    from types import SimpleNamespace
+
+    first = _machine_pool_bundle(
+        [_storage_pool("first", ic.DiskTier.WARM.value, True, 10)], []
+    )
+    second = _machine_pool_bundle(
+        [_storage_pool("second", ic.DiskTier.WARM.value, False, 10)], []
+    )
+    node = base.NodeBundle(SimpleNamespace(uuid=sys_uuid.uuid4()), [])
+    attempted = []
+
+    def place(node, pool):
+        attempted.append(pool)
+        if pool is first:
+            raise ValueError("No durable storage")
+
+    monkeypatch.setattr(scheduler, "_place_node_into_pool", place)
+    scheduler._schedule_on_pools([node], [first, second])
+    assert attempted == [first, second]

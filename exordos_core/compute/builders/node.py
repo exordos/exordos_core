@@ -129,14 +129,16 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         return volume.index == 0
 
     def _actualize_volume(self, target: models.Volume, actual: models.Volume) -> None:
+        if (target.tier, target.ephemeral) != (actual.tier, actual.ephemeral):
+            raise ValueError(
+                "Changing the tier or ephemeral policy of an existing disk is unsupported"
+            )
         actual.size = target.size
         actual.image = target.image
         actual.name = target.name
         actual.description = target.description
         actual.boot = target.boot
         actual.device_type = target.device_type
-        actual.tier = target.tier
-        actual.ephemeral = target.ephemeral
         actual.label = target.label
         actual.status = ua_pool.VolumeStatus.IN_PROGRESS.value
         actual.save()

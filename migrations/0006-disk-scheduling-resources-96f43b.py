@@ -29,6 +29,8 @@ RESOURCE_KINDS = (
     "pool",
     "guest_machine",
     "set_agent_node",
+    "target_node_set",
+    "set_agent_volume",
     "em_core_compute_nodes",
     "em_core_compute_sets",
     "em_core_compute_volumes",
@@ -187,7 +189,12 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 value = enrich(
                     row["value"],
                     volume=row["kind"]
-                    in ("volume", "pool_volume", "em_core_compute_volumes"),
+                    in (
+                        "volume",
+                        "pool_volume",
+                        "set_agent_volume",
+                        "em_core_compute_volumes",
+                    ),
                     pool_volume=row["kind"] == "pool_volume",
                 )
                 # Rebuild target hashes from the enriched fields; actual hashes
