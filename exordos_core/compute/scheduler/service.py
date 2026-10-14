@@ -368,11 +368,16 @@ class SchedulerService(basic.BasicService):
         capacities = [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
         idle_volumes = list(pool.volumes)
         owners = [(volume, volume.node_volume) for volume in idle_volumes]
+        reservations = {
+            cluster: dict(objects)
+            for cluster, objects in getattr(self, "_storage_reservations", {}).items()
+        }
         try:
             return [
                 self._place_volume_into_pool(volume, pool) for volume in node.volumes
             ]
         except Exception:
+            self._storage_reservations = reservations
             for storage_pool, capacity in capacities:
                 storage_pool.capacity_provisioned = capacity
             pool.volumes[:] = idle_volumes
