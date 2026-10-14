@@ -555,9 +555,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if cluster is not None:
             cluster.save()
         if not volume.storage_pool:
-            volume.storage_pool = storage_pool.name
-        if not volume.storage_location and cluster is not None:
-            volume.storage_location = cluster.driver_spec.endpoint
+            volume.storage_pool = (
+                str(storage_pool.uuid) if cluster else storage_pool.name
+            )
 
         return True
 
@@ -598,9 +598,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if cluster is not None:
             cluster.save()
         if not volume.storage_pool:
-            volume.storage_pool = storage_pool.name
-        if not volume.storage_location and cluster is not None:
-            volume.storage_location = cluster.driver_spec.endpoint
+            volume.storage_pool = (
+                str(storage_pool.uuid) if cluster else storage_pool.name
+            )
 
         return True
 

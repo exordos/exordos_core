@@ -54,20 +54,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
             );
             """
         )
-        session.execute(
-            """
-            ALTER TABLE compute_machine_volumes
-                ADD COLUMN storage_location character varying(2048);
-            """
-        )
 
     def downgrade(self, session):
-        session.execute(
-            """
-            ALTER TABLE compute_machine_volumes
-                DROP COLUMN storage_location;
-            """
-        )
         session.execute("DROP TABLE public.storage_clusters;")
 
 

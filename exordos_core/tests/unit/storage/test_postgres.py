@@ -271,13 +271,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database):
                 project_id=uuid.uuid4(),
                 name="v",
                 size=20,
-                storage_location=cluster.driver_spec.endpoint,
-                storage_policy={
-                    "pool_uuid": str(persistent.uuid),
-                    "mirrors": 2,
-                    "chunk_size": 1 << 30,
-                    "failure_domain": "rack",
-                },
+                storage_pool=str(persistent.uuid),
             )
             volume.insert()
             after = {
@@ -343,7 +337,7 @@ def test_shared_budget_lock_blocks_another_transaction(database):
             assert future.result(timeout=5)
 
 
-def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
+def test_migration_preserves_legacy_ost_and_pool(database):
     cluster_uuid, pool_uuid, volume_uuid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     endpoint = "mds://core:7788/"
     with contexts.Context().session_manager():
@@ -352,7 +346,6 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
             project_id=uuid.uuid4(),
             name="legacy",
             size=10,
-            storage_location=endpoint,
             storage_pool="default",
         ).insert()
     with psycopg.connect(database) as connection:
@@ -377,7 +370,21 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
             VALUES (%s,'legacy','',%s::jsonb,'ACTIVE',ARRAY[%s::jsonb])""",
             (cluster_uuid, json.dumps(spec), json.dumps(policy)),
         )
+        connection.execute(
+            "UPDATE compute_machine_volumes SET updated_at='2000-01-01' WHERE uuid=%s",
+            (volume_uuid,),
+        )
         step.upgrade(connection)
+        assert connection.execute(
+            "SELECT updated_at > '2000-01-01' FROM compute_machine_volumes WHERE uuid=%s",
+            (volume_uuid,),
+        ).fetchone() == (True,)
+        assert (
+            connection.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='compute_machine_volumes' AND column_name IN ('storage_location','storage_policy')"
+            ).fetchall()
+            == []
+        )
         migration("0010-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
@@ -396,16 +403,6 @@ def test_migration_preserves_legacy_ost_pool_and_disk_policy(database):
         assert connection.execute(
             "SELECT uuid,mirrors FROM storage_pools"
         ).fetchone() == (pool_uuid, 1)
-        recorded = connection.execute(
-            "SELECT storage_policy FROM compute_machine_volumes WHERE uuid=%s",
-            (volume_uuid,),
-        ).fetchone()[0]
-        assert recorded == {
-            "pool_uuid": str(pool_uuid),
-            "mirrors": 1,
-            "chunk_size": 1 << 30,
-            "failure_domain": "server",
-        }
 
 
 @pytest.mark.parametrize(

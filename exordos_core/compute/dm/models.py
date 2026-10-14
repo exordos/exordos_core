@@ -405,20 +405,10 @@ class MachineVolume(
         default=ic.DiskTier.WARM.value,
     )
     ephemeral = properties.property(types.Boolean(), default=True)
-    # Name of the storage pool (within this compute pool) the scheduler
-    # placed the volume on - needed to re-locate it by name (rather than
-    # by tier/ephemeral, which several pools could match) when
-    # allocating extra capacity for a resize or a reused volume.
+    # Local libvirt pool name, or stable StoragePool UUID for a cluster disk.
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
     )
-    # Network address (ost://host:port) of the StorageCluster this
-    # volume was scheduled onto, set by the scheduler - unset for a
-    # volume on the hypervisor's own local (qcow2) pool.
-    storage_location = properties.property(
-        types.AllowNone(types.String(max_length=2048)), default=None
-    )
-    storage_policy = properties.property(types.Dict(), default=dict)
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,

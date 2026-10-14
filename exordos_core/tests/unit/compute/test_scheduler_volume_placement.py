@@ -404,8 +404,8 @@ class TestPlaceVolumeIntoPoolWithClusters:
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
-        assert result.storage_pool == "big-cluster"
-        assert result.storage_location == "mds://core:7776/"
+        assert result.storage_pool == str(big_cluster.storage_pools[0].uuid)
+        assert "storage_location" not in result.properties
 
     def test_a_local_pool_is_used_when_no_cluster_fits(self, scheduler, monkeypatch):
         local_pool = _storage_pool(
@@ -422,7 +422,7 @@ class TestPlaceVolumeIntoPoolWithClusters:
         result = scheduler._place_volume_into_pool(requested, pool)
 
         assert result.storage_pool == "local"
-        assert result.storage_location is None
+        assert "storage_location" not in result.properties
 
     def test_only_a_cluster_is_available_and_no_local_pools_configured(
         self, scheduler, monkeypatch
@@ -437,5 +437,5 @@ class TestPlaceVolumeIntoPoolWithClusters:
 
         result = scheduler._place_volume_into_pool(requested, pool)
 
-        assert result.storage_pool == "only-cluster"
-        assert result.storage_location == "mds://core:7776/"
+        assert result.storage_pool == str(cluster.storage_pools[0].uuid)
+        assert "storage_location" not in result.properties
