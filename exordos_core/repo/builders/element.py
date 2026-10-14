@@ -147,7 +147,7 @@ class RepoElement(models.RepoElement, ua_models.InstanceWithDerivativesMixin):
 
 
 def _parse_version(version: str) -> tuple[int, int, int, bool, str]:
-    match = _VERSION_RE.match(version.split("+", 1)[0])
+    match = _VERSION_RE.match(version)
     if not match:
         raise ValueError(f"Invalid version format: {version}")
     major = int(match.group("major"))
@@ -162,10 +162,7 @@ def _version_key(version: str) -> tuple[int, int, int, bool, str]:
     return _parse_version(version)
 
 
-def _version_sort_key(version: str) -> tuple[int, int, int, int, str]:
-    # Prefer concrete versions to the repository's floating alias.
-    if version == "latest":
-        return (2, 0, 0, 0, "")
+def _version_sort_key(version: str) -> tuple[bool, int, int, int, str]:
     major, minor, patch, is_release, suffix = _parse_version(version)
     return (not is_release, -major, -minor, -patch, suffix)
 
@@ -216,19 +213,21 @@ def _matches_version_constraint(
     return True
 
 
-def _element_sort_key(element: models.RepoElement) -> tuple[bool, int, tuple]:
+def _element_sort_key(element: models.RepoElement) -> tuple[bool, int, bool, tuple]:
     """Return sort key for dependency selection.
 
     Preferred order:
     1. Elements already installed or being installed.
     2. Higher repository priority.
-    3. Release versions over development versions.
-    4. Higher version number.
+    3. Concrete versions over the repository's latest alias.
+    4. Release versions over development versions.
+    5. Higher version number.
     """
     return (
         not _is_installation_in_progress(element),
         -element.repository.priority,
-        _version_sort_key(element.version),
+        element.version == "latest",
+        () if element.version == "latest" else _version_sort_key(element.version),
     )
 
 
