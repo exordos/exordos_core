@@ -92,7 +92,7 @@ The SDK must provide
 SDK without these APIs is insufficient.
 
 Until that SDK release is published, `uv.lock` pins the development SDK
-commit `946bb0ac337ae59d179e131d09a31eaf3b15e6ef` through `tool.uv.sources`.
+commit `28d072320557b44985599ca4cf8e94d96a5cccb1` through `tool.uv.sources`.
 This makes `uv sync --locked` reproducible without resolving an older SDK
 from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.
 
