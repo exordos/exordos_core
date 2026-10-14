@@ -35,8 +35,6 @@ class MigrationStep(migrations.AbstractMigrationStep):
             ALTER TABLE storage_nodes
                 ADD COLUMN agent uuid,
                 ADD COLUMN builder uuid,
-                ADD COLUMN location varchar(2048) NOT NULL DEFAULT '',
-                ADD COLUMN bind_address varchar(255) NOT NULL DEFAULT '',
                 ADD COLUMN status varchar(32) NOT NULL DEFAULT 'ACTIVE';
             ALTER TABLE storage_nodes ALTER COLUMN status SET DEFAULT 'NEW';
         """)
@@ -44,7 +42,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
     def downgrade(self, session):
         session.execute("""
             ALTER TABLE storage_nodes DROP COLUMN agent, DROP COLUMN builder,
-                DROP COLUMN location, DROP COLUMN bind_address, DROP COLUMN status;
+                DROP COLUMN status;
         """)
 
 

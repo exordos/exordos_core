@@ -99,6 +99,9 @@ def _storage_cluster(
             ],
         },
     )
+    cluster.storage_pools[0].driver_spec = ua_pool.rawstor_specs.RawstorPoolDriverSpec(
+        mirrors=1
+    )
     cluster.save = lambda: None
     return cluster
 

@@ -164,9 +164,9 @@ class MachineVolume(
             location = cluster.driver_spec.endpoint
             policy = {
                 "pool_uuid": str(storage_pool.uuid),
-                "mirrors": storage_pool.mirrors,
-                "chunk_size": storage_pool.chunk_size,
-                "failure_domain": storage_pool.failure_domain,
+                "mirrors": storage_pool.driver_spec.mirrors,
+                "chunk_size": storage_pool.driver_spec.chunk_size,
+                "failure_domain": storage_pool.driver_spec.failure_domain,
             }
         for data in (value, target):
             data.update(storage_location=location, storage_policy=policy)
