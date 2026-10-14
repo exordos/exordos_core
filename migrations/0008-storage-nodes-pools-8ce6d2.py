@@ -38,10 +38,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 uuid uuid PRIMARY KEY, name varchar(255) NOT NULL,
                 description varchar(255) NOT NULL DEFAULT '',
                 cluster uuid NOT NULL REFERENCES storage_clusters(uuid),
-                kind varchar(32) NOT NULL CHECK (kind = 'rawstor'),
-                endpoint varchar(2048) NOT NULL UNIQUE,
-                failure_domain_path varchar(255) NOT NULL,
-                weight bigint NOT NULL CHECK (weight > 0),
+                driver_spec jsonb NOT NULL,
                 created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(cluster, name)
@@ -52,25 +49,26 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 cluster uuid NOT NULL REFERENCES storage_clusters(uuid),
                 speed varchar(16) NOT NULL CHECK (speed IN ('COLD','WARM','HOT')),
                 ephemeral boolean NOT NULL,
-                mirrors integer NOT NULL CHECK (mirrors BETWEEN 1 AND 255),
-                chunk_size bigint NOT NULL CHECK (chunk_size > 0),
-                failure_domain varchar(16) NOT NULL,
+                driver_spec jsonb NOT NULL,
                 created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(cluster, name)
             );
+            CREATE UNIQUE INDEX storage_nodes_endpoint_unique ON storage_nodes ((driver_spec->>'endpoint'));
             CREATE UNIQUE INDEX storage_clusters_name_unique ON storage_clusters(name);
         """)
         # Preserve existing standalone OSTs and their original single-pool policy.
         session.execute("""
-            INSERT INTO storage_nodes(uuid,name,cluster,kind,endpoint,failure_domain_path,weight)
-            SELECT uuid,name,uuid,'rawstor',driver_spec->>'ost_endpoint',uuid::text,1
+            INSERT INTO storage_nodes(uuid,name,cluster,driver_spec)
+            SELECT uuid,name,uuid,jsonb_build_object('kind','rawstor',
+                'endpoint',driver_spec->>'ost_endpoint','failure_domain_path',uuid::text,
+                'weight',100,'location','','bind_address','')
             FROM storage_clusters WHERE COALESCE(driver_spec->>'ost_endpoint','') <> '';
         """)
         session.execute("""
-            INSERT INTO storage_pools(uuid,name,cluster,speed,ephemeral,mirrors,chunk_size,failure_domain)
+            INSERT INTO storage_pools(uuid,name,cluster,speed,ephemeral,driver_spec)
             SELECT (p->>'uuid')::uuid,p->>'name',c.uuid,p->>'speed',
-                   (p->>'ephemeral')::boolean,1,1073741824,'server'
+                   (p->>'ephemeral')::boolean,jsonb_build_object('kind','rawstor','mirrors',1,'chunk_size',1073741824,'failure_domain','server')
             FROM storage_clusters c, unnest(c.storage_pools) p
             WHERE p->>'uuid' IS NOT NULL;
         """)

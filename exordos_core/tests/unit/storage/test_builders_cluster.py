@@ -20,6 +20,7 @@ from unittest.mock import patch
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.agents.universal.drivers import rawstor_specs
 import pytest
 
 from exordos_core.storage.builders import cluster as cluster_builder
@@ -124,15 +125,17 @@ def test_ready_ost_is_added_to_topology_only_for_its_current_configuration():
         uuid=sys_uuid.uuid4(),
         name="ost",
         cluster=sys_uuid.uuid4(),
-        endpoint="ost://host:7778",
-        failure_domain_path="server",
-        location="file:///data/ost",
-        bind_address="0.0.0.0:7778",
+        driver_spec=rawstor_specs.RawstorNodeDriverSpec(
+            endpoint="ost://host:7778",
+            failure_domain_path="server",
+            location="file:///data/ost",
+            bind_address="0.0.0.0:7778",
+        ),
         agent=sys_uuid.uuid4(),
     )
     actual = models.Node.restore_from_simple_view(**current.dump_to_simple_view())
     actual.status = "ACTIVE"
-    actual.endpoint = "ost://host:7777"
+    actual.driver_spec.endpoint = "ost://host:7777"
     with (
         patch.object(models.Node, "update"),
         patch.object(models.StorageCluster, "objects"),
@@ -140,7 +143,7 @@ def test_ready_ost_is_added_to_topology_only_for_its_current_configuration():
     ):
         service.actualize_outdated_instance(current, actual)
         assert current.status == "IN_PROGRESS"
-        actual.endpoint = current.endpoint
+        actual.driver_spec.endpoint = current.driver_spec.endpoint
         service.actualize_outdated_instance(current, actual)
         assert current.status == "ACTIVE"
         assert sync.call_count == 2
