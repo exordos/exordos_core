@@ -1,0 +1,13 @@
+[Unit]
+Description=Prepare the Rawstor OST data disk
+Requires=dev-vdb.device
+After=dev-vdb.device
+Before=exordos-universal-agent.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/exordos-prepare-ost
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
