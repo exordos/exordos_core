@@ -31,7 +31,7 @@ dependencies = [
     "Jinja2>=3.1.5,<4.0.0",  # BSD License (BSD-3-Clause)
     "izulu>=0.50.0,<1.0.0",  # MIT License
     "gcl_iam>=1.4.0,<2.0.0",  # Apache-2.0
-    "gcl_sdk[libvirt]>=3.6.9.dev0,<4.0.0",  # Apache-2.0
+    "gcl_sdk[libvirt]>=3.7.0,<4.0.0",  # Apache-2.0
     "gcl_certbot_plugin>=0.0.12,<1.0.0",  # Apache-2.0
     "pyotp>=2.9.0,<3.0.0",  # MIT License
     "pyyaml>=6.0.0,<7.0.0",  # MIT
@@ -250,5 +250,5 @@ directory = "cover"
 output = "cover/coverage.xml"
 
 [tool.uv.sources]
-# Pin the development SDK API until disk scheduling is released on PyPI.
-gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "28d072320557b44985599ca4cf8e94d96a5cccb1" }
+# Pin the SDK with the matching rawstor driver API.
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "4c15ea876f2ad5ed932ad9af289cec494975b6ca" }
