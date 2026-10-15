@@ -859,49 +859,6 @@ def _ensure_repositories_from_spec(spec: dict[str, tp.Any]) -> None:
             LOG.exception("Failed to ensure repository %s (%s)", repo_name, repo_url)
 
 
-def _ensure_bootstrap_core_image(spec: dict[str, tp.Any]) -> None:
-    """Register the core image without relying on lazy repository discovery."""
-    image = spec["stand"]["bootstraps"][0]["image_uri"]
-    if not image.startswith("urn:images:"):
-        return
-    if repo_models.RepoArtifact.objects.get_all(filters={"urn": dm_filters.EQ(image)}):
-        return
-
-    bootstrap_repo = repo_models.Repository.objects.get_one(
-        filters={"name": dm_filters.EQ(BOOTSTRAP_REPO_NAME)}
-    )
-    core = repo_models.RepoElement.objects.get_one(
-        filters={
-            "repository": dm_filters.EQ(bootstrap_repo.uuid),
-            "name": dm_filters.EQ("core"),
-        }
-    )
-    repositories = repo_models.Repository.objects.get_all()
-    repositories.sort(key=lambda repository: repository.priority, reverse=True)
-    for repository in repositories:
-        if repository.driver_spec.KIND != "nginx":
-            continue
-        try:
-            # Dev versions may not appear in the repository-wide inventory.
-            # Fetch the exact version and use its indexed artifact URIs.
-            _, artifacts = repository.load_driver().get_element("core", core.version)
-        except Exception:
-            LOG.exception(
-                "Unable to load core %s images from %s", core.version, repository.name
-            )
-            continue
-        for artifact in artifacts:
-            if artifact.urn == image:
-                artifact.element = core
-                artifact.project_id = core.project_id
-                artifact.save()
-                LOG.info(
-                    "Registered bootstrap core image %s at %s", image, artifact.uri
-                )
-                return
-    raise RuntimeError(f"Bootstrap core image {image} is unavailable in repositories")
-
-
 def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
     """Idempotent element manifest installation."""
     migration_repo = repo_models.Repository.objects.get_one_or_none(
@@ -1054,7 +1011,6 @@ def main() -> None:
             _install_element_from_bootstrap_repo("core", CONF.manifests_dir)
             _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
-            _ensure_bootstrap_core_image(spec)
             _set_defaults_vs(spec)
             return
         except Exception:
