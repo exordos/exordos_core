@@ -41,7 +41,7 @@ fi
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     "$PACKAGES/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
     "$PACKAGES/rawstor-ost_${RAWSTOR_VERSION}_amd64.deb"
-sudo systemctl disable --now rawstor-ost.service
+# OST instances are configured and started by the storage agent.
 
 # Keep the storage driver on the same SDK revision as core.
 if [[ -d /opt/gcl_sdk ]]; then
