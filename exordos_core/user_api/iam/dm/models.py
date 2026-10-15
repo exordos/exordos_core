@@ -1879,7 +1879,12 @@ class Token(
         )
 
 
-class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomPropertiesMixin):
+class ManagedToken(
+    Token,
+    models.ModelWithNameDesc,
+    ua_models.TargetResourceMixin,
+    models.CustomPropertiesMixin,
+):
     """A token declared by a manifest or created through the tokens API.
 
     It reports its signed access token, so an element renders it with
