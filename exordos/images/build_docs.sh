@@ -21,6 +21,11 @@ set -x
 set -o pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ -n "${LOCAL_GENESIS_SDK_PATH:-}" ]]; then
+    LOCAL_GENESIS_SDK_PATH="$(cd "$LOCAL_GENESIS_SDK_PATH" && pwd)"
+    export LOCAL_GENESIS_SDK_PATH
+fi
+
 cd "$REPO_ROOT"
 
 rm -fr exordos_docs
