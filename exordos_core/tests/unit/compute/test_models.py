@@ -17,7 +17,10 @@ from unittest.mock import patch
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.infra import constants as ic
 from gcl_sdk.infra.dm import models as infra_models
+import pytest
+from restalchemy.common import exceptions
 
 from exordos_core.compute.dm import models
 
@@ -43,3 +46,99 @@ class TestNodeInsert:
             node.insert()
 
         get_or_create.assert_called_once_with(node.uuid, session=None)
+
+
+class TestVolumeSpeedEphemeralReadOnly:
+    """Changing a disk's tier/ephemeral tier after creation would mean
+    migrating it to a different storage pool, which isn't implemented -
+    updates fail loudly instead of being silently accepted with no actual effect.
+    """
+
+    def test_tier_and_ephemeral_are_settable_at_creation(self):
+        volume = models.Volume(
+            size=10,
+            project_id=sys_uuid.uuid4(),
+            tier=ic.DiskTier.HOT.value,
+            ephemeral=True,
+        )
+
+        assert volume.tier == ic.DiskTier.HOT.value
+        assert volume.ephemeral is True
+
+    def test_tier_cannot_be_changed_after_creation(self):
+        volume = models.Volume(size=10, project_id=sys_uuid.uuid4())
+
+        with pytest.raises(exceptions.ReadOnlyProperty):
+            volume.tier = ic.DiskTier.HOT.value
+
+    def test_ephemeral_cannot_be_changed_after_creation(self):
+        volume = models.Volume(size=10, project_id=sys_uuid.uuid4())
+
+        with pytest.raises(exceptions.ReadOnlyProperty):
+            volume.ephemeral = False
+
+
+@pytest.mark.parametrize("model", [models.Node, models.NodeSet])
+@pytest.mark.parametrize("field,new_value", [("tier", "COLD"), ("ephemeral", False)])
+def test_node_policy_update_is_rejected_before_mutating_other_fields(
+    model, field, new_value
+):
+    original = {
+        "kind": "root_disk",
+        "image": "https://example.com/root.raw",
+        "size": 10,
+    }
+    node = model.restore_from_simple_view(
+        name="original",
+        project_id=sys_uuid.uuid4(),
+        cores=1,
+        ram=512,
+        disk_spec=original,
+    )
+    with pytest.raises(models.ImmutableDiskPolicyError):
+        node.update_dm(
+            {
+                "name": "changed",
+                "disk_spec": node.disk_spec.__class__.restore_from_simple_view(
+                    **{**original, field: new_value}
+                ),
+            }
+        )
+    assert node.name == "original"
+    assert node.disk_spec.size == 10
+
+
+@pytest.mark.parametrize("model", [models.Node, models.NodeSet])
+def test_node_disk_resize_preserves_policy(model):
+    original = {
+        "kind": "disks",
+        "disks": [
+            {
+                "size": 10,
+                "image": "https://example.com/root.raw",
+                "tier": "COLD",
+                "ephemeral": False,
+            }
+        ],
+    }
+    node = model.restore_from_simple_view(
+        name="node", project_id=sys_uuid.uuid4(), cores=1, ram=512, disk_spec=original
+    )
+    node.update_dm(
+        {
+            "disk_spec": node.disk_spec.__class__.restore_from_simple_view(
+                **{
+                    "kind": "disks",
+                    "disks": [
+                        {
+                            "size": 12,
+                            "image": "https://example.com/root.raw",
+                            "tier": "COLD",
+                            "ephemeral": False,
+                        }
+                    ],
+                }
+            )
+        }
+    )
+    assert node.disk_spec.disks[0]["size"] == 12

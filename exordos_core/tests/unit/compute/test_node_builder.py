@@ -75,3 +75,25 @@ class TestNodeBuilderService:
         machine.update.assert_called_once_with(force=True)
         assert target_node.status == nc.NodeStatus.IN_PROGRESS.value
         target_node.save.assert_called_once_with()
+
+    def test_resize_preserves_immutable_disk_policy(self):
+        service = node_builder.NodeBuilderService()
+        project = sys_uuid.uuid4()
+        target = compute_models.Volume(size=20, project_id=project)
+        actual = compute_models.Volume(size=10, project_id=project)
+        with mock.patch.object(actual, "save"):
+            service._actualize_volume(target, actual)
+        assert actual.size == 20
+        assert actual.tier == target.tier
+        assert actual.ephemeral == target.ephemeral
+
+    def test_disk_policy_change_is_rejected_before_mutating_disk(self):
+        import pytest
+
+        service = node_builder.NodeBuilderService()
+        project = sys_uuid.uuid4()
+        target = compute_models.Volume(size=20, project_id=project, ephemeral=False)
+        actual = compute_models.Volume(size=10, project_id=project)
+        with pytest.raises(ValueError, match="unsupported"):
+            service._actualize_volume(target, actual)
+        assert actual.size == 10

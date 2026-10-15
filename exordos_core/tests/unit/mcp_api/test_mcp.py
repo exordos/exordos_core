@@ -622,6 +622,13 @@ class TestCuratedTools:
         schema = application._get_curated_tools()[tool]["inputSchema"]
 
         assert schema["properties"]["disk_spec"] == mcp.FIELD_OVERRIDES["disk_spec"]
+        fields = schema["properties"]["disk_spec"]["properties"]
+        assert fields["tier"] == {
+            "type": "string",
+            "enum": ["COLD", "WARM", "HOT"],
+            "default": "WARM",
+        }
+        assert fields["ephemeral"] == {"type": "boolean", "default": True}
 
     def test_list_filters_have_no_defaults(self, application):
         """A resource's default is not the filter's: status NEW is no filter."""

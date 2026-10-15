@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -766,7 +766,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.0,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.6.8,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.0,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -869,7 +869,7 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.6.8"
+version = "3.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -883,9 +883,9 @@ dependencies = [
     { name = "restalchemy" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/9c/a010d5da8104c3f30a6a7e3619bd51c64b88a8547d54d0b0df2eb1790bb6/gcl_sdk-3.6.8.tar.gz", hash = "sha256:c636432042a6b205d12ebc866a3464e0ca1aa4cfdaecd5ca2721d31ed5158788", size = 375733, upload-time = "2026-10-06T11:19:04.066Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/90/614c392b661311d5a45c98912c94fe0fb278cb33a8c28c1e3ce9af9b107f/gcl_sdk-3.7.0.tar.gz", hash = "sha256:d082f672d0991d6d53c54d89fca7c3e877188e2ca1c6b6039aab115f09a367a3", size = 382769, upload-time = "2026-10-15T17:31:05.362Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/b1/b570a8437940b1e2f150e82900888ba293cdb497e5bda1e7b42ad2dd73ef/gcl_sdk-3.6.8-py3-none-any.whl", hash = "sha256:372b422fac6a62cb9e0c4515fca52808737fbc794018fbdee5e35adf134225f6", size = 332169, upload-time = "2026-10-06T11:19:02.094Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/5a/064c73f523540aafdc69592b304b4bffef3a79b99ead4c3c4f773687558b/gcl_sdk-3.7.0-py3-none-any.whl", hash = "sha256:b1356ff9007fea9b00e686cd3c7106e9df82f23a7140d3729b2de58b0bdf847d", size = 339819, upload-time = "2026-10-15T17:31:03.354Z" },
 ]
 
 [package.optional-dependencies]
