@@ -499,6 +499,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.ephemeral,
             size,
             volume.storage_pool or None,
+            # This check admits the volume itself; other reservations still count.
+            exclude_volume=volume.uuid,
         )
 
     def _has_enough_space_in_pool(
