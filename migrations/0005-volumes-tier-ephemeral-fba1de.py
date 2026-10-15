@@ -22,7 +22,7 @@ DISK_TIER_CHECK = "('" + "', '".join(DISK_TIERS) + "')"
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0004-add-opaque-secrets-362f6d21.py"]
+        self._depends = ["0005-add-managed-tokens-5b1e8c47.py"]
 
     @property
     def migration_id(self):

@@ -31,6 +31,13 @@ migration = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(migration)
 
 
+def test_migration_graph_has_one_head():
+    from restalchemy.storage.sql import migrations
+
+    engine = migrations.MigrationEngine(str(PATH.parent))
+    assert (PATH.parent / engine.get_latest_migration()).is_file()
+
+
 def test_enrich_preserves_explicit_policy_and_adds_nested_fields():
     value = {
         "disk_spec": {
@@ -237,7 +244,12 @@ def test_migration_updates_target_actual_and_persisted_sources():
     not os.environ.get("EXORDOS_STORAGE_TEST_DB"), reason="Requires test PostgreSQL"
 )
 @pytest.mark.parametrize(
-    "previous_head", [None, "0002-add-repo-element-version-flags-24310b.py"]
+    "previous_head",
+    [
+        None,
+        "0002-add-repo-element-version-flags-24310b.py",
+        "0005-add-managed-tokens-5b1e8c47.py",
+    ],
 )
 def test_full_migration_graph_upgrades_legacy_schema(previous_head):
     import gcl_sdk.migrations as sdk_migrations
