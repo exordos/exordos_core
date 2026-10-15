@@ -1386,6 +1386,11 @@ components:
           readOnly: true
           type: string
           x-ogen-time-format: '2006-01-02T15:04:05.000576Z'
+        description:
+          default: ''
+          example: any_string
+          maxLength: 255
+          type: string
         expiration_at:
           example: '2006-01-02T15:04:05.000576Z'
           format: date-time
@@ -1409,6 +1414,11 @@ components:
         issuer:
           example: any_string
           maxLength: 256
+          type: string
+        name:
+          default: ''
+          example: any_string
+          maxLength: 255
           type: string
         project:
           readOnly: true
