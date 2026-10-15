@@ -88,6 +88,8 @@ class TestTokens:
         assert output["user"] == f"/v1/iam/users/{service_user['uuid']}"
         assert output["expiration_delta"] == DAY
         assert output["auto_renew"] is True
+        assert output["name"] == ""
+        assert output["description"] == ""
         # Answered once, on the create: this is the only time an account
         # holding it sees the signed token
         assert output["access_token"] == _get_token(output["uuid"]).access_token
@@ -100,6 +102,23 @@ class TestTokens:
         assert _claims(token)["aud"] == default_client_id
         lifetime = token.expiration_at - _now()
         assert datetime.timedelta(hours=23) < lifetime <= datetime.timedelta(days=1)
+
+    def test_token_metadata(self, admin_client, create_token):
+        output = create_token(name="exporter", description="Metrics access").json()
+        assert output["name"] == "exporter"
+        assert output["description"] == "Metrics access"
+        token = _get_token(output["uuid"])
+        assert token.name == "exporter"
+        assert token.description == "Metrics access"
+
+        url = admin_client.build_resource_uri(["iam/tokens", output["uuid"]])
+        admin_client.put(url, json={"name": "monitor", "description": "Updated"})
+        output = admin_client.get(url).json()
+        assert output["name"] == "monitor"
+        assert output["description"] == "Updated"
+        token = _get_token(output["uuid"])
+        assert token.name == "monitor"
+        assert token.description == "Updated"
 
     def test_create_token_rejects_short_lifetime(self, create_token):
         with pytest.raises(bazooka_exc.BadRequestError):
