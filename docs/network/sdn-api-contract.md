@@ -119,7 +119,10 @@ and `status`, ordered by index. IP allocation precedes dataplane application;
 status reports application. Removing the last port does not replace it.
 
 NodeSet stores the template for new replicas, each with its own Port/FIP.
-Changing it preserves existing attachments. Addresses remain in `nodes[uuid].ipv4`.
+Changing it preserves existing attachments. Private addresses remain in
+`nodes[uuid].ipv4`; `nodes[uuid].floating_ip` is the primary Port's currently bound
+floating address as a string, omitted when no FIP is bound. These are allocated
+addresses; the output does not assert host application.
 Fixed addresses in templates, null, unknown fields, and mixing with
 `interfaces` are rejected. The removed `networking` field is rejected.
 
@@ -147,9 +150,30 @@ A running VM can lose its last NIC without being destroyed; an unbooted VM
 needs a primary NIC before it can be flashed. Multiple NICs and hotplug use
 live and persistent libvirt configuration.
 
-Node deletion detaches and preserves SDN ports, including generated ports.
-Independent SG/IG/FIP dependencies prevent their referenced resource from
-being deleted (409). Move a Port/FIP by explicit detach/unbind, then attach/bind.
+A Port's `owner_node` identifies the Node whose deletion also deletes the Port.
+Creation wrappers assign ownership to automatic ports, including NodeSet replicas.
+Independent ports start without an owner. PUT can release ownership with
+`owner_node=null`, or adopt an attached Port with `owner_node=Port.node` and
+permission to update that Node. Detaching a Port clears its owner automatically.
+A detached Port can attach to another Node after host withdrawal acknowledgement;
+attachment alone leaves it independent unless ownership is explicitly assigned.
+
+Automatically allocated FIPs similarly have `owner_port`. Unbinding clears it;
+PUT can release ownership without unbinding, or set `owner_port=Address.port`
+with permission to update that Port. The new owner must be in the resource's
+project. Port/FIP ownership and attachment changes for NodeSet-managed ports
+must go through NodeSet. Ownership is read-only during independent resource
+creation, and stays in the control plane, outside the host's configuration.
+
+Deleting a Node deletes its currently owned ports and their SG/IG bindings.
+Independent ports detach and survive; groups, networks and subnets survive.
+Deleting a Port deletes its owned FIP; independent FIPs detach and remain
+allocated during Node deletion, or block direct Port deletion (409), as do
+independent group bindings. A concurrent release of ownership prevents the
+former owner from deleting the released resource.
+
+Published IP/MAC allocations remain held until host withdrawal is acknowledged.
+Move an independent Port/FIP by explicit detach/unbind, then attach/bind.
 If a previous publication exists, reuse waits for the previous host's current
 withdrawal acknowledgement. Offline hosts retain IP and MAC holds.
 

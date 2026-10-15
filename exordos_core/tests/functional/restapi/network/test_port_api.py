@@ -168,17 +168,17 @@ class TestPortApi:
         )
         node.insert()
         ports = {}
-        for index, provenance in enumerate(("user", "generated")):
+        for index, owned in enumerate((False, True)):
             port = compute_models.Port(
                 uuid=sys_uuid.uuid4(),
                 subnet=sys_uuid.UUID(subnet["uuid"]),
                 node=node.uuid,
                 index=index,
                 project_id=c.ZERO_UUID,
-                provenance=provenance,
+                owner_node=node.uuid if owned else None,
             )
             port.insert()
-            ports[provenance] = port.uuid
+            ports[owned] = port.uuid
 
         node.delete()
 
@@ -187,12 +187,12 @@ class TestPortApi:
                 filters={"uuid": dm_filters.EQ(uuid)}
             )
 
-        given = _stored(ports["user"])
+        given = _stored(ports[False])
         assert given is not None and given.node is None
-        generated = _stored(ports["generated"])
-        assert generated is not None and generated.node is None
+        generated = _stored(ports[True])
+        assert generated is None
 
-    def test_a_caller_cannot_claim_the_compilers_provenance(
+    def test_node_ownership_is_not_a_port_create_field(
         self,
         user_api_client,
         auth_user_admin,
@@ -200,14 +200,12 @@ class TestPortApi:
         subnet_factory,
         port_factory,
     ):
-        """`generated` is what lets the installation's own port for a
-        bare-metal node sit in a project other than its node's. A caller who
-        could write it would have the exemption too."""
+        """Creation wrappers assign ownership; independent ports can adopt it with PUT."""
         client = user_api_client(auth_user_admin)
         subnet = self._subnet(client, network_factory, subnet_factory)
 
         port = port_factory(subnet_uuid=subnet["uuid"])
-        port["provenance"] = "generated"
+        port["owner_node"] = str(sys_uuid.uuid4())
         # RESTAlchemy 16 answers a write to a read-only field with
         # `FieldPermissionError`, which is a 403.
         with pytest.raises(bazooka_exc.ForbiddenError):

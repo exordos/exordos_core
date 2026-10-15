@@ -634,7 +634,10 @@ class _EvpnStand:
 
         def _owned():
             return net_api_models.Address.objects.get_all(
-                filters={"owner_port": dm_filters.EQ(port.uuid)}
+                filters=dm_filters.OR(
+                    {"owner_port": dm_filters.EQ(port.uuid)},
+                    {"association": dm_filters.EQ(port.uuid)},
+                )
             )
 
         with self._selective_load():
@@ -643,12 +646,98 @@ class _EvpnStand:
             assert len(_owned()) == 1  # the floating address was allocated
 
             driver = evpn_net.load_driver()
-            _owned()[0].delete()
+            port.delete()
             driver.delete_port(port)
             assert len(_owned()) == 1  # retain the allocation while the host is offline
             self._ack_port(port)
             driver._settle_publications()
             assert _owned() == []
+
+    @pytest.mark.parametrize("owned_fip", [False, True])
+    def test_node_owned_networking_waits_for_host_withdrawal(self, owned_fip):
+        from exordos_core.network.contracts import published_private_addresses
+        from exordos_core.user_api.network.dm import models as catalog
+
+        network, subnet = self._network()
+        flat, _ = self._flat_network()
+        hyp = self._pinned_node(flat.uuid, "ownership-hyp")
+        pool = self._pool(hypervisor_node=hyp.uuid)
+        public = self._floating_pool("203.0.119.0/24")
+        request = {"subnet": str(subnet.uuid)}
+        if owned_fip:
+            request["floating_ip"] = {"subnet": str(public.uuid)}
+        node = models.Node(
+            name="ownership-guest",
+            project_id=c.ZERO_UUID,
+            cores=1,
+            ram=1024,
+            disk_spec=sdk_models.RootDiskSpec(image="ubuntu_24.04"),
+            default_network=request,
+        )
+        node.insert()
+        self._created.append(node)
+        self._machine(node, pool)
+        port = models.Port.objects.get_one(filters={"node": dm_filters.EQ(node.uuid)})
+        if not owned_fip:
+            address = catalog.Address(
+                project_id=c.ZERO_UUID,
+                subnet=public.uuid,
+                kind="floating",
+                port=port.uuid,
+            )
+            address.insert()
+            self._created.append(address)
+        group = self._security_group("ownership-sg", [])
+        self._bind_sg(port, group)
+
+        def address_row():
+            return catalog.Address.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(address.uuid)}
+            )
+
+        with self._selective_load():
+            self._service._iteration()
+            self._service._iteration()
+            address = catalog.Address.objects.get_one(
+                filters={"port": dm_filters.EQ(port.uuid)}
+            )
+            assert address.association == port.uuid
+            target = _resources("evpn_port", master=subnet.uuid)[0]
+            assert not {"owner_node", "owner_port", "provenance"} & target.value.keys()
+            node.delete()
+            assert (
+                models.Port.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(port.uuid)}
+                )
+                is None
+            )
+            assert (
+                catalog.PortSecurityGroup.objects.get_all(
+                    filters={"port": dm_filters.EQ(port.uuid)}
+                )
+                == []
+            )
+            assert catalog.SecurityGroup.objects.get_one(
+                filters={"uuid": dm_filters.EQ(group.uuid)}
+            )
+            driver = network.load_driver()
+            driver.delete_port(port)
+            driver._settle_publications()
+            assert address_row().association == port.uuid
+            assert address_row().allocation == "reserved"
+            assert (
+                str(port.ipv4)
+                in published_private_addresses([subnet.uuid])[str(subnet.uuid)]
+            )
+            self._ack_port(port)
+            driver._settle_publications()
+            driver._settle_withdrawals()
+            if owned_fip:
+                assert address_row() is None
+            else:
+                assert address_row().port is None and address_row().association is None
+                assert address_row().allocation == "reserved"
+            assert published_private_addresses([subnet.uuid]) == {}
 
     def test_a_cited_address_is_marked_used_and_given_back(self):
         # A canonical FIP retains its publication through unbind until host ack.
@@ -839,13 +928,12 @@ class _EvpnStand:
         assert target.value["identity"] == int(group.identity)
         assert group.automatic
 
-    def test_unpinned_node_avoids_overlay_network(self):
-        # Overlay placement is opt-in: an unpinned node must land on the
-        # flat network even when an ovs_evpn one coexists (subnet iteration
-        # order is not deterministic, and a management-plane node placed on
-        # an overlay would have no connectivity).
+    def test_legacy_flat_project_keeps_new_nodes_off_overlay(self):
         self._network()
         _, flat_subnet = self._flat_network()
+        previous = models.Port(subnet=flat_subnet.uuid, project_id=c.ZERO_UUID)
+        previous.insert()
+        self._created.append(previous)
         node = self._node()
 
         with self._selective_load():

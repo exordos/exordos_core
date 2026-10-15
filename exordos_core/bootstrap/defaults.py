@@ -186,7 +186,7 @@ def add_core_set(
                     mac=port["mac"],
                     status="ACTIVE",
                     project_id=str(node_set.project_id),
-                    provenance=nc.PortProvenance.GENERATED.value,
+                    owner_node=str(node.uuid),
                 )
             )
             p.insert()

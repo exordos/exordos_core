@@ -79,9 +79,7 @@ class NetworkService(basic.BasicService):
                         mask=subnet.cidr.netmask,
                         source=subnet.name,
                         index=indexes[node.node],
-                        # Keeps the subnet's project, not the node's; the
-                        # ownership check exempts it by provenance.
-                        provenance=nc.PortProvenance.GENERATED.value,
+                        owner_node=getattr(node.node, "uuid", node.node),
                     )
                     indexes[node.node] += 1
                     ports.append(port)
@@ -399,8 +397,7 @@ class NetworkService(basic.BasicService):
             subnet=subnet.uuid,
             source=subnet.name,
             index=index,
-            # The compiler may rewrite and remove it.
-            provenance=nc.PortProvenance.GENERATED.value,
+            owner_node=node.uuid,
             port_security=port_security,
             dhcp=dhcp,
             dns=dns,
@@ -450,7 +447,7 @@ class NetworkService(basic.BasicService):
     ) -> None:
         """Take an existing port as one of this node's legs.
 
-        The port keeps its own configuration and provenance (see
+        The port keeps its own configuration and owner (see
         `NodeInterfaceOnPortKind`).
         """
         port = net_models.Port.objects.get_one_or_none(
@@ -520,7 +517,7 @@ class NetworkService(basic.BasicService):
     ) -> None:
         """Bring a node's ports in line with what it declared.
 
-        Only generated ports are added and removed here, so the declaration
+        Only node-owned ports are added and removed here, so the declaration
         never fights the ports API.
         """
         if getattr(node, "network_initialized", False) is True:
@@ -558,7 +555,7 @@ class NetworkService(basic.BasicService):
         generated = {
             port.index: port
             for port in existing
-            if port.provenance == nc.PortProvenance.GENERATED.value
+            if str(port.owner_node) == str(node.uuid)
         }
 
         # Undeclared legs go; the data plane follows on the next pass.

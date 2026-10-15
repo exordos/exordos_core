@@ -87,9 +87,15 @@ def validate_placement_input(value, *, create, allow_default=False):
 
 
 def validate_port_input(value, stored=None):
-    validate_inline_fields(value, PORT_CREATE_FIELDS | {"activation_barrier"}, "Port")
+    validate_inline_fields(
+        value,
+        PORT_CREATE_FIELDS
+        | {"activation_barrier"}
+        | ({"owner_node"} if stored is not None else set()),
+        "Port",
+    )
     validate_placement_input(value, create=stored is None, allow_default=True)
-    for field in ("uuid", "project_id", "subnet", "network", "node"):
+    for field in ("uuid", "project_id", "subnet", "network", "node", "owner_node"):
         if value.get(field) is not None:
             validate_uuid(value[field], field)
     node = value.get("node", getattr(stored, "node", None))
@@ -134,9 +140,13 @@ def validate_port_input(value, stored=None):
 
 
 def validate_address_input(value, stored=None):
-    validate_inline_fields(value, ADDRESS_CREATE_FIELDS, "Address")
+    validate_inline_fields(
+        value,
+        ADDRESS_CREATE_FIELDS | ({"owner_port"} if stored is not None else set()),
+        "Address",
+    )
     validate_placement_input(value, create=stored is None)
-    for field in ("uuid", "project_id", "subnet", "network", "port"):
+    for field in ("uuid", "project_id", "subnet", "network", "port", "owner_port"):
         if value.get(field) is not None:
             validate_uuid(value[field], field)
     if stored is None and "kind" not in value:

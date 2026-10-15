@@ -1293,10 +1293,7 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                     continue
                 address.release_publication(session=session)
                 if address.delete_requested:
-                    address.owner_port = None
-                    # Compiler-owned bookkeeping, not a user rebinding.
-                    super(catalog.Address, address).update(session=session)
-                    address.delete(session=session)
+                    address.delete(session=session, owner_port=address.owner_port)
 
     def _settle_withdrawals(self):
         for subnet_target in self._list_resources(SUBNET_KIND, self._network.uuid):

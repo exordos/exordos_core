@@ -3064,6 +3064,12 @@ components:
           format: uuid
           nullable: true
           type: string
+        owner_node:
+          example: 00000000-0000-0000-0000-000000000000
+          format: uuid
+          nullable: true
+          readOnly: true
+          type: string
         port_security:
           default: true
           example: true
@@ -3071,14 +3077,6 @@ components:
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid
-          type: string
-        provenance:
-          default: user
-          enum:
-          - generated
-          - user
-          example: user
-          readOnly: true
           type: string
         security_groups:
           example:

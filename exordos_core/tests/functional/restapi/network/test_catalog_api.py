@@ -321,7 +321,6 @@ class TestAddressApi:
         for field, value in (
             ("association", port_a),
             ("origin", "floating"),
-            ("owner_port", port_a),
         ):
             with pytest.raises(bazooka_exc.ForbiddenError):
                 client.put(res_url, json={field: value})

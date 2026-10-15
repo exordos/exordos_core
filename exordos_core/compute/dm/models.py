@@ -399,13 +399,14 @@ class NodeSet(
         return {i.uuid: i.private_key for i in enc_keys}
 
     def delete(self, session=None):
-        for node in Node.objects.get_all(
-            filters={"node_set": dm_filters.EQ(self.uuid)},
-            session=session,
-        ):
-            node.delete(session=session)
+        from exordos_core.network.contracts import atomic_session
 
-        super().delete(session=session)
+        with atomic_session(self._get_engine(), session) as current:
+            for node in Node.objects.get_all(
+                filters={"node_set": dm_filters.EQ(self.uuid)}, session=current
+            ):
+                node.delete(session=current)
+            return super().delete(session=current)
 
     def set_active(self):
         self.status = nc.NodeStatus.ACTIVE.value
@@ -596,36 +597,22 @@ class Node(
         return enc_key.private_key
 
     def delete(self, session=None):
-        # NOTE(akremenetsky): Perhaps it's better to add a `foreign key`
-        # constraint to the `node_encryption_keys` table but not all
-        # nodes present in the `nodes` table. So do cleanup here.
-        keys = ua_models.NodeEncryptionKey.objects.get_all(
-            filters={"uuid": dm_filters.EQ(self.uuid)},
-            session=session,
-        )
+        from exordos_core.network.contracts import atomic_session
 
-        for key in keys:
-            key.delete(session=session)
-
-        # A port the node was only given (adopted or attached) outlives it.
-        # Generated legs go with the foreign-key cascade; detach the rest
-        # from both node and machine, or the machine's cascade takes them.
-        for port in Port.objects.get_all(
-            filters={
-                "node": dm_filters.EQ(self.uuid),
-            },
-            session=session,
-        ):
-            if (
-                port.provenance == nc.PortProvenance.GENERATED.value
-                and not port.is_overlay()
+        with atomic_session(self._get_engine(), session) as current:
+            for key in ua_models.NodeEncryptionKey.objects.get_all(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current
             ):
-                continue
-            port.node = None
-            port.machine = None
-            port.update(session=session)
-
-        super().delete(session=session)
+                key.delete(session=current)
+            for port in Port.objects.get_all(
+                filters=dm_filters.OR(
+                    {"node": dm_filters.EQ(self.uuid)},
+                    {"owner_node": dm_filters.EQ(self.uuid)},
+                ),
+                session=current,
+            ):
+                port.delete(session=current, owner_node=self.uuid)
+            return super().delete(session=current)
 
     def set_active(self):
         self.status = nc.NodeStatus.ACTIVE.value
@@ -1492,12 +1479,7 @@ class Port(
         types.AllowNone(types.Integer(min_value=0)),
         default=None,
     )
-    # The compiler builds, updates and deletes only `generated` ports;
-    # a `user` port is left alone even when an interface adopts it.
-    provenance = properties.property(
-        types.Enum([p.value for p in nc.PortProvenance]),
-        default=nc.PortProvenance.USER.value,
-    )
+    owner_node = properties.property(types.AllowNone(types.UUID()), default=None)
 
     def _validate_references(self) -> None:
         from exordos_core.user_api.network.dm import models as net_models
@@ -1526,28 +1508,33 @@ class Port(
         self._validate_subnet_access(subnet)
 
     def _validate_node_ownership(self) -> None:
-        """A port that names a node names one of its own project.
-
-        Exempt: `generated` ports, e.g. a bare-metal node's port that keeps
-        its subnet's project (`NetworkService._get_new_hw_ports`). The API
-        never lets a caller write provenance.
-        """
+        node_ref = getattr(self.node, "uuid", self.node)
+        if self.owner_node is not None and self.owner_node != node_ref:
+            raise ra_storage_exc.ConflictRecords(
+                model="Port", msg="a node-owned port cannot move to another node"
+            )
         if self.node is None:
-            return
-        if self.provenance == nc.PortProvenance.GENERATED.value:
             return
         node = self.node
         if not hasattr(node, "project_id"):
-            node = Node.objects.get_one_or_none(filters={"uuid": dm_filters.EQ(node)})
-        if node is None:
-            raise ex_exceptions.ValidateException(
-                err=f"node {self.node} does not exist"
+            node = Node.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(node_ref)}
             )
-        if str(node.project_id) != str(self.project_id):
+        if node is None:
+            raise ex_exceptions.ValidateException(err=f"node {node_ref} does not exist")
+        project_id = node.project_id
+        if self.owner_node == node_ref:
+            if node.node_type == "HW":
+                return
+            if node.node_set is not None and project_id == nc.NODE_SET_PROJECT:
+                project_id = NodeSet.objects.get_one(
+                    filters={"uuid": dm_filters.EQ(node.node_set)}
+                ).project_id
+        if str(project_id) != str(self.project_id):
             raise ex_exceptions.ValidateException(
                 err=(
-                    f"node {getattr(node, 'uuid', node)} belongs to another "
-                    "project; a port is its node's leg and carries its project"
+                    f"node {node_ref} belongs to another project; "
+                    "a port is its node's leg and carries its project"
                 )
             )
 
@@ -1614,6 +1601,8 @@ class Port(
         if subnet is None:
             return
         self._validate_ipv4(subnet)
+        if self.node is None:
+            return
         if str(subnet.project_id) == str(self.project_id):
             return
         network_ref = getattr(subnet.network, "uuid", subnet.network)
@@ -1625,7 +1614,7 @@ class Port(
         if network.access == "public" or subnet.shared_pool is True:
             return
         if not nc.is_overlay(network.driver_spec):
-            if self.provenance == nc.PortProvenance.GENERATED.value:
+            if self.owner_node is not None:
                 return
             if (
                 self.legacy_flat_placement
@@ -1660,15 +1649,13 @@ class Port(
             )
 
     def _declared_by_its_node(self, subnet) -> bool:
-        """Is this a generated port for a leg its node actually declares?
+        """Does the attached node declare this placement?
 
         A managed service may put a node on a tenant subnet via `interfaces`;
         whether it was allowed to is checked by the compute controllers, since
         this runs in a reconcile loop with no caller. A hand-made port into a
         foreign private subnet is still refused.
         """
-        if self.provenance != nc.PortProvenance.GENERATED.value:
-            return False
         node_ref = getattr(self.node, "uuid", self.node)
         if node_ref is None:
             return False
@@ -1719,10 +1706,9 @@ class Port(
                 legacy = find_legacy_flat_subnet(self.project_id, s)
                 self.legacy_flat_placement = legacy is not None
                 self.subnet = (legacy or ensure_default_subnet(self.project_id, s)).uuid
-            # Generated legacy ports already carry canonical placement/address.
+            # Node-created ports already carry validated placement/address.
             if self.subnet is None or (
-                self.provenance == nc.PortProvenance.USER.value
-                and not self.legacy_flat_placement
+                self.owner_node is None and not self.legacy_flat_placement
             ):
                 subnet = resolve_subnet(
                     self.project_id,
@@ -1822,7 +1808,12 @@ class Port(
             )
             old_node = getattr(stored.node, "uuid", stored.node)
             new_node = getattr(self.node, "uuid", self.node)
-            for field in ("subnet", "target_ipv4", "target_mac", "project_id"):
+            for field in (
+                "subnet",
+                "target_ipv4",
+                "target_mac",
+                "project_id",
+            ):
                 if getattr(
                     getattr(stored, field), "uuid", getattr(stored, field)
                 ) != getattr(getattr(self, field), "uuid", getattr(self, field)):
@@ -1880,6 +1871,14 @@ class Port(
                     )
             if new_node is None:
                 self.machine = None
+                if old_node is not None:
+                    self.owner_node = None
+            if (
+                stored.owner_node is not None
+                and self.owner_node is None
+                and not self.is_overlay()
+            ):
+                self.legacy_flat_placement = True
             self._validate_references()
             result = super().update(session=s, force=force)
             if (
@@ -1910,34 +1909,62 @@ class Port(
         if machine is not None:
             machine.update(session=session, force=True)
 
-    def delete(self, session=None):
+    def delete(self, session=None, *, owner_node=None):
         from exordos_core.network.contracts import atomic_session
         from exordos_core.user_api.network.dm import models as catalog
 
-        with atomic_session(self._get_engine(), session) as s:
-            dependencies = (
-                catalog.PortSecurityGroup.objects.get_all(
-                    filters={"port": dm_filters.EQ(self.uuid)}, session=s
-                ),
-                catalog.PortIdentityGroup.objects.get_all(
-                    filters={"port": dm_filters.EQ(self.uuid)}, session=s
-                ),
-                catalog.Address.objects.get_all(
-                    filters=dm_filters.OR(
-                        {"port": dm_filters.EQ(self.uuid)},
-                        {"association": dm_filters.EQ(self.uuid)},
-                    ),
-                    session=s,
-                ),
+        with atomic_session(self._get_engine(), session) as current:
+            stored = Port.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current, locked=True
             )
-            if any(dependencies):
+            if owner_node is not None and stored.owner_node != owner_node:
+                if getattr(stored.node, "uuid", stored.node) == owner_node:
+                    stored.node = None
+                    stored.machine = None
+                    stored.update(session=current)
+                return
+            cascade = owner_node is not None
+            bindings = [
+                link
+                for model in (catalog.PortSecurityGroup, catalog.PortIdentityGroup)
+                for link in model.objects.get_all(
+                    filters={"port": dm_filters.EQ(self.uuid)}, session=current
+                )
+            ]
+            addresses = catalog.Address.objects.get_all(
+                filters=dm_filters.OR(
+                    {"port": dm_filters.EQ(self.uuid)},
+                    {"association": dm_filters.EQ(self.uuid)},
+                    {"owner_port": dm_filters.EQ(self.uuid)},
+                ),
+                session=current,
+            )
+            if not cascade and (
+                bindings or any(a.owner_port != self.uuid for a in addresses)
+            ):
                 raise ra_storage_exc.ConflictRecords(
                     model="Port", msg="still has group bindings or floating addresses"
                 )
-            if self.node is not None:
-                self.node = None
-                self.update(session=s)
-            return super().delete(session=s)
+            for link in bindings:
+                link.delete(session=current)
+            for address in addresses:
+                if address.owner_port == self.uuid:
+                    address.delete(session=current, owner_port=self.uuid)
+                retained = catalog.Address.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(address.uuid)}, session=current
+                )
+                if retained is not None and retained.port == self.uuid:
+                    if not cascade:
+                        raise ra_storage_exc.ConflictRecords(
+                            model="Port", msg="still has a floating address"
+                        )
+                    retained.port = None
+                    retained.update(session=current)
+            if stored.node is not None:
+                stored.node = None
+                stored.machine = None
+                stored.update(session=current)
+            return super().delete(session=current)
 
     def set_active(self):
         self.status = ua_pool.PortStatus.ACTIVE.value

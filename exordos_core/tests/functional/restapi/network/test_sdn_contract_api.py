@@ -810,7 +810,7 @@ def test_contract_conversion_preserves_flat_nodes(topology):
         subnet=subnet.uuid,
         node=uuid.UUID(node["uuid"]),
         project_id=flat.project_id,
-        provenance="generated",
+        owner_node=uuid.UUID(node["uuid"]),
     )
     port.insert()
     group = create(client, ("network", "catalog", "security_groups"), name="migration")

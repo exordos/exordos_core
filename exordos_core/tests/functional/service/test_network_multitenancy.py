@@ -26,7 +26,6 @@ import netaddr
 import pytest
 
 from exordos_core.common import exceptions as ex_exceptions
-from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.user_api.network.dm import models as net_models
 
@@ -318,7 +317,7 @@ class TestPortsOnFlatSubnets:
         operator, tenant = sys_uuid.uuid4(), sys_uuid.uuid4()
         subnet = _flat(operator)
 
-        _port_on(subnet, tenant, provenance=nc.PortProvenance.GENERATED.value).insert()
+        _port_on(subnet, tenant, legacy_flat_placement=True).insert()
 
     def test_an_address_outside_the_subnet_is_refused(self):
         owner = sys_uuid.uuid4()

@@ -31,7 +31,9 @@ $core.compute.nodes:
 Node applies the template only on creation. Read the result from
 `default_network.ipv4`, `default_network.port` and the detailed `ports` list.
 NodeSet applies its template to new replicas; existing replicas retain their
-attachments. Replica addresses remain in `nodes[uuid].ipv4`.
+attachments. Replica addresses remain in `nodes[uuid].ipv4`. A replica with a
+floating IP also exposes `nodes[uuid].floating_ip` as a string; otherwise the
+field is omitted.
 
 The removed `networking` field is rejected. Additional NICs are separate Port
 resources attached through `Port.node`; security and identity memberships use

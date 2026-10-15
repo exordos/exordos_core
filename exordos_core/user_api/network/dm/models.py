@@ -1607,7 +1607,7 @@ class Address(
     ``allocation`` says whether the address is held against the subnet's
     pool (unique among reserved rows); ``port`` is the desired binding and
     ``association`` holds the published binding until host withdrawal ack.
-    Legacy ``owner_port`` marks compiler-owned allocations. Deletion of a
+    ``owner_port`` identifies allocations that live and die with their port. Deletion of a
     published address is deferred until acknowledgement.
     """
 
@@ -1688,9 +1688,13 @@ class Address(
             return "ACTIVE"
         return "ERROR" if current and actual.status == "ERROR" else "IN_PROGRESS"
 
-    def _validate_port(self, session=None):
+    def _validate_port(self, session=None, *, lock=True):
         from exordos_core.compute.dm import models as compute_models
 
+        if self.owner_port is not None and self.port != self.owner_port:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address", msg="a port-owned address cannot move to another port"
+            )
         if self.kind == "reservation" and self.port is not None:
             raise ex_exceptions.ValidateException(
                 err="reservation cannot bind to a port"
@@ -1702,9 +1706,10 @@ class Address(
         validate_reference(
             self.project_id, compute_models.Port, self.port, "port", session=session
         )
-        compute_models.Port.objects.get_one(
-            filters={"uuid": dm_filters.EQ(self.port)}, session=session, locked=True
-        )
+        if lock:
+            compute_models.Port.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.port)}, session=session, locked=True
+            )
         others = Address.objects.get_all(
             filters={
                 "port": dm_filters.EQ(self.port),
@@ -1936,7 +1941,20 @@ class Address(
                 self.address = self._allocate_free_address(subnet, session=current)
                 if self.origin == AddressOrigin.EXPLICIT.value:
                     self.origin = AddressOrigin.AUTO.value
-            return super().insert(session=current)
+            result = super().insert(session=current)
+            self._touch_node_sets([self.port], current)
+            return result
+
+    @staticmethod
+    def _touch_node_sets(ports, session):
+        ports = [str(port) for port in ports if port is not None]
+        if ports:
+            session.execute(
+                "UPDATE compute_sets SET updated_at = NOW() WHERE uuid IN ("
+                "SELECT n.node_set FROM nodes n JOIN compute_ports p ON p.node = n.uuid "
+                "WHERE p.uuid = ANY(%s::uuid[]) AND n.node_set IS NOT NULL)",
+                (ports,),
+            )
 
     def update(self, session=None, force=False):
         from exordos_core.network.contracts import atomic_session
@@ -1960,6 +1978,8 @@ class Address(
                 raise ra_storage_exc.ConflictRecords(
                     model="Address", msg="unbind before moving to another port"
                 )
+            if stored.port is not None and self.port is None:
+                self.owner_port = None
             # Publication is compiler state; a user update must preserve its latest value.
             self.association = stored.association
             if (
@@ -1974,9 +1994,12 @@ class Address(
                 raise ra_storage_exc.ConflictRecords(
                     model="Address", msg="address is being deleted"
                 )
-            self._validate_port(current)
+            self._validate_port(current, lock=stored.port != self.port)
             self._validate_allocation(stored)
-            return super().update(session=current, force=force)
+            result = super().update(session=current, force=force)
+            if stored.port != self.port:
+                self._touch_node_sets([stored.port, self.port], current)
+            return result
 
     def claim_publication(self, port, session=None):
         from exordos_core.network.contracts import atomic_session
@@ -2050,7 +2073,14 @@ class Address(
             )
             return stored._delete_allocated(session=current, **kwargs)
 
-    def _delete_allocated(self, session=None, **kwargs):
+    def _delete_allocated(self, session=None, owner_port=None, **kwargs):
+        if owner_port is not None and self.owner_port != owner_port:
+            return
+        if self.owner_port is not None and owner_port != self.owner_port:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address",
+                msg=f"owned by port {self.owner_port}; delete the port instead",
+            )
         # A port's `public` slot cites it; the compiler would silently skip it.
         if self.kind == "floating" and self.association is not None:
             self.port = None
@@ -2058,6 +2088,8 @@ class Address(
             self.update(session=session)
             return
         for port in _ports_of(self.project_id):
+            if port.uuid == owner_port:
+                continue
             config = port.config
             if getattr(config, "KIND", None) != "simple":
                 continue
@@ -2073,12 +2105,9 @@ class Address(
                 model="Address",
                 msg=f"still associated with {self.association}",
             )
-        if self.owner_port is not None:
-            raise ra_storage_exc.ConflictRecords(
-                model="Address",
-                msg=f"owned by port {self.owner_port}; delete the port instead",
-            )
-        return super().delete(session=session, **kwargs)
+        result = super().delete(session=session, **kwargs)
+        self._touch_node_sets([self.port], session)
+        return result
 
 
 # --- Network functions -------------------------------------------------------

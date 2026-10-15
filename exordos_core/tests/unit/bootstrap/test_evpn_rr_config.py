@@ -150,13 +150,16 @@ def test_bootstrap_keeps_the_real_port_through_ownership_validation():
         project_id=c.ZERO_UUID,
         cidr=netaddr.IPNetwork("10.20.0.0/22"),
     )
-    core_node = mock.MagicMock(project_id=nc.NODE_SET_PROJECT)
+    core_node = mock.MagicMock(
+        project_id=nc.NODE_SET_PROJECT, node_set=c.CORE_SET_UUID, node_type="VM"
+    )
 
     def fetch(collection, *args, **kwargs):
         return {
             models.Subnet: subnet,
             models.Network: network,
             models.Node: core_node,
+            models.NodeSet: mock.MagicMock(project_id=c.EM_PROJECT_ID),
         }.get(collection.model_cls)
 
     inserted_ports = []
@@ -183,7 +186,7 @@ def test_bootstrap_keeps_the_real_port_through_ownership_validation():
     port = inserted_ports[0]
     assert port.node == sys_uuid.UUID(bootstrap["uuid"])
     assert port.project_id == c.EM_PROJECT_ID
-    assert port.provenance == nc.PortProvenance.GENERATED.value
+    assert port.owner_node == port.node
     assert port.mac == bootstrap["ports"][0]["mac"]
     assert str(port.ipv4) == bootstrap["ports"][0]["ip"]
     node = insert_node.call_args.args[0]

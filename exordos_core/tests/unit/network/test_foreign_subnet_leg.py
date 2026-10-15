@@ -28,7 +28,6 @@ from gcl_iam.api import controllers as iam_controllers
 import pytest
 
 from exordos_core.common import exceptions as ex_exceptions
-from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.user_api.compute.api import controllers
 
@@ -151,7 +150,7 @@ class TestBothWaysInAreGated:
 class TestTheModelAsksIsThereADeclaration:
     """`_validate_subnet_access` runs in a reconcile loop with no IAM at all."""
 
-    def _port(self, provenance=nc.PortProvenance.GENERATED.value):
+    def _port(self, owned=True):
         """A stand-in, called unbound.
 
         Not a real `Port`: restalchemy descriptors share one slot on an instance
@@ -160,9 +159,10 @@ class TestTheModelAsksIsThereADeclaration:
         port = mock.MagicMock(
             project_id=SERVICE,
             subnet=sys_uuid.uuid4(),
-            provenance=provenance,
+            owner_node=None,
             node=sys_uuid.uuid4(),
         )
+        port.owner_node = port.node if owned else None
         # The real one, or the mock answers "declared" to everything and the
         # test proves nothing.
         port._declared_by_its_node = lambda subnet: (
@@ -211,13 +211,11 @@ class TestTheModelAsksIsThereADeclaration:
             with pytest.raises(ex_exceptions.ValidateException):
                 compute_models.Port._validate_subnet_access(port, subnet)
 
-    def test_a_hand_made_port_is_refused_even_where_a_declaration_exists(self):
-        """Provenance is what separates the compiler's row from somebody's."""
-        port = self._port(provenance=nc.PortProvenance.USER.value)
+    def test_a_released_port_keeps_its_declared_placement(self):
+        port = self._port(owned=False)
         subnets, networks, nodes, subnet = self._world(port, [_leg(subnet=port.subnet)])
         with subnets, networks, nodes:
-            with pytest.raises(ex_exceptions.ValidateException):
-                compute_models.Port._validate_subnet_access(port, subnet)
+            compute_models.Port._validate_subnet_access(port, subnet)
 
     def test_a_leg_that_named_the_network_counts_too(self):
         port = self._port()

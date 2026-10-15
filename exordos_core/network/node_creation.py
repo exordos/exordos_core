@@ -7,6 +7,7 @@
 
 from exordos_core.common import exceptions
 from exordos_core.network.contracts import INLINE_FLOATING_CREATE_FIELDS
+from exordos_core.network.contracts import resolve_subnet
 from exordos_core.network.contracts import validate_address_input
 from exordos_core.network.contracts import validate_inline_fields
 from exordos_core.network.contracts import validate_port_input
@@ -42,7 +43,6 @@ def validate_default_network(value, template=False):
 
 
 def create_default_port(node, value, project_id, session):
-    from exordos_core.compute import constants
     from exordos_core.compute.dm import models as compute
     from exordos_core.network.defaults import ensure_default_subnet
     from exordos_core.network.defaults import find_legacy_flat_subnet
@@ -55,18 +55,24 @@ def create_default_port(node, value, project_id, session):
     placement = {key: item for key, item in value.items() if key != "floating_ip"}
     if "floating_ip" in value and "network" not in value and "subnet" not in value:
         placement["subnet"] = str(ensure_default_subnet(project_id, session).uuid)
+    if "network" in placement or "subnet" in placement:
+        placement["subnet"] = str(
+            resolve_subnet(
+                project_id,
+                subnet=placement.get("subnet"),
+                network=placement.get("network"),
+                address=placement.get("target_ipv4"),
+                session=session,
+            ).uuid
+        )
+        placement.pop("network", None)
     port = compute.Port.restore_from_simple_view(
         **{
             **placement,
             "project_id": str(project_id),
             "node": str(node.uuid),
             "index": 0,
-            **(
-                {"provenance": constants.PortProvenance.GENERATED.value}
-                if node.node_set is not None
-                and node.project_id == constants.NODE_SET_PROJECT
-                else {}
-            ),
+            "owner_node": str(node.uuid),
         }
     )
     port.insert(session=session)
@@ -81,6 +87,7 @@ def create_default_port(node, value, project_id, session):
                 **fip,
                 "kind": "floating",
                 "port": str(port.uuid),
+                "owner_port": str(port.uuid),
                 "project_id": str(project_id),
             }
         )

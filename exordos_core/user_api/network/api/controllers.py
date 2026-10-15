@@ -400,8 +400,7 @@ class PortController(
                 "config": {constants.ALL: field_p.Permissions.RO},
                 "target_mask": {constants.ALL: field_p.Permissions.RO},
                 "machine": {constants.ALL: field_p.Permissions.RO},
-                # `generated` rows may sit outside their node's project.
-                "provenance": {constants.ALL: field_p.Permissions.RO},
+                "owner_node": {constants.CREATE: field_p.Permissions.RO},
                 # On the platform's legs the address is IPAM's, and it is
                 # what a door onto the node leads to.
                 "ipv4": {constants.ALL: field_p.Permissions.RO},
@@ -434,9 +433,21 @@ class PortController(
     def update(self, uuid, **kwargs):
         stored = self.get(uuid)
         self.model.validate_update_input(kwargs, stored)
+        from exordos_core.network.permissions import gate_port_ownership
+
+        gate_port_ownership(self, kwargs, stored)
         # The selector is a read-only projection once placement is resolved.
         kwargs.pop("network", None)
         return super().update(uuid, **kwargs)
+
+    def delete(self, uuid):
+        from exordos_core.network.permissions import _require_unmanaged_node
+
+        stored = self.get(uuid)
+        _require_unmanaged_node(
+            getattr(stored.node, "uuid", stored.node) or stored.owner_node
+        )
+        return super().delete(uuid)
 
     def _own_overlay_subnets(self):
         """The caller's overlay subnets, where foreign ports are shown.
@@ -655,7 +666,7 @@ class AddressController(
                 # The compiler's. A caller-written `floating` origin would
                 # open the fabric guard to any address.
                 "origin": {constants.ALL: field_p.Permissions.RO},
-                "owner_port": {constants.ALL: field_p.Permissions.RO},
+                "owner_port": {constants.CREATE: field_p.Permissions.RO},
                 "association": {constants.ALL: field_p.Permissions.RO},
                 "allocation": {constants.ALL: field_p.Permissions.RO},
                 "delete_requested": {constants.ALL: field_p.Permissions.HIDDEN},
@@ -696,6 +707,10 @@ class AddressController(
     def create(self, **kwargs):
         self.model.validate_create_input(kwargs)
         self._gate_explicit_address(kwargs)
+        from exordos_core.network.permissions import _require_unmanaged_port
+
+        if kwargs.get("port") is not None:
+            _require_unmanaged_port(kwargs["port"])
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
@@ -713,8 +728,19 @@ class AddressController(
                 )
         self._gate_explicit_address(kwargs, stored)
         self.model.validate_update_input(kwargs, stored)
+        from exordos_core.network.permissions import gate_address_ownership
+
+        gate_address_ownership(self, kwargs, stored)
         kwargs.pop("network", None)
         return super().update(uuid, **kwargs)
+
+    def delete(self, uuid):
+        from exordos_core.network.permissions import _require_unmanaged_port
+
+        stored = self.get(uuid=uuid)
+        if stored.port is not None:
+            _require_unmanaged_port(stored.port)
+        return super().delete(uuid)
 
 
 class BorderController(

@@ -68,12 +68,5 @@ class MachineBuildStatus(str, enum.Enum):
     READY = "READY"
 
 
-class PortProvenance(str, enum.Enum):
-    # As `NFProvenance`: `generated` rows are the compiler's to rewrite or
-    # remove; `user` rows it only reads.
-    USER = "user"
-    GENERATED = "generated"
-
-
 class PlacementPolicyKind(str, enum.Enum):
     SOFT_ANTI_AFFINITY = "soft-anti-affinity"

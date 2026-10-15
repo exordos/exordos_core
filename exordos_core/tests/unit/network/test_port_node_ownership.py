@@ -22,19 +22,17 @@ import uuid as sys_uuid
 import pytest
 
 from exordos_core.common import exceptions as ex_exceptions
-from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 
 TENANT = sys_uuid.uuid4()
 VICTIM = sys_uuid.uuid4()
 
 
-def _port(project_id=TENANT, provenance=nc.PortProvenance.USER.value, node=None):
+def _port(project_id=TENANT, owned=False, node=None):
     """A stand-in, called unbound (see `test_foreign_subnet_leg._port`)."""
+    node = node if node is not None else sys_uuid.uuid4()
     return mock.MagicMock(
-        project_id=project_id,
-        provenance=provenance,
-        node=node if node is not None else sys_uuid.uuid4(),
+        project_id=project_id, owner_node=node if owned else None, node=node
     )
 
 
@@ -78,8 +76,8 @@ def test_a_port_naming_a_node_that_does_not_exist_is_refused():
 
 def test_the_installations_own_port_for_a_bare_metal_node_still_passes():
     """`_get_new_hw_ports` gives a discovered machine a port in the project of
-    the subnet it was found on, not in its node's. That row is `generated`,
-    which is the value the API refuses to write."""
-    port = _port(provenance=nc.PortProvenance.GENERATED.value)
-    with _nodes(mock.MagicMock(uuid=port.node, project_id=VICTIM)):
+    the subnet it was found on, not in its node's. Only the platform may
+    assign `owner_node` to such a port."""
+    port = _port(owned=True)
+    with _nodes(mock.MagicMock(uuid=port.node, project_id=VICTIM, node_type="HW")):
         compute_models.Port._validate_node_ownership(port)  # must not raise

@@ -183,7 +183,7 @@ def legacy_flat_port(project_id, cidr="10.20.0.0/24", **kwargs):
     )
     subnet.insert()
     port = compute.Port(
-        project_id=project_id, subnet=subnet.uuid, provenance="generated"
+        project_id=project_id, subnet=subnet.uuid, legacy_flat_placement=True
     )
     port.insert()
     return port

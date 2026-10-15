@@ -1240,13 +1240,13 @@ def port_factory():
             **extra,
             **kwargs,
         )
-        # status/machine/provenance are read-only (reconcile-driven,
+        # status/machine/owner_node are read-only (reconcile-driven,
         # derived, and "who owns this row" respectively).
         view = port.dump_to_simple_view(
             skip=[
                 "status",
                 "machine",
-                "provenance",
+                "owner_node",
                 "activation_barrier",
                 "legacy_flat_placement",
                 "ipv4",

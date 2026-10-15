@@ -40,7 +40,7 @@ SUBNET_B = sys_uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
 def _node(interfaces=None, default_network=None):
     node = mock.MagicMock()
-    node.uuid = sys_uuid.uuid4()
+    node.uuid = PROJECT
     node.project_id = PROJECT
     node.interfaces = interfaces
     node.default_network = default_network or {}
@@ -51,11 +51,11 @@ def _leg(**kwargs):
     return compute_models.NodeInterfaceOnSubnetKind(**kwargs)
 
 
-def _port(index=0, provenance=nc.PortProvenance.GENERATED.value, subnet=SUBNET_A):
+def _port(index=0, owner_node=PROJECT, subnet=SUBNET_A):
     port = mock.MagicMock()
     port.uuid = sys_uuid.uuid4()
     port.index = index
-    port.provenance = provenance
+    port.owner_node = owner_node
     port.subnet = subnet
     port.ipv4 = None
     port.config = compute_models.PortSimpleKind()
@@ -241,7 +241,7 @@ def test_a_port_somebody_else_made_is_never_taken_away():
     declaration that does not mention it is not a request to remove it.
     """
     harness = _Harness()
-    theirs = _port(index=1, provenance=nc.PortProvenance.USER.value)
+    theirs = _port(index=1, owner_node=None)
     harness.run(_node(interfaces=[_leg(subnet=SUBNET_A)]), existing=[_port(), theirs])
     theirs.delete.assert_not_called()
 
@@ -252,7 +252,7 @@ def test_a_port_somebody_else_made_is_never_taken_away():
 def test_naming_an_existing_port_attaches_it_without_rewriting_it():
     service = object.__new__(net_service.NetworkService)
     node = _node()
-    existing = _port(index=0, provenance=nc.PortProvenance.USER.value)
+    existing = _port(index=0, owner_node=None)
     existing.project_id = PROJECT
     existing.node = None
     objects = mock.MagicMock()
@@ -265,8 +265,7 @@ def test_naming_an_existing_port_attaches_it_without_rewriting_it():
         )
     assert existing.node == node.uuid
     assert existing.index == 1
-    # Its provenance is untouched: the node named it, it did not make it.
-    assert existing.provenance == nc.PortProvenance.USER.value
+    assert existing.owner_node is None
     existing.update.assert_called_once()
 
 

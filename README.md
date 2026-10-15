@@ -26,7 +26,9 @@ network; optional compatibility reuses a project's existing flat subnet.
 `default_network` can select a network, request a floating IP, or disable
 the port with `{}` unless compatibility selects flat placement.
 A floating IP request without explicit private placement
-selects SDN even in projects with flat ports. Existing flat networking remains supported.
+selects SDN even in projects with flat ports. Automatic ports follow their Node's
+lifecycle, and automatically allocated floating IPs follow their Port's lifecycle.
+Existing flat networking remains supported.
 The [network dataplane reference](docs/network/dataplane.md) lists the API and
 target entities and diagrams the hypervisor, fabric, service and gateway paths.
 
