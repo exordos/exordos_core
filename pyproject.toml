@@ -249,5 +249,5 @@ directory = "cover"
 output = "cover/coverage.xml"
 
 [tool.uv.sources]
-# Pin the development SDK API until disk scheduling is released on PyPI.
-gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "28d072320557b44985599ca4cf8e94d96a5cccb1" }
+# Pin the SDK with the matching rawstor driver API.
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "4c15ea876f2ad5ed932ad9af289cec494975b6ca" }
