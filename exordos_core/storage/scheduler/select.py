@@ -43,6 +43,7 @@ def _active_clusters() -> tp.List[storage_models.StorageCluster]:
 def collect_storage_pool_candidates(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     staged=None,
+    exclude_volume=None,
 ) -> tp.List[PoolCandidate]:
     """Pair every candidate pool with the StorageCluster that owns it.
 
@@ -67,7 +68,9 @@ def collect_storage_pool_candidates(
             promised.update((staged or {}).get(str(cluster.uuid), {}))
             observed = info.get("objects", {})
             pending = [
-                max(0, size - observed.get(uuid, 0)) for uuid, size in promised.items()
+                max(0, size - observed.get(uuid, 0))
+                for uuid, size in promised.items()
+                if uuid != str(exclude_volume)
             ]
             for pool in cluster.storage_pools:
                 policy = {
@@ -95,12 +98,15 @@ def select_storage_pool_with_clusters(
     size: int,
     assigned_name: tp.Optional[str] = None,
     staged=None,
+    exclude_volume=None,
 ) -> tp.Optional[PoolCandidate]:
     """Like `ua_pool.select_storage_pool`, but drawing from local pools
     and active StorageClusters' pools together (see
     `collect_storage_pool_candidates`).
     """
-    candidates = collect_storage_pool_candidates(local_pools, staged)
+    candidates = collect_storage_pool_candidates(
+        local_pools, staged, exclude_volume=exclude_volume
+    )
 
     if assigned_name is not None:
         assigned = [
