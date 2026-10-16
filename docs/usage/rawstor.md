@@ -169,8 +169,8 @@ currently unsupported.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.9f7ea5d`, from
-[Actions run 38805653704](https://github.com/rawstor/librawstor/actions/runs/38805653704).
+`99.0.0+0.14d3e33`, from
+[Actions run 38903108689](https://github.com/rawstor/librawstor/actions/runs/38903108689).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
@@ -196,3 +196,7 @@ The pinned build requires a strict majority for writable mirrors. With two
 data copies and no witness, both copies must remain available for writes.
 Rawstor supports metadata-only witnesses, but ordinary MDS placement does not
 add them automatically; Exordos does not configure witnesses yet.
+
+The LIST wire format distinguishes chunks (`1`) from objects (`2`); update
+clients, MDS and OST together. Read-only mirrored opens also require quorum;
+Rawstor only bypasses it when `FORCE` is explicitly combined with `READONLY`.
