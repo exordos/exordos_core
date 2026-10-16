@@ -124,7 +124,7 @@ class Volume(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
     )
-    # Changing a disk's tier/ephemeral tier after creation would mean
+    # Changing a disk's tier/ephemeral policy after creation would mean
     # migrating it to a different storage pool, which isn't implemented -
     # read-only makes that unsupported change fail loudly instead of
     # being silently accepted with no actual effect on where the disk
@@ -405,10 +405,7 @@ class MachineVolume(
         default=ic.DiskTier.WARM.value,
     )
     ephemeral = properties.property(types.Boolean(), default=True)
-    # Name of the storage pool (within this compute pool) the scheduler
-    # placed the volume on - needed to re-locate it by name (rather than
-    # by tier/ephemeral, which several pools could match) when
-    # allocating extra capacity for a resize or a reused volume.
+    # Local libvirt pool name, or stable StoragePool UUID for a cluster disk.
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
     )

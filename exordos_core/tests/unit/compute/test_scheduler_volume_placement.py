@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import time
+from unittest.mock import MagicMock
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
@@ -23,6 +25,8 @@ import pytest
 from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler import service
 from exordos_core.compute.scheduler.driver import base
+from exordos_core.storage.dm import models as storage_models
+from exordos_core.storage.scheduler import select as storage_select
 
 
 def _storage_pool(name, tier, ephemeral, capacity_usable, capacity_provisioned=0):
@@ -66,6 +70,52 @@ def _requested_volume(image, size, tier, ephemeral):
         image=image,
         tier=tier,
         ephemeral=ephemeral,
+    )
+
+
+def _storage_cluster(
+    name, tier, ephemeral, capacity_usable, endpoint="mds://core:7776/"
+):
+    from gcl_sdk.agents.universal.drivers import pool as pool_base
+
+    cluster = storage_models.StorageCluster(
+        uuid=sys_uuid.uuid4(),
+        name=name,
+        driver_spec=pool_base.RawstorStorageClusterDriverSpec(
+            endpoint=endpoint,
+        ),
+        status=ua_pool.MachinePoolStatus.ACTIVE.value,
+        agent=sys_uuid.uuid4(),
+        storage_pools=[_storage_pool(name, tier, ephemeral, capacity_usable)],
+        capacity_info={
+            "reported_at": time.time(),
+            "objects": {},
+            "nodes": [
+                {
+                    "uuid": str(sys_uuid.uuid4()),
+                    "failure_domain_path": "server1",
+                    "available": capacity_usable << 30,
+                }
+            ],
+        },
+    )
+    cluster.storage_pools[0].driver_spec = ua_pool.rawstor_specs.RawstorPoolDriverSpec(
+        mirrors=1
+    )
+    cluster.save = lambda: None
+    return cluster
+
+
+@pytest.fixture(autouse=True)
+def no_storage_clusters(monkeypatch):
+    """By default there are no StorageClusters - placement only ever
+    considers the pool's own local storage_pools, same as before
+    two-tier scheduling was introduced. Tests that care about clusters
+    override this explicitly.
+    """
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [])
+    monkeypatch.setattr(
+        models.MachineVolume, "objects", MagicMock(get_all=MagicMock(return_value=[]))
     )
 
 
@@ -334,3 +384,157 @@ def test_idle_machine_preflight_checks_total_disk_capacity_without_allocating(
         node, machine, {pool.pool.uuid: pool}
     )
     assert pool.pool.storage_pools[0].capacity_provisioned == 0
+
+
+class TestPlaceVolumeIntoPoolWithClusters:
+    """Local pools and active StorageClusters are equal candidates - the
+    winner is whichever has more free capacity, not whichever is local.
+    """
+
+    def test_a_cluster_pool_wins_when_it_has_more_free_space(
+        self, scheduler, monkeypatch
+    ):
+        small_local = _storage_pool(
+            "small-local", ic.DiskTier.WARM.value, False, capacity_usable=20
+        )
+        big_cluster = _storage_cluster(
+            "big-cluster", ic.DiskTier.WARM.value, False, capacity_usable=100
+        )
+        monkeypatch.setattr(storage_select, "_active_clusters", lambda: [big_cluster])
+
+        pool = _machine_pool_bundle([small_local], [])
+        requested = _requested_volume("img1", 10, ic.DiskTier.WARM.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.storage_pool == str(big_cluster.storage_pools[0].uuid)
+        assert "storage_location" not in result.properties
+
+    def test_a_local_pool_is_used_when_no_cluster_fits(self, scheduler, monkeypatch):
+        local_pool = _storage_pool(
+            "local", ic.DiskTier.WARM.value, False, capacity_usable=100
+        )
+        small_cluster = _storage_cluster(
+            "small-cluster", ic.DiskTier.WARM.value, False, capacity_usable=5
+        )
+        monkeypatch.setattr(storage_select, "_active_clusters", lambda: [small_cluster])
+
+        pool = _machine_pool_bundle([local_pool], [])
+        requested = _requested_volume("img1", 10, ic.DiskTier.WARM.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.storage_pool == "local"
+        assert "storage_location" not in result.properties
+
+    def test_only_a_cluster_is_available_and_no_local_pools_configured(
+        self, scheduler, monkeypatch
+    ):
+        cluster = _storage_cluster(
+            "only-cluster", ic.DiskTier.HOT.value, False, capacity_usable=50
+        )
+        monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+
+        pool = _machine_pool_bundle([], [])
+        requested = _requested_volume("img1", 10, ic.DiskTier.HOT.value, False)
+
+        result = scheduler._place_volume_into_pool(requested, pool)
+
+        assert result.storage_pool == str(cluster.storage_pools[0].uuid)
+        assert "storage_location" not in result.properties
+
+
+def test_default_disk_selects_local_warm_pool_over_cold_rawstor(scheduler, monkeypatch):
+    local = _storage_pool("local", ic.DiskTier.WARM.value, True, capacity_usable=100)
+    remote = _storage_cluster(
+        "rawstor", ic.DiskTier.COLD.value, True, capacity_usable=1000
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [remote])
+    volume = models.Volume(project_id=sys_uuid.uuid4(), size=10, image="img1")
+    result = scheduler._place_volume_into_pool(
+        volume, _machine_pool_bundle([local], [])
+    )
+    assert volume.tier == ic.DiskTier.WARM.value
+    assert volume.ephemeral is True
+    assert result.storage_pool == "local"
+
+
+def test_failed_placement_restores_shared_rawstor_budget(scheduler, monkeypatch):
+    cluster = _storage_cluster(
+        "remote", ic.DiskTier.WARM.value, True, capacity_usable=6
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    pool = _machine_pool_bundle([], [])
+    previous = {"already-placed": 1 << 30}
+    scheduler._storage_reservations = {str(cluster.uuid): dict(previous)}
+    first = _requested_volume(None, 4, ic.DiskTier.WARM.value, True)
+    second = _requested_volume(None, 3, ic.DiskTier.WARM.value, True)
+    with pytest.raises(ValueError):
+        scheduler._allocate_node_volumes(base.NodeBundle(None, [first, second]), pool)
+    assert scheduler._storage_reservations == {str(cluster.uuid): previous}
+    [placed] = scheduler._allocate_node_volumes(base.NodeBundle(None, [first]), pool)
+    assert placed.storage_pool == str(cluster.storage_pools[0].uuid)
+    assert scheduler._storage_reservations == {
+        str(cluster.uuid): {**previous, str(first.uuid): 4 << 30}
+    }
+
+
+def test_cluster_pool_names_need_not_be_unique_across_clusters(scheduler, monkeypatch):
+    small = _storage_cluster(
+        "same-name", ic.DiskTier.WARM.value, True, capacity_usable=5
+    )
+    big = _storage_cluster(
+        "same-name", ic.DiskTier.WARM.value, True, capacity_usable=20
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [small, big])
+    request = _requested_volume(None, 10, ic.DiskTier.WARM.value, True)
+    result = scheduler._place_volume_into_pool(request, _machine_pool_bundle([], []))
+    assert result.storage_pool == str(big.storage_pools[0].uuid)
+
+
+@pytest.mark.parametrize("sizes, fits", [([10], True), ([30, 30], False)])
+def test_idle_machine_preflight_does_not_reserve_cluster_space(
+    scheduler, monkeypatch, sizes, fits
+):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    scheduler._storage_reservations = {str(cluster.uuid): {"previous": 1 << 30}}
+    pool = _machine_pool_bundle([], [])
+    node = base.NodeBundle(
+        SimpleNamespace(uuid=sys_uuid.uuid4()),
+        [_requested_volume(None, size, "COLD", False) for size in sizes],
+    )
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+    assert (
+        scheduler._machine_has_disk_capacity(node, machine, {pool.pool.uuid: pool})
+        is fits
+    )
+    assert scheduler._storage_reservations == {str(cluster.uuid): {"previous": 1 << 30}}
+    assert cluster.storage_pools[0].capacity_provisioned == 0
+
+
+def test_idle_machine_reuse_preflight_does_not_save_cluster(scheduler, monkeypatch):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    cluster.save = MagicMock()
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    pool = _machine_pool_bundle(
+        [],
+        [
+            _machine_volume(
+                "image", 5, "COLD", False, str(cluster.storage_pools[0].uuid)
+            )
+        ],
+    )
+    node = base.NodeBundle(
+        SimpleNamespace(uuid=sys_uuid.uuid4()),
+        [_requested_volume("image", 10, "COLD", False)],
+    )
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+    assert scheduler._machine_has_disk_capacity(node, machine, {pool.pool.uuid: pool})
+    cluster.save.assert_not_called()
+    assert pool.volumes[0].node_volume is None
+    assert cluster.storage_pools[0].capacity_provisioned == 0
