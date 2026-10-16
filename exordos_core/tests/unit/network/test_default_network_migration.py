@@ -13,7 +13,7 @@ import pytest
 @pytest.fixture
 def migration():
     return runpy.run_path(
-        str(Path(__file__).parents[4] / "migrations/0009-default-network-a182bc39.py")
+        str(Path(__file__).parents[4] / "migrations/0010-default-network-a182bc39.py")
     )
 
 

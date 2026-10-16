@@ -1019,7 +1019,7 @@ class TestOvsEvpnE2E(_EvpnStand):
         migration = runpy.run_path(
             str(
                 pathlib.Path(__file__).parents[4]
-                / "migrations/0008-flat-port-source-89f12ab4.py"
+                / "migrations/0009-flat-port-source-89f12ab4.py"
             )
         )["migration_step"]
         with contexts.Context().session_manager() as session:

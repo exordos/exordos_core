@@ -279,7 +279,7 @@ def test_ownership_migration_preserves_independent_ports(client):
         client, ("network", "ports"), project_id=str(project), node=node["uuid"]
     )
     migration = runpy.run_path(
-        str(Path(__file__).parents[5] / "migrations/0010-network-ownership-d4f9031a.py")
+        str(Path(__file__).parents[5] / "migrations/0011-network-ownership-d4f9031a.py")
     )["migration_step"]
     with contexts.Context().session_manager() as session:
         migration.downgrade(session)
@@ -341,7 +341,7 @@ def test_ownership_migration_preserves_detached_legacy_flat_access(client):
 
     port = legacy_flat_port(uuid.uuid4())
     migration = runpy.run_path(
-        str(Path(__file__).parents[5] / "migrations/0010-network-ownership-d4f9031a.py")
+        str(Path(__file__).parents[5] / "migrations/0011-network-ownership-d4f9031a.py")
     )["migration_step"]
     with contexts.Context().session_manager() as session:
         migration.downgrade(session)

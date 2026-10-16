@@ -16,18 +16,24 @@ from restalchemy.storage.sql import migrations
 MIGRATIONS = Path(__file__).parents[4] / "migrations"
 
 
-def test_migration_head_includes_tokens_and_sdn():
+def test_sdn_migrations_follow_master():
     engine = migrations.MigrationEngine(migrations_path=str(MIGRATIONS))
-    engine.get_latest_migration()
+    chain = [
+        "0006-disk-scheduling-resources-96f43b.py",
+        "0007-network-sdn-9e41c7.py",
+        "0008-sdn-api-contract-15df7a.py",
+        "0009-flat-port-source-89f12ab4.py",
+        "0010-default-network-a182bc39.py",
+        "0011-network-ownership-d4f9031a.py",
+    ]
+    assert engine.get_latest_migration() == chain[-1]
     steps = engine.get_all_migrations()
-    assert set(steps["0007-merge-token-sdn-9673ab8e.py"]["depends"]) == {
-        "0005-add-managed-tokens-5b1e8c47.py",
-        "0006-sdn-api-contract-15df7a.py",
-    }
+    for parent, child in zip(chain, chain[1:]):
+        assert steps[child]["depends"] == [parent]
 
 
 def test_upgrade_refuses_unmaterialized_manifest_rules():
-    step = runpy.run_path(str(MIGRATIONS / "0006-sdn-api-contract-15df7a.py"))[
+    step = runpy.run_path(str(MIGRATIONS / "0008-sdn-api-contract-15df7a.py"))[
         "migration_step"
     ]
     session = mock.Mock()
@@ -58,7 +64,7 @@ def test_migration_normalizes_builder_node_snapshots(table):
         return result
 
     session.execute.side_effect = execute
-    migrate = runpy.run_path(str(MIGRATIONS / "0006-sdn-api-contract-15df7a.py"))
+    migrate = runpy.run_path(str(MIGRATIONS / "0008-sdn-api-contract-15df7a.py"))
     migrate["migrate_declarations"](session)
     writes = [
         call

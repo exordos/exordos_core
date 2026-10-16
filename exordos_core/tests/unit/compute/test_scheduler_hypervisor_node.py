@@ -34,7 +34,7 @@ def test_a_hypervisor_node_is_not_a_workload_to_place():
             service.SchedulerService, "_get_idle_machines", return_value=[]
         ),
     ):
-        left = sched._schedule_on_existing_machines()
+        left = sched._schedule_on_existing_machines([])
 
     # What survives the filter is what the scheduler will try to place.
     assert [b.node.uuid for b in left] == [guest], (

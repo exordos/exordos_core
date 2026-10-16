@@ -364,7 +364,6 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
         "em_core_network_catalog_proxy_services": "exordos_core.user_api.network.dm.models:ProxyService",
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
-        "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
         "em_core_network_networks": "exordos_core.compute.dm.models:Network",
         "em_core_network_subnets": "exordos_core.compute.dm.models:Subnet",
         "em_core_network_catalog_addresses": (

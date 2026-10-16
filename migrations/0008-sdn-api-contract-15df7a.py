@@ -258,7 +258,7 @@ def migrate_declarations(session):
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0005-network-sdn-9e41c7.py"]
+        self._depends = ["0007-network-sdn-9e41c7.py"]
 
     @property
     def migration_id(self):

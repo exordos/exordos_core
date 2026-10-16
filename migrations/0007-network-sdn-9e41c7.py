@@ -136,7 +136,7 @@ CREATE VIEW public.compute_nodes_without_ports AS
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0004-add-opaque-secrets-362f6d21.py"]
+        self._depends = ["0006-disk-scheduling-resources-96f43b.py"]
 
     @property
     def migration_id(self):

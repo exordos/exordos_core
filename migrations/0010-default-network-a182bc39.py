@@ -114,7 +114,7 @@ def migrate_networking(session):
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0008-flat-port-source-89f12ab4.py"]
+        self._depends = ["0009-flat-port-source-89f12ab4.py"]
 
     @property
     def migration_id(self):

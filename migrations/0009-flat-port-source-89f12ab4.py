@@ -8,7 +8,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0007-merge-token-sdn-9673ab8e.py"]
+        self._depends = ["0008-sdn-api-contract-15df7a.py"]
 
     @property
     def migration_id(self):

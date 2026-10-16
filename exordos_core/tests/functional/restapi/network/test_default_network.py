@@ -693,7 +693,7 @@ def test_upgrade_preserves_existing_ports_and_old_empty_set_templates(client):
         default_network={},
     )
     step = runpy.run_path(
-        str(Path(__file__).parents[5] / "migrations/0009-default-network-a182bc39.py")
+        str(Path(__file__).parents[5] / "migrations/0010-default-network-a182bc39.py")
     )["migration_step"]
     with engines.engine_factory.get_engine().session_manager() as session:
         step.downgrade(session)
@@ -737,7 +737,7 @@ def test_upgrade_removes_saved_networking_without_losing_intent(
     )
     request.insert()
     step = runpy.run_path(
-        str(Path(__file__).parents[5] / "migrations/0009-default-network-a182bc39.py")
+        str(Path(__file__).parents[5] / "migrations/0010-default-network-a182bc39.py")
     )["migration_step"]
     with engines.engine_factory.get_engine().session_manager() as session:
         step.downgrade(session)

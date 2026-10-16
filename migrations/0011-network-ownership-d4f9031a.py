@@ -8,7 +8,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0009-default-network-a182bc39.py"]
+        self._depends = ["0010-default-network-a182bc39.py"]
 
     @property
     def migration_id(self):

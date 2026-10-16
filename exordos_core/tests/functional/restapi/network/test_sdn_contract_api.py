@@ -843,7 +843,7 @@ def test_contract_conversion_preserves_flat_nodes(topology):
         placeable=False,
     )
     approved_old_pool.insert()
-    path = Path(__file__).parents[5] / "migrations" / "0006-sdn-api-contract-15df7a.py"
+    path = Path(__file__).parents[5] / "migrations" / "0008-sdn-api-contract-15df7a.py"
     spec = importlib.util.spec_from_file_location("contract_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

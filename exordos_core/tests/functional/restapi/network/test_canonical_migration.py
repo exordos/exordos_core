@@ -44,7 +44,7 @@ def test_rule_preflight_uses_uuid_semantics(user_api, spelling):
     )
     declaration.insert()
     step = runpy.run_path(
-        str(Path(__file__).parents[5] / "migrations/0006-sdn-api-contract-15df7a.py")
+        str(Path(__file__).parents[5] / "migrations/0008-sdn-api-contract-15df7a.py")
     )["migration_step"]
     if spelling in ("null", "invalid"):
         # Invalid SQL UUID casts must also abort the transaction.
