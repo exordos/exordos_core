@@ -45,10 +45,11 @@ Table: `repo_repositories`
 | `project_id` | UUID | Owning project |
 | `status` | Enum | `NEW`, `ACTIVE`, `IN_PROGRESS`, `DISABLED`, `ERROR` |
 | `priority` | Integer (0–16384) | Higher = preferred for dependency resolution. Default: 8192 |
-| `refresh_rate` | Integer (seconds) | How often to re-fetch inventory. 0 = disabled. Default: 3600 |
+| `refresh_rate` | Integer (seconds) | How often to re-fetch inventory. 0 = periodic refresh disabled. Default: 3600 |
 | `sync_mode` | Enum | `copy` — download full element data immediately; `lazy` — download only name/version, fetch manifest on demand |
 | `driver_spec` | KindModel (JSONB) | Driver configuration. One of `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec`, `DatabaseDriverSpec` |
 | `next_refresh` | DateTime | When the next periodic refresh should occur |
+| `refresh_requested` | Boolean | Core-only flag for a one-shot explicit refresh; excluded from UA resources |
 
 Key methods:
 
@@ -60,7 +61,7 @@ Key methods:
   yields `RepoElement` instances one by one (generator).
 - **`actualize_element(element)`** — downloads the full element data (manifest,
   specification, inventory) and replaces artifacts in the database.
-- **`refresh()`** — sets `next_refresh` to now, triggering an early refresh.
+- **`refresh()`** — requests one refresh, including when `refresh_rate` is 0.
 - **`upload(name, version, manifest)`** — uploads an element to the repository
   if the driver supports it. The repository must be `ACTIVE`: until the builder
   has provisioned it and built its inventory, the upload is rejected.
@@ -255,13 +256,16 @@ Key behaviours:
   saved. Sets status to `ACTIVE` and schedules `next_refresh`.
 - **`_check_refresh`** — runs every 10 iterations
   (`REFRESH_CHECK_ITERATION_INTERVAL`). For each repository where
-  `next_refresh` has passed, calls `repo.update(force=True)` to trigger the
+  an explicit refresh is pending or an enabled periodic deadline has passed,
+  calls `repo.update(force=True)` to trigger the
   update hook.
 - **`_refresh_repository`** — compares existing elements against the current
   inventory. Adds new elements, removes stale ones (but preserves installed
   elements). Updates `next_refresh`.
-- **`post_update_instance_resource`** — if `next_refresh` has passed, calls
-  `_refresh_repository`.
+- **`post_update_instance_resource`** — processes an explicit refresh or an
+  enabled periodic deadline. Clears `refresh_requested` after the attempt.
+  Failure sets `ERROR` unless the repository is `DISABLED`; periodic refresh
+  retries after `refresh_rate`, while explicit-only refresh requires a new request.
 
 ### RepoElementBuilderService
 
@@ -396,7 +400,7 @@ The User API is served under `/v1/repo/` and defined in
 ### Field permissions
 
 - **Repository**: `status`, `created_at`, `updated_at` are read-only.
-  `next_refresh` is hidden from API responses.
+  `next_refresh` and `refresh_requested` are hidden from API responses.
 - **RepoElement**: `status`, `installation_state`, `created_at`, `updated_at`
   are read-only.
 
