@@ -77,6 +77,7 @@ class ManifestController(
     __policy_name__ = "manifest"
     __resource__ = resources.ResourceByRAModel(
         model_class=models.Manifest,
+        process_filters=True,
         convert_underscore=False,
         hidden_fields=resources.HiddenFieldMap(
             update=["status", "created_at", "updated_at"],
@@ -110,6 +111,7 @@ class ElementController(
     __policy_name__ = "element"
     __resource__ = resources.ResourceByModelWithCustomProps(
         model_class=models.Element,
+        process_filters=True,
         convert_underscore=False,
         hidden_fields=resources.HiddenFieldMap(
             update=[
@@ -159,6 +161,7 @@ class ElementResourceController(
     # __policy_name__ = "resource"
     __resource__ = resources.ResourceByModelWithCustomProps(
         model_class=models.Resource,
+        process_filters=True,
         convert_underscore=False,
         hidden_fields=resources.HiddenFieldMap(
             filter=[
@@ -197,6 +200,7 @@ class ResourceAllController(iam_controllers.PolicyBasedController):
 
     __resource__ = resources.ResourceByModelWithCustomProps(
         model_class=models.Resource,
+        process_filters=True,
         convert_underscore=False,
         hidden_fields=resources.HiddenFieldMap(
             filter=[
