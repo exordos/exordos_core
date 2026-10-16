@@ -76,3 +76,60 @@ def test_renewal_issuance_time(model, monkeypatch):
                 assert claims["exp"] - claims["iat"] == int(lifetime.total_seconds())
             else:
                 assert claims["iat"] == int(created_at.timestamp())
+
+
+@pytest.fixture
+def managed_token(monkeypatch):
+    monkeypatch.setattr(models.ModelWithSecret, "_global_salt", "test-salt")
+    return models.ManagedToken(
+        user=models.User(
+            name="token_user", email="token@example.com", secret="test-password"
+        ),
+        iam_client=models.IamClient(
+            name="client", client_id="client", secret="test-secret"
+        ),
+        issuer="https://issuer.example",
+    )
+
+
+def test_managed_token_creation_retries_missing_project(managed_token):
+    from restalchemy.storage import exceptions
+
+    project = models.Project(
+        name="token-project", organization=models.Organization(name="token-org")
+    )
+    lookup = type(models.Project.objects)
+    with (
+        mock.patch.object(lookup, "get_one") as get_project,
+        mock.patch.object(lookup, "get_all", return_value=[]),
+    ):
+        get_project.side_effect = exceptions.RecordNotFound(
+            model=models.Project, filters={}
+        )
+        kwargs = {
+            "user": managed_token.user,
+            "iam_client": managed_token.iam_client,
+            "issuer": managed_token.issuer,
+            "scope": f"project:{project.uuid}",
+        }
+        with pytest.raises(exceptions.RecordNotFound):
+            models.ManagedToken(**kwargs)
+        get_project.side_effect = None
+        get_project.return_value = project
+        token = models.ManagedToken(**kwargs)
+    assert token.project is project
+
+
+def test_managed_token_update_does_not_repair_missing_project(managed_token):
+    managed_token.scope = "project:12345678-c625-4fee-81d5-f691897b8142"
+    with (
+        mock.patch.object(type(models.Project.objects), "get_one") as get_project,
+        mock.patch.object(models.Token, "update") as update,
+        mock.patch.object(
+            type(managed_token.properties["scope"]), "is_dirty", return_value=False
+        ),
+    ):
+        managed_token.update()
+    assert managed_token.project is None
+    get_project.assert_not_called()
+    update.assert_called_once()

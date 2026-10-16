@@ -1922,6 +1922,11 @@ class ManagedToken(Token, ua_models.TargetResourceMixin, models.CustomProperties
         default=None,
     )
 
+    def _get_project_by_uuid(self, user, str_uuid):
+        # A manifest may create its project after its token. Retry creation
+        # rather than persisting a project-scoped token without its project.
+        return Project.objects.get_one(filters={"uuid": ra_filters.EQ(str_uuid)})
+
     def update(self, session=None, force=False):
         # The project follows the scope, and a new lifetime starts now.
         # Both are derived at creation, so an update has to derive them
