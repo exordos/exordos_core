@@ -175,6 +175,9 @@ class PoolMachine(
     project_id = properties.property(types.UUID(), required=True, read_only=True)
 
     port_info = properties.property(types.Dict(), default=dict)
+    ports_info = properties.property(
+        types.AllowNone(types.TypedList(types.Dict())), default=None
+    )
 
     @classmethod
     def get_resource_kind(cls) -> str:
@@ -186,7 +189,7 @@ class PoolMachine(
 
         Refer to the Resource model for more details about target fields.
         """
-        return frozenset(
+        fields = frozenset(
             (
                 "uuid",
                 "name",
@@ -201,6 +204,13 @@ class PoolMachine(
                 "image",
             )
         )
+        return fields if self.ports_info is None else fields | {"ports_info"}
+
+    def get_resource_ignore_fields(self):
+        fields = set(super().get_resource_ignore_fields())
+        if self.ports_info is None:
+            fields.add("ports_info")
+        return fields
 
     @classmethod
     def from_machine_and_port(
@@ -209,6 +219,21 @@ class PoolMachine(
         port: models.Port,
         agent_uuid: tp.Optional[str] = None,
     ) -> "PoolMachine":
+        # An agent that knows nothing of overlays rebuilds `port_info` from
+        # these four keys alone. A flat port sends exactly them: any other key
+        # never comes back, and the machine never converges on such an agent.
+        port_info = {
+            "ipv4": str(port.ipv4) if port.ipv4 else None,
+            "mask": str(port.mask) if port.mask else None,
+            "mac": port.mac,
+            "source": port.source,
+        }
+        if port.is_overlay():
+            # The pool agent stamps it as the OVS iface-id, by which the SDN
+            # agent resolves the guest.
+            port_info["uuid"] = str(port.uuid)
+            # Sent: the agent rebuilds a port from this dict alone.
+            port_info["overlay"] = True
         return cls(
             uuid=machine.uuid,
             name=machine.name,
@@ -221,12 +246,7 @@ class PoolMachine(
             node=machine.node.uuid,
             pool=machine.pool.uuid,
             agent_uuid=agent_uuid,
-            port_info={
-                "ipv4": str(port.ipv4) if port.ipv4 else None,
-                "mask": str(port.mask) if port.mask else None,
-                "mac": port.mac,
-                "source": port.source,
-            },
+            port_info=port_info,
         )
 
 

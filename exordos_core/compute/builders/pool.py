@@ -93,8 +93,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
     ) -> None:
         """Set the machine context."""
         self._iteration_context[machine.uuid] = {
-            "machine_port": ports[0],
-            "root_volume": volumes[0],
+            "machine_port": next((p for p in ports if p.index == 0), None),
+            "machine_ports": ports,
+            "root_volume": volumes[0] if volumes else None,
         }
 
     def _get_machine_ctx(
@@ -113,14 +114,20 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         self,
         machine: pool_models.Machine,
     ) -> tp.Tuple[tp.Collection[models.Port], tp.Collection[models.MachineVolume]]:
-        """Fetch the machine dependencies."""
+        """Fetch the machine dependencies, ordered by index.
+
+        The machine is built from the first of each, and index 0 is the
+        primary leg, so row order must not decide it.
+        """
         ports = models.Port.objects.get_all(
             filters={"node": dm_filters.EQ(machine.node.uuid)}
         )
         volumes = models.MachineVolume.objects.get_all(
             filters={"machine": dm_filters.EQ(machine.uuid)}
         )
-        return ports, sorted(volumes, key=lambda v: v.index)
+        return sorted(ports, key=lambda p: p.index), sorted(
+            volumes, key=lambda v: v.index
+        )
 
     def _get_or_fetch_machine_ctx(
         self,
@@ -264,8 +271,12 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         """Actualize the machine derivatives."""
         port, volume = self._get_or_fetch_machine_ctx(machine)
 
-        if port is None or volume is None:
-            raise ValueError(f"Machine {machine.uuid} has no port or volume")
+        if volume is None:
+            raise ValueError(f"Machine {machine.uuid} has no volume")
+        if port is None and machine_guest_pair is None:
+            # A new image needs a network to boot/flash. Existing guests may
+            # lose their last port without losing the running machine.
+            return ()
 
         # Resolve image URN to URI if the image is specified as a URN
         resolved_image = self._resolve_image(volume.image)
@@ -295,7 +306,10 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                 boot = ua_pool.BootAlternative.network.value
                 # Any port for the boot network is fine. The port will be replaced
                 # after the machine is flashed and switched to the main network.
-                port = models.Port.from_boot_network()
+                # Unless it is an overlay port: a tenant guest stays off the
+                # boot network.
+                if not port.is_overlay():
+                    port = models.Port.from_boot_network()
         else:
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
@@ -307,7 +321,10 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
                     boot = ua_pool.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
-                    port = models.Port.from_boot_network()
+                    if port is None:
+                        return ()
+                    if not port.is_overlay():
+                        port = models.Port.from_boot_network()
 
         # Set correct boot value for the machine (root model)
         machine.boot = boot
@@ -317,9 +334,25 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         agent_uuid = self._agent_by_pool(machine.pool.uuid)
 
         # Pool machine
-        pool_machine = pool_models.PoolMachine.from_machine_and_port(
-            machine, port, agent_uuid=agent_uuid
-        )
+        if port is not None:
+            pool_machine = pool_models.PoolMachine.from_machine_and_port(
+                machine, port, agent_uuid=agent_uuid
+            )
+        else:
+            pool_machine = pool_models.PoolMachine(
+                uuid=machine.uuid,
+                name=machine.name,
+                project_id=machine.project_id,
+                cores=machine.cores,
+                ram=machine.ram,
+                image=machine.image,
+                machine_type=machine.machine_type,
+                boot=machine.boot,
+                node=machine.node.uuid,
+                pool=machine.pool.uuid,
+                agent_uuid=agent_uuid,
+            )
+        self._populate_machine_ports(pool_machine, machine, port, agent_uuid)
 
         # Guest machine
         guest = pool_models.GuestMachine(
@@ -331,6 +364,20 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         )
 
         return (pool_machine, guest)
+
+    def _populate_machine_ports(self, target, machine, primary, agent_uuid):
+        all_ports = self._iteration_context[machine.uuid]["machine_ports"]
+        if len(all_ports) != 1 or primary is None or primary.is_overlay():
+            # While flashing, the selected boot leg replaces index 0 only.
+            ports = ([primary] if primary is not None else []) + [
+                port for port in all_ports if port.index != 0
+            ]
+            target.ports_info = [
+                pool_models.PoolMachine.from_machine_and_port(
+                    machine, port, agent_uuid=agent_uuid
+                ).port_info
+                for port in ports
+            ]
 
     def _actualize_machine_derivatives_on_outdate(
         self,
@@ -383,6 +430,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             target_pool_machine = pool_models.PoolMachine.from_machine_and_port(
                 machine, port, agent_uuid=agent_uuid
             )
+            self._populate_machine_ports(target_pool_machine, machine, port, agent_uuid)
 
         # Actualize status
         self._actualize_machine_status(

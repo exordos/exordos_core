@@ -11,6 +11,13 @@ uuid5_name = core_agent
 target_fields_path = /var/lib/exordos/exordos_core/core_agent/target_fields.json
 
 [models]
+em_core_network_ports = exordos_core.compute.dm.models:Port
+em_core_network_port_security_groups = exordos_core.user_api.network.dm.models:PortSecurityGroup
+em_core_network_port_identity_groups = exordos_core.user_api.network.dm.models:PortIdentityGroup
+em_core_network_catalog_security_groups = exordos_core.user_api.network.dm.models:SecurityGroup
+em_core_network_catalog_security_group_rules = exordos_core.user_api.network.dm.models:SecurityGroupRule
+em_core_network_catalog_identity_groups = exordos_core.user_api.network.dm.models:IdentityGroup
+em_core_network_catalog_proxy_services = exordos_core.user_api.network.dm.models:ProxyService
 em_core_em_services = exordos_core.elements.dm.models:Service
 em_core_compute_nodes = exordos_core.compute.dm.models:Node
 em_core_compute_sets = exordos_core.compute.dm.models:NodeSet
@@ -20,6 +27,9 @@ em_core_network_lb_vhosts = exordos_core.user_api.network.dm.models:Vhost
 em_core_network_lb_vhosts_routes = exordos_core.user_api.network.dm.models:Route
 em_core_network_lb_backend_pools = exordos_core.user_api.network.dm.models:BackendPool
 em_core_secret_secrets = exordos_core.secret.dm.models:Secret
+em_core_network_networks = exordos_core.compute.dm.models:Network
+em_core_network_subnets = exordos_core.compute.dm.models:Subnet
+em_core_network_catalog_addresses = exordos_core.user_api.network.dm.models:Address
 em_core_secret_passwords = exordos_core.secret.dm.models:Password
 em_core_secret_certificates = exordos_core.secret.dm.models:Certificate
 em_core_dns_domains = exordos_core.user_api.dns.dm.models:Domain
@@ -46,8 +56,6 @@ em_core_vs_values = exordos_core.vs.dm.models:Value
 
 [filters]
 em_core_em_services = project_id:12345678-c625-4fee-81d5-f691897b8142
-em_core_compute_nodes = project_id:12345678-c625-4fee-81d5-f691897b8142
-em_core_compute_sets = project_id:12345678-c625-4fee-81d5-f691897b8142
 em_core_config_configs = project_id:12345678-c625-4fee-81d5-f691897b8142
 em_core_network_lb = project_id:12345678-c625-4fee-81d5-f691897b8142
 em_core_network_lb_vhosts = project_id:12345678-c625-4fee-81d5-f691897b8142

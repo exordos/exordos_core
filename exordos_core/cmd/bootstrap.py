@@ -28,8 +28,10 @@ import time
 import typing as tp
 import uuid as sys_uuid
 
+from gcl_sdk.agents.universal.dm import models as ua_models
 from oslo_config import cfg
 from restalchemy.common import config_opts as ra_config_opts
+from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage.sql import engines
 import yaml
@@ -303,13 +305,15 @@ def _ensure_bootstrap_repo(manifests_dir: str) -> repo_models.Repository:
 
 
 MIGRATION_REPO_NAME = "migration-dummy-repo"
+# Re-exported from `bootstrap.defaults` for this module's `main`.
+UA_CONFIG_PATH = bootstrap_defaults.UA_CONFIG_PATH
+UA_CONFIG_DATA_PATH = bootstrap_defaults.UA_CONFIG_DATA_PATH
+SDN_AGENT_CONFIG_PATH = bootstrap_defaults.SDN_AGENT_CONFIG_PATH
+_sync_config_to_data_path = bootstrap_defaults._sync_config_to_data_path
+_ensure_ua_config_current = bootstrap_defaults._ensure_ua_config_current
 CORE_CONFIG_PATH = "/etc/exordos_core/exordos_core.conf"
-UA_CONFIG_PATH = "/etc/exordos_universal_agent/exordos_universal_agent.conf"
 CORE_AGENT_CONFIG_PATH = "/etc/exordos_core/core_agent.conf"
 CORE_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/exordos_core.conf"
-UA_CONFIG_DATA_PATH = (
-    "/var/lib/exordos/data/etc/exordos_universal_agent/exordos_universal_agent.conf"
-)
 CORE_AGENT_CONFIG_DATA_PATH = "/var/lib/exordos/data/etc/exordos_core/core_agent.conf"
 
 _LAUNCHPAD_SECTION = """\
@@ -321,21 +325,6 @@ services =
     exordos_core.repo.builders.element:RepoElementBuilderService,
     exordos_core.repo.agents.universal.service:RepoElementAgentService
 """
-
-
-def _sync_config_to_data_path(content: str, data_path: str) -> None:
-    """Write the same config content to the mirrored data path.
-
-    Ensures config files under /var/lib/exordos/data/etc/ stay in sync
-    with their /etc/ counterparts.
-    """
-    try:
-        os.makedirs(os.path.dirname(data_path), exist_ok=True)
-        with open(data_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        LOG.info("Synced config to %s", data_path)
-    except OSError as e:
-        LOG.warning("Failed to sync config to %s: %s", data_path, e)
 
 
 def _migrate_installed_elements_configs() -> None:
@@ -361,172 +350,37 @@ def _migrate_installed_elements_configs() -> None:
             LOG.info("[launchpad] section already exists in %s", CORE_CONFIG_PATH)
 
 
-# The parts of the universal agent config that evolve with the core image.
-# The scheduler section is fully rewritten to handle any indentation
-# differences; keep both literals in sync with
-# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
-_UA_SCHEDULER_SECTION = """\
-[universal_agent_scheduler]
-capabilities =
-    em_*,
-    secret,
-    password,
-    certificate,
-    paas_lb_agent,
-    repo_proxy_installed_element,
-    border_agent
-"""
-_UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
-_UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
-
-# Extra lines appended to the [SecretCapabilityDriver] section when
-# migrating from [UserCapabilityDriver]. Keep in sync with
-# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
-_UA_SECRET_DRIVER_EXTRA_LINES = (
-    "em_core_iam_users = /v1/iam/users/, password\n"
-    "em_core_iam_clients = /v1/iam/clients/, secret, "
-    "filter:project_id:12345678-c625-4fee-81d5-f691897b8142\n"
-)
-
-
-def _migrate_ua_secret_driver(content: str) -> str:
-    """Migrate UserCapabilityDriver to SecretCapabilityDriver.
-
-    Replaces the driver name in caps_drivers, renames the
-    [UserCapabilityDriver] section to [SecretCapabilityDriver], and
-    appends the IAM users/clients endpoint lines required by the
-    secret driver. Idempotent.
-    """
-    if "UserCapabilityDriver" in content:
-        content = content.replace(
-            "    UserCapabilityDriver,\n",
-            "    SecretCapabilityDriver,\n",
-            1,
-        )
-        content = content.replace(
-            "[UserCapabilityDriver]",
-            "[SecretCapabilityDriver]",
-            1,
-        )
-
-    if "em_core_iam_users" not in content:
-        match = re.search(
-            r"(\[SecretCapabilityDriver\].*?)(?=^\[|\Z)",
-            content,
-            flags=re.DOTALL | re.MULTILINE,
-        )
-        if match is not None:
-            section = match.group(0)
-            if not section.endswith("\n"):
-                section += "\n"
-            section += _UA_SECRET_DRIVER_EXTRA_LINES
-            content = content[: match.start()] + section + content[match.end() :]
-        else:
-            LOG.warning(
-                "Could not find [SecretCapabilityDriver] section to append "
-                "IAM users/clients endpoints"
-            )
-
-    return content
-
-
-def _ensure_ua_config_current() -> None:
-    """Bring the universal agent config up to date with this image.
-
-    ec-bootstrap-templates restores /etc configs from the persisted
-    copies on the data disk, so template changes shipped in a new core
-    image never reach an upgraded stand on their own. Idempotently
-    reapply the image-defined parts of the UA config:
-
-    1. Rewrite the [universal_agent_scheduler] section with the current
-       capabilities list.
-    2. Ensure BorderAgentCapabilityDriver is present in caps_drivers
-       ([universal_agent] holds stand-specific endpoints, so only this
-       line is inserted, not the whole section).
-    3. Migrate UserCapabilityDriver to SecretCapabilityDriver in
-       caps_drivers and rename the [UserCapabilityDriver] section,
-       appending the IAM users/clients endpoints required by the
-       secret driver.
-
-    On changes the result is synced back to the persisted copy and the
-    agent services (started before ec-bootstrap runs, thus holding the
-    stale config) are restarted to pick it up.
-    """
-    try:
-        with open(UA_CONFIG_PATH, "r", encoding="utf-8") as f:
-            content = f.read()
-    except FileNotFoundError:
-        LOG.warning("Universal agent config not found: %s", UA_CONFIG_PATH)
-        return
-
-    new_content = re.sub(
-        r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
-        _UA_SCHEDULER_SECTION,
-        content,
-        count=1,
-        flags=re.DOTALL | re.MULTILINE,
-    )
-
-    if "BorderAgentCapabilityDriver" not in new_content:
-        new_content = new_content.replace(
-            "    LBAgentCapabilityDriver,\n",
-            "    LBAgentCapabilityDriver,\n" + _UA_BORDER_DRIVER_LINE,
-            1,
-        )
-        if "BorderAgentCapabilityDriver" not in new_content:
-            LOG.warning(
-                "Could not insert BorderAgentCapabilityDriver into caps_drivers in %s",
-                UA_CONFIG_PATH,
-            )
-
-    if "OpaqueSecretCapabilityDriver" not in new_content:
-        new_content = new_content.replace(
-            "    PasswordCapabilityDriver,\n",
-            _UA_OPAQUE_SECRET_DRIVER_LINE + "    PasswordCapabilityDriver,\n",
-            1,
-        )
-        if "OpaqueSecretCapabilityDriver" not in new_content:
-            LOG.warning(
-                "Could not insert OpaqueSecretCapabilityDriver into caps_drivers in %s",
-                UA_CONFIG_PATH,
-            )
-
-    new_content = _migrate_ua_secret_driver(new_content)
-
-    if new_content == content:
-        LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
-        return
-
-    with open(UA_CONFIG_PATH, "w", encoding="utf-8") as f:
-        f.write(new_content)
-    LOG.info("Updated universal agent config %s", UA_CONFIG_PATH)
-    _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
-
-    try:
-        subprocess.run(
-            [
-                "systemctl",
-                "try-restart",
-                "exordos-universal-agent",
-                "exordos-universal-scheduler",
-            ],
-            check=True,
-        )
-        LOG.info("Restarted universal agent services to apply the new config")
-    except (OSError, subprocess.CalledProcessError) as e:
-        LOG.warning("Failed to restart universal agent services: %s", e)
-
-
 # The image-defined parts of the core agent config, by section. Keep in
 # sync with etc/exordos_core/core_agent.conf.j2. A key mapped to None must
 # not be in its section.
 _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
+        "em_core_network_ports": "exordos_core.compute.dm.models:Port",
+        "em_core_network_port_security_groups": "exordos_core.user_api.network.dm.models:PortSecurityGroup",
+        "em_core_network_port_identity_groups": "exordos_core.user_api.network.dm.models:PortIdentityGroup",
+        "em_core_network_catalog_security_groups": "exordos_core.user_api.network.dm.models:SecurityGroup",
+        "em_core_network_catalog_security_group_rules": "exordos_core.user_api.network.dm.models:SecurityGroupRule",
+        "em_core_network_catalog_identity_groups": "exordos_core.user_api.network.dm.models:IdentityGroup",
+        "em_core_network_catalog_proxy_services": "exordos_core.user_api.network.dm.models:ProxyService",
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
+        "em_core_network_networks": "exordos_core.compute.dm.models:Network",
+        "em_core_network_subnets": "exordos_core.compute.dm.models:Subnet",
+        "em_core_network_catalog_addresses": (
+            "exordos_core.user_api.network.dm.models:Address"
+        ),
         "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
     },
     "filters": {
+        "em_core_compute_nodes": None,
+        "em_core_compute_sets": None,
+        "em_core_network_ports": None,
+        "em_core_network_port_security_groups": None,
+        "em_core_network_port_identity_groups": None,
+        "em_core_network_catalog_security_groups": None,
+        "em_core_network_catalog_security_group_rules": None,
+        "em_core_network_catalog_identity_groups": None,
+        "em_core_network_catalog_proxy_services": None,
         "em_core_iam_idp": "project_id:12345678-c625-4fee-81d5-f691897b8142",
         # Written by earlier images. A manifest declares the project its
         # secret belongs to, and it is not the service project. Scoping the
@@ -534,6 +388,9 @@ _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
         # agent: it keeps creating a row it cannot see and the insert
         # conflicts on the primary key forever.
         "em_core_secret_secrets": None,
+        "em_core_network_networks": None,
+        "em_core_network_subnets": None,
+        "em_core_network_catalog_addresses": None,
     },
     # Without the transformer a secret with no value yet reports
     # `value: null` instead of dropping the field, and an element
@@ -922,6 +779,32 @@ def _install_element_from_bootstrap_repo(element_name: str, manifests_dir: str):
         LOG.warning("Element %s is already installed, skipping", element_name)
 
 
+def _publish_core_set(spec: dict[str, tp.Any], manifests_dir: str):
+    # Repo installation runs in another worker. Let the local agents register
+    # before the core node exists, then wait for its manifest outside the
+    # publication transaction so that worker can commit the EM resource.
+    ua_models.NodeEncryptionKey.get_or_create(
+        sys_uuid.UUID(spec["stand"]["bootstraps"][0]["uuid"])
+    )
+    _install_element_from_bootstrap_repo("core", manifests_dir)
+    _install_element_from_bootstrap_repo("ecosystem_realm", manifests_dir)
+    deadline = time.monotonic() + 120
+    while (
+        em_models.Resource.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(c.CORE_SET_UUID)}
+        )
+        is None
+    ):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Core set manifest did not become available")
+        time.sleep(0.5)
+    em_models.element_engine.load_from_database()
+    # Publish its desired EM state, node and real ports together. The linked
+    # target keeps the set desired while profile references are unresolved.
+    with contexts.Context().session_manager():
+        bootstrap_defaults.add_core_set(spec)
+
+
 def _set_defaults_vs(spec: dict[str, tp.Any]):
     """Set default values, profiles, etc."""
 
@@ -983,15 +866,18 @@ def main() -> None:
     # working installations are migrated.
     _migrate_installed_elements_to_repo()
 
-    _ensure_ua_config_current()
+    # Read first: the spec decides whether the agent gets evpn capabilities.
+    spec = None
+    if os.path.exists(SPEC_PATH):
+        with open(SPEC_PATH, "r", encoding="utf-8") as f:
+            spec = json.load(f)
+
+    _ensure_ua_config_current(bootstrap_defaults.overlay_is_wanted(spec))
     _ensure_core_agent_config_current()
 
-    if not os.path.exists(SPEC_PATH):
+    if spec is None:
         LOG.info("No spec file found at %s", SPEC_PATH)
         return
-
-    with open(SPEC_PATH, "r", encoding="utf-8") as f:
-        spec = json.load(f)
 
     bootstrap_defaults.save_developer_keys(spec.get("developer_keys", ""))
 
@@ -999,17 +885,17 @@ def main() -> None:
         try:
             LOG.info("GC Bootstrap script")
             bootstrap_defaults.apply_startup_db(spec)
+            _ensure_ua_config_current(bootstrap_defaults.overlay_is_wanted(spec))
+            bootstrap_defaults.ensure_local_ua_transport()
             bootstrap_defaults.init_secrets(
                 spec,
                 CONF["iam"].global_salt,
                 spec["iam"]["default_client_id"],
                 spec["iam"]["default_client_secret"],
             )
-            bootstrap_defaults.add_core_set(spec)
+            _publish_core_set(spec, CONF.manifests_dir)
             _ensure_exordos_config(spec)
             _ensure_cors_config(spec)
-            _install_element_from_bootstrap_repo("core", CONF.manifests_dir)
-            _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
             _set_defaults_vs(spec)
             return

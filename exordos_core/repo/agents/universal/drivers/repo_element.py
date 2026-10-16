@@ -57,6 +57,11 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
             session=session,
         )
 
+    def get_create_only_fields(self, kind: str) -> tp.Collection[str]:
+        if kind == KIND:
+            return ()
+        return super().get_create_only_fields(kind)
+
     def _make_installed_manifest(
         self,
         em_manifest: em_models.Manifest,

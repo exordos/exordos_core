@@ -93,7 +93,7 @@ def _wait_until_serving(
 
 
 @pytest.fixture()
-def boot_api(user_api) -> tp.Callable[..., str]:
+def boot_api(user_api, tmp_path) -> tp.Callable[..., str]:
     """Start a boot API and return the base URL of its v1 API.
 
     Takes the options the service takes on its command line, so a test says
@@ -113,8 +113,11 @@ def boot_api(user_api) -> tp.Callable[..., str]:
         # venv's bin directory happens to be on PATH.
         argv = [
             sys.executable,
-            "-m",
-            "exordos_core.cmd.boot_api",
+            "-c",
+            "import sys; from exordos_core.boot_api.api import packers; "
+            "packers.BOOT_NONCES_DIR = sys.argv.pop(1); "
+            "from exordos_core.cmd.boot_api import main; main()",
+            str(tmp_path / "boot-nonces"),
             "--boot_api-bind-host",
             "127.0.0.1",
             "--boot_api-bind-port",

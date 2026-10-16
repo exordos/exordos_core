@@ -43,7 +43,7 @@ class TestNodeInsert:
             patch.object(models.Volume, "insert"),
             patch.object(ua_models.NodeEncryptionKey, "get_or_create") as get_or_create,
         ):
-            node.insert()
+            node._insert_node()
 
         get_or_create.assert_called_once_with(node.uuid, session=None)
 

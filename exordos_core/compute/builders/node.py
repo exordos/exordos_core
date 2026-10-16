@@ -236,6 +236,14 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         # Update machine
         self._update_machine(target_node, actual_node, need_update_machine)
 
+        # API updates also mark network-only changes IN_PROGRESS. When the
+        # machine did not change, there will be no tracked event to restore it.
+        machine = models.Machine.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(target_node.uuid)}
+        )
+        if machine is not None:
+            target_node.status = machine.status
+
     def actualize_instance_with_outdated_tracked(
         self,
         instance: Node,

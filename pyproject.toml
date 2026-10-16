@@ -171,6 +171,7 @@ exordos-repo-proxy-gservice = "exordos_core.cmd.repo_proxy_gservice:main"
 [project.entry-points."gcn_network_driver"]
 DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
+OvsEvpnNetworkDriver = "exordos_core.network.driver.evpn:OvsEvpnNetworkDriver"
 
 [project.entry-points."exordos.repo_proxy.drivers"]
 NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"

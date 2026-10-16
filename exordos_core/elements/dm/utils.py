@@ -15,6 +15,7 @@
 #    under the License.
 
 import dataclasses
+from functools import lru_cache
 import logging
 import os
 import re
@@ -37,6 +38,10 @@ ELEMENT_NAMESPACE = sys_uuid.UUID("f277e88a-cd58-4c33-a0c3-23a1086a53b7")
 SCHEMA_REF_PREFIX = "#/components/schemas/"
 UUID_PREFIX = "12345678"
 REGEXP = re.compile(r"\$(.+?)(?:\:(.+))?$")
+# SDN resources the user API creates but the core agent has no model for
+# (see `core_agent.conf.j2`): a manifest declaring one validated and then
+# never applied, so the schema does not offer them.
+UNMANAGED_RESOURCE_TYPES = frozenset(("$core.network.nfs",))
 
 
 @dataclasses.dataclass
@@ -232,6 +237,20 @@ def load_full_manifest_schema() -> dict:
         return yaml.safe_load(f)
 
 
+@lru_cache(maxsize=1)
+def create_only_fields_by_resource() -> dict:
+    schema = load_full_manifest_schema()
+    result = {}
+    for resource_type, resource in schema["properties"]["resources"][
+        "properties"
+    ].items():
+        ref = resource["additionalProperties"].get("$ref")
+        if ref:
+            model = resolve_schema(schema["components"]["schemas"], ref.split("/")[-1])
+            result[resource_type] = tuple((model or {}).get("x-create-only", ()))
+    return result
+
+
 def dump_full_manifest_schema(data):
     with open(
         os.path.join(
@@ -348,6 +367,8 @@ def build_full_schema(
                 if not model:
                     continue
                 resource = f"$core.{api_parts}"
+                if resource in UNMANAGED_RESOURCE_TYPES:
+                    continue
                 model["path"] = path
                 copy_schema_closure(
                     user_api_spec["components"]["schemas"],

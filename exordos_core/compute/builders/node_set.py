@@ -24,6 +24,7 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.compute.node_set.dm import models
+from exordos_core.user_api.network.dm import models as network_models
 
 LOG = logging.getLogger(__name__)
 
@@ -122,6 +123,29 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
 
         new_target_nodes = {n.uuid: n for n in nodes}
 
+        primary_ports = [
+            actual.properties.get_value("default_network")["port"]
+            for _, actual in infra.infra_objects
+            if isinstance(actual, models.Node)
+            and actual.uuid in new_target_nodes
+            and (actual.properties.get_value("default_network") or {}).get("port")
+        ]
+        floating_ips = {
+            str(address.port): str(address.address)
+            for address in (
+                network_models.Address.objects.get_all(
+                    filters={
+                        "port": dm_filters.In(primary_ports),
+                        "project_id": dm_filters.EQ(instance.project_id),
+                        "kind": dm_filters.EQ("floating"),
+                        "delete_requested": dm_filters.EQ(False),
+                    }
+                )
+                if primary_ports
+                else []
+            )
+        }
+
         for _, actual in infra.infra_objects:
             if actual is None:
                 continue
@@ -142,8 +166,11 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
             uuid_str = str(actual.uuid)
             actual_nodes[uuid_str] = {}
 
-            if ipv4 := actual.default_network.get("ipv4"):
+            default_network = actual.properties.get_value("default_network") or {}
+            if ipv4 := default_network.get("ipv4"):
                 actual_nodes[uuid_str]["ipv4"] = ipv4
+            if floating_ip := floating_ips.get(str(default_network.get("port"))):
+                actual_nodes[uuid_str]["floating_ip"] = floating_ip
 
             nodes_status.append(actual.status)
 

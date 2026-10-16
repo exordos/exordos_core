@@ -24,6 +24,7 @@ import typing as tp
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from restalchemy.common import exceptions as ra_exceptions
 
 from exordos_core.compute.dm import models
 from exordos_core.network import exceptions
@@ -74,11 +75,17 @@ class DHCPContext:
         with open(ctx_path, "w") as fctx:
             port_map = {}
             for uuid, ports in self.port_map.items():
-                port_map[str(uuid)] = [p.dump_to_simple_view() for p in ports]
+                port_map[str(uuid)] = [
+                    p.dump_to_simple_view(skip=list(p.__custom_properties__))
+                    for p in ports
+                ]
 
             data = {
                 "cfg_hash": self.cfg_hash,
-                "subnets": [s.dump_to_simple_view() for s in self.subnets],
+                "subnets": [
+                    s.dump_to_simple_view(skip=list(s.__custom_properties__))
+                    for s in self.subnets
+                ],
                 "port_map": port_map,
             }
             json.dump(data, fctx, indent=2)
@@ -100,12 +107,18 @@ class DHCPContext:
             data = json.load(fctx)
 
         cfg_hash = data["cfg_hash"]
-        subnets = [models.Subnet.restore_from_simple_view(**s) for s in data["subnets"]]
-        port_map = collections.defaultdict(list)
-        for uuid, ports in data["port_map"].items():
-            port_map[sys_uuid.UUID(uuid)] = [
-                models.Port.restore_from_simple_view(**p) for p in ports
+        try:
+            subnets = [
+                models.Subnet.restore_from_simple_view(**s) for s in data["subnets"]
             ]
+            port_map = collections.defaultdict(list)
+            for uuid, ports in data["port_map"].items():
+                port_map[sys_uuid.UUID(uuid)] = [
+                    models.Port.restore_from_simple_view(**p) for p in ports
+                ]
+        except (KeyError, ra_exceptions.ParseError):
+            LOG.warning("Rebuilding incompatible DHCP context %s", ctx_path)
+            return cls.get_empty_ctx()
 
         return cls(subnets=subnets, port_map=port_map, cfg_hash=cfg_hash)
 
