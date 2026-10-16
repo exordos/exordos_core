@@ -510,7 +510,7 @@ def node_factory():
         cores: int = 1,
         ram: int = 1024,
         image: str = "ubuntu_24.04",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: tp.Optional[str] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -543,7 +543,7 @@ def node_factory_with_model():
         cores: int = 1,
         ram: int = 1024,
         image: str = "ubuntu_24.04",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: tp.Optional[str] = None,
         **kwargs,
     ) -> tp.Tuple[tp.Dict[str, tp.Any], node_models.Node]:
@@ -577,7 +577,7 @@ def node_set_factory():
         ram: int = 1024,
         image: str = "ubuntu_24.04",
         replicas: int = 1,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: str = nc.NodeStatus.NEW.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -660,7 +660,7 @@ def machine_factory(default_pool: tp.Dict[str, tp.Any]):
         name: str = "node",
         cores: int = 1,
         ram: int = 1024,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: str = ua_pool.MachineStatus.ACTIVE.value,
         build_status: str = nc.MachineBuildStatus.READY.value,
         **kwargs,
@@ -690,7 +690,7 @@ def volume_factory():
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "volume-default",
         size: int = 10,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
         uuid = uuid or _make_uuid()
@@ -725,7 +725,7 @@ def config_factory():
         path: str = "/etc/genesis-configs/config.conf",
         content_body: str = "test",
         on_change_cmd: tp.Optional[str] = None,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: str = cc.ConfigStatus.NEW.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -800,7 +800,7 @@ def password_factory():
         name: str = "password",
         constructor: tp.Optional[secret_models.AbstractSecretConstructor] = None,
         method: sc.SecretMethod = sc.SecretMethod.AUTO_HEX,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: tp.Optional[cc.ConfigStatus] = None,
         value: tp.Optional[str] = None,
         **kwargs,
@@ -843,7 +843,7 @@ def cert_factory():
         cert: tp.Optional[str] = None,
         constructor: tp.Optional[secret_models.AbstractSecretConstructor] = None,
         method: tp.Optional[secret_models.AbstractCertificateMethod] = None,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: tp.Optional[cc.ConfigStatus] = None,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -891,7 +891,7 @@ def ssh_key_factory():
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "key",
         constructor: tp.Optional[secret_models.AbstractSecretConstructor] = None,
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         status: tp.Optional[cc.ConfigStatus] = None,
         user: str = "root",
         authorized_keys=".ssh/authorized_keys",
@@ -1004,7 +1004,7 @@ def lb_factory():
     def factory(
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "load-balancer-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
         uuid = uuid or _make_uuid()
@@ -1030,7 +1030,7 @@ def lb_factory_with_model():
     def factory(
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "load-balancer-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         **kwargs,
     ) -> tp.Tuple[tp.Dict[str, tp.Any], network_models.LB]:
         uuid = uuid or _make_uuid()
@@ -1057,7 +1057,7 @@ def vhost_factory():
         lb,
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "vhost-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         enabled: bool = True,
         protocol: str = network_models.Protocol.HTTP,
         port: int = 80,
@@ -1099,7 +1099,7 @@ def vhost_factory_with_model():
         lb,
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "vhost-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         enabled: bool = True,
         protocol: str = network_models.Protocol.HTTP,
         port: int = 80,
@@ -1142,7 +1142,7 @@ def backend_pool_factory():
         endpoints: list[network_models.BackendHostKind],
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "backend-pool-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         balance: str = network_models.BalanceTypes.RR.value,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -1174,7 +1174,7 @@ def backend_pool_factory_with_model():
         endpoints: list[network_models.BackendHostKind],
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "backend-pool-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         balance: str = network_models.BalanceTypes.RR.value,
         **kwargs,
     ) -> tp.Tuple[tp.Dict[str, tp.Any], network_models.BackendPool]:
@@ -1206,7 +1206,7 @@ def route_factory():
         condition: network_models.AbstractHTTPRouteCondKind,
         uuid: tp.Optional[sys_uuid.UUID] = None,
         name: str = "route-default",
-        project_id: sys_uuid.UUID = c.ZERO_UUID,
+        project_id: sys_uuid.UUID = c.ADMIN_PROJECT_UUID,
         enabled: bool = True,
         **kwargs,
     ) -> tp.Dict[str, tp.Any]:
@@ -1276,7 +1276,7 @@ def default_network(
     network = node_models.Network(
         uuid=uuid,
         driver_spec={"driver": "dummy"},
-        project_id=c.ZERO_UUID,
+        project_id=c.ADMIN_PROJECT_UUID,
     )
     network.insert()
 
@@ -1294,7 +1294,7 @@ def default_subnet(
         uuid=uuid,
         network=default_network.uuid,
         cidr=netaddr.IPNetwork("10.0.0.0/24"),
-        project_id=c.ZERO_UUID,
+        project_id=c.ADMIN_PROJECT_UUID,
     )
     subnet.insert()
 
