@@ -24,6 +24,14 @@ def create(client, path, **body):
     return response.json()
 
 
+def node_ports(client, node):
+    uuid = node["uuid"] if isinstance(node, dict) else str(node.uuid)
+    ports = client.get(
+        collection(client, "network", "ports"), params={"node": uuid}
+    ).json()
+    return sorted(ports, key=lambda port: port["index"])
+
+
 @pytest.fixture
 def topology(user_api_client, auth_user_admin):
     client = user_api_client(auth_user_admin)
@@ -54,7 +62,7 @@ def test_node_and_independent_port_bindings(topology):
         disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
         default_network={},
     )
-    assert node["ports"] == []
+    assert node_ports(client, node) == []
     port = create(
         client, ("network", "ports"), network=network["uuid"], node=node["uuid"]
     )
@@ -79,9 +87,10 @@ def test_node_and_independent_port_bindings(topology):
     url = resource(client, "network", "ports", port["uuid"])
     assert client.get(url).json()["security_groups"] == [group["uuid"]]
     assert (
-        client.get(resource(client, "compute", "nodes", node["uuid"])).json()["ports"][
-            0
-        ]["uuid"]
+        node_ports(
+            client,
+            client.get(resource(client, "compute", "nodes", node["uuid"])).json(),
+        )[0]["uuid"]
         == port["uuid"]
     )
     assert (
@@ -123,10 +132,10 @@ def test_default_port_and_independent_secondary_port(topology):
     secondary = create(
         client, ("network", "ports"), subnet=subnet["uuid"], node=node["uuid"]
     )
-    assert node["ports"][0]["index"] == 0 and secondary["index"] == 1
+    assert node_ports(client, node)[0]["index"] == 0 and secondary["index"] == 1
     current = client.get(resource(client, "compute", "nodes", node["uuid"])).json()
-    assert len(current["ports"]) == 2
-    assert current["default_network"]["port"] == node["ports"][0]["uuid"]
+    assert len(node_ports(client, current)) == 2
+    assert current["default_network"]["port"] == node_ports(client, node)[0]["uuid"]
 
 
 def test_floating_address_can_select_a_network(topology):
@@ -632,8 +641,8 @@ def test_declarative_reapply_preserves_generated_and_independent_fields(
         "default_network": {"network": network["uuid"]},
     }
     node = backend.create(declaration("node", node_value))
-    original = list(node.ports)
-    port_id = original[0]["uuid"]
+    original = node.default_network
+    port_id = original["port"]
     group = create(
         client, ("network", "catalog", "security_groups"), name="independent"
     )
@@ -644,7 +653,7 @@ def test_declarative_reapply_preserves_generated_and_independent_fields(
         security_group=group["uuid"],
     )
     backend.update(declaration("node", {**node_value, "default_network": {}}))
-    assert list(backend.get(declaration("node", node_value)).ports) == original
+    assert backend.get(declaration("node", node_value)).default_network == original
     updated = backend.update(declaration("port", {"uuid": port_id, "name": "changed"}))
     assert updated.index == 0 and updated.security_groups == [uuid.UUID(group["uuid"])]
     # Dictionary patches keep user intent, not resolved defaults.
@@ -686,16 +695,19 @@ def test_nodeset_template_changes_only_new_nodes(topology):
     node_set = sets.NodeSet.objects.get_one(filters={"uuid": filters.EQ(body["uuid"])})
     first = node_set.gen_nodes(project_id=node_set.project_id)[0]
     first.insert()
-    original = list(first.ports)
+    original = list(node_ports(client, first))
     client.put(
         resource(client, "compute", "sets", body["uuid"]), json={"default_network": {}}
     )
     node_set = sets.NodeSet.objects.get_one(filters={"uuid": filters.EQ(body["uuid"])})
     second = node_set.gen_nodes(project_id=node_set.project_id)[0]
     second.insert()
-    assert second.ports == []
+    assert node_ports(client, second) == []
     assert (
-        compute.Node.objects.get_one(filters={"uuid": filters.EQ(first.uuid)}).ports
+        node_ports(
+            client,
+            compute.Node.objects.get_one(filters={"uuid": filters.EQ(first.uuid)}),
+        )
         == original
     )
 
@@ -740,7 +752,7 @@ def test_networking_failure_rolls_back_node_and_ports(topology, monkeypatch):
         json=body,
     )
     assert response.status_code == 201
-    assert len(response.json()["ports"]) == 1
+    assert len(node_ports(client, response.json())) == 1
 
 
 def test_parallel_overlapping_subnets_do_not_both_succeed(topology):

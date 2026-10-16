@@ -36,7 +36,7 @@ from exordos_core.compute.dm import models as models
 from exordos_core.user_api.compute.dm import models as user_models
 
 
-class NodeResource(resources.ResourceByModelWithCustomProps):
+class NodeResource(resources.ResourceByRAModel):
     def generate_schema_object(self, method, openapi_version):
         schema = super().generate_schema_object(method, openapi_version)
         if method == ra_c.CREATE:
@@ -190,7 +190,6 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
-                "ports": {ra_c.ALL: field_p.Permissions.RO},
                 "network_initialized": {ra_c.ALL: field_p.Permissions.HIDDEN},
                 "default_network": {
                     ra_c.ALL: field_p.Permissions.RO,

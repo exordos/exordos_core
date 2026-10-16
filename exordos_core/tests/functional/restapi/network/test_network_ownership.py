@@ -18,6 +18,9 @@ from exordos_core.tests.functional.restapi.network.test_default_network import (
 )
 from exordos_core.tests.functional.restapi.network.test_default_network import pool
 from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import create
+from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import (
+    node_ports,
+)
 from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import resource
 from exordos_core.user_api.network.dm import models as catalog
 
@@ -36,7 +39,7 @@ def stored(model, uid):
 def test_node_deletes_its_port_and_automatic_fip(client, published):
     pool(client, default_floating_pool=True)
     node = guest(client, uuid.uuid4(), default_network={"floating_ip": True})
-    port = node["ports"][0]
+    port = node_ports(client, node)[0]
     address = catalog.Address.objects.get_one(
         filters={"port": filters.EQ(port["uuid"])}
     )
@@ -55,7 +58,7 @@ def test_node_deletes_its_port_and_automatic_fip(client, published):
 
 def test_detached_port_outlives_its_former_owner(client):
     node = guest(client, uuid.uuid4())
-    uid = node["ports"][0]["uuid"]
+    uid = node_ports(client, node)[0]["uuid"]
     client.put(resource(client, "network", "ports", uid), json={"node": None})
     client.delete(resource(client, "compute", "nodes", node["uuid"]))
     assert stored(compute.Port, uid).owner_node is None
@@ -77,7 +80,7 @@ def test_independent_fip_outlives_owned_port(client, published):
     public = pool(client)
     project = uuid.uuid4()
     node = guest(client, project)
-    port = node["ports"][0]
+    port = node_ports(client, node)[0]
     fip = create(
         client,
         ("network", "catalog", "addresses"),
@@ -113,7 +116,7 @@ def test_nodeset_deletes_replica_ports_and_fips(client):
     nodes = node_set.gen_nodes(project_id=nc.NODE_SET_PROJECT)
     for node in nodes:
         node.insert()
-    ports = [node.ports[0]["uuid"] for node in nodes]
+    ports = [node_ports(client, node)[0]["uuid"] for node in nodes]
     fips = [
         catalog.Address.objects.get_one(filters={"port": filters.EQ(uid)}).uuid
         for uid in ports
@@ -127,7 +130,7 @@ def test_nodeset_deletes_replica_ports_and_fips(client):
 def test_port_detach_releases_owner_and_allows_adoption(client):
     project = uuid.uuid4()
     first, second = guest(client, project), guest(client, project, default_network={})
-    uid = first["ports"][0]["uuid"]
+    uid = node_ports(client, first)[0]["uuid"]
     url = resource(client, "network", "ports", uid)
     assert client.put(url, json={"node": None}).json().get("owner_node") is None
     client.put(url, json={"node": second["uuid"], "owner_node": second["uuid"]})
@@ -141,7 +144,7 @@ def test_fip_detach_releases_owner_and_allows_adoption(client):
     pool(client, default_floating_pool=True)
     project = uuid.uuid4()
     node = guest(client, project, default_network={"floating_ip": True})
-    port = node["ports"][0]
+    port = node_ports(client, node)[0]
     address = catalog.Address.objects.get_one(
         filters={"port": filters.EQ(port["uuid"])}
     )
@@ -158,7 +161,7 @@ def test_fip_detach_releases_owner_and_allows_adoption(client):
 def test_ownership_can_be_released_without_detaching(client):
     project = uuid.uuid4()
     node = guest(client, project)
-    port = node["ports"][0]
+    port = node_ports(client, node)[0]
     url = resource(client, "network", "ports", port["uuid"])
     released = client.put(url, json={"owner_node": None}).json()
     assert released["node"] == node["uuid"] and released.get("owner_node") is None
@@ -169,7 +172,7 @@ def test_ownership_can_be_released_without_detaching(client):
 def test_fip_ownership_can_be_released_without_unbinding(client):
     pool(client, default_floating_pool=True)
     node = guest(client, uuid.uuid4(), default_network={"floating_ip": True})
-    port = node["ports"][0]
+    port = node_ports(client, node)[0]
     address = catalog.Address.objects.get_one(
         filters={"port": filters.EQ(port["uuid"])}
     )
@@ -212,7 +215,7 @@ def test_nodeset_reports_fip_and_manages_replica_ownership(client):
     node_set = stored(sets.NodeSet, body["uuid"])
     node = node_set.gen_nodes(project_id=nc.NODE_SET_PROJECT)[0]
     node.insert()
-    port = node.ports[0]
+    port = node_ports(client, node)[0]
     address = catalog.Address.objects.get_one(
         filters={"port": filters.EQ(port["uuid"])}
     )
@@ -274,7 +277,7 @@ def test_ownership_migration_preserves_independent_ports(client):
 
     project = uuid.uuid4()
     node = guest(client, project)
-    owned = node["ports"][0]["uuid"]
+    owned = node_ports(client, node)[0]["uuid"]
     independent = create(
         client, ("network", "ports"), project_id=str(project), node=node["uuid"]
     )
@@ -364,7 +367,7 @@ def test_node_delete_can_race_with_primary_port_release(client, monkeypatch, cha
     from restalchemy.storage.sql import orm
 
     node = guest(client, uuid.uuid4())
-    port_id = node["ports"][0]["uuid"]
+    port_id = node_ports(client, node)[0]["uuid"]
     held, deleting = threading.Event(), threading.Event()
     operation = threading.local()
     original = orm.ObjectCollection.get_one
@@ -411,7 +414,7 @@ def test_node_delete_can_race_with_fip_ownership_release(client, monkeypatch):
 
     pool(client, default_floating_pool=True)
     node = guest(client, uuid.uuid4(), default_network={"floating_ip": True})
-    port_id = node["ports"][0]["uuid"]
+    port_id = node_ports(client, node)[0]["uuid"]
     address = catalog.Address.objects.get_one(filters={"port": filters.EQ(port_id)})
     held, deleting = threading.Event(), threading.Event()
     operation = threading.local()

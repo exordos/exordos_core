@@ -2514,23 +2514,6 @@ components:
             format: uuid
             type: string
           type: array
-        ports:
-          example:
-          - key: value
-          items:
-            additionalProperties:
-              oneOf:
-              - type: string
-              - type: integer
-              - type: boolean
-              - type: object
-              - items: {}
-                type: array
-            example:
-              key: value
-            type: object
-          readOnly: true
-          type: array
         project_id:
           example: 00000000-0000-0000-0000-000000000000
           format: uuid

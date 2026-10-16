@@ -28,6 +28,8 @@ the port with `{}` unless compatibility selects flat placement.
 A floating IP request without explicit private placement
 selects SDN even in projects with flat ports. Automatic ports follow their Node's
 lifecycle, and automatically allocated floating IPs follow their Port's lifecycle.
+Node exposes its primary private and floating addresses through
+`default_network.ipv4` and `default_network.floating_ip`.
 Existing flat networking remains supported.
 The [network dataplane reference](docs/network/dataplane.md) lists the API and
 target entities and diagrams the hypervisor, fabric, service and gateway paths.

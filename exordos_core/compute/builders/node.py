@@ -37,11 +37,6 @@ class Node(
         "machine": models.Machine,
     }
 
-    def get_resource_ignore_fields(self):
-        # The machine builder tracks compute configuration, not reverse
-        # network views. The user API/core manifest agent still expose them.
-        return set(super().get_resource_ignore_fields()) | {"ports"}
-
     @classmethod
     def get_resource_kind(cls) -> str:
         return "node"

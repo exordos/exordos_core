@@ -29,7 +29,11 @@ $core.compute.nodes:
 | `floating_ip: true` | Automatic FIP; implicit private placement always uses SDN |
 
 Node applies the template only on creation. Read the result from
-`default_network.ipv4`, `default_network.port` and the detailed `ports` list.
+`default_network.ipv4`, `default_network.floating_ip` and `default_network.port`.
+The floating address is a string, omitted when no FIP is bound to the primary
+Port. These values describe allocation and binding, without asserting dataplane
+application. Node has no reverse `ports` field; list its interfaces through
+`/v1/network/ports/?node=NODE_UUID`.
 NodeSet applies its template to new replicas; existing replicas retain their
 attachments. Replica addresses remain in `nodes[uuid].ipv4`. A replica with a
 floating IP also exposes `nodes[uuid].floating_ip` as a string; otherwise the

@@ -11,8 +11,8 @@ Existing flat networking and explicit `interfaces` retain their behavior.
 
 | Resource | Writable relationship | Read-only views |
 | --- | --- | --- |
-| Node | `default_network` on creation | `default_network`, `ports` |
-| NodeSet | `default_network` template for new replicas | `nodes[uuid].ipv4` |
+| Node | `default_network` on creation | `default_network` |
+| NodeSet | `default_network` template for new replicas | `nodes[uuid].ipv4`, `nodes[uuid].floating_ip` |
 | Port | nullable `node`; automatic or explicit `index` | `ipv4`, `mask`, `mac`, `network`, SG/IG lists |
 | Address | immutable `kind`; nullable `port` for floating addresses | effective network, allocation, origin, publication, status |
 | PortSecurityGroup | immutable `port`, `security_group` pair | — |
@@ -35,7 +35,7 @@ Nodes with pending group requests must finish provisioning or have their
 declarations converted before upgrading.
 
 Addresses bound to a Port are listed through the Address collection with a
-`port` filter. Node creation returns its `ports`; each Port's canonical
+`port` filter. Query a Node's ports with `/v1/network/ports/?node=NODE_UUID`; each Port's canonical
 bindings and addresses can be queried through their collections.
 
 Port creation without `subnet` or `network` uses the project's default network.
@@ -114,9 +114,12 @@ Standalone Port creation requires `network.port.create`.
 
 Node applies the request only on creation. GET keeps `default_network.ipv4`
 as the primary port's address; PUT cannot change the creation template.
-`Node.ports` lists `uuid`, `index`, `network`, `subnet`, `ipv4`, `mask`, `mac`,
-and `status`, ordered by index. IP allocation precedes dataplane application;
-status reports application. Removing the last port does not replace it.
+`default_network.floating_ip` is the primary Port's currently bound floating
+address as a string, omitted when no FIP is bound. It reflects binding changes
+without waiting for dataplane publication. `default_network.port` identifies the
+primary Port; Node has no reverse `ports` field. Query the canonical Port API for
+all interfaces and their status. IP allocation precedes dataplane application;
+Port status reports application. Removing the last port does not replace it.
 
 NodeSet stores the template for new replicas, each with its own Port/FIP.
 Changing it preserves existing attachments. Private addresses remain in

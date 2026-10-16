@@ -4,6 +4,7 @@
 # You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
 from concurrent.futures import ThreadPoolExecutor
+import json
 import uuid
 
 from bazooka import exceptions
@@ -18,6 +19,9 @@ from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import 
     collection,
 )
 from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import create
+from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import (
+    node_ports,
+)
 from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import resource
 from exordos_core.user_api.iam.dm import models as iam
 from exordos_core.user_api.network.dm import models as catalog
@@ -59,6 +63,102 @@ def pool(client, cidr="198.51.100.0/28", **kwargs):
     )
 
 
+def test_node_exposes_primary_network_without_reverse_ports(client):
+    node = guest(client, uuid.uuid4())
+    assert "ports" not in node
+    ports = client.get(
+        collection(client, "network", "ports"), params={"node": node["uuid"]}
+    ).json()
+    assert len(ports) == 1
+    assert node["default_network"]["port"] == ports[0]["uuid"]
+    assert "floating_ip" not in node["default_network"]
+
+
+def test_node_reports_automatic_fip_in_default_network(client):
+    public = pool(client, default_floating_pool=True)
+    node = guest(client, uuid.uuid4(), default_network={"floating_ip": True})
+    address = catalog.Address.objects.get_one(
+        filters={"port": filters.EQ(node["default_network"]["port"])}
+    )
+    assert str(address.subnet) == public["uuid"]
+    assert node["default_network"]["floating_ip"] == str(address.address)
+    response = client.get(resource(client, "compute", "nodes", node["uuid"])).json()
+    assert response["default_network"] == node["default_network"]
+    stored = compute.Node.objects.get_one(filters={"uuid": filters.EQ(node["uuid"])})
+    assert stored.dump_to_simple_view()["default_network"] == node["default_network"]
+    assert "floating_ip" not in json.loads(
+        stored._get_prepared_data()["default_network"]
+    )
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_node_fip_tracks_independent_address_binding_and_deletion(client, published):
+    public = pool(client)
+    node = guest(client, uuid.uuid4())
+    node_url = resource(client, "compute", "nodes", node["uuid"])
+    address = create(
+        client,
+        ("network", "catalog", "addresses"),
+        project_id=node["project_id"],
+        kind="floating",
+        subnet=public["uuid"],
+    )
+    address_url = resource(client, "network", "catalog", "addresses", address["uuid"])
+    for _ in range(2):
+        client.put(address_url, json={"port": node["default_network"]["port"]})
+        assert client.get(node_url).json()["default_network"] == {
+            **node["default_network"],
+            "floating_ip": address["address"],
+        }
+        client.put(address_url, json={"port": None})
+        assert client.get(node_url).json()["default_network"] == node["default_network"]
+    client.put(address_url, json={"port": node["default_network"]["port"]})
+    if published:
+        stored = catalog.Address.objects.get_one(
+            filters={"uuid": filters.EQ(address["uuid"])}
+        )
+        stored.claim_publication(uuid.UUID(node["default_network"]["port"]))
+    client.delete(address_url)
+    assert client.get(node_url).json()["default_network"] == node["default_network"]
+
+
+def test_secondary_fip_is_not_the_node_default_fip(client):
+    public = pool(client)
+    node = guest(client, uuid.uuid4())
+    secondary = create(
+        client,
+        ("network", "ports"),
+        project_id=node["project_id"],
+        node=node["uuid"],
+    )
+    create(
+        client,
+        ("network", "catalog", "addresses"),
+        project_id=node["project_id"],
+        kind="floating",
+        subnet=public["uuid"],
+        port=secondary["uuid"],
+    )
+    response = client.get(resource(client, "compute", "nodes", node["uuid"])).json()
+    assert response["default_network"] == node["default_network"]
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_hw_node_does_not_report_an_unallocated_fip(client, automatic):
+    public = pool(client)
+    node = guest(
+        client,
+        uuid.uuid4(),
+        node_type="HW",
+        default_network={
+            "floating_ip": True if automatic else {"subnet": public["uuid"]}
+        },
+    )
+    assert "floating_ip" not in node["default_network"]
+    response = client.get(resource(client, "compute", "nodes", node["uuid"])).json()
+    assert "floating_ip" not in response["default_network"]
+
+
 def test_node_and_port_share_lazy_default_without_iam_project(client):
     project_id = uuid.uuid4()
     assert (
@@ -66,8 +166,8 @@ def test_node_and_port_share_lazy_default_without_iam_project(client):
         is None
     )
     node = guest(client, project_id)
-    assert len(node["ports"]) == 1
-    port = node["ports"][0]
+    assert len(node_ports(client, node)) == 1
+    port = node_ports(client, node)[0]
     assert node["default_network"]["ipv4"] == port["ipv4"] == "10.128.0.2"
     assert port["index"] == 0
     network = client.get(
@@ -88,7 +188,7 @@ def test_node_and_port_share_lazy_default_without_iam_project(client):
 def test_empty_template_creates_no_network_resources(client):
     project_id = uuid.uuid4()
     node = guest(client, project_id, default_network={})
-    assert node["ports"] == [] and node["default_network"] == {}
+    assert node_ports(client, node) == [] and node["default_network"] == {}
     assert (
         compute.Network.objects.get_all(filters={"project_id": filters.EQ(project_id)})
         == []
@@ -117,9 +217,9 @@ def test_default_port_only_requires_compute_creation(
         )
         node = nodeset.gen_nodes(project_id=nc.NODE_SET_PROJECT)[0]
         node.insert()
-        assert len(node.ports) == 1
+        assert len(node_ports(client, node)) == 1
     else:
-        assert len(body["ports"]) == 1
+        assert len(node_ports(client, body)) == 1
     with pytest.raises(exceptions.ForbiddenError):
         create(creator, ("network", "ports"))
 
@@ -135,7 +235,7 @@ def test_primary_port_network_override_only_requires_node_creation(
     node = guest(
         creator, uuid.UUID(int=0), default_network={"network": private["uuid"]}
     )
-    assert node["ports"][0]["network"] == private["uuid"]
+    assert node_ports(client, node)[0]["network"] == private["uuid"]
     with pytest.raises(exceptions.ForbiddenError):
         create(creator, ("network", "ports"), network=private["uuid"])
 
@@ -151,7 +251,7 @@ def test_automatic_fip_still_requires_address_creation(
         auth_test1_user, permissions=["network.address.create"]
     )
     node = guest(with_address, uuid.UUID(int=0), default_network={"floating_ip": True})
-    assert len(node["ports"]) == 1
+    assert len(node_ports(client, node)) == 1
 
 
 def test_default_is_independent_of_display_name(client):
@@ -199,7 +299,9 @@ def test_legacy_project_reuses_flat_for_node_and_standalone_port(client, templat
         **({"default_network": template} if template is not None else {}),
     )
     port = create(client, ("network", "ports"), project_id=str(project_id))
-    assert node["ports"][0]["subnet"] == port["subnet"] == str(previous.subnet)
+    assert (
+        node_ports(client, node)[0]["subnet"] == port["subnet"] == str(previous.subnet)
+    )
     assert node["default_network"]["ipv4"] == "10.20.0.3"
     assert "legacy_flat_placement" not in port
     assert (
@@ -268,7 +370,7 @@ def test_implicit_foreign_flat_ip_requires_explicit_address_permission(
     )
     created = allocate(pinner)
     assert (
-        created["ipv4"] if standalone else created["ports"][0]["ipv4"]
+        created["ipv4"] if standalone else node_ports(client, created)[0]["ipv4"]
     ) == "10.20.0.50"
 
 
@@ -288,7 +390,7 @@ def test_fip_private_ip_uses_owned_sdn_without_foreign_flat_permission(
         project_id,
         default_network={"target_ipv4": "10.128.0.50", "floating_ip": True},
     )
-    assert node["ports"][0]["ipv4"] == "10.128.0.50"
+    assert node_ports(client, node)[0]["ipv4"] == "10.128.0.50"
 
 
 @pytest.mark.parametrize("standalone", [False, True])
@@ -348,7 +450,7 @@ def test_legacy_mode_disabled_uses_sdn_even_with_flat_ports(client):
     config.CONF.set_override("legacy_flat_default", False, group="network")
     try:
         node = guest(client, project_id)
-        assert node["ports"][0]["subnet"] != str(previous.subnet)
+        assert node_ports(client, node)[0]["subnet"] != str(previous.subnet)
         assert node["default_network"]["ipv4"] == "10.128.0.2"
     finally:
         config.CONF.clear_override("legacy_flat_default", group="network")
@@ -379,7 +481,7 @@ def test_legacy_nodeset_new_replica_stays_on_flat(client, template):
     )
     node = nodeset.gen_nodes(project_id=nc.NODE_SET_PROJECT)[0]
     node.insert()
-    assert node.ports[0]["subnet"] == str(previous.subnet)
+    assert node_ports(client, node)[0]["subnet"] == str(previous.subnet)
 
 
 @pytest.mark.parametrize("automatic_pool", [True, False])
@@ -397,7 +499,7 @@ def test_fip_without_private_selector_bypasses_flat_compatibility(
             "floating_ip": True if automatic_pool else {"subnet": public["uuid"]}
         },
     )
-    port = node["ports"][0]
+    port = node_ports(client, node)[0]
     network = compute.Network.objects.get_one(
         filters={"uuid": filters.EQ(port["network"])}
     )
@@ -440,7 +542,7 @@ def test_empty_template_suppresses_port_when_flat_compatibility_is_disabled(clie
     config.CONF.set_override("legacy_flat_default", False, group="network")
     try:
         node = guest(client, project_id, default_network={})
-        assert node["ports"] == []
+        assert node_ports(client, node) == []
         assert (
             compute.Network.objects.get_all(
                 filters={"project_id": filters.EQ(project_id)}
@@ -520,10 +622,10 @@ def test_bootstrap_manual_ports_do_not_get_an_extra_autoport(client, monkeypatch
     }
     defaults.add_core_set(spec)
     node = compute.Node.objects.get_one(filters={"uuid": filters.EQ(node_uuid)})
-    assert len(node.ports) == 1
-    assert node.ports[0]["index"] == 0
-    assert node.ports[0]["ipv4"] == "10.20.0.2"
-    assert node.ports[0]["subnet"] == str(subnet.uuid)
+    assert len(node_ports(client, node)) == 1
+    assert node_ports(client, node)[0]["index"] == 0
+    assert node_ports(client, node)[0]["ipv4"] == "10.20.0.2"
+    assert node_ports(client, node)[0]["subnet"] == str(subnet.uuid)
 
 
 def test_explicit_missing_network_does_not_create_default(client):
@@ -569,7 +671,7 @@ def test_automatic_fip_uses_marked_default_pool(client):
     node = guest(client, project_id, default_network={"floating_ip": True})
     addresses = client.get(
         collection(client, "network", "catalog", "addresses"),
-        params={"port": node["ports"][0]["uuid"]},
+        params={"port": node_ports(client, node)[0]["uuid"]},
     ).json()
     assert len(addresses) == 1
     assert addresses[0]["subnet"] == preferred["uuid"]
@@ -580,7 +682,7 @@ def test_automatic_fip_uses_only_available_pool(client):
     available = pool(client)
     node = guest(client, uuid.uuid4(), default_network={"floating_ip": True})
     address = catalog.Address.objects.get_one(
-        filters={"port": filters.EQ(node["ports"][0]["uuid"])}
+        filters={"port": filters.EQ(node_ports(client, node)[0]["uuid"])}
     )
     assert str(address.subnet) == available["uuid"]
 
@@ -601,7 +703,7 @@ def test_marked_inaccessible_pool_is_not_used(client):
     available = pool(client)
     node = guest(client, uuid.uuid4(), default_network={"floating_ip": True})
     address = catalog.Address.objects.get_one(
-        filters={"port": filters.EQ(node["ports"][0]["uuid"])}
+        filters={"port": filters.EQ(node_ports(client, node)[0]["uuid"])}
     )
     assert str(address.subnet) == available["uuid"]
 
@@ -655,14 +757,18 @@ def test_only_one_marked_pool_per_owner_project(client):
 
 def test_node_creation_template_cannot_be_updated(client):
     node = guest(client, uuid.uuid4())
+    ports = node_ports(client, node)
     with pytest.raises(exceptions.ForbiddenError):
         client.put(
             resource(client, "compute", "nodes", node["uuid"]),
             json={"default_network": {}},
         )
+    assert node_ports(client, node) == ports
     assert (
-        client.get(resource(client, "compute", "nodes", node["uuid"])).json()["ports"]
-        == node["ports"]
+        client.get(resource(client, "compute", "nodes", node["uuid"])).json()[
+            "default_network"
+        ]
+        == node["default_network"]
     )
 
 
@@ -670,10 +776,12 @@ def test_removing_last_port_does_not_create_another(client):
     from exordos_core.network.service import NetworkService
 
     node = guest(client, uuid.uuid4())
-    client.delete(resource(client, "network", "ports", node["ports"][0]["uuid"]))
+    client.delete(
+        resource(client, "network", "ports", node_ports(client, node)[0]["uuid"])
+    )
     stored = compute.Node.objects.get_one(filters={"uuid": filters.EQ(node["uuid"])})
     NetworkService()._reconcile_interfaces(stored, [], None, {})
-    assert stored.ports == [] and stored.default_network == {}
+    assert node_ports(client, stored) == [] and stored.default_network == {}
 
 
 def test_upgrade_preserves_existing_ports_and_old_empty_set_templates(client):
@@ -683,6 +791,7 @@ def test_upgrade_preserves_existing_ports_and_old_empty_set_templates(client):
     from restalchemy.storage.sql import engines
 
     node = guest(client, uuid.uuid4())
+    ports = node_ports(client, node)
     body = create(
         client,
         ("compute", "sets"),
@@ -699,7 +808,7 @@ def test_upgrade_preserves_existing_ports_and_old_empty_set_templates(client):
         step.downgrade(session)
         step.upgrade(session)
     stored = compute.Node.objects.get_one(filters={"uuid": filters.EQ(node["uuid"])})
-    assert stored.ports == node["ports"]
+    assert node_ports(client, stored) == ports
     assert stored.default_network == node["default_network"]
     nodeset = node_set_models.NodeSet.objects.get_one(
         filters={"uuid": filters.EQ(body["uuid"])}
@@ -799,7 +908,7 @@ def test_explicit_network_and_fip_pool(client, selector):
             "floating_ip": {"subnet": public["uuid"]},
         },
     )
-    assert node["ports"][0]["subnet"] == subnet["uuid"]
+    assert node_ports(client, node)[0]["subnet"] == subnet["uuid"]
     assert node["default_network"]["ipv4"] == "10.42.0.2"
 
 
@@ -822,6 +931,7 @@ def test_nodeset_allocates_distinct_ports_and_fips_in_owner_project(client):
     )
     nodes = nodeset.gen_nodes(project_id=nc.NODE_SET_PROJECT)
     for node in nodes:
+        assert node.to_ua_resource().value["default_network"] == {"floating_ip": True}
         node.insert()
     ports = compute.Port.objects.get_all(
         filters={
@@ -879,7 +989,7 @@ def test_nodeset_preserves_omitted_vs_empty_template(client, template):
     )
     node = nodeset.gen_nodes(project_id=nc.NODE_SET_PROJECT)[0]
     node.insert()
-    assert len(node.ports) == (1 if template is None else 0)
+    assert len(node_ports(client, node)) == (1 if template is None else 0)
 
 
 def test_nodeset_template_update_only_affects_new_replicas(client):
@@ -896,7 +1006,7 @@ def test_nodeset_template_update_only_affects_new_replicas(client):
     )
     original = nodeset.gen_nodes(project_id=nc.NODE_SET_PROJECT)[0]
     original.insert()
-    port_id = original.ports[0]["uuid"]
+    port_id = node_ports(client, original)[0]["uuid"]
     client.put(
         resource(client, "compute", "sets", body["uuid"]),
         json={"default_network": {}, "replicas": 2},
@@ -908,11 +1018,12 @@ def test_nodeset_template_update_only_affects_new_replicas(client):
         project_id=nc.NODE_SET_PROJECT, node_uuids=[original.uuid]
     )[1]
     fresh.insert()
-    assert fresh.ports == []
+    assert node_ports(client, fresh) == []
     assert (
-        compute.Node.objects.get_one(filters={"uuid": filters.EQ(original.uuid)}).ports[
-            0
-        ]["uuid"]
+        node_ports(
+            client,
+            compute.Node.objects.get_one(filters={"uuid": filters.EQ(original.uuid)}),
+        )[0]["uuid"]
         == port_id
     )
 

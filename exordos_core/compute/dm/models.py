@@ -415,7 +415,6 @@ class NodeSet(
 
 class Node(
     ImmutableDiskPolicyMixin,
-    cm.CustomPropertiesMixin,
     infra_models.Node,
     QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
@@ -437,9 +436,6 @@ class Node(
 
     node_set = properties.property(types.AllowNone(types.UUID()), default=None)
     network_initialized = properties.property(types.Boolean(), default=False)
-    __custom_properties__ = {
-        "ports": types.TypedList(types.Dict()),
-    }
     __create_only_fields__ = ("default_network",)
 
     @classmethod
@@ -454,22 +450,33 @@ class Node(
                 )
 
     @property
-    def ports(self):
-        return [
-            {
-                "uuid": str(port.uuid),
-                "index": port.index,
-                "network": str(port.network),
-                "subnet": str(port.subnet),
-                "ipv4": str(port.ipv4) if port.ipv4 else None,
-                "mask": str(port.mask) if port.mask else None,
-                "mac": port.mac,
-                "status": port.status,
+    def default_network(self):
+        network = self.properties.get_value("default_network")
+        if not network:
+            return network
+        # Uninitialized VMs carry a creation request, including NodeSet replicas.
+        if (
+            not network.get("port")
+            and not self.network_initialized
+            and self.node_type == "VM"
+        ):
+            return network
+        from exordos_core.user_api.network.dm import models as catalog
+
+        # FIP bindings can change independently of the primary Port snapshot.
+        network = {key: value for key, value in network.items() if key != "floating_ip"}
+        if not network.get("port"):
+            return network
+        address = catalog.Address.objects.get_one_or_none(
+            filters={
+                "port": dm_filters.EQ(network["port"]),
+                "kind": dm_filters.EQ("floating"),
+                "delete_requested": dm_filters.EQ(False),
             }
-            for port in Port.objects.get_all(
-                filters={"node": dm_filters.EQ(self.uuid)}, order_by={"index": "asc"}
-            )
-        ]
+        )
+        if address is not None:
+            network["floating_ip"] = str(address.address)
+        return network
 
     # See NODE_INTERFACES_TYPE for what the three states mean.
     interfaces = properties.property(NODE_INTERFACES_TYPE, default=None)
