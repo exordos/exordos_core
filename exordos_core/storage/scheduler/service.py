@@ -26,6 +26,7 @@ from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
 from exordos_core.storage import constants as sc
+from exordos_core.storage import managed
 from exordos_core.storage import state
 from exordos_core.storage.dm import models as storage_models
 
@@ -69,6 +70,13 @@ class StorageClusterSchedulerService(basic.BasicService):
                     and state.finish_cluster_deletion(cluster)
                 ):
                     continue
+                if cluster.status != sc.CLUSTER_DELETING:
+                    try:
+                        managed.reconcile(cluster)
+                    except Exception:
+                        LOG.exception(
+                            "Error provisioning OST VMs for cluster %s", cluster.uuid
+                        )
                 state.sync_cluster(cluster)
             unscheduled = self._get_unscheduled_clusters()
             nodes = storage_models.StorageNode.objects.get_all(

@@ -4387,9 +4387,7 @@ components:
       - service_type
       type: object
     StorageCluster_Create:
-      $ref: '#/components/schemas/StorageCluster_Get'
       path: /v1/storage/clusters/
-    StorageCluster_Get:
       properties:
         agent:
           example: 00000000-0000-0000-0000-000000000000
@@ -4449,6 +4447,17 @@ components:
           example: any_string
           maxLength: 255
           type: string
+        nodes:
+          default: 0
+          example: 0
+          minimum: 0
+          type: integer
+        size:
+          default: 10
+          example: 500000
+          maximum: 1000000
+          minimum: 1
+          type: integer
         status:
           default: DISABLED
           enum:
