@@ -29,6 +29,8 @@ def empty_ipam() -> ipam.Ipam:
     subnet = models.Subnet(
         network=sys_uuid.uuid4(),
         cidr=netaddr.IPNetwork("0.0.0.0/24"),
+        routers=[],
+        dns_servers=[],
         project_id=c.ZERO_UUID,
     )
     return ipam.Ipam({subnet: []})

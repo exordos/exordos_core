@@ -93,7 +93,7 @@ def _wait_until_serving(
 
 
 @pytest.fixture()
-def boot_api(user_api) -> tp.Callable[..., str]:
+def boot_api(user_api, tmp_path) -> tp.Callable[..., str]:
     """Start a boot API and return the base URL of its v1 API.
 
     Takes the options the service takes on its command line, so a test says
@@ -113,8 +113,11 @@ def boot_api(user_api) -> tp.Callable[..., str]:
         # venv's bin directory happens to be on PATH.
         argv = [
             sys.executable,
-            "-m",
-            "exordos_core.cmd.boot_api",
+            "-c",
+            "import sys; from exordos_core.boot_api.api import packers; "
+            "packers.BOOT_NONCES_DIR = sys.argv.pop(1); "
+            "from exordos_core.cmd.boot_api import main; main()",
+            str(tmp_path / "boot-nonces"),
             "--boot_api-bind-host",
             "127.0.0.1",
             "--boot_api-bind-port",
@@ -226,3 +229,29 @@ class TestComputeBootApi:
         assert "tftp://" not in response.text
         assert "https://kernel.org/vmlinuz" in response.text
         assert "https://kernel.org/initrd.img" in response.text
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "nodes/{node}",
+        "agents/{node}/actions/get_payload",
+        "kind/guest_machine/resources/{node}",
+    ],
+)
+def test_plain_boot_request_cannot_bypass_identity(boot_api, path):
+    base = boot_api()
+    response = requests.get(
+        urljoin(base, path.format(node=sys_uuid.uuid4())),
+        headers={"X-Genesis-Node-UUID": str(sys_uuid.uuid4())},
+    )
+    assert response.status_code == 403
+
+
+def test_encrypted_listener_refuses_plain_requests(boot_api):
+    proxy_port = _free_port()
+    boot_api(**{"proxy-bind-host": "127.0.0.1", "proxy-bind-port": proxy_port})
+    response = requests.get(
+        "http://127.0.0.1:%d/v1/nodes/%s" % (proxy_port, sys_uuid.uuid4())
+    )
+    assert response.status_code == 403

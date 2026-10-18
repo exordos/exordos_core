@@ -39,14 +39,41 @@ class UniversalAgentsRoute(orch_routes.UniversalAgentsRoute):
     ]
 
 
+class BootResourcesRoute(status_routes.ResourcesRoute):
+    __controller__ = controllers.BootResourcesController
+
+
+class BootKindRoute(status_routes.KindRoute):
+    resources = routes.route(BootResourcesRoute, resource_route=True)
+
+
+class BootRefreshSecretAction(status_routes.RefreshSecretAction):
+    __controller__ = controllers.BootNodesController
+
+
+class BootNodesRoute(status_routes.NodesRoute):
+    __allow_methods__ = []
+    __controller__ = controllers.BootNodesController
+    refresh_secret = routes.action(BootRefreshSecretAction, invoke=True)
+
+
+class BootVerifyAction(status_routes.NodeVerifierVerifyAction):
+    __controller__ = controllers.BootNodeVerifierController
+
+
+class BootNodeVerifiersRoute(status_routes.NodeVerifiersRoute):
+    __controller__ = controllers.BootNodeVerifierController
+    verify = routes.action(BootVerifyAction)
+
+
 class ApiEndpointRoute(routes.Route):
     """Handler for /v1/ endpoint"""
 
     __controller__ = controllers.ApiEndpointController
     __allow_methods__ = [routes.FILTER]
 
-    nodes = routes.route(status_routes.NodesRoute)
+    nodes = routes.route(BootNodesRoute)
     boots = routes.route(NetbootRoute)
-    node_verifiers = routes.route(status_routes.NodeVerifiersRoute)
+    node_verifiers = routes.route(BootNodeVerifiersRoute)
     agents = routes.route(UniversalAgentsRoute)
-    kind = routes.route(status_routes.KindRoute)
+    kind = routes.route(BootKindRoute)

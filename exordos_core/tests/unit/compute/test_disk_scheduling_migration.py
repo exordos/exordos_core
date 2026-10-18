@@ -249,6 +249,7 @@ def test_migration_updates_target_actual_and_persisted_sources():
         None,
         "0002-add-repo-element-version-flags-24310b.py",
         "0005-add-managed-tokens-5b1e8c47.py",
+        "0006-disk-scheduling-resources-96f43b.py",
     ],
 )
 def test_full_migration_graph_upgrades_legacy_schema(previous_head):

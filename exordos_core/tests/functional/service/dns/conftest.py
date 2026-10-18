@@ -44,8 +44,6 @@ def pdns_server(user_api, tmp_path_factory: pytest.TempPathFactory):
     if not os.path.exists(PDNS_BIN):
         pytest.skip("PowerDNS server binary not found, dataplane can't be checked")
 
-    port = result.port
-
     directory = tmp_path_factory.mktemp("pdns")
     config_file = directory / "pdns.conf"
     port = find_free_port()
@@ -55,8 +53,9 @@ local-port={port}
 launch=gpgsql
 gpgsql-dbname={result.path[1:]}
 gpgsql-user={result.username}
-gpgsql-password={result.password}
+gpgsql-password={result.password or ""}
 gpgsql-host={result.hostname}
+gpgsql-port={result.port or 5432}
 loglevel=100
 query-logging=yes
 log-dns-queries=yes

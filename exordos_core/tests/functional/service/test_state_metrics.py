@@ -82,6 +82,7 @@ class TestComputeCollectors:
         # A node of a set gets no hostname, the machine takes its name
         set_node = compute_models.Node(
             name="workers-0",
+            default_network={},
             project_id=c.ZERO_UUID,
             cores=2,
             ram=2048,
@@ -92,6 +93,7 @@ class TestComputeCollectors:
         set_node.insert()
         node = compute_models.Node(
             name="db",
+            default_network={},
             hostname="db-host",
             project_id=c.ZERO_UUID,
             cores=1,

@@ -90,3 +90,14 @@ def test_volume_policy_is_writable_at_creation_and_readonly_on_update():
         while "$ref" in update:
             update = schemas[update["$ref"].rsplit("/", 1)[-1]]
         assert update["properties"][field]["readOnly"] is True
+
+
+def test_subnet_schema_exposes_only_stored_route_and_dns_fields():
+    spec = openapi.build(openapi.USER_API)
+    for name in ("Subnet_Get", "Subnet_Create", "Subnet_Update", "Subnet_Filter"):
+        schema = spec["components"]["schemas"][name]
+        if "$ref" in schema:
+            schema = spec["components"]["schemas"][schema["$ref"].split("/")[-1]]
+        fields = schema["properties"]
+        assert {"routers", "dns_servers"} <= fields.keys()
+        assert not {"effective_routers", "effective_dns_servers"} & fields.keys()
