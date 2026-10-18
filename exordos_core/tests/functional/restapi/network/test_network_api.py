@@ -184,16 +184,29 @@ class TestNetworkApi:
             client.post(url, json=subnet)
         assert "is not an address of" in exc.value.cause.response.text
 
-    @pytest.mark.parametrize("routers", [[], [_route("0.0.0.0/0", "2001:db8::1")]])
+    @pytest.mark.parametrize(
+        "cidr,routers",
+        [
+            ("2001:db8::/64", []),
+            ("2001:db8::/64", [_route("0.0.0.0/0", "2001:db8::1")]),
+            ("10.42.0.0/24", [_route("2001:db8::/64", "10.42.0.1")]),
+        ],
+    )
     def test_overlay_subnet_rejects_ipv6(
-        self, user_api_client, auth_user_admin, network_factory, subnet_factory, routers
+        self,
+        user_api_client,
+        auth_user_admin,
+        network_factory,
+        subnet_factory,
+        cidr,
+        routers,
     ):
         client = user_api_client(auth_user_admin)
         network, _ = self._create_network(
             client, network_factory, driver_spec={"driver": "ovs_evpn"}
         )
         subnet = subnet_factory(
-            network_uuid=network["uuid"], cidr="2001:db8::/64", routers=routers
+            network_uuid=network["uuid"], cidr=cidr, routers=routers
         )
         with pytest.raises(bazooka_exc.BadRequestError) as exc:
             client.post(

@@ -44,3 +44,20 @@ configuration. Removing the last Port does not create another.
 SG memberships use PortSecurityGroup; FIPs use Address. Automatic Port/FIP
 ownership follows Node/Port deletion. Independent resources have their own
 lifecycle; see [ownership](sdn-api-contract.md#ownership-and-deletion).
+
+## Guest routing
+
+For `ovs_evpn`, DHCP advertises a default route only on Port index 0. Flat
+network DHCP is configured independently. Secondary `ovs_evpn` Ports
+receive their address, DNS servers, MTU and non-default subnet routes. DHCP
+option 121 carries IPv4 classless routes, including the default on the primary
+Port; clients without option 121 support can still use the primary's Router
+option. `Subnet.routers=[]` suppresses all advertised routes for that subnet.
+Route options longer than 255 bytes use RFC 3396 concatenation; the complete
+DHCP reply must still fit the interface MTU.
+
+Secondary Ports keep their host-side gateway and can own FIPs. Configure source
+policy routing in the guest, manually or through cloud-init, when replies from
+a secondary IP must leave through that interface's gateway. DHCP does not
+install these policy rules. Detaching index 0 does not promote another Port;
+attach a Port at index 0 to restore an advertised default route.

@@ -121,3 +121,13 @@ def test_overlay_subnet_rejects_ipv6_at_model_boundary(routers):
         objects.get_one_or_none.return_value = network
         with pytest.raises(exceptions.ValidateException, match="IPv4"):
             subnet._validate_routes()
+
+
+def test_overlay_subnet_rejects_ipv6_route_destinations():
+    subnet = _subnet(routers=[{"to": "2001:db8::/64", "via": "10.101.0.1"}])
+    with mock.patch.object(models.Network, "objects") as objects:
+        objects.get_one_or_none.return_value = mock.Mock(
+            driver_spec={"driver": "ovs_evpn"}
+        )
+        with pytest.raises(exceptions.ValidateException, match="IPv4 routes"):
+            subnet._validate_routes()

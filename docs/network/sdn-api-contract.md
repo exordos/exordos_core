@@ -85,6 +85,13 @@ index is immutable. Detachment preserves IP/MAC and does not renumber other Port
 Live and persistent libvirt hotplug are supported. Removing the last Port does
 not create a replacement; an unbooted VM needs a primary Port before flashing.
 
+For `ovs_evpn`, DHCP advertises the default route only on index 0. Flat network
+DHCP is configured independently. Secondary `ovs_evpn` Ports receive IP/DNS/MTU
+and non-default subnet routes through DHCP option 121. Their host-side
+gateway and FIP NAT remain available. Secondary-IP reply traffic may require
+source policy routing in the guest; configure it manually or with cloud-init.
+See [guest routing](node-interfaces.md#guest-routing) for client requirements.
+
 ## Floating pools and permissions
 
 An operator prepares a Subnet with `floating_pool=true`, `placeable=false`.

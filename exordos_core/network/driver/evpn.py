@@ -775,6 +775,7 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
         """
         nfs = self._host_services(port, subnet, seed=publish)
         dhcp = self._dhcp_record(subnet)
+        dhcp["default_route"] = port.index == 0
         # The host-local DNS responder serves <name>.<suffix> (+ PTR); the
         # suffix comes with the network's `dns` slice.
         name = self._guest_name(port)

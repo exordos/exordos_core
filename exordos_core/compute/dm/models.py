@@ -895,7 +895,15 @@ class Subnet(
         for route in subnet_utils.effective_routers(self):
             if not isinstance(route, dict):
                 continue
-            if str(route.get("to")) in ("0.0.0.0/0", "default"):
+            destination = route.get("to")
+            if (
+                str(destination) != "default"
+                and netaddr.IPNetwork(str(destination)).version != 4
+            ):
+                raise ex_exceptions.ValidateException(
+                    err="ovs_evpn requires IPv4 routes"
+                )
+            if str(destination) in ("0.0.0.0/0", "default"):
                 defaults += 1
             via = route.get("via")
             if via is None:
