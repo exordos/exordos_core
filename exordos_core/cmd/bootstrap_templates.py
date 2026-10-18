@@ -226,6 +226,8 @@ def _render_or_restore_template(
         os.makedirs(dst_dir, exist_ok=True)
 
     with open(dst, "w", encoding="utf-8") as f:
+        if dst == CONF.ua_config_template_dst:
+            os.fchmod(f.fileno(), 0o600)
         f.write(rendered)
 
     LOG.info("Saved template %s -> %s", src, dst)
@@ -255,6 +257,8 @@ def main() -> None:
             open(persisted, "w", encoding="utf-8") as fp,
             open(dst, "r", encoding="utf-8") as fd,
         ):
+            if dst == CONF.ua_config_template_dst:
+                os.fchmod(fp.fileno(), 0o600)
             fp.write(fd.read())
         LOG.info("Saved persisted template %s", persisted)
 

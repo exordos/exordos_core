@@ -26,6 +26,7 @@ from restalchemy.dm import properties
 from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_network
+from restalchemy.storage.sql import orm
 
 from exordos_core.compute.dm import models
 
@@ -146,6 +147,84 @@ class MachineVolume(
         )
 
 
+class PoolPort(
+    ra_models.ModelWithUUID,
+    ra_models.ModelWithTimestamp,
+    ra_models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.InstanceMixin,
+    SchedulableToAgentFromPoolMixin,
+):
+    """Read-only pool projection of a canonical attached compute port."""
+
+    __tablename__ = "compute_pool_ports"
+
+    pool = properties.property(types.UUID(), required=True)
+    machine = properties.property(types.UUID(), required=True)
+    mac = properties.property(types.Mac(), required=True)
+    source = properties.property(types.AllowNone(types.String()), default=None)
+    overlay = properties.property(types.Boolean(), default=False)
+    index = properties.property(types.Integer(min_value=0), default=0)
+    boot = properties.property(
+        types.Enum([boot.value for boot in ua_pool.BootAlternative]), default="hd0"
+    )
+    attached = properties.property(types.Boolean(), default=True)
+    status = properties.property(types.String(), default="ACTIVE")
+
+    @classmethod
+    def get_resource_kind(cls):
+        return "pool_port"
+
+    @classmethod
+    def get_filter_clause(cls, builder, pools):
+        return {"pool": dm_filters.In([pool.uuid for pool in pools])}
+
+    @classmethod
+    def get_updated_instances(cls, clause=None, limit=100):
+        # Source selection also depends on boot subnets, including their deletion.
+        pool_filter = "AND p.pool = ANY(%s::uuid[])" if clause else ""
+        params = (
+            ([str(pool) for pool in clause["pool"].value], limit)
+            if clause
+            else (limit,)
+        )
+        rows = cls._execute_expression(
+            "SELECT p.uuid FROM compute_pool_ports p "
+            "JOIN ua_target_resources t ON t.uuid = p.uuid AND t.kind = 'pool_port' "
+            "WHERE (p.updated_at != t.tracked_at OR t.value IS DISTINCT FROM "
+            "(to_jsonb(p) - ARRAY['created_at', 'updated_at', 'status'])) "
+            f"{pool_filter} LIMIT %s",
+            params,
+        )
+        return (
+            cls.objects.get_all(
+                filters={"uuid": dm_filters.In([row["uuid"] for row in rows])}
+            )
+            if rows
+            else []
+        )
+
+    def get_resource_target_fields(self):
+        return frozenset(
+            (
+                "uuid",
+                "pool",
+                "machine",
+                "project_id",
+                "mac",
+                "source",
+                "overlay",
+                "index",
+                "attached",
+                "boot",
+            )
+        )
+
+    def save(self, **kwargs):
+        # Builders track this view; only canonical Port/Machine rows are writable.
+        pass
+
+
 class PoolMachine(
     ua_models.SchedulableToAgentFromAgentUUIDMixin,
     ua_models.TargetResourceKindAwareMixin,
@@ -174,8 +253,6 @@ class PoolMachine(
 
     project_id = properties.property(types.UUID(), required=True, read_only=True)
 
-    port_info = properties.property(types.Dict(), default=dict)
-
     @classmethod
     def get_resource_kind(cls) -> str:
         """Return the resource kind."""
@@ -197,18 +274,12 @@ class PoolMachine(
                 "node",
                 "boot",
                 "pool",
-                "port_info",
                 "image",
             )
         )
 
     @classmethod
-    def from_machine_and_port(
-        cls,
-        machine: "Machine",
-        port: models.Port,
-        agent_uuid: tp.Optional[str] = None,
-    ) -> "PoolMachine":
+    def from_machine(cls, machine: "Machine", agent_uuid=None):
         return cls(
             uuid=machine.uuid,
             name=machine.name,
@@ -221,12 +292,6 @@ class PoolMachine(
             node=machine.node.uuid,
             pool=machine.pool.uuid,
             agent_uuid=agent_uuid,
-            port_info={
-                "ipv4": str(port.ipv4) if port.ipv4 else None,
-                "mask": str(port.mask) if port.mask else None,
-                "mac": port.mac,
-                "source": port.source,
-            },
         )
 
 

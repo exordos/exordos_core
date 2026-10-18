@@ -24,9 +24,7 @@ import pytest
 
 from exordos_core.user_api.network.dm import models as nm
 
-AUTH_PATH = (
-    "/v1/repo/repositories/31cebe30-f3a5-4813-a1aa-3b59e31d8d15/actions/authorize_upload"
-)
+AUTH_PATH = "/v1/repo/repositories/31cebe30-f3a5-4813-a1aa-3b59e31d8d15/actions/authorize_upload"
 
 
 @pytest.fixture

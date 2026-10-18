@@ -1,0 +1,18 @@
+[Unit]
+Description=evpn-connector (exordos evpn fabric)
+After=gobgpd.service openvswitch-switch.service
+Wants=gobgpd.service
+
+[Service]
+# /opt/evpn/evpn_connector.cfg is rendered by the universal agent's evpn_node
+# capability from the evpn_host target resource; per-guest client configs land
+# in /opt/evpn/vm_conf. The agent enables + (re)starts this service when it
+# writes the config. Not enabled at build (the venv/config only exist once an
+# ovs_evpn network is actually in use).
+WorkingDirectory=/opt/evpn
+ExecStart=/opt/evpn/venv/bin/evpn-connector --config-file /opt/evpn/evpn_connector.cfg
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

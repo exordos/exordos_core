@@ -14,7 +14,36 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import itertools
+
 from restalchemy.dm import models
+from restalchemy.dm import types
+
+
+class CustomPropertiesMixin(models.CustomPropertiesMixin):
+    def dump_to_simple_view(self, skip=None, save_uuid=False, custom_properties=False):
+        """Apply skip to native and custom fields before reading their values."""
+        fields = itertools.chain(
+            (
+                (name, prop.get_property_type())
+                for name, prop in self.properties.items()
+            ),
+            self.get_custom_properties(),
+        )
+        result = {}
+        for name, prop_type in fields:
+            if name in (skip or ()):
+                continue
+            value = getattr(self, name)
+            if save_uuid and (
+                isinstance(prop_type, types.UUID)
+                or isinstance(prop_type, types.AllowNone)
+                and isinstance(prop_type.nested_type, types.UUID)
+            ):
+                result[name] = value
+            else:
+                result[name] = prop_type.to_simple_type(value)
+        return result
 
 
 class ModelWithFullAsset(
