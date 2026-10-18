@@ -1150,3 +1150,79 @@ def test_database_rejects_floating_collision_between_subnets(topology):
                 "FROM net_addresses WHERE uuid=%s",
                 (str(uuid.uuid4()), pools[1]["uuid"], address["uuid"]),
             )
+
+
+def test_two_nic_targets_keep_secondary_fip_and_advertise_one_default(topology):
+    import socket
+
+    from gcl_sdk.agents.universal.drivers import evpn_nf
+    from gcl_sdk.agents.universal.drivers import evpn as dp_models
+    from restalchemy.dm import filters
+
+    from exordos_core.compute.dm import models as compute
+    from exordos_core.tests.functional.restapi.network.test_default_network import pool
+
+    client, network, subnet = topology
+    node = create(
+        client,
+        ("compute", "nodes"),
+        name="two-nic-dhcp",
+        cores=1,
+        ram=1024,
+        disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
+        default_network={},
+    )
+    ports = [
+        create(
+            client,
+            ("network", "ports"),
+            subnet=subnet["uuid"],
+            node=node["uuid"],
+        )
+        for _ in range(2)
+    ]
+    public = pool(client)
+    address = create(
+        client,
+        ("network", "catalog", "addresses"),
+        kind="floating",
+        subnet=public["uuid"],
+        port=ports[1]["uuid"],
+    )
+    stored_subnet = compute.Subnet.objects.get_one(
+        filters={"uuid": filters.EQ(subnet["uuid"])}
+    )
+    driver = compute.Network.objects.get_one(
+        filters={"uuid": filters.EQ(network["uuid"])}
+    ).load_driver()
+    for index, view in enumerate(ports):
+        port = compute.Port.objects.get_one(filters={"uuid": filters.EQ(view["uuid"])})
+        target = driver._build_evpn_port(
+            port, stored_subnet, publish=False
+        ).to_ua_resource(master=stored_subnet.uuid)
+        compiled = dp_models.EvpnPort.from_ua_resource(target)
+        assert compiled.dhcp["default_route"] is (index == 0)
+        assert compiled.dhcp["routers"] == [{"to": "0.0.0.0/0", "via": "10.101.0.1"}]
+        assert compiled.fips == ([] if index == 0 else [{"public": address["address"]}])
+        record = dict(compiled.dhcp, ipv4=compiled.ipv4)
+        reply = evpn_nf.build_reply(
+            b"\x00" * 4,
+            0x8000,
+            compiled.mac,
+            evpn_nf.ACK,
+            record,
+            record["cidr"],
+            "10.101.0.1",
+        )
+        options = {}
+        position = 240
+        while reply[position] != 255:
+            code, length = reply[position : position + 2]
+            options[code] = (
+                options.get(code, b"") + reply[position + 2 : position + 2 + length]
+            )
+            position += length + 2
+        assert (3 in options) is (index == 0)
+        assert (121 in options) is (index == 0)
+        if index == 0:
+            assert options[121] == b"\x00" + socket.inet_aton("10.101.0.1")

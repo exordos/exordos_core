@@ -1721,6 +1721,33 @@ def test_service_defaults_are_transient_and_cached_only_per_reconcile():
         assert forwards.call_count == 5
 
 
+@pytest.mark.parametrize("index", [0, 1, None])
+def test_only_primary_port_advertises_dhcp_default_without_changing_host_routes(index):
+    driver = _make_driver()
+    subnet = evpn.models.Subnet.restore_from_simple_view(**_subnet_view())
+    port = mock.Mock(
+        uuid=sys_uuid.uuid4(),
+        node=None,
+        index=index,
+        security_groups=[],
+        mac="52:54:00:aa:bb:cc",
+        ipv4=netaddr.IPAddress("10.42.0.7"),
+        port_security=True,
+    )
+    port.name = "multi-nic"
+    with (
+        _seeded_services(driver),
+        mock.patch.object(
+            driver, "_compile_fips", return_value=[{"public": "203.0.113.7"}]
+        ),
+    ):
+        compiled = driver._build_evpn_port(port, subnet, publish=False)
+    assert compiled.dhcp["default_route"] is (index == 0)
+    assert compiled.dhcp["routers"] == [{"to": "0.0.0.0/0", "via": "10.42.0.254"}]
+    assert compiled.fips == [{"public": "203.0.113.7"}]
+    assert "default_route" not in driver._dhcp_record(subnet)
+
+
 def test_dns_slices_publish_network_names_once_without_caller_metadata():
     driver = _make_driver()
     subnet = _subnet_stub()
