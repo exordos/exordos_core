@@ -101,7 +101,7 @@ def test_managed_token_creation_retries_missing_project(managed_token):
     lookup = type(models.Project.objects)
     with (
         mock.patch.object(lookup, "get_one") as get_project,
-        mock.patch.object(lookup, "get_all", return_value=[]),
+        mock.patch.object(lookup, "get_all", return_value=[mock.sentinel.binding]),
     ):
         get_project.side_effect = exceptions.RecordNotFound(
             model=models.Project, filters={}
@@ -118,6 +118,56 @@ def test_managed_token_creation_retries_missing_project(managed_token):
         get_project.return_value = project
         token = models.ManagedToken(**kwargs)
     assert token.project is project
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+@pytest.mark.parametrize("has_binding", [False, True])
+def test_managed_token_requires_project_membership(
+    managed_token, operation, has_binding
+):
+    own_project = models.Project(
+        name="own-project", organization=models.Organization(name="own-org")
+    )
+    foreign_project = models.Project(
+        name="foreign-project", organization=models.Organization(name="foreign-org")
+    )
+    managed_token.project = own_project
+    scope = f"project:{foreign_project.uuid}"
+    with (
+        mock.patch.object(
+            type(models.Project.objects), "get_one", return_value=foreign_project
+        ),
+        mock.patch.object(
+            type(models.RoleBinding.objects),
+            "get_all",
+            return_value=[mock.sentinel.binding] if has_binding else [],
+        ) as get_bindings,
+        mock.patch.object(models.Token, "update") as update,
+    ):
+
+        def apply_scope():
+            if operation == "create":
+                return models.ManagedToken(
+                    user=managed_token.user,
+                    iam_client=managed_token.iam_client,
+                    issuer=managed_token.issuer,
+                    scope=scope,
+                )
+            managed_token.scope = scope
+            managed_token.update()
+            return managed_token
+
+        if has_binding:
+            assert apply_scope().project is foreign_project
+        else:
+            with pytest.raises(models.iam_e.Forbidden):
+                apply_scope()
+            assert managed_token.project is own_project
+            update.assert_not_called()
+
+    filters = get_bindings.call_args.kwargs["filters"]
+    assert filters["user"].value is managed_token.user
+    assert filters["project"].value is foreign_project
 
 
 def test_managed_token_update_does_not_repair_missing_project(managed_token):
