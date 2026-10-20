@@ -44,6 +44,26 @@ curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 
 Then follow the instructions in the terminal, or refer to the [documentation](https://exordos.github.io/exordos_core/) for a full setup guide.
 
+## Rawstor storage
+
+The core image includes librawstor, rawstor-mds and Python bindings from
+[GitHub Actions run 38903108689](https://github.com/rawstor/librawstor/actions/runs/38903108689).
+The Debian version is `99.0.0`; the bindings are `99.0.0+0.14d3e33`.
+Artifacts and their SHA256 checksums are bundled under `exordos/images/rawstor`.
+Set `RAWSTOR_VERSION` during the image build to use a GitHub release instead.
+Build this branch with `LOCAL_GENESIS_SDK_PATH` pointing to the matching
+`gcl_sdk` checkout on `feat/rawstor`. OpenAPI and documentation generation use
+that same checkout through tox; rebuilding an
+SDK elsewhere does not change the SDK locked inside tox.
+
+`exordos storages clusters add` starts a per-cluster MDS on core. Initialize
+hosts with `storages nodes init`, then create OST resources through
+`storages nodes add --agent AGENT_UUID`. Host agents start OSTs; core adds ready
+OSTs to MDS topology. Each cluster creates WARM
+persistent (two mirrors) and ephemeral (one mirror) pools with a shared capacity
+budget. Local qcow2 disks default to WARM ephemeral.
+See [Rawstor storage](docs/usage/rawstor.md) for topology, policy CRUD and admission.
+
 # 💡 Contributing
 
 Contributing to the project is highly appreciated! However, some rules should be followed for successful inclusion of new changes in the project:
@@ -65,13 +85,14 @@ The chosen storage pool is retained for reuse and resize; an existing disk
 is never moved merely because another pool has more free space. Changing
 `tier` or `ephemeral` after creation is unsupported.
 
-This branch requires the matching `gcl_sdk` branch `feat/disk-scheduling`
-(PR #211) before it can be merged and released. The SDK must provide
+This branch requires `gcl_sdk` branch `feat/rawstor`, including the
+disk scheduling API from PR #211, before it can be merged and released.
+The SDK must provide
 `DiskTier`, the disk policy fields, and `select_storage_pool`; a released
 SDK without these APIs is insufficient.
 
 Until that SDK release is published, `uv.lock` pins the development SDK
-commit `2987730b84e090666ecf46b64a6e6cecdfaf1872` through `tool.uv.sources`.
+commit `28d072320557b44985599ca4cf8e94d96a5cccb1` through `tool.uv.sources`.
 This makes `uv sync --locked` reproducible without resolving an older SDK
 from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.
 
@@ -88,3 +109,15 @@ policy fields, restores single local-pool names, and invalidates resource hashes
 for rebuilding by the previous release. A local hypervisor with multiple pools
 cannot be represented by the old schema; downgrade refuses that configuration
 rather than silently discarding pool assignments.
+
+OST and MDS instances use the rawstor package's systemd templates and per-instance
+configs under `/etc/rawstor/ost` and `/etc/rawstor/mds`. `storages nodes init`
+installs ZFS support; select an existing native backing with
+`nodes add --location zfs://POOL/DATASET`. Pools and datasets are provisioned
+separately. See the Rawstor storage guide above for service permissions and
+capacity isolation.
+
+The public cluster `driver_spec` contains only `kind` and `endpoint`; nodes and
+pool policies are managed through their separate storage resources. Core builds
+their agent snapshot at delivery time. The old `ost_endpoint` field is removed
+from the cluster API.
