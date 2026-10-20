@@ -546,8 +546,18 @@ class RepoElement(
             filters={"depends_on": ra_filters.EQ(self.uuid)}
         )
         if dependents:
+            details = ", ".join(
+                sorted(
+                    {
+                        f"{binding.element.name} ({binding.element.version}, "
+                        f"UUID: {binding.element.uuid})"
+                        for binding in dependents
+                    }
+                )
+            )
             raise common_exc.ValidateException(
-                err="Element cannot be uninstalled: other elements depend on it"
+                err="Element cannot be uninstalled: other elements depend on it: "
+                + details
             )
 
         self.installation_state = RepoElementInstallationState.UNINSTALLED.value
