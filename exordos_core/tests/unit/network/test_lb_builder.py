@@ -18,10 +18,12 @@ from unittest import mock
 import uuid as sys_uuid
 
 from gcl_sdk.paas.services import builder as paas_builder
+import pytest
 
 from exordos_core.network.lb.builders import iaas as lb_iaas
 from exordos_core.network.lb.builders import paas as lb_paas
 from exordos_core.network.lb.dm import models as lb_models
+from exordos_core.user_api.network.dm import models as network_models
 
 
 def _external_node_lb(node):
@@ -65,3 +67,105 @@ def test_switching_to_external_node_drops_the_old_vm_addresses():
 
     assert builder.actualize_infra(inst, mock.MagicMock()) == tuple()
     assert inst.ipsv4 == []
+
+
+@mock.patch.object(lb_paas.repo_models.RepoArtifact, "objects")
+def test_download_artifact_is_resolved_before_agent_delivery(objects):
+    urn = f"urn:artifacts:{sys_uuid.uuid4()}"
+    low = mock.Mock(uri="https://low.example/web.tar.zst")
+    low.element.repository.priority = 1
+    high = mock.Mock(uri="https://high.example/web.tar.zst")
+    high.element.repository.priority = 10
+    objects.get_all.return_value = [low, high]
+    inst = _external_node_lb(sys_uuid.uuid4())
+    inst.get_vhosts.return_value = [
+        {
+            "routes": {
+                "r1": {
+                    "cond": {
+                        "actions": [
+                            {"kind": "local_dir_download", "url": urn, "is_spa": True},
+                            {
+                                "kind": "local_dir_download",
+                                "url": "https://example.com/web.tar.gz",
+                            },
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+
+    (obj,) = lb_paas.LBBuilder().actualize_paas_objects(
+        inst, paas_builder.PaaSCollection(paas_objects=tuple())
+    )
+
+    actions = obj.vhosts[0]["routes"]["r1"]["cond"]["actions"]
+    assert actions[0] == {"kind": "local_dir_download", "url": high.uri, "is_spa": True}
+    assert actions[1]["url"] == "https://example.com/web.tar.gz"
+    objects.get_all.assert_called_once()
+    assert objects.get_all.call_args.kwargs["filters"]["urn"].value == urn
+
+
+@mock.patch.object(lb_paas.repo_models.RepoArtifact, "objects")
+def test_missing_download_artifact_fails_reconciliation(objects):
+    objects.get_all.return_value = []
+    with pytest.raises(ValueError, match="Artifact for URN .* not found"):
+        lb_paas.LBBuilder()._resolve_artifact(f"urn:artifacts:{sys_uuid.uuid4()}")
+
+
+def test_download_url_accepts_artifact_urns_and_archive_urls():
+    for value in [
+        f"urn:artifacts:{sys_uuid.uuid4()}",
+        "https://example.com/web.tar.zst",
+        "https://example.com/web.tar.gz",
+    ]:
+        assert network_models.ArchivedTarUrl().validate(value)
+        assert network_models.RuleStaticDownloadKind(url=value).url == value
+    for value in [
+        "urn:artifacts:invalid",
+        f"urn:images:{sys_uuid.uuid4()}",
+        "https://example.com/web.zip",
+        "web.tar.gz",
+        None,
+    ]:
+        assert not network_models.ArchivedTarUrl().validate(value)
+
+
+@pytest.mark.parametrize("suffix", ["tar.gz", "tar.zst"])
+@mock.patch.object(lb_paas.repo_models.RepoArtifact, "objects")
+def test_uppercase_artifact_uuid_resolves_to_archive(objects, suffix):
+    artifact_uuid = sys_uuid.UUID("abcdefab-cdef-abcd-efab-cdefabcdefab")
+    urn = f"urn:artifacts:{artifact_uuid}"
+    artifact = mock.Mock(uri=f"https://example.com/web.{suffix}")
+    objects.get_all.return_value = [artifact]
+
+    assert network_models.ArchivedTarUrl().validate(
+        f"urn:artifacts:{str(artifact_uuid).upper()}"
+    )
+    assert (
+        lb_paas.LBBuilder()._resolve_artifact(
+            f"urn:artifacts:{str(artifact_uuid).upper()}"
+        )
+        == artifact.uri
+    )
+    assert objects.get_all.call_args.kwargs["filters"]["urn"].value == urn
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://example.com/web.zip",
+        "https://example.com/image.raw",
+        "https://example.com/manifest.yaml",
+        "file:///tmp/web.tar.gz",
+        "web.tar.zst",
+        "urn:artifacts:abcdefab-cdef-abcd-efab-cdefabcdefab",
+    ],
+)
+@mock.patch.object(lb_paas.repo_models.RepoArtifact, "objects")
+def test_resolved_artifact_must_be_a_supported_archive_url(objects, uri):
+    artifact = mock.Mock(uri=uri)
+    objects.get_all.return_value = [artifact]
+    with pytest.raises(ValueError, match="not a supported archive URL"):
+        lb_paas.LBBuilder()._resolve_artifact(f"urn:artifacts:{sys_uuid.uuid4()}")
