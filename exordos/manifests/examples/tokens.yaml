@@ -80,6 +80,8 @@ resources:
     # The platform renews the token once half its lifetime has passed.
     # Everything rendering `:access_token` picks up the new value.
     exporter_token:
+      name: "exporter-token"
+      description: "Token for the metrics exporter"
       user: $core.iam.users.$exporter:uuid
       iam_client: $core.iam.clients.$exporter_client:uuid
       issuer: f"https://api.example.com/api/core/v1/iam/clients/{$core.iam.clients.$exporter_client:uuid}"
