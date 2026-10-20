@@ -7,7 +7,7 @@ build:
     - dst: /opt/exordos_core
       # Local path
       path:
-        src: ../../exordos_core
+        src: ..
       exclude:
         - .venv
         - .tox
@@ -71,6 +71,15 @@ build:
         envs:
           - ALLOW_USER_PASSWD
           - FREQUENT_LOG_VACUUM
+          - RAWSTOR_VERSION
+      - name: rawstor-ost
+        format: GEN_IMG_FORMAT_RAWSTOR_OST=raw,zst
+        profile: exordos_base
+        profile_version: "1.3.5"
+        script: images/install_rawstor_ost.sh
+        override:
+          disk_size: "10G"
+        envs:
           - RAWSTOR_VERSION
     # eco manifest must be after core manifest!
     - manifest: manifests/ecosystem_realm.yaml.j2

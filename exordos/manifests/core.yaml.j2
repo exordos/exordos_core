@@ -1014,7 +1014,21 @@ resources:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       description: "The legacy profile"
 
+  $core.vs.values:
+    rawstor_ost_image:
+      name: rawstor_ost_image
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      variable: $core.vs.variables.$rawstor_ost_image:uuid
+      value: "{{ images.rawstor_ost_raw_zst }}"
+
   $core.vs.variables:
+    rawstor_ost_image:
+      uuid: "9b7c0dfa-1562-4e87-88d5-e3af8cb10725"
+      name: rawstor_ost_image
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
     default_replicas:
       name: "default_replicas"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
