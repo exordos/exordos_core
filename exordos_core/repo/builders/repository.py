@@ -153,15 +153,15 @@ class RepoProxyBuilderService(
         # Remove old elements that are no longer in inventory,
         # but keep installed ones
         deleted_elements_count = 0
-        stale_elements = models.RepoElement.objects.get_all(
-            filters={
-                "uuid": ra_filters.In(
-                    [
-                        existing_uuids[key]
-                        for key in existing_uuids.keys() - inventory_keys
-                    ]
-                ),
-            },
+        stale_uuids = [
+            existing_uuids[key] for key in existing_uuids.keys() - inventory_keys
+        ]
+        stale_elements = (
+            models.RepoElement.objects.get_all(
+                filters={"uuid": ra_filters.In(stale_uuids)},
+            )
+            if stale_uuids
+            else []
         )
         for element in stale_elements:
             # Skip deletion if element is installed
