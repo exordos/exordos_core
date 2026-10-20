@@ -26,6 +26,7 @@ from restalchemy.dm import filters as ra_filters
 from exordos_core.elements import constants as cc
 from exordos_core.network.lb.dm import models
 from exordos_core.repo.dm import models as repo_models
+from exordos_core.user_api.network.dm import models as network_models
 
 LOG = logging.getLogger(__name__)
 
@@ -118,12 +119,17 @@ class LBBuilder(builder.PaaSBuilder):
         if not url.startswith("urn:"):
             return url
 
+        url = f"urn:artifacts:{uuid.UUID(url.removeprefix('urn:artifacts:'))}"
         artifacts = repo_models.RepoArtifact.objects.get_all(
             filters={"urn": ra_filters.EQ(url)}
         )
         if not artifacts:
             raise ValueError(f"Artifact for URN '{url}' not found")
         artifact = max(artifacts, key=lambda a: a.element.repository.priority)
+        if artifact.uri.startswith(
+            "urn:"
+        ) or not network_models.ArchivedTarUrl().validate(artifact.uri):
+            raise ValueError(f"Artifact for URN '{url}' is not a supported archive URL")
         return artifact.uri
 
     def get_actual_nodeset(self, instance):
