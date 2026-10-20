@@ -64,11 +64,9 @@ class TestUninstallDependencyCheck:
         backup = mock.MagicMock()
         backup.element.name = "communal_pg_cluster_backup"
         backup.element.version = "2.6.4"
-        backup.element.uuid = sys_uuid.UUID(int=1)
         ecosystem = mock.MagicMock()
         ecosystem.element.name = "exordos_ecosystem"
         ecosystem.element.version = "0.0.92"
-        ecosystem.element.uuid = sys_uuid.UUID(int=2)
         with mock.patch.object(
             models.RepoElementDepsBinding,
             "objects",
@@ -81,10 +79,8 @@ class TestUninstallDependencyCheck:
         assert str(error.value) == (
             "validate error: Element cannot be uninstalled: "
             "other elements depend on it: "
-            "communal_pg_cluster_backup (2.6.4, "
-            "UUID: 00000000-0000-0000-0000-000000000001), "
-            "exordos_ecosystem (0.0.92, "
-            "UUID: 00000000-0000-0000-0000-000000000002)"
+            "communal_pg_cluster_backup (2.6.4), "
+            "exordos_ecosystem (0.0.92)"
         )
         elem.update.assert_not_called()
         assert elem.installation_state == (

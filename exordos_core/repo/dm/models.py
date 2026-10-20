@@ -549,8 +549,7 @@ class RepoElement(
             details = ", ".join(
                 sorted(
                     {
-                        f"{binding.element.name} ({binding.element.version}, "
-                        f"UUID: {binding.element.uuid})"
+                        f"{binding.element.name} ({binding.element.version})"
                         for binding in dependents
                     }
                 )
