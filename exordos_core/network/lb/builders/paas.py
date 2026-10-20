@@ -25,6 +25,7 @@ from restalchemy.dm import filters as ra_filters
 
 from exordos_core.elements import constants as cc
 from exordos_core.network.lb.dm import models
+from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
 
@@ -60,6 +61,12 @@ class LBBuilder(builder.PaaSBuilder):
 
         vhosts = instance.get_vhosts()
         backend_pools = instance.get_backend_pools()
+
+        for vhost in vhosts:
+            for route in vhost.get("routes", {}).values():
+                for action in route["cond"]["actions"]:
+                    if action["kind"] == "local_dir_download":
+                        action["url"] = self._resolve_artifact(action["url"])
 
         if instance.type.kind == "core":
             nodes = self.get_actual_nodeset(instance).nodes
@@ -106,6 +113,18 @@ class LBBuilder(builder.PaaSBuilder):
             instance.status = cc.ServiceStatus.IN_PROGRESS.value
 
         return actual_resources
+
+    def _resolve_artifact(self, url: str) -> str:
+        if not url.startswith("urn:"):
+            return url
+
+        artifacts = repo_models.RepoArtifact.objects.get_all(
+            filters={"urn": ra_filters.EQ(url)}
+        )
+        if not artifacts:
+            raise ValueError(f"Artifact for URN '{url}' not found")
+        artifact = max(artifacts, key=lambda a: a.element.repository.priority)
+        return artifact.uri
 
     def get_actual_nodeset(self, instance):
         res = ua_models.Resource.objects.get_one(
