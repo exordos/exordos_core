@@ -278,14 +278,33 @@ class TestTokens:
                 },
             )
 
-    def test_update_scope_moves_project(self, admin_client, create_token):
+    @pytest.mark.parametrize("has_binding", [True, False])
+    def test_update_scope_moves_project(
+        self, admin_client, create_token, service_user, has_binding
+    ):
         organization = admin_client.create_organization(name="token-org")
         project = admin_client.create_project(
             organization_uuid=organization["uuid"],
             name="token-project",
         )
+        if has_binding:
+            role = admin_client.create_role(name="token-project-member")
+            admin_client.bind_role_to_user(
+                role["uuid"], service_user["uuid"], project["uuid"]
+            )
         output = create_token().json()
         assert output.get("project") is None
+
+        if not has_binding:
+            with pytest.raises(bazooka_exc.ForbiddenError):
+                admin_client.put(
+                    admin_client.build_resource_uri(["iam/tokens", output["uuid"]]),
+                    json={"scope": f"project:{project['uuid']}"},
+                )
+            token = _get_token(output["uuid"])
+            assert token.project is None
+            assert token.scope == output["scope"]
+            return
 
         response = admin_client.put(
             admin_client.build_resource_uri(["iam/tokens", output["uuid"]]),
