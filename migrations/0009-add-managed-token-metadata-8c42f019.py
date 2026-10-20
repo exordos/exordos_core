@@ -32,7 +32,7 @@ DOWNGRADE = [
 
 class MigrationStep(migrations.AbstarctMigrationStep):
     def __init__(self):
-        self._depends = ["0005-add-managed-tokens-5b1e8c47.py"]
+        self._depends = ["0008-backfill-volume-storage-pool-4a14df.py"]
 
     @property
     def migration_id(self):
