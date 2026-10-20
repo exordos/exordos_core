@@ -31,9 +31,12 @@ def example():
         / "exordos/manifests/examples/certificates.yaml"
     )
     manifest = yaml.safe_load(path.read_text())
+    schema = utils.build_full_schema(
+        utils.load_base_manifest_schema(), utils.load_user_api_spec()
+    )
     utils.validate_manifest(
-        utils.mutate_manifest(manifest, utils.load_full_manifest_schema()),
-        utils.load_full_manifest_schema(),
+        utils.mutate_manifest(manifest, schema),
+        schema,
     )
     value = manifest["resources"]["$core.secret.certificates"]["manual_cert"]
     value["project_id"] = uuid.UUID(value["project_id"])
