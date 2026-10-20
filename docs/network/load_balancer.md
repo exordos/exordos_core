@@ -98,7 +98,11 @@ Routing rules that define how traffic is handled:
       not on `core_agent` LBs (their nginx is shared by every project) or
       `core` LBs with more than one node (each node has its own disk), and
       not together with `rewrite_url` (nginx rewrites before the auth check)
-    - `local_dir_download` - download tar.gz/zstd on LB itself, unpack it and serve data from local dir
+    - `local_dir_download` - download tar.gz/zstd on LB itself, unpack it and serve data from local dir.
+      Its `url` accepts an archive URL or `urn:artifacts:<uuid>` (for example,
+      `url: "{{ artifacts.web }}"` for a named element artifact). Core resolves
+      the URN before sending the configuration to the LB agent, using the
+      highest-priority repository when several repositories contain it.
 - Modifiers (headers, rewrite rules)
     - `headers` - modify headers
         - `auto_header`:

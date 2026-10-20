@@ -487,10 +487,22 @@ class RuleStaticKind(AbstractRuleKind):
 
 
 class ArchivedTarUrl(types.Url):
+    _artifact_pattern = (
+        r"urn:artifacts:[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
+    )
+    pattern = re.compile(
+        rf"(?:{types.Url.pattern.pattern})|(?:^{_artifact_pattern}$)",
+        re.IGNORECASE,
+    )
+
     def validate(self, value):
         if not super().validate(value):
             return False
-        return value.endswith("tar.gz") or value.endswith("tar.zst")
+        return (
+            re.fullmatch(self._artifact_pattern, value) is not None
+            or value.endswith("tar.gz")
+            or value.endswith("tar.zst")
+        )
 
 
 class RuleStaticDownloadKind(AbstractRuleKind):
