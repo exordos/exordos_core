@@ -26,33 +26,33 @@ from exordos_core.compute.builders import pool as builder
 from exordos_core.compute.pool.dm import models
 
 
-@pytest.mark.parametrize("reported", ["historical", None])
-def test_resize_recovers_only_the_pool_reported_by_data_plane(reported):
+@pytest.mark.parametrize("size", [12, 30])
+def test_resize_charges_only_the_pinned_pool(size):
     service = builder.PoolBuilderService(uuid.uuid4(), Mock())
-    historical = ua_pool.ThinStoragePool(
-        pool_type="dir", name="historical", capacity_usable=20, capacity_provisioned=10
+    pinned = ua_pool.ThinStoragePool(
+        pool_type="dir", name="pinned", capacity_usable=20, capacity_provisioned=10
     )
     other = ua_pool.ThinStoragePool(pool_type="dir", name="other", capacity_usable=1000)
     volume = SimpleNamespace(
-        size=12,
+        size=size,
         tier="WARM",
         ephemeral=True,
-        storage_pool=None,
-        pool=SimpleNamespace(storage_pools=[historical, other]),
+        storage_pool="pinned",
+        pool=SimpleNamespace(storage_pools=[pinned, other]),
         status="ACTIVE",
         node_volume=Mock(),
         save=Mock(),
     )
-    actual = SimpleNamespace(size=10, storage_pool=reported)
+    actual = SimpleNamespace(size=10)
+    fits = size - actual.size <= pinned.available
     with patch.object(models.MachineVolume, "from_ua_resource", return_value=actual):
-        assert service._can_update_volume(volume, Mock()) is bool(reported)
+        assert service._can_update_volume(volume, Mock()) is fits
+    assert volume.storage_pool == "pinned"
     assert other.capacity_provisioned == 0
-    if reported:
-        assert volume.storage_pool == "historical"
-        assert historical.capacity_provisioned == 12
+    if fits:
+        assert pinned.capacity_provisioned == 10 + size - actual.size
     else:
-        assert volume.storage_pool is None
-        assert historical.capacity_provisioned == 10
+        assert pinned.capacity_provisioned == 10
         assert volume.status == "ERROR"
 
 
