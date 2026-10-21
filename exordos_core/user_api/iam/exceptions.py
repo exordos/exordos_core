@@ -15,6 +15,7 @@
 #    under the License.
 
 from gcl_iam import exceptions as iam_exc
+from restalchemy.common import exceptions as ra_e
 
 from exordos_core.common import exceptions
 
@@ -312,3 +313,7 @@ class CanNotAddUserToProject(
         " `{uuid}`. This action requires the `{rule}`, which has not"
         " been granted."
     )
+
+
+class ServiceUserEmailDomainTooLong(ra_e.ValidationErrorException):
+    message = "The caller's email domain must not exceed 95 characters for service-user creation."
