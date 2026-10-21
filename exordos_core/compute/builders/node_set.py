@@ -24,6 +24,7 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.compute.node_set.dm import models
+from exordos_core.user_api.network.dm import models as network_models
 
 LOG = logging.getLogger(__name__)
 
@@ -122,6 +123,36 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
 
         new_target_nodes = {n.uuid: n for n in nodes}
 
+        primary_ports = (
+            {
+                str(port.node): port
+                for port in compute_models.Port.objects.get_all(
+                    filters={
+                        "node": dm_filters.In(list(new_target_nodes)),
+                        "index": dm_filters.EQ(0),
+                    }
+                )
+            }
+            if new_target_nodes
+            else {}
+        )
+        floating_ips = {
+            str(address.port): str(address.address)
+            for address in (
+                network_models.Address.objects.get_all(
+                    filters={
+                        "port": dm_filters.In(
+                            [port.uuid for port in primary_ports.values()]
+                        ),
+                        "project_id": dm_filters.EQ(instance.project_id),
+                        "kind": dm_filters.EQ("floating"),
+                    }
+                )
+                if primary_ports
+                else []
+            )
+        }
+
         for _, actual in infra.infra_objects:
             if actual is None:
                 continue
@@ -142,8 +173,11 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
             uuid_str = str(actual.uuid)
             actual_nodes[uuid_str] = {}
 
-            if ipv4 := actual.default_network.get("ipv4"):
-                actual_nodes[uuid_str]["ipv4"] = ipv4
+            if port := primary_ports.get(uuid_str):
+                if port.ipv4 is not None:
+                    actual_nodes[uuid_str]["ipv4"] = str(port.ipv4)
+                if floating_ip := floating_ips.get(str(port.uuid)):
+                    actual_nodes[uuid_str]["floating_ip"] = floating_ip
 
             nodes_status.append(actual.status)
 

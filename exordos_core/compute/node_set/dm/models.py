@@ -22,6 +22,12 @@ from exordos_core.compute.dm import models as compute_models
 
 
 class Node(compute_models.Node):
+    def get_resource_target_fields(self) -> tp.Collection[str]:
+        fields = super().get_resource_target_fields()
+        if self.default_network is not None:
+            fields = fields | frozenset(("default_network",))
+        return fields
+
     @classmethod
     def get_resource_kind(cls) -> str:
         """Return the resource kind."""
@@ -68,6 +74,7 @@ class NodeSet(compute_models.NodeSet):
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
                 disk_spec=self.disk_spec.node_spec(self, node_uuid),
+                default_network=self.default_network,
             )
             nodes.append(node)
 

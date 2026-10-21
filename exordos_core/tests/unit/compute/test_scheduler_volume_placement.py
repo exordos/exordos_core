@@ -310,6 +310,7 @@ def test_idle_machine_selection_skips_pool_without_requested_disk_policy(
     )
     monkeypatch.setattr(scheduler, "_get_unscheduled_nodes", lambda: [node])
     monkeypatch.setattr(scheduler, "_get_idle_machines", lambda: machines)
+    monkeypatch.setattr(scheduler, "_hypervisor_nodes", lambda: set())
     assert scheduler._schedule_on_existing_machines([unsuitable, suitable]) == []
     machines[0].machine.save.assert_not_called()
     machines[1].machine.save.assert_called_once()

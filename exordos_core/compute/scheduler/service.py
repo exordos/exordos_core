@@ -414,6 +414,18 @@ class SchedulerService(basic.BasicService):
         pool.pool.avail_cores -= machine.cores
         pool.pool.avail_ram -= machine.ram
 
+    def _hypervisor_nodes(self) -> tp.Set[sys_uuid.UUID]:
+        """Nodes that *are* a hypervisor rather than run on one.
+
+        `register-agent` gives the host's agent a node for its identity; it is
+        not a workload and would otherwise fail scheduling forever.
+        """
+        return {
+            pool.hypervisor_node
+            for pool in models.MachinePool.objects.get_all()
+            if pool.hypervisor_node is not None
+        }
+
     def _machine_has_disk_capacity(self, node, machine, pools):
         if not node.volumes:
             return True
@@ -432,7 +444,10 @@ class SchedulerService(basic.BasicService):
     def _schedule_on_existing_machines(
         self, pools=None
     ) -> tp.Tuple[base.MachineBundle, ...]:
-        unscheduled = self._get_unscheduled_nodes()
+        hypervisors = self._hypervisor_nodes()
+        unscheduled = tuple(
+            u for u in self._get_unscheduled_nodes() if u.node.uuid not in hypervisors
+        )
 
         # TODO(akremenetsky): Idle machines are limited by some number
         # in SQL query and it's maybe a problem if we have a lot of

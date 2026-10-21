@@ -923,6 +923,10 @@ class Resource(
                 "Target resource %s has been updated.",
                 self.target_resource,
             )
+        elif self.target_resource.value != target_state:
+            self.target_resource.value = target_state
+            self.target_resource.tracked_at = self.updated_at
+            self.target_resource.update()
         elif self.target_resource.full_hash != self.full_hash:
             self.target_resource.full_hash = self.full_hash
             self.target_resource.update()
