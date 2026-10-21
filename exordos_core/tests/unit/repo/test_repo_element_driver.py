@@ -38,7 +38,7 @@ class TestMakeInstalledManifest:
         em_manifest.name = name
         em_manifest.version = version
         em_manifest.description = "Test manifest"
-        em_manifest.project_id = c.ZERO_UUID
+        em_manifest.project_id = c.ADMIN_PROJECT_UUID
         em_manifest.api_version = "v1"
         em_manifest.schema_version = 1
         em_manifest.openapi_spec = None
@@ -191,7 +191,7 @@ class TestMakeEmManifest:
             name="core",
             version="1.0.0",
             description="Test",
-            project_id=c.ZERO_UUID,
+            project_id=c.ADMIN_PROJECT_UUID,
             manifest=manifest,
         )
 
@@ -223,7 +223,7 @@ class TestMakeEmManifest:
             name="core",
             version="1.0.0",
             description="Test",
-            project_id=c.ZERO_UUID,
+            project_id=c.ADMIN_PROJECT_UUID,
             manifest={"name": "core", "version": "1.0.0", "resources": {}},
         )
 
