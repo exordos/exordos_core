@@ -39,6 +39,7 @@ class LBController(
 
     __resource__ = resources.ResourceByRAModel(
         models.LB,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -60,6 +61,7 @@ class VhostController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Vhost,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -81,6 +83,7 @@ class VhostRouteController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Route,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -102,6 +105,7 @@ class BackendPoolController(
 
     __resource__ = resources.ResourceByRAModel(
         models.BackendPool,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
@@ -122,6 +126,7 @@ class BorderController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Border,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,
