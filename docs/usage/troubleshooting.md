@@ -37,6 +37,20 @@ node hasn't been scheduled yet.
 
 See [Local Deployment](local_deployment.md) for hypervisor setup requirements.
 
+## An image changes while the guest agent is offline
+
+For a managed guest outside the Core set, an image change requires network boot.
+When the actual guest report is temporarily absent, the pool builder compares the
+previous target image with the new image. CPU/RAM/hostname changes preserve a
+pending network boot and its boot-network port until the guest reports `FLASHED`;
+the existing reconciliation then switches to disk boot and the main network.
+Guests already using disk boot keep it for non-image changes. Core nodes retain
+their autonomous update path.
+
+A missing report alone does not mean the image changed. Check the previous and
+new image references before investigating a boot loop or requesting another
+reconciliation of an existing target.
+
 ## `$core.config.configs` fails instead of rendering
 
 Both `project_id` and `body.kind` are required fields on a `Config` resource — neither has a default.

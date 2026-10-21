@@ -300,10 +300,21 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
             if not self._is_core_machine(machine):
-                _, guest_actual = machine_guest_pair
+                guest_target, guest_actual = machine_guest_pair
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
-                if guest_actual and guest_actual.image != resolved_image:
+                # An offline guest still has its previous target image. Use it
+                # to detect image changes without reflashing CPU/RAM-only updates.
+                known_image = (
+                    guest_actual.image
+                    if guest_actual is not None
+                    else guest_target.image
+                )
+                # Only the FLASHED transition may finish a pending network boot.
+                if (
+                    known_image != resolved_image
+                    or guest_target.boot == ua_pool.BootAlternative.network
+                ):
                     boot = ua_pool.BootAlternative.network.value
                     # Any port for the boot network is fine. The port will be replaced
                     # after the machine is flashed and switched to the main network.
