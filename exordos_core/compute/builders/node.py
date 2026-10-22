@@ -129,6 +129,10 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         return volume.index == 0
 
     def _actualize_volume(self, target: models.Volume, actual: models.Volume) -> None:
+        if (target.tier, target.ephemeral) != (actual.tier, actual.ephemeral):
+            raise ValueError(
+                "Changing the tier or ephemeral policy of an existing disk is unsupported"
+            )
         actual.size = target.size
         actual.image = target.image
         actual.name = target.name
@@ -177,6 +181,8 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
                 or target.image != actual.image
                 or target.label != actual.label
                 or target.device_type != actual.device_type
+                or target.tier != actual.tier
+                or target.ephemeral != actual.ephemeral
                 or target.boot != actual.boot
             ):
                 # If the root volume is updated, we need to update the machine

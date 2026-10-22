@@ -46,6 +46,7 @@ from exordos_core.config import service as config_service
 from exordos_core.dns_sync import service as dns_sync_service
 from exordos_core.elements.builders import service as service_builder_svc
 from exordos_core.elements.services import builders as em_builders
+from exordos_core.iam import service as iam_service
 from exordos_core.janitor import service as janitor_service
 from exordos_core.metrics import opts as metrics_opts
 from exordos_core.metrics import service as metrics_service
@@ -215,6 +216,9 @@ class GeneralService(basic.BasicService):
         else:
             event_sender = None
         em_builder = em_builders.ElementManagerBuilder(iter_min_period=iter_min_period)
+        token_renewal = iam_service.TokenRenewalService(
+            iter_min_period=iter_min_period,
+        )
         janitor = janitor_service.ExpiredEmailConfirmationCodeJanitorService(
             iter_min_period=60 * 60,
         )
@@ -259,6 +263,7 @@ class GeneralService(basic.BasicService):
             secret_builder,
             password_builder,
             cert_builder,
+            token_renewal,
             em_builder,
             dns_sync,
             # non-essential services should be last

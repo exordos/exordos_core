@@ -61,18 +61,31 @@ class TestUninstallDependencyCheck:
 
     def test_uninstall_rejected_when_dependents_exist(self):
         elem = self._make_installed_element()
-
-        fake_binding = mock.MagicMock()
+        backup = mock.MagicMock()
+        backup.element.name = "communal_pg_cluster_backup"
+        backup.element.version = "2.6.4"
+        ecosystem = mock.MagicMock()
+        ecosystem.element.name = "exordos_ecosystem"
+        ecosystem.element.version = "0.0.92"
         with mock.patch.object(
             models.RepoElementDepsBinding,
             "objects",
         ) as mock_objects:
-            mock_objects.get_all.return_value = [fake_binding]
+            mock_objects.get_all.return_value = [ecosystem, backup, backup]
 
-            with pytest.raises(
-                common_exc.ValidateException, match="other elements depend on it"
-            ):
+            with pytest.raises(common_exc.ValidateException) as error:
                 models.RepoElement.uninstall(elem)
+
+        assert str(error.value) == (
+            "validate error: Element cannot be uninstalled: "
+            "other elements depend on it: "
+            "communal_pg_cluster_backup (2.6.4), "
+            "exordos_ecosystem (0.0.92)"
+        )
+        elem.update.assert_not_called()
+        assert elem.installation_state == (
+            models.RepoElementInstallationState.INSTALLED.value
+        )
 
     def test_uninstall_allowed_when_no_dependents(self):
         elem = self._make_installed_element()

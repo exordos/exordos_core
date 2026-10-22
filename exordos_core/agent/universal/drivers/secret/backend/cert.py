@@ -18,6 +18,10 @@ import logging
 import typing as tp
 
 from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.asymmetric import ed448
 from gcl_certbot_plugin import acme
 from gcl_certbot_plugin import clients as dns_clients
 from gcl_certbot_plugin.acme import acme_lib_client
@@ -72,6 +76,35 @@ class CertBotBackendClient(base.AbstractBackendClient):
 
         return cert.to_resource_value()
 
+    @staticmethod
+    def _manual_certificate(resource: models.Resource) -> driver_dm.Certificate:
+        value = resource.value
+        certificate = secret_dm.Certificate.validate_manual_certificate(
+            value.get("key"), value.get("cert")
+        )
+        private_key = serialization.load_pem_private_key(
+            value["key"].encode(), password=None
+        )
+        csr = (
+            x509.CertificateSigningRequestBuilder()
+            .subject_name(certificate.subject)
+            .sign(
+                private_key,
+                None
+                if isinstance(
+                    private_key, (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)
+                )
+                else hashes.SHA256(),
+            )
+        )
+        return driver_dm.Certificate.from_cert_resource(
+            resource,
+            value["key"].encode(),
+            csr.public_bytes(serialization.Encoding.PEM),
+            value["cert"],
+            certificate.not_valid_after_utc,
+        )
+
     def create(self, resource: models.Resource) -> tp.Dict[str, tp.Any]:
         """Creates the resource. Returns the created resource."""
         try:
@@ -80,6 +113,11 @@ class CertBotBackendClient(base.AbstractBackendClient):
             pass
         else:
             raise exceptions.ResourceAlreadyExists(resource=resource)
+
+        if resource.value.get("method", {}).get("kind") == "manual":
+            driver_cert = self._manual_certificate(resource)
+            driver_cert.save()
+            return driver_cert.to_resource_value()
 
         cert = secret_dm.Certificate.from_ua_resource(resource)
 
@@ -111,14 +149,33 @@ class CertBotBackendClient(base.AbstractBackendClient):
         except ra_exc.RecordNotFound:
             raise exceptions.ResourceNotFound(resource=resource)
 
-        # If domains changed, issue a new certificate.
+        if resource.value.get("method", {}).get("kind") == "manual":
+            driver_cert = self._manual_certificate(resource)
+            # Update the existing row atomically so a failed write keeps the old pair.
+            for field in (
+                "pkey",
+                "csr",
+                "fullchain",
+                "expiration_at",
+                "meta",
+                "status",
+            ):
+                setattr(cert, field, getattr(driver_cert, field))
+            cert.update()
+            return cert.to_resource_value()
+
+        # If switching from manual or changing domains, issue a new certificate.
         # We use create_cert (not renew_cert) because the domain set is
         # fundamentally different – the old key/CSR may not cover the
         # new domains.
-        if set(cert["meta"]["domains"]) != set(resource.value["domains"]):
+        if cert.meta.get("method", {}).get("kind") == "manual" or set(
+            cert["meta"]["domains"]
+        ) != set(resource.value["domains"]):
             LOG.info(
-                "Domains changed for cert %s, re-issuing: %s -> %s",
+                "Certificate %s requires re-issuing: method %s -> %s, domains %s -> %s",
                 resource.uuid,
+                cert.meta.get("method", {}).get("kind"),
+                resource.value.get("method", {}).get("kind"),
                 cert["meta"]["domains"],
                 resource.value["domains"],
             )
@@ -187,5 +244,6 @@ class CertBotBackendClient(base.AbstractBackendClient):
                 "uuid": dm_filters.EQ(resource.uuid),
             }
         )
-        acme.revoke_cert(self._get_or_create_acme_client(), cert.fullchain)
+        if cert.meta.get("method", {}).get("kind") != "manual":
+            acme.revoke_cert(self._get_or_create_acme_client(), cert.fullchain)
         cert.delete()

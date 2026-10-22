@@ -44,6 +44,16 @@ class ComputeController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/compute/"
 
 
+class VolumeResource(resources.ResourceByRAModel):
+    def generate_schema_object(self, method, openapi_version):
+        schema = super().generate_schema_object(method, openapi_version)
+        if method == ra_c.CREATE:
+            # Immutable after creation does not mean forbidden in a create body.
+            for field in ("tier", "ephemeral"):
+                schema["properties"][field].pop("readOnly", None)
+        return schema
+
+
 class VolumesController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
@@ -53,7 +63,7 @@ class VolumesController(
     __policy_name__ = "volume"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = VolumeResource(
         model_class=user_models.Volume,
         process_filters=True,
         convert_underscore=False,

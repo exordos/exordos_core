@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 import logging
 import random
 import typing as tp
@@ -179,15 +180,54 @@ class SchedulerService(basic.BasicService):
             for p in pools
         )
 
+    def _select_storage_pool(
+        self,
+        pool: base.MachinePoolBundle,
+        volume: models.Volume,
+        size: int | None = None,
+    ) -> ua_pool.AbstractStoragePool:
+        """Select a storage pool for `volume`.
+
+        `size` is passed separately (rather than using `volume.size`)
+        since callers also use this for a resize's capacity delta.
+
+        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
+        rules (soft tier match and mandatory ephemeral match).
+        """
+        size = volume.size if size is None else size
+        names = [sp.name for sp in pool.pool.storage_pools]
+        pools = [sp for sp in pool.pool.storage_pools if names.count(sp.name) == 1]
+        storage_pool = ua_pool.select_storage_pool(
+            pools, volume.tier, volume.ephemeral, size
+        )
+        if storage_pool is not None:
+            return storage_pool
+
+        raise ValueError(
+            f"No storage pool with {size}GiB free capacity in pool {pool.pool.uuid}"
+        )
+
+    def _find_storage_pool_by_name(
+        self, pool: base.MachinePoolBundle, name: str
+    ) -> ua_pool.AbstractStoragePool:
+        matches = [sp for sp in pool.pool.storage_pools if sp.name == name]
+
+        if not matches:
+            raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
+
+        if len(matches) > 1:
+            # Ambiguous: silently picking one could account capacity
+            # against the wrong physical pool.
+            raise ValueError(
+                f"Storage pool name {name!r} is not unique in pool {pool.pool.uuid}"
+            )
+
+        return matches[0]
+
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        # TODO(akremenetsky): Rework this simple implementation.
-        # At the moment we just take the first storage pool
-        # and allocate additional space for the volume.
-        # But we need to figure out which storage pool is
-        # the owner of the volume.
-        storage_pool = pool.pool.storage_pools[0]
+        storage_pool = self._select_storage_pool(pool, volume)
         storage_pool.allocate_capacity(volume.size)
 
         pool_volume = models.MachineVolume(
@@ -199,11 +239,26 @@ class SchedulerService(basic.BasicService):
             boot=volume.boot,
             label=volume.label,
             device_type=volume.device_type,
+            tier=volume.tier,
+            ephemeral=volume.ephemeral,
+            storage_pool=storage_pool.name,
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
 
         return pool_volume
+
+    def _existing_storage_pool(
+        self, pool: base.MachinePoolBundle, pool_volume: models.MachineVolume
+    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+        """The storage pool `pool_volume` actually lives on, if known."""
+        if not pool_volume.storage_pool:
+            return None
+
+        try:
+            return self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
+        except ValueError:
+            return None
 
     def _place_volume_into_pool(
         self, volume: models.Volume, pool: base.MachinePoolBundle
@@ -221,46 +276,95 @@ class SchedulerService(basic.BasicService):
             return self._build_machine_volume(pool, volume)
 
         volumes = []
+        exact_volumes = []
         for pool_volume in pool.volumes:
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
             # volumes. Is the size is a target or actual field?
-            if pool_volume.image == volume.image and pool_volume.size <= volume.size:
-                volumes.append(pool_volume)
+            if pool_volume.image != volume.image or pool_volume.size > volume.size:
+                continue
 
-        # No volumes found, just create a new volume later
-        if not volumes:
-            return self._build_machine_volume(pool, volume)
+            # A volume that's actually been scheduled always knows which
+            # storage pool it lives on. If it doesn't (predates
+            # storage_pool tracking) or that pool no longer exists
+            # (renamed/removed), there's no way to tell where its data
+            # actually is - skip it rather than guessing, and let a
+            # fresh volume be created instead.
+            actual_pool = self._existing_storage_pool(pool, pool_volume)
+            if actual_pool is None or actual_pool.ephemeral != volume.ephemeral:
+                continue
 
-        # Figure out the best volume
-        volumes.sort(key=lambda v: volume.size - v.size)
-        pool_volume = volumes[0]
-        need_size = volume.size - pool_volume.size
+            volumes.append(pool_volume)
 
-        # TODO(akremenetsky): Rework this simple implementation.
-        # At the moment we just take the first storage pool
-        # and allocate additional space for the volume.
-        # But we need to figure out which storage pool is
-        # the owner of the volume.
-        storage_pool = pool.pool.storage_pools[0]
+            # Classify by the tier of the pool the volume is actually on,
+            # not the tier it was originally requested with: a soft-match
+            # fallback (see _select_storage_pool) can place a volume on a
+            # pool with different tier/ephemeral than pool_volume.tier/
+            # .ephemeral, which only ever record the original request.
+            if (
+                actual_pool.tier == volume.tier
+                and actual_pool.ephemeral == volume.ephemeral
+            ):
+                exact_volumes.append(pool_volume)
 
-        # Check if the storage pool has enough space
-        if need_size and storage_pool.available < need_size:
-            return self._build_machine_volume(pool, volume)
-
-        # Allocate additional space for the volume
-        storage_pool.allocate_capacity(need_size)
-
-        # Remove the volume from the pool
-        pool.volumes.remove(pool_volume)
-        LOG.debug(
-            "Found machine volume %s for node volume %s",
-            pool_volume,
-            volume,
+        # Prefer a volume already on the requested tier/ephemeral tier,
+        # but reusing one from a different tier (soft match, like storage
+        # pool placement above) beats downloading the image again onto a
+        # brand new volume - try exact matches first, then anything else,
+        # and only give up on every candidate before creating a new one.
+        exact_volumes.sort(key=lambda v: volume.size - v.size)
+        other_volumes = sorted(
+            (v for v in volumes if v not in exact_volumes),
+            key=lambda v: volume.size - v.size,
         )
 
-        pool_volume.node_volume = volume.uuid
-        return pool_volume
+        for pool_volume in exact_volumes + other_volumes:
+            need_size = volume.size - pool_volume.size
+            # Already resolvable, or classification above would have
+            # skipped this candidate.
+            storage_pool = self._find_storage_pool_by_name(
+                pool, pool_volume.storage_pool
+            )
+
+            # Not enough space for the resize - try the next candidate
+            # instead of giving up on reuse altogether.
+            if need_size and storage_pool.available < need_size:
+                continue
+
+            # Allocate additional space for the volume
+            storage_pool.allocate_capacity(need_size)
+
+            # Remove the volume from the pool
+            pool.volumes.remove(pool_volume)
+            LOG.debug(
+                "Found machine volume %s for node volume %s",
+                pool_volume,
+                volume,
+            )
+
+            pool_volume.node_volume = volume.uuid
+            return pool_volume
+
+        # No idle volume could be reused - create a new one.
+        return self._build_machine_volume(pool, volume)
+
+    def _allocate_node_volumes(
+        self, node: base.NodeBundle, pool: base.MachinePoolBundle
+    ) -> list[models.MachineVolume]:
+        capacities = [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
+        idle_volumes = list(pool.volumes)
+        owners = [(volume, volume.node_volume) for volume in idle_volumes]
+        try:
+            return [
+                self._place_volume_into_pool(volume, pool) for volume in node.volumes
+            ]
+        except Exception:
+            for storage_pool, capacity in capacities:
+                storage_pool.capacity_provisioned = capacity
+            pool.volumes[:] = idle_volumes
+            for volume, owner in owners:
+                volume.node_volume = owner
+            raise
 
     def _place_node_into_pool(
         self, node: base.NodeBundle, pool: base.MachinePoolBundle
@@ -286,9 +390,7 @@ class SchedulerService(basic.BasicService):
         )
 
         # Place volumes into the pool
-        volume_allocations = []
-        for node_volume in node.volumes:
-            volume_allocations.append(self._place_volume_into_pool(node_volume, pool))
+        volume_allocations = self._allocate_node_volumes(node, pool)
 
         # Set pool to machine, node and volumes
         machine.pool = pool.pool.uuid
@@ -312,7 +414,24 @@ class SchedulerService(basic.BasicService):
         pool.pool.avail_cores -= machine.cores
         pool.pool.avail_ram -= machine.ram
 
-    def _schedule_on_existing_machines(self) -> tp.Tuple[base.MachineBundle, ...]:
+    def _machine_has_disk_capacity(self, node, machine, pools):
+        if not node.volumes:
+            return True
+        pool = pools.get(machine.machine.pool)
+        if pool is None:
+            return False
+        # Run the same placement algorithm on a copy: sum all allocations,
+        # including reusable disks, without changing real capacity or ownership.
+        candidate = copy.deepcopy(pool)
+        try:
+            self._allocate_node_volumes(node, candidate)
+        except ValueError:
+            return False
+        return True
+
+    def _schedule_on_existing_machines(
+        self, pools=None
+    ) -> tp.Tuple[base.MachineBundle, ...]:
         unscheduled = self._get_unscheduled_nodes()
 
         # TODO(akremenetsky): Idle machines are limited by some number
@@ -320,6 +439,9 @@ class SchedulerService(basic.BasicService):
         # idle machines. The fetched machines may be not suitable for
         # unscheduled nodes and we will create another machines.
         idle_machines = self._get_idle_machines()
+        pools = {
+            p.pool.uuid: p for p in (self._get_pools() if pools is None else pools)
+        }
 
         idle_hws = [
             m
@@ -345,6 +467,12 @@ class SchedulerService(basic.BasicService):
             # placement constraints.
             for filter in self._machine_filters:
                 idle_machines = filter.filter(unscheduled_node, idle_machines)
+
+            idle_machines = [
+                m
+                for m in idle_machines
+                if self._machine_has_disk_capacity(unscheduled_node, m, pools)
+            ]
 
             # There are no available HW machines for this node
             # This means we unable to proceed scheduling process
@@ -450,22 +578,24 @@ class SchedulerService(basic.BasicService):
                     w0 + w1 for w0, w1 in zip(accumulated_weights, weights)
                 ]
 
-            # Choose the best pool, it means the one with the highest weight
-            index = accumulated_weights.index(max(accumulated_weights))
-            pool = pools[index]
-            if not pool:
-                LOG.warning("No pools found to schedule node %s", node.node.uuid)
-                continue
-
-            # The final step is to place the node into the pool
-            try:
-                self._place_node_into_pool(node, pool)
-            except Exception:
-                LOG.exception(
-                    "Error placing node %s into pool %s",
-                    node.node.uuid,
-                    pool.pool.uuid,
-                )
+            # Try eligible pools in descending weight order. A pool can have
+            # enough CPU/RAM while lacking the disk policy or capacity required.
+            ranked = sorted(
+                zip(accumulated_weights, pools),
+                key=lambda entry: entry[0],
+                reverse=True,
+            )
+            for _, pool in ranked:
+                try:
+                    self._place_node_into_pool(node, pool)
+                except Exception:
+                    LOG.exception(
+                        "Error placing node %s into pool %s",
+                        node.node.uuid,
+                        pool.pool.uuid,
+                    )
+                else:
+                    break
 
     def _schedule_pools(self, pool_builders: tp.List[ua_models.UniversalAgent]) -> None:
         unsheduled = self._get_unscheduled_pools()
@@ -618,7 +748,7 @@ class SchedulerService(basic.BasicService):
             # If there are no available machines for a node,
             # the nodes just return
             try:
-                unscheduled_nodes = self._schedule_on_existing_machines()
+                unscheduled_nodes = self._schedule_on_existing_machines(pools)
             except Exception:
                 LOG.exception("Error scheduling nodes:")
                 unscheduled_nodes = []

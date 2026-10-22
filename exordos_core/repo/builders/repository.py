@@ -22,6 +22,7 @@ from gcl_looper.services.oslo import base as oslo_base
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.services import builder as sdk_builder
 from packaging import version as packaging_version
+from restalchemy.dm import filters as ra_filters
 
 from exordos_core.repo.dm import models
 
@@ -35,6 +36,9 @@ class Repository(models.Repository, ua_models.InstanceMixin):
     @classmethod
     def get_resource_kind(cls) -> str:
         return "repo_proxy_repository"
+
+    def get_resource_ignore_fields(self) -> tp.Collection[str]:
+        return {*super().get_resource_ignore_fields(), "refresh_requested"}
 
 
 class RepoProxyBuilderService(
@@ -62,11 +66,9 @@ class RepoProxyBuilderService(
 
         # Check each repository for refresh
         for repo in repositories:
-            # Skip repositories without refresh rate
-            if not repo.refresh_rate:
-                continue
-
-            if repo.next_refresh and repo.next_refresh <= now:
+            if repo.refresh_requested or (
+                repo.refresh_rate and repo.next_refresh and repo.next_refresh <= now
+            ):
                 LOG.info(
                     "Repository %s needs refresh, forcing update",
                     repo.name,
@@ -113,9 +115,11 @@ class RepoProxyBuilderService(
 
     def _refresh_repository(self, instance: models.Repository) -> None:
         """Actualize elements in the repository."""
-        # Get existing elements for this repository
-        existing_elements = {
-            (elem.name, elem.version): elem
+        # Get existing elements for this repository. Only the UUIDs are kept:
+        # the full records carry the manifest, specification and inventory
+        # dicts, and are needed only for the few elements to be deleted below.
+        existing_uuids = {
+            (elem.name, elem.version): elem.uuid
             for elem in models.RepoElement.objects.get_all(
                 filters={"repository": instance.uuid},
             )
@@ -125,9 +129,12 @@ class RepoProxyBuilderService(
         inventory_elements = {
             (e.name, e.version): e for e in instance.iter_elements_in_inventory()
         }
+        inventory_keys = frozenset(inventory_elements)
         new_elements_count = 0
-        for key in inventory_elements.keys() - existing_elements.keys():
-            element = inventory_elements[key]
+        for key in inventory_keys - existing_uuids.keys():
+            # Drop the element from the mapping once handled: in COPY mode it
+            # holds the full downloaded manifest, specification and inventory.
+            element = inventory_elements.pop(key)
 
             # In COPY mode, actualize element to download full data
             if instance.sync_mode == models.SyncMode.COPY:
@@ -147,9 +154,17 @@ class RepoProxyBuilderService(
         # Remove old elements that are no longer in inventory,
         # but keep installed ones
         deleted_elements_count = 0
-        for key in existing_elements.keys() - inventory_elements.keys():
-            element = existing_elements[key]
-
+        stale_uuids = [
+            existing_uuids[key] for key in existing_uuids.keys() - inventory_keys
+        ]
+        stale_elements = (
+            models.RepoElement.objects.get_all(
+                filters={"uuid": ra_filters.In(stale_uuids)},
+            )
+            if stale_uuids
+            else []
+        )
+        for element in stale_elements:
             # Skip deletion if element is installed
             if (
                 element.installation_state
@@ -256,15 +271,15 @@ class RepoProxyBuilderService(
         resource: ua_models.TargetResource,
         derivatives: tp.Collection[ua_models.TargetResource] = tuple(),
     ) -> None:
-        """Handle repository refresh if next_refresh time has passed."""
+        """Handle an explicit refresh or an elapsed periodic deadline."""
         super().post_update_instance_resource(instance, resource, derivatives)
 
-        # Check if refresh is needed
-        if not instance.refresh_rate:
-            return
-
         now = datetime.datetime.now(datetime.timezone.utc)
-        if instance.next_refresh and instance.next_refresh <= now:
+        if instance.refresh_requested or (
+            instance.refresh_rate
+            and instance.next_refresh
+            and instance.next_refresh <= now
+        ):
             LOG.info(
                 "Refreshing repository %s",
                 instance.name,
@@ -274,20 +289,23 @@ class RepoProxyBuilderService(
             except Exception:
                 # A failed refresh must not become a retry storm.
                 LOG.exception(
-                    "Repository %s refresh failed; retrying in %ss",
+                    "Repository %s refresh failed; periodic refresh interval: %ss",
                     instance.name,
                     instance.refresh_rate,
                 )
                 if instance.status != models.RepositoryStatus.DISABLED.value:
                     instance.status = models.RepositoryStatus.ERROR.value
-                instance.next_refresh = datetime.datetime.now(
-                    datetime.timezone.utc
-                ) + datetime.timedelta(seconds=instance.refresh_rate)
+                if instance.refresh_rate:
+                    instance.next_refresh = datetime.datetime.now(
+                        datetime.timezone.utc
+                    ) + datetime.timedelta(seconds=instance.refresh_rate)
             else:
                 # A successful refresh clears a previous failure. Only
                 # clear ERROR so a user-set DISABLED is left untouched.
                 if instance.status == models.RepositoryStatus.ERROR.value:
                     instance.status = models.RepositoryStatus.ACTIVE.value
+            finally:
+                instance.refresh_requested = False
 
     def can_actualize_outdated_instance_resource(
         self, instance: ua_models.InstanceMixin

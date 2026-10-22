@@ -88,7 +88,6 @@ class TestSpec:
         manifest.install()
 
         manifest.validate_schema_base()
-        manifest.validate_schema_full()
 
         manifest.uninstall()
         manifest.delete()

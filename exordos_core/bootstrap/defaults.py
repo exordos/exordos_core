@@ -404,6 +404,14 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
         # "exordos_local_hyper" kind) so they don't trip up spec kinds
         # that don't define them.
         hypervisor = {k: v for k, v in hypervisor.items() if v is not None}
+        if hypervisor.get("kind") == "exordos_local_hyper" and isinstance(
+            hypervisor.get("storage_pool"), str
+        ):
+            hypervisor["storage_pool"] = (
+                [{"name": hypervisor["storage_pool"]}]
+                if hypervisor["storage_pool"]
+                else []
+            )
         pool_data = {
             "name": "hypervisor",
             "machine_type": "VM",

@@ -16,9 +16,8 @@
 
 """Write the table of resource types a manifest may declare.
 
-Every row is read out of `full_spec.yaml`, so the page says what the
-installation would actually accept. Run before building the documentation;
-nothing else reads these pages.
+Every row is derived from the user API create schemas. Run before building
+the documentation; nothing else reads these pages.
 
 Both languages are written here because the table is the same table in
 either: it was translated by hand once and then drifted, ending up five
@@ -80,7 +79,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    resources = utils.extract_resources_for_markdown(utils.load_full_manifest_schema())
+    schema = utils.build_full_schema(
+        utils.load_base_manifest_schema(), utils.load_user_api_spec()
+    )
+    resources = utils.extract_resources_for_markdown(schema)
     os.makedirs(args.output_dir, exist_ok=True)
     for page in PAGES:
         path = os.path.join(args.output_dir, page.filename)
