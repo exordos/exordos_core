@@ -215,7 +215,7 @@ class TestCrossTenantWrites:
         private = _foreign_subnet("private", "10.76.0.0/24")
         client = user_api_client(auth_test1_user, permissions=["network.port.create"])
         port = port_factory(subnet_uuid=private.uuid)
-        with pytest.raises(bazooka_exc.BadRequestError):
+        with pytest.raises(bazooka_exc.ForbiddenError):
             client.post(self._ports(client), json=port)
 
     def test_a_subnet_cannot_cite_a_foreign_network(

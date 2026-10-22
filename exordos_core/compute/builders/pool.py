@@ -235,23 +235,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         corresponding :class:`RepoArtifact` and return its ``uri``.
         Otherwise return the image as-is.
         """
-        if image is None or not image.startswith("urn:"):
-            return image
-
-        # The same element may exist in multiple repositories, so the URN
-        # can match several artifacts. Pick the one from the highest-priority
-        # repository (Repository.priority: higher value = more priority).
-        artifacts = repo_models.RepoArtifact.objects.get_all(
-            filters={"urn": dm_filters.EQ(image)}
-        )
-        if not artifacts:
-            raise ValueError(f"Artifact for URN '{image}' not found")
-
-        if len(artifacts) == 1:
-            return artifacts[0].uri
-
-        artifact = max(artifacts, key=lambda a: a.element.repository.priority)
-        return artifact.uri
+        return repo_models.resolve_image_uri(image)
 
     def _actualize_machine_derivatives_on_create_update(
         self,

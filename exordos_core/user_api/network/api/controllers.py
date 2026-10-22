@@ -351,12 +351,21 @@ class PortController(
         from exordos_core.network.contracts import atomic_session
         from exordos_core.network.permissions import gate_allocated_private_address
         from exordos_core.network.permissions import gate_explicit_address
+        from exordos_core.network.permissions import gate_foreign_subnet
+
+        project_id = self._ctx_project_id or kwargs.get(
+            "project_id", core_constants.ZERO_UUID
+        )
+        placement = {key: kwargs[key] for key in ("subnet", "network") if key in kwargs}
+        allow_foreign = gate_foreign_subnet(self, placement, project_id)
 
         gate_explicit_address(
             self,
             kwargs,
             self._ctx_project_id or kwargs.get("project_id", core_constants.ZERO_UUID),
+            allow_foreign=allow_foreign,
         )
+        kwargs["_allow_foreign_subnet"] = allow_foreign
         with atomic_session(self.model._get_engine()) as session:
             port = super().create(**kwargs)
             gate_allocated_private_address(self, port, session)

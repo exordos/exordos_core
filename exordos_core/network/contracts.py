@@ -16,7 +16,14 @@ from exordos_core.common import exceptions
 
 
 def resolve_subnet(
-    project_id, subnet=None, network=None, address=None, floating=False, session=None
+    project_id,
+    subnet=None,
+    network=None,
+    address=None,
+    floating=False,
+    session=None,
+    *,
+    allow_foreign=False,
 ):
     from exordos_core.compute.dm import models as compute
     from exordos_core.user_api.network.dm import models as catalog
@@ -35,7 +42,7 @@ def resolve_subnet(
     )
     eligible = []
     for candidate in candidates:
-        if not catalog.may_allocate_in(project_id, candidate):
+        if not allow_foreign and not catalog.may_allocate_in(project_id, candidate):
             continue
         if floating:
             if not catalog.is_floating_pool(candidate):

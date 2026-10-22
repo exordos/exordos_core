@@ -27,6 +27,7 @@ import uuid as sys_uuid
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import evpn_records
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.infra.dm import models as infra_models
 import netaddr
 from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
@@ -41,6 +42,7 @@ from exordos_core.network import ipam
 from exordos_core.network import subnet as subnet_utils
 from exordos_core.network.driver import base
 from exordos_core.network.evpn.dm import models as evpn_models
+from exordos_core.repo.dm import models as repo_models
 from exordos_core.vs.dm import models as vs_models
 
 LOG = logging.getLogger(__name__)
@@ -399,9 +401,19 @@ def _image_origins(subnet) -> tp.List[str]:
             if node_ids
             else []
         )
+        resolved_images = {}
         for node in nodes:
-            image = getattr(getattr(node, "disk_spec", None), "image", None)
-            origin = unreachable_origin(image)
+            disk_spec = getattr(node, "disk_spec", None)
+            image = getattr(disk_spec, "image", None)
+            if isinstance(disk_spec, infra_models.DisksSpec) and disk_spec.disks:
+                image = disk_spec.disks[0].get("image")
+            if image not in resolved_images:
+                try:
+                    resolved_images[image] = repo_models.resolve_image_uri(image)
+                except ValueError:
+                    LOG.debug("Cannot resolve image %r for proxy origins", image)
+                    resolved_images[image] = None
+            origin = unreachable_origin(resolved_images[image])
             if not origin:
                 continue
             if origin not in granted:
