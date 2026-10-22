@@ -147,7 +147,7 @@ class RepoElement(models.RepoElement, ua_models.InstanceWithDerivativesMixin):
 
 
 def _parse_version(version: str) -> tuple[int, int, int, bool, str]:
-    match = _VERSION_RE.match(version.split("+", 1)[0])
+    match = _VERSION_RE.match(version)
     if not match:
         raise ValueError(f"Invalid version format: {version}")
     major = int(match.group("major"))
@@ -162,7 +162,7 @@ def _version_key(version: str) -> tuple[int, int, int, bool, str]:
     return _parse_version(version)
 
 
-def _version_sort_key(version: str) -> tuple[int, int, int, int, str]:
+def _version_sort_key(version: str) -> tuple[bool, int, int, int, str]:
     major, minor, patch, is_release, suffix = _parse_version(version)
     return (not is_release, -major, -minor, -patch, suffix)
 
