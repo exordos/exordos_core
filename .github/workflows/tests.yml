@@ -37,6 +37,8 @@ jobs:
       - name: ruff
         run: |
           tox -e ruff-check
+      - name: Core image build contract
+        run: tox -e build-contract
   Tests:
     runs-on: ubuntu-24.04
     strategy:

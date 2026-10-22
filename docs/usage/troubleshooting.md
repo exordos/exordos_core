@@ -136,6 +136,58 @@ If the database value is empty, the manifest itself has a rendering problem — 
 the database has content but the file on disk doesn't, the node hasn't received it yet — wait, or re-run
 the bootstrap script manually once it has.
 
+## Updating Core from an unpublished local build
+
+Build both the bootstrap image and the compressed raw image used by autonomous
+updates:
+
+```bash
+exordos build --element core --output-dir output .
+exordos deploy --element core --element-dir output --timeout 1800
+```
+
+The default build formats are `qcow2,zst`. If you override
+`GEN_IMG_FORMAT_CORE`, include `zst`: autonomous updates write a raw image to
+disk and cannot write a qcow2 container directly. The rendered Core manifest
+uses `images.exordos_core_raw_zst`, a `urn:images:` reference from the generated
+inventory. The repository resolver selects its download URL; passing a
+`repository` template variable does not override this image reference.
+
+Repository-free deploy serves the local build while it waits for Core to become
+`ACTIVE`. It requires direct connectivity between the build host and the realm.
+For a remote realm, use `--repository <configured-repository>` with a repository
+reachable by that realm. Keep the image source available throughout the reboot
+and download.
+
+Before publishing a changed Core guest target, the running Core probes the
+resolved image URL with a ranged GET and a five-second timeout. HTTP failures,
+network failures, missing URLs and empty responses leave the previous guest
+target unchanged. Reconciliation reports `Core update image is unavailable`;
+restore the selected repository's image access and retry the deployment.
+An unchanged image does not require a new probe.
+
+This check runs in Core, so the currently running version must already include
+it. It checks initial availability, not the complete download, image integrity,
+boot prerequisites, or availability after the reboot.
+
+### Regression checks
+
+Run `tox -e build-contract` to exercise the CLI's real manifest renderer and
+inventory writer without building a VM image. HTTP and target-generation tests
+are in `exordos_core/tests/unit/compute/test_core_image_preflight.py`.
+
+A complete upgrade acceptance run also requires a fresh isolated VM:
+
+1. Save the installed versions, data-disk identity, and a persistent data marker.
+2. Build an unpublished development version; verify its public image URL returns
+   404 and its manifest URN matches the local inventory's `raw.zst` entry.
+3. Deploy through `exordos`, keep the source available, and record the image GET
+   from that source, the guest reboot, Core API recovery and `ACTIVE` status.
+4. Verify the marker, data-disk identity and guest-agent identity survive.
+5. On the patched running Core, test an unavailable replacement image. Verify
+   the diagnostic, unchanged guest target, unchanged boot ID and a working API;
+   restore image access and verify the supported deployment can continue.
+
 ## See also
 
 - [Manifest reference](../em/manifest.md)
