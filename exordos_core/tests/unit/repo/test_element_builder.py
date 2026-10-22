@@ -125,6 +125,10 @@ class TestVersionKey:
 
 
 class TestVersionSortKey:
+    def test_latest_is_not_a_version(self):
+        with pytest.raises(ValueError, match="Invalid version format"):
+            builder_element._version_sort_key("latest")
+
     def test_release_sorts_before_dev(self):
         """Release versions should sort before dev versions (lower key = higher priority)."""
         release_key = builder_element._version_sort_key("1.0.0")
@@ -329,6 +333,21 @@ class TestMatchesVersionConstraint:
 
 
 class TestElementSortKey:
+    @pytest.mark.parametrize("version", ["0.0.0-dev", "1.0.0"])
+    def test_concrete_version_sorts_before_latest_same_priority(self, version):
+        concrete = FakeElement(version=version)
+        latest = FakeElement(version="latest")
+        assert builder_element._element_sort_key(
+            concrete
+        ) < builder_element._element_sort_key(latest)
+
+    def test_higher_priority_latest_sorts_before_concrete_version(self):
+        latest = FakeElement(version="latest", repository=FakeRepo(priority=100))
+        concrete = FakeElement(version="1.0.0", repository=FakeRepo(priority=1))
+        assert builder_element._element_sort_key(
+            latest
+        ) < builder_element._element_sort_key(concrete)
+
     def test_installed_sorts_before_uninstalled(self):
         installed = FakeElement(
             installation_state=models.RepoElementInstallationState.INSTALLED.value,
@@ -482,6 +501,17 @@ class TestCreateInstanceHooks:
         result = self._service.create_instance_derivatives(element)
 
         assert list(result) == [manifest]
+
+    def test_create_derivatives_installs_available_pending_element(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+        element.status = models.RepoElementStatus.AVAILABLE.value
+        manifest = object()
+        monkeypatch.setattr(self._service, "_install_manifest", lambda i: manifest)
+
+        assert list(self._service.create_instance_derivatives(element)) == [manifest]
 
     def test_create_derivatives_empty_for_uninstalled_element(self):
         element = FakeElement(
