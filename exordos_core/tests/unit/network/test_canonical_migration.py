@@ -19,6 +19,7 @@ def test_sdn_migrations_follow_master():
         "0008-backfill-volume-storage-pool-4a14df.py",
         "0009-add-managed-token-metadata-8c42f019.py",
         "0010-network-sdn-9e41c7.py",
+        "0011-paas-networking-485e71.py",
     ]
     assert engine.get_latest_migration() == chain[-1]
     steps = engine.get_all_migrations()

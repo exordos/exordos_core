@@ -197,6 +197,15 @@ class NodeSet(
     orm.SQLStorableMixin,
 ):
     __tablename__ = "compute_sets"
+    _allow_foreign_subnet = False
+
+    def __init__(self, _allow_foreign_subnet=False, **kwargs):
+        self._allow_foreign_subnet = _allow_foreign_subnet
+        super().__init__(**kwargs)
+
+    network_subnet = properties.property(
+        types.AllowNone(types.UUID()), default=None, read_only=True
+    )
 
     uuid = properties.property(
         types.UUID(),
@@ -227,11 +236,51 @@ class NodeSet(
 
     def insert(self, session=None):
         self._validate_default_network()
-        return super().insert(session=session)
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            self._select_network(current)
+            return super().insert(session=current)
 
     def update(self, session=None, force=False):
         self._validate_default_network()
-        return super().update(session=session, force=force)
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = NodeSet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            if self.default_network != stored.default_network:
+                self._select_network(current)
+            else:
+                self.properties["network_subnet"].set_value_force(stored.network_subnet)
+            return super().update(session=current, force=force)
+
+    def _select_network(self, session):
+        from exordos_core.network.defaults import find_legacy_flat_subnet
+        from exordos_core.network.node_creation import select_subnet
+
+        subnet = None
+        delegated = (
+            "project_id" in (self.default_network or {}) or self._allow_foreign_subnet
+        )
+        if (
+            delegated
+            and self.node_type == "VM"
+            and (
+                self.default_network != {}
+                or find_legacy_flat_subnet(self.project_id, session) is not None
+            )
+        ):
+            subnet = select_subnet(
+                self.default_network,
+                self.project_id,
+                session,
+                allow_foreign=self._allow_foreign_subnet,
+            )
+        self.properties["network_subnet"].set_value_force(
+            subnet.uuid if subnet else None
+        )
 
     def get_agents_private_keys(self):
         enc_keys = ua_models.NodeEncryptionKey.objects.get_all(
@@ -263,6 +312,11 @@ class Node(
 ):
     __tablename__ = "nodes"
     __jsonfields__ = ["default_network"]
+    _allow_foreign_subnet = False
+
+    def __init__(self, _allow_foreign_subnet=False, **kwargs):
+        self._allow_foreign_subnet = _allow_foreign_subnet
+        super().__init__(**kwargs)
 
     uuid = properties.property(
         types.UUID(),
@@ -357,7 +411,9 @@ class Node(
                     filters={"uuid": dm_filters.EQ(self.node_set)}, session=s
                 ).project_id
             self._insert_node(session=s)
-            create_default_port(self, request, project_id, s)
+            create_default_port(
+                self, request, project_id, s, allow_foreign=self._allow_foreign_subnet
+            )
 
     def update(self, session=None, force=False):
         self.__dict__.pop("_default_network_view", None)
@@ -945,6 +1001,12 @@ class Subnet(
                     model="Subnet",
                     msg=f"still has {len(ports)} port(s); delete them first",
                 )
+            if NodeSet.objects.get_all(
+                filters={"network_subnet": dm_filters.EQ(self.uuid)}, session=s
+            ):
+                raise ra_storage_exc.ConflictRecords(
+                    model="Subnet", msg="still selected by a node set; delete it first"
+                )
             # A reserved address is somebody's, maybe a port's floating one.
             addresses = net_models.Address.objects.get_all(
                 filters={"subnet": dm_filters.EQ(self.uuid)}, session=s
@@ -1027,6 +1089,7 @@ class Port(
     ua_models.ResourceMixin,
 ):
     __tablename__ = "compute_ports"
+    _allow_foreign_subnet = False
 
     network = None
     security_groups = ()
@@ -1036,8 +1099,11 @@ class Port(
         "network": types.AllowNone(types.UUID()),
     }
 
-    def __init__(self, network=None, security_groups=(), **kwargs):
+    def __init__(
+        self, network=None, security_groups=(), _allow_foreign_subnet=False, **kwargs
+    ):
         super().__init__(**kwargs)
+        self._allow_foreign_subnet = _allow_foreign_subnet
         self._check_custom_property_value("network", network)
         self._network_selector = network
         self.network = network
@@ -1171,6 +1237,8 @@ class Port(
         # hand-made one would hand ISC dhcpd an address of the caller's.
         if subnet is None:
             return
+        if self._allow_foreign_subnet:
+            return
         if self.node is None:
             return
         if str(subnet.project_id) == str(self.project_id):
@@ -1260,6 +1328,7 @@ class Port(
                     getattr(self, "_network_selector", None),
                     self.target_ipv4,
                     session=s,
+                    allow_foreign=self._allow_foreign_subnet,
                 )
                 self.subnet = subnet.uuid
             else:

@@ -164,9 +164,10 @@ class NodesController(
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        gate_default_network(
+        allow_foreign = gate_default_network(
             self, kwargs, kwargs.get("project_id", core_constants.ZERO_UUID)
         )
+        kwargs["_allow_foreign_subnet"] = allow_foreign
         node = self.model(**kwargs)
         node.disk_spec.validate()
 
@@ -247,9 +248,10 @@ class NodeSetsController(
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        gate_default_network(
+        allow_foreign = gate_default_network(
             self, kwargs, kwargs.get("project_id", core_constants.ZERO_UUID)
         )
+        kwargs["_allow_foreign_subnet"] = allow_foreign
         # Validate disk spec
         node_set = self.model(**kwargs)
         node_set.disk_spec.validate()
@@ -261,11 +263,20 @@ class NodeSetsController(
         self.model.validate_network_input(kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        if "default_network" in kwargs:
-            gate_default_network(self, kwargs, stored.project_id)
+        if (
+            "default_network" in kwargs
+            and kwargs["default_network"] != stored.default_network
+        ):
+            stored._allow_foreign_subnet = gate_default_network(
+                self, kwargs, stored.project_id
+            )
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
-
-        return super().update(uuid, **kwargs)
+        self._enforce("update")
+        if "project_id" in kwargs and self._ctx_project_id:
+            self._force_project_id(kwargs["project_id"])
+        stored.update_dm(values=self._apply_autovalues(kwargs))
+        stored.update()
+        return stored
 
     @actions.get
     def get_private_keys(self, resource: models.NodeSet):

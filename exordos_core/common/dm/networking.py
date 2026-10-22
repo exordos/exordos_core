@@ -33,12 +33,17 @@ class DefaultNetworkRequestType(types.Dict):
         from exordos_core.compute.dm.models import Port
 
         prop_kwargs = {"openapi": prop_kwargs.get("openapi")}
-        fields = {"network", "subnet", "port_security"}
+        fields = {"network", "subnet", "port_security", "project_id"}
         if not self.template:
             fields.add("target_ipv4")
         properties = _creation_properties(Port, fields, prop_kwargs)
         properties["auto_floating_ip"] = {"type": "boolean"}
         properties["floating_network"] = properties["network"].copy()
+        properties["security_groups"] = {
+            "type": "array",
+            "items": {"type": "string", "format": "uuid"},
+            "uniqueItems": True,
+        }
         return {
             "type": "object",
             "additionalProperties": False,
