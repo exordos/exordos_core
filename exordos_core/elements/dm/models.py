@@ -328,6 +328,7 @@ class Manifest(
                 )
                 res_key = (resolved_link_prefix, resource_name)
                 if resource := existing_resources.pop(res_key, None):
+                    resource.validate_value_update(resource_value)
                     for k, v in res_kwargs.items():
                         setattr(resource, k, v)
                     resource.save()
@@ -412,24 +413,9 @@ class Manifest(
             element_engine.remove_element(element)
         return self
 
-    def view(self) -> dict:
-        element_engine.load_schemas()
-
-        manifest = self.dump_to_simple_view()
-        full_schema = element_engine.full_schema
-
-        utils.mutate_manifest(manifest, full_schema)
-
-        return manifest
-
     def validate_schema_base(self) -> "Manifest":
         element_engine.load_schemas()
         utils.validate_manifest(self.dump_to_simple_view(), element_engine.base_schema)
-        return self
-
-    def validate_schema_full(self) -> "Manifest":
-        element_engine.load_schemas()
-        utils.validate_manifest(self.view(), element_engine.full_schema)
         return self
 
 
@@ -814,6 +800,30 @@ class Resource(
             result = data
         return result
 
+    def validate_value_update(self, value):
+        # Reject an immutable disk policy before persisting a new EM target.
+        from exordos_core.compute.dm import models as compute_models
+
+        model = {
+            "$core.compute.nodes": compute_models.Node,
+            "$core.compute.sets": compute_models.NodeSet,
+        }.get(self.resource_link_prefix)
+        if model is None or "disk_spec" not in value:
+            return
+        current = model.objects.get_one_or_none(
+            filters={"uuid": ra_filters.EQ(self.uuid)}
+        )
+        if current is not None:
+            rendered = self._recursive_render(value, element_engine)
+            compute_models.validate_disk_policy_update(
+                current.disk_spec, rendered["disk_spec"]
+            )
+
+    def update_dm(self, values):
+        if "value" in values:
+            self.validate_value_update(values["value"])
+        super().update_dm(values)
+
     def render_target_state(self, engine=None):
         engine = engine or element_engine
         res = self._recursive_render(self.value, engine)
@@ -1165,13 +1175,10 @@ class ElementEngine:
         self._namespaces: tp.Dict[str, Namespace] = {}
         self._resource_exports: tp.Dict[str, Resource] = {}
         self.base_schema: tp.Dict[str, tp.Any] = {}
-        self.full_schema: tp.Dict[str, tp.Any] = {}
 
     def load_schemas(self) -> None:
         if not self.base_schema:
             self.base_schema = utils.load_base_manifest_schema()
-        if not self.full_schema:
-            self.full_schema = utils.load_full_manifest_schema()
 
     def load_elements(self) -> None:
         """Load only the elements, leaving their namespaces empty.

@@ -79,7 +79,7 @@ class RepositoryController(
                 "updated_at": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
-        hidden_fields=["next_refresh"],
+        hidden_fields=["next_refresh", "refresh_requested"],
     )
 
     def _visible_projects(self):

@@ -17,6 +17,7 @@
 import logging
 import os
 import typing as tp
+import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.clients.backend import db as client
 from gcl_sdk.agents.universal.clients.backend import exceptions as backend_exc
@@ -60,7 +61,7 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
     def _make_installed_manifest(
         self,
         em_manifest: em_models.Manifest,
-        em_element: em_models.Element | None,
+        em_element_uuid: sys_uuid.UUID | None,
     ) -> re_builder.InstalledManifest:
         """Build an InstalledManifest from an EM manifest and its counterparts.
 
@@ -80,7 +81,7 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
             name=em_manifest.name,
             version=em_manifest.version,
             description=em_manifest.description,
-            element=em_element.uuid if em_element is not None else None,
+            element=em_element_uuid,
             status=models.RepoElementStatus.ACTIVE.value,
             project_id=em_manifest.project_id,
         )
@@ -224,16 +225,21 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
         # Elements are matched by their manifest link rather than by
         # (name, version): the same name and version may exist in several
         # projects, and keying manifests that way hides all but one of them.
-        em_elements = {
-            e.manifest.uuid: e
+        # Keep only UUIDs so prefetched manifests and profiles can be released
+        # before the manifests are read.
+        em_element_uuids = {
+            e.manifest.uuid: e.uuid
             for e in em_models.Element.objects.get_all(session=session)
             if e.manifest is not None
         }
 
         installed = []
         for em_manifest in em_models.Manifest.objects.get_all(session=session):
-            em_element = em_elements.get(em_manifest.uuid)
-            installed.append(self._make_installed_manifest(em_manifest, em_element))
+            installed.append(
+                self._make_installed_manifest(
+                    em_manifest, em_element_uuids.get(em_manifest.uuid)
+                )
+            )
 
         return installed
 

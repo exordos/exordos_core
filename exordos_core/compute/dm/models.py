@@ -20,8 +20,10 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.infra import constants as ic
 from gcl_sdk.infra.dm import models as infra_models
 import netaddr
+from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -122,6 +124,17 @@ class Volume(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
     )
+    # Changing a disk's tier/ephemeral tier after creation would mean
+    # migrating it to a different storage pool, which isn't implemented -
+    # read-only makes that unsupported change fail loudly instead of
+    # being silently accepted with no actual effect on where the disk
+    # lives.
+    tier = properties.property(
+        types.Enum([s.value for s in ic.DiskTier]),
+        default=ic.DiskTier.WARM.value,
+        read_only=True,
+    )
+    ephemeral = properties.property(types.Boolean(), default=True, read_only=True)
 
     # Internal field for scheduling purposes
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
@@ -137,7 +150,34 @@ class UnscheduledVolume(models.ModelWithUUID, orm.SQLStorableMixin):
     )
 
 
+class ImmutableDiskPolicyError(ra_e.ValidationErrorException):
+    message = "Changing tier or ephemeral of an existing disk is unsupported"
+
+
+def validate_disk_policy_update(old_spec, new_spec):
+    def disks(spec):
+        value = spec.as_simple_view() if hasattr(spec, "as_simple_view") else spec
+        if value.get("kind") == "root_disk":
+            return [value]
+        return value.get("disks", [])
+
+    for old, new in zip(disks(old_spec), disks(new_spec)):
+        if any(
+            old.get(field, default) != new.get(field, default)
+            for field, default in (("tier", "WARM"), ("ephemeral", True))
+        ):
+            raise ImmutableDiskPolicyError()
+
+
+class ImmutableDiskPolicyMixin:
+    def update_dm(self, values):
+        if "disk_spec" in values:
+            validate_disk_policy_update(self.disk_spec, values["disk_spec"])
+        super().update_dm(values)
+
+
 class NodeSet(
+    ImmutableDiskPolicyMixin,
     infra_models.NodeSet,
     ua_models.InstanceWithDerivativesMixin,
     QuotaModelMixin,
@@ -180,6 +220,7 @@ class NodeSet(
 
 
 class Node(
+    ImmutableDiskPolicyMixin,
     infra_models.Node,
     QuotaModelMixin,
     orm.SQLStorableWithJSONFieldsMixin,
@@ -359,6 +400,18 @@ class MachineVolume(
     )
     # TODO(g.melikov): DON'T USE! Should be dropped.
     device_type = properties.property(types.String(max_length=64), default="")
+    tier = properties.property(
+        types.Enum([s.value for s in ic.DiskTier]),
+        default=ic.DiskTier.WARM.value,
+    )
+    ephemeral = properties.property(types.Boolean(), default=True)
+    # Name of the storage pool (within this compute pool) the scheduler
+    # placed the volume on - needed to re-locate it by name (rather than
+    # by tier/ephemeral, which several pools could match) when
+    # allocating extra capacity for a resize or a reused volume.
+    storage_pool = properties.property(
+        types.AllowNone(types.String(max_length=255)), default=None
+    )
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,

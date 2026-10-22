@@ -1430,7 +1430,9 @@ def base_manifest_schema():
 
 @pytest.fixture(scope="session")
 def full_manifest_schema():
-    return element_utils.load_full_manifest_schema()
+    return element_utils.build_full_schema(
+        element_utils.load_base_manifest_schema(), element_utils.load_user_api_spec()
+    )
 
 
 @pytest.fixture(scope="session")

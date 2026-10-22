@@ -118,6 +118,16 @@ def test_install_failure_propagates_for_bootstrap_retry():
             bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
 
 
+def test_lower_priority_build_metadata_does_not_block_installation():
+    preferred = _element("2.0.0", 2048)
+    other = _element("1.0.0+build.123", 1024)
+    with mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as objects:
+        objects.get_all.side_effect = [[], [other, preferred]]
+        bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
+    preferred.install.assert_called_once_with()
+    other.install.assert_not_called()
+
+
 @pytest.mark.parametrize("versions", [["latest"], ["latest", "1.0.0"]])
 def test_latest_alias_does_not_block_installation(versions):
     candidates = [_element(version) for version in versions]

@@ -203,6 +203,7 @@ class Repository(
         ),
         required=True,
     )
+    refresh_requested = properties.property(ra_types.Boolean(), default=False)
     next_refresh = properties.property(
         ra_types.UTCDateTimeZ(),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -306,10 +307,9 @@ class Repository(
             artifact.save()
 
     def refresh(self) -> None:
-        """Trigger repository refresh by setting next_refresh to current time."""
-        if self.refresh_rate:
-            self.next_refresh = datetime.datetime.now(datetime.timezone.utc)
-            self.update()
+        """Request one refresh, independently of the periodic interval."""
+        self.refresh_requested = True
+        self.update()
 
     def upload(
         self,
@@ -546,8 +546,17 @@ class RepoElement(
             filters={"depends_on": ra_filters.EQ(self.uuid)}
         )
         if dependents:
+            details = ", ".join(
+                sorted(
+                    {
+                        f"{binding.element.name} ({binding.element.version})"
+                        for binding in dependents
+                    }
+                )
+            )
             raise common_exc.ValidateException(
-                err="Element cannot be uninstalled: other elements depend on it"
+                err="Element cannot be uninstalled: other elements depend on it: "
+                + details
             )
 
         self.installation_state = RepoElementInstallationState.UNINSTALLED.value

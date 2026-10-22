@@ -144,5 +144,6 @@ class Certificate(AbstractSecret, orm.SQLStorableMixin):
         value["key"] = self.pkey
         value["cert"] = self.fullchain
         value["expiration_at"] = expiration_at
-        value["overcome_threshold"] = self.is_under_threshold()
+        if value.get("method", {}).get("kind") != "manual":
+            value["overcome_threshold"] = self.is_under_threshold()
         return value

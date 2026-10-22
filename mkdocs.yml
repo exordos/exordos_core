@@ -95,6 +95,7 @@ extra:
       lang: ru
 
 extra_javascript:
+  - javascripts/vendor/mermaid.min.js
   - javascripts/i18n-nav.js
 
 markdown_extensions:
