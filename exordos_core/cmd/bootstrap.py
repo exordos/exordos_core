@@ -889,7 +889,7 @@ def _ensure_repositories_from_spec(spec: dict[str, tp.Any]) -> None:
 
 def _install_elements_from_spec(spec: dict[str, tp.Any]) -> None:
     """Idempotently install named elements from the connected repositories."""
-    for name in spec.get("elements", []):
+    for name in spec.get("elements") or []:
         installed = repo_models.RepoElement.objects.get_all(
             filters={
                 "name": dm_filters.EQ(name),

@@ -30,7 +30,7 @@ def _element(version="1.0.0", priority=2048):
     )
 
 
-@pytest.mark.parametrize("spec", [{}, {"elements": []}])
+@pytest.mark.parametrize("spec", [{}, {"elements": []}, {"elements": None}])
 def test_no_elements(spec):
     with mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as objects:
         bootstrap._install_elements_from_spec(spec)
