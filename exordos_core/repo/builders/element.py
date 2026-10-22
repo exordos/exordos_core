@@ -213,19 +213,21 @@ def _matches_version_constraint(
     return True
 
 
-def _element_sort_key(element: models.RepoElement) -> tuple[bool, int, tuple]:
+def _element_sort_key(element: models.RepoElement) -> tuple[bool, int, bool, tuple]:
     """Return sort key for dependency selection.
 
     Preferred order:
     1. Elements already installed or being installed.
     2. Higher repository priority.
-    3. Release versions over development versions.
-    4. Higher version number.
+    3. Concrete versions over the repository's latest alias.
+    4. Release versions over development versions.
+    5. Higher version number.
     """
     return (
         not _is_installation_in_progress(element),
         -element.repository.priority,
-        _version_sort_key(element.version),
+        element.version == "latest",
+        () if element.version == "latest" else _version_sort_key(element.version),
     )
 
 
@@ -235,7 +237,7 @@ class RepoElementBuilderService(
 ):
     def __init__(
         self,
-        iter_min_period: int = 3,
+        iter_min_period: int = 1,
         iter_pause: float = 0.1,
     ) -> None:
         super().__init__(
