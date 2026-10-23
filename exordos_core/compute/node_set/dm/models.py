@@ -68,6 +68,7 @@ class NodeSet(compute_models.NodeSet):
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
                 disk_spec=self.disk_spec.node_spec(self, node_uuid),
+                target_power_state=self.target_power_state,
             )
             nodes.append(node)
 

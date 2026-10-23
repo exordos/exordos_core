@@ -176,6 +176,13 @@ class PoolMachine(
 
     port_info = properties.property(types.Dict(), default=dict)
 
+    # The target power state in the target resource and the actual one
+    # in the actual resource
+    power_state = properties.property(
+        types.AllowNone(types.Enum([s.value for s in ua_pool.PowerState])),
+        default=None,
+    )
+
     @classmethod
     def get_resource_kind(cls) -> str:
         """Return the resource kind."""
@@ -199,6 +206,7 @@ class PoolMachine(
                 "pool",
                 "port_info",
                 "image",
+                "power_state",
             )
         )
 
@@ -220,6 +228,7 @@ class PoolMachine(
             boot=machine.boot,
             node=machine.node.uuid,
             pool=machine.pool.uuid,
+            power_state=machine.target_power_state,
             agent_uuid=agent_uuid,
             port_info={
                 "ipv4": str(port.ipv4) if port.ipv4 else None,

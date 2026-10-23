@@ -42,6 +42,9 @@ Provides creation and management of virtual machines (KVM/QEMU) and physical ser
 
 - Creation, configuration, and deletion of virtual machines (Node).
 - Grouping of nodes into NodeSet with a target replica count (`replicas`).
+- Power management of nodes and node sets: the `power_on`, `power_off` and `reboot` actions
+  (`POST /v1/compute/nodes/<uuid>/actions/<action>/invoke`, the same for `/v1/compute/sets/`).
+  The node reports the actual state in `power_state`.
 - Image-based provisioning: compute nodes are created and updated from images; during an update, the root disk is replaced with the target image while attached volumes and network identities are preserved.
 - Management of hypervisors (Hypervisor) and storage pools.
 - Node placement policies (PlacementPolicy).
