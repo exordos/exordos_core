@@ -387,6 +387,7 @@ class SchedulerService(basic.BasicService):
             project_id=node.node.project_id,
             machine_type=ua_pool.NodeType.VM.value,
             status=ua_pool.MachineStatus.SCHEDULED.value,
+            target_power_state=node.node.target_power_state,
         )
 
         # Place volumes into the pool
@@ -516,6 +517,7 @@ class SchedulerService(basic.BasicService):
             # TODO(akremenetsky): Map volumes to machine volumes
             machine_bundle.machine.node = node.uuid
             machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
+            machine_bundle.machine.target_power_state = node.target_power_state
             node.status = nc.NodeStatus.SCHEDULED.value
             try:
                 node.save()

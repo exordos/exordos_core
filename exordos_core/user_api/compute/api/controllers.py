@@ -18,6 +18,7 @@ import uuid as sys_uuid
 
 from gcl_iam.api import controllers as iam_controllers
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
+from gcl_sdk.infra import constants as ic
 from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
@@ -38,6 +39,11 @@ class VolumeAlreadyAttachedError(ra_e.ValidationErrorException):
 
 class VolumeNotAttachedError(ra_e.ValidationErrorException):
     message = "Volume is not attached to a node"
+
+
+class RebootNotFinishedError(ra_e.RestAlchemyException):
+    code = 409
+    message = "The previous reboot of the node is not finished yet"
 
 
 class ComputeController(controllers.RoutesListController):
@@ -124,6 +130,9 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "power_state": {ra_c.ALL: field_p.Permissions.RO},
+                # Changed only by the power actions
+                "target_power_state": {ra_c.ALL: field_p.Permissions.HIDDEN},
             },
         ),
     )
@@ -139,6 +148,43 @@ class NodesController(
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
 
         return super().update(uuid, **kwargs)
+
+    def _set_target_power_state(
+        self, resource: user_models.Node, power_state: ic.PowerState
+    ) -> user_models.Node:
+        self._enforce("power")
+
+        # The finished reboot is reported until the target is switched
+        # back to `ON` and the agent notices it. A new reboot requested
+        # meanwhile is taken as finished and silently skipped.
+        if (
+            power_state == ic.PowerState.REBOOT
+            and resource.power_state == ic.PowerState.REBOOTED
+        ):
+            raise RebootNotFinishedError()
+
+        # Nothing to do if the power state is already requested. Changing
+        # the status leaves it `IN_PROGRESS` as nothing brings it back.
+        # The pending reboot covers the new one.
+        if resource.target_power_state == power_state:
+            return resource
+
+        resource.target_power_state = power_state.value
+        resource.status = nc.NodeStatus.IN_PROGRESS.value
+        resource.update()
+        return resource
+
+    @actions.post
+    def power_on(self, resource: user_models.Node):
+        return self._set_target_power_state(resource, ic.PowerState.ON)
+
+    @actions.post
+    def power_off(self, resource: user_models.Node):
+        return self._set_target_power_state(resource, ic.PowerState.OFF)
+
+    @actions.post
+    def reboot(self, resource: user_models.Node):
+        return self._set_target_power_state(resource, ic.PowerState.REBOOT)
 
     @actions.get
     def get_private_key(self, resource: user_models.Node):

@@ -20,6 +20,7 @@ import typing as tp
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.services import builder as sdk_builder
+from gcl_sdk.infra import constants as ic
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
@@ -84,16 +85,9 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         if target_node.hostname != actual_node.hostname:
             force = True
 
-        # Check if machine configuration is already up to date
-        if (
-            not force
-            and target_node.cores == actual_node.cores
-            and target_node.ram == actual_node.ram
-            and target_node.name == actual_node.name
-            and target_node.description == actual_node.description
-        ):
-            return
-
+        # Compare with the machine rather than with the node resource.
+        # A finished reboot switches the target power state back to `ON`
+        # bypassing the node resource, so the resource may be stale.
         machine = models.Machine.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(target_node.uuid)}
         )
@@ -103,20 +97,26 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
             LOG.debug("Machine with uuid %s not found", target_node.uuid)
             return
 
-        # Skip if no actual changes
+        # Skip if no actual changes. The node may be marked `IN_PROGRESS`
+        # by the API, for instance, the power state was changed and
+        # changed back before this update. Nothing changes the machine,
+        # so take the status from it.
         if (
             not force
             and machine.cores == target_node.cores
             and machine.ram == target_node.ram
             and machine.name == target_node.name
             and machine.description == target_node.description
+            and machine.target_power_state == target_node.target_power_state
         ):
+            target_node.status = machine.status
             return
 
         machine.cores = target_node.cores
         machine.ram = target_node.ram
         machine.name = target_node.name
         machine.description = target_node.description
+        machine.target_power_state = target_node.target_power_state
         # Also update the status to IN_PROGRESS
         machine.status = ua_pool.MachineStatus.IN_PROGRESS.value
         machine.update(force=force)
@@ -246,5 +246,22 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         Use this hook to react to changes in tracked machine.
         For example, status changes.
         """
-        if len(tracked_instances) == 1:
-            instance.status = tracked_instances[0].status
+        if len(tracked_instances) != 1:
+            return
+
+        machine = tracked_instances[0]
+        instance.status = machine.status
+        instance.power_state = machine.power_state
+
+        # The reboot has been performed, switch the target back to `ON`.
+        if (
+            machine.power_state == ic.PowerState.REBOOTED
+            and instance.target_power_state == ic.PowerState.REBOOT
+        ):
+            instance.target_power_state = ic.PowerState.ON.value
+
+            # The node isn't handled as updated after this hook, so
+            # update the machine here.
+            machine.target_power_state = ic.PowerState.ON.value
+            machine.status = ua_pool.MachineStatus.IN_PROGRESS.value
+            machine.update()
