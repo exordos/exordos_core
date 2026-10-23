@@ -27,6 +27,14 @@ class Node(compute_models.Node):
         """Return the resource kind."""
         return "set_agent_node"
 
+    def get_resource_target_fields(self) -> tp.Collection[str]:
+        """Return the collection of Node target fields.
+
+        The power state is managed per node by the power actions, so the
+        set must not override it.
+        """
+        return super().get_resource_target_fields() - {"target_power_state"}
+
 
 class Volume(compute_models.Volume):
     @classmethod
