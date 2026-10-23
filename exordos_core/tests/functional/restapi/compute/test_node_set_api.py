@@ -19,9 +19,12 @@ import uuid as sys_uuid
 
 from bazooka import exceptions as bazooka_exc
 from gcl_iam.tests.functional import clients as iam_clients
+from gcl_sdk.infra import constants as ic
 import pytest
+from restalchemy.dm import filters as dm_filters
 
 from exordos_core.compute import constants as nc
+from exordos_core.compute.dm import models as compute_models
 
 
 class TestNodeSetUserApi:
@@ -160,6 +163,92 @@ class TestNodeSetUserApi:
         assert response.status_code == 200
         assert output["cores"] == 2
         assert output["ram"] == 2048
+
+        client.delete(client.build_resource_uri(["compute", "sets", node_set["uuid"]]))
+
+    @pytest.mark.parametrize(
+        "initial,action,target,changed",
+        [
+            (ic.PowerState.ON, "power_off", ic.PowerState.OFF, True),
+            (ic.PowerState.OFF, "power_on", ic.PowerState.ON, True),
+            (ic.PowerState.ON, "reboot", ic.PowerState.REBOOT, True),
+            (ic.PowerState.REBOOT, "reboot", ic.PowerState.REBOOT, True),
+            # Already requested, nothing changes
+            (ic.PowerState.ON, "power_on", ic.PowerState.ON, False),
+            (ic.PowerState.OFF, "power_off", ic.PowerState.OFF, False),
+        ],
+    )
+    def test_node_sets_power_actions(
+        self,
+        node_set_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+        initial: ic.PowerState,
+        action: str,
+        target: ic.PowerState,
+        changed: bool,
+    ):
+        node_set = node_set_factory()
+        node_set.pop("nodes", None)
+        node_set.pop("status", None)
+
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["compute", "sets"])
+
+        response = client.post(url, json=node_set)
+        output = response.json()
+        assert response.status_code == 201
+        assert "target_power_state" not in output
+
+        db_node_set = compute_models.NodeSet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_set["uuid"])}
+        )
+        db_node_set.target_power_state = initial.value
+        db_node_set.update()
+
+        url = client.build_resource_uri(
+            ["compute", "sets", node_set["uuid"], "actions", action, "invoke"]
+        )
+        response = client.post(url)
+        output = response.json()
+
+        assert response.status_code == 200
+        assert output["status"] == (
+            nc.NodeStatus.IN_PROGRESS.value if changed else nc.NodeStatus.NEW.value
+        )
+        assert "target_power_state" not in output
+
+        db_node_set = compute_models.NodeSet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_set["uuid"])}
+        )
+        assert db_node_set.target_power_state == target.value
+
+        client.delete(client.build_resource_uri(["compute", "sets", node_set["uuid"]]))
+
+    def test_node_sets_target_power_state_not_writable(
+        self,
+        node_set_factory: tp.Callable,
+        user_api_client: iam_clients.GenesisCoreTestRESTClient,
+        auth_user_admin: iam_clients.GenesisCoreAuth,
+    ):
+        node_set = node_set_factory()
+        node_set.pop("nodes", None)
+        node_set.pop("status", None)
+
+        client = user_api_client(auth_user_admin)
+        url = client.build_collection_uri(["compute", "sets"])
+
+        response = client.post(url, json=node_set)
+        assert response.status_code == 201
+
+        url = client.build_resource_uri(["compute", "sets", node_set["uuid"]])
+        with pytest.raises(bazooka_exc.ClientError):
+            client.put(url, json={"target_power_state": ic.PowerState.OFF.value})
+
+        db_node_set = compute_models.NodeSet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(node_set["uuid"])}
+        )
+        assert db_node_set.target_power_state == ic.PowerState.ON.value
 
         client.delete(client.build_resource_uri(["compute", "sets", node_set["uuid"]]))
 

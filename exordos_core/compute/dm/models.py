@@ -44,6 +44,15 @@ if tp.TYPE_CHECKING:
     from exordos_core.network.driver.base import AbstractNetworkDriver
 
 
+# The power states the control plane may request. The other ones are
+# reported by the data plane only.
+TARGET_POWER_STATES = (
+    ic.PowerState.ON.value,
+    ic.PowerState.OFF.value,
+    ic.PowerState.REBOOT.value,
+)
+
+
 class IPRange(types.BaseType):
     SEPARATOR = "-"
 
@@ -197,6 +206,11 @@ class NodeSet(
         types.Enum([s.value for s in nc.NodeStatus]),
         default=nc.NodeStatus.NEW.value,
     )
+    # Changed only by the power actions
+    target_power_state = properties.property(
+        types.Enum(TARGET_POWER_STATES),
+        default=ic.PowerState.ON.value,
+    )
 
     def get_agents_private_keys(self):
         enc_keys = ua_models.NodeEncryptionKey.objects.get_all(
@@ -241,6 +255,11 @@ class Node(
     )
 
     node_set = properties.property(types.AllowNone(types.UUID()), default=None)
+    # Changed only by the power actions
+    target_power_state = properties.property(
+        types.Enum(TARGET_POWER_STATES),
+        default=ic.PowerState.ON.value,
+    )
 
     def volumes(self) -> tp.Collection[Volume]:
         """Return the list of volumes for this node."""
@@ -288,6 +307,7 @@ class Node(
                 "node_set",
                 "placement_policies",
                 "disk_spec",
+                "target_power_state",
             )
         )
 
@@ -374,6 +394,17 @@ class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixi
     # TODO(akremenetsky): Use a custom type for this field
     # It's a `fact` field
     block_devices = properties.property(types.Dict(), default=dict)
+
+    # The target power state comes from the node, the actual one comes
+    # from the pool machine
+    target_power_state = properties.property(
+        types.Enum(TARGET_POWER_STATES),
+        default=ua_pool.PowerState.ON.value,
+    )
+    power_state = properties.property(
+        types.Enum([s.value for s in ua_pool.PowerState]),
+        default=ua_pool.PowerState.ON.value,
+    )
 
     def set_active(self):
         self.status = ua_pool.MachineStatus.ACTIVE.value

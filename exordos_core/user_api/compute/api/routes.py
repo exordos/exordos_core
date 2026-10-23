@@ -52,6 +52,24 @@ class NodeDetailsActionRoute(routes.Action):
     __controller__ = controllers.NodesController
 
 
+class NodePowerOnActionRoute(routes.Action):
+    """Handler for /v1/compute/nodes/<uuid>/actions/power_on/invoke endpoint"""
+
+    __controller__ = controllers.NodesController
+
+
+class NodePowerOffActionRoute(routes.Action):
+    """Handler for /v1/compute/nodes/<uuid>/actions/power_off/invoke endpoint"""
+
+    __controller__ = controllers.NodesController
+
+
+class NodeRebootActionRoute(routes.Action):
+    """Handler for /v1/compute/nodes/<uuid>/actions/reboot/invoke endpoint"""
+
+    __controller__ = controllers.NodesController
+
+
 class NodeRoute(routes.Route):
     """Handler for /v1/compute/nodes/ endpoint"""
 
@@ -59,6 +77,9 @@ class NodeRoute(routes.Route):
 
     get_private_key = routes.action(NodePrivateKeyActionRoute)
     details = routes.action(NodeDetailsActionRoute)
+    power_on = routes.action(NodePowerOnActionRoute, invoke=True)
+    power_off = routes.action(NodePowerOffActionRoute, invoke=True)
+    reboot = routes.action(NodeRebootActionRoute, invoke=True)
 
 
 class HypervisorRoute(routes.Route):
@@ -73,12 +94,33 @@ class NodeSetPrivateKeyActionRoute(routes.Action):
     __controller__ = controllers.NodeSetsController
 
 
+class NodeSetPowerOnActionRoute(routes.Action):
+    """Handler for /v1/compute/sets/<uuid>/actions/power_on/invoke endpoint"""
+
+    __controller__ = controllers.NodeSetsController
+
+
+class NodeSetPowerOffActionRoute(routes.Action):
+    """Handler for /v1/compute/sets/<uuid>/actions/power_off/invoke endpoint"""
+
+    __controller__ = controllers.NodeSetsController
+
+
+class NodeSetRebootActionRoute(routes.Action):
+    """Handler for /v1/compute/sets/<uuid>/actions/reboot/invoke endpoint"""
+
+    __controller__ = controllers.NodeSetsController
+
+
 class NodeSetsRoute(routes.Route):
     """Handler for /v1/compute/sets/ endpoint"""
 
     __controller__ = controllers.NodeSetsController
 
     get_private_keys = routes.action(NodeSetPrivateKeyActionRoute)
+    power_on = routes.action(NodeSetPowerOnActionRoute, invoke=True)
+    power_off = routes.action(NodeSetPowerOffActionRoute, invoke=True)
+    reboot = routes.action(NodeSetRebootActionRoute, invoke=True)
 
 
 class ComputeRoute(routes.Route):

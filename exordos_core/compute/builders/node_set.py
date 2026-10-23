@@ -18,6 +18,7 @@ import logging
 import typing as tp
 import uuid as sys_uuid
 
+from gcl_sdk.infra import constants as ic
 from gcl_sdk.infra.services import builder
 from restalchemy.dm import filters as dm_filters
 
@@ -106,9 +107,23 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
         soft_anti_affinity = self._get_or_create_placement_policy(instance)
 
         node_uuids = []
-        for target, _ in infra.infra_objects:
+        rebooted = []
+        for target, actual in infra.infra_objects:
             if isinstance(target, models.Node):
                 node_uuids.append(target.uuid)
+                rebooted.append(
+                    actual is not None and actual.power_state == ic.PowerState.REBOOTED
+                )
+
+        # Every node has been rebooted, switch the target back to `ON`.
+        # The nodes keep `REBOOTED` while the target is `REBOOT` so
+        # they aren't rebooted again until the slowest one is done.
+        if (
+            instance.target_power_state == ic.PowerState.REBOOT
+            and len(rebooted) >= instance.replicas
+            and all(rebooted)
+        ):
+            instance.target_power_state = ic.PowerState.ON.value
 
         # Get the target nodes for the node set based on the current
         # configuration. This will be used to filter out nodes that are

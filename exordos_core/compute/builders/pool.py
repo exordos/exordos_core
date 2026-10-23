@@ -404,6 +404,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if pool_machine is None or guest_machine is None:
             return
 
+        machine.power_state = pool_machine.power_state
+
         if (
             pool_machine.status == ua_pool.MachineStatus.ERROR
             or guest_machine.status == ua_pool.MachineStatus.ERROR
@@ -426,10 +428,14 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # Without this check the machine could be marked ACTIVE while
             # pool_machine or guest_machine still use stale images from a
             # previous version.
+            # The machine is also in progress until the power state is
+            # reached. The reboot is never reached by the pool machine,
+            # it reports `REBOOTED` and waits for the target `ON`.
             resolved_image = self._resolve_image(machine.image)
             if (
                 machine.image == pool_machine.image
                 and resolved_image == guest_machine.image
+                and machine.target_power_state == pool_machine.power_state
             ):
                 machine.status = ua_pool.MachineStatus.ACTIVE.value
                 return

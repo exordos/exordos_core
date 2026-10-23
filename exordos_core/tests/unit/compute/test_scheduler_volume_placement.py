@@ -304,7 +304,10 @@ def test_idle_machine_selection_skips_pool_without_requested_disk_policy(
     ]
     node = base.NodeBundle(
         SimpleNamespace(
-            uuid=sys_uuid.uuid4(), node_type=ua_pool.NodeType.VM, save=mock.Mock()
+            uuid=sys_uuid.uuid4(),
+            node_type=ua_pool.NodeType.VM,
+            target_power_state=ua_pool.PowerState.ON.value,
+            save=mock.Mock(),
         ),
         [_requested_volume(None, 10, "WARM", False)],
     )
