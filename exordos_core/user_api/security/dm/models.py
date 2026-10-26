@@ -30,8 +30,8 @@ from restalchemy.dm import models as ra_models
 from restalchemy.dm import properties
 from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic as ra_types_dynamic
-from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.user_api.iam import constants as iam_c
 
 LOG = logging.getLogger(__name__)
@@ -302,7 +302,7 @@ class Rule(
     ra_models.ModelWithNameDesc,
     ra_models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "security_rules"
 

@@ -24,8 +24,8 @@ from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
 from restalchemy.dm import types
-from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import constants
 
 LOG = logging.getLogger(__name__)
@@ -178,7 +178,7 @@ class QuotaLimit(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "quota_limits"
 
