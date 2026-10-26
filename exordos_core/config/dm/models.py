@@ -22,8 +22,8 @@ from restalchemy.dm import models
 from restalchemy.dm import properties
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
-from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c
 from exordos_core.common.dm import models as cm
 from exordos_core.common.dm import targets as ct
@@ -78,7 +78,7 @@ class OnChangeShell(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
 class Config(
     cm.ModelWithFullAsset,
     models.ModelWithTags,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
