@@ -19,6 +19,7 @@ import logging
 import os
 import pathlib
 import pwd
+import secrets
 import typing as tp
 import uuid as sys_uuid
 
@@ -294,6 +295,79 @@ def init_secrets(
     default_user.save()
 
     return None
+
+
+def ensure_idps(spec: dict[str, tp.Any], global_salt: str) -> None:
+    """Idempotent creation of the identity providers the spec names."""
+    idps = spec.get("idps") or []
+    if not isinstance(idps, list):
+        LOG.error("Spec `idps` must be a list, got %s; skipped", type(idps).__name__)
+        return
+
+    for entry in idps:
+        try:
+            _ensure_idp(entry, global_salt)
+        except Exception:
+            LOG.exception("Unable to seed IdP from spec entry %s; skipped", entry)
+
+
+def _ensure_idp(entry: dict[str, tp.Any], global_salt: str) -> None:
+    idp_uuid = sys_uuid.UUID(str(entry["uuid"]))
+    client_spec = entry["iam_client"]
+    client_uuid = sys_uuid.UUID(str(client_spec["uuid"]))
+    # Parsed before anything is written: a callback of an unknown kind
+    # must not leave a client behind without its IdP.
+    callback = (
+        iam_models.Idp.properties.properties["callback"]
+        .get_property_type()
+        .from_simple_type(entry["callback"])
+    )
+
+    client = iam_models.IamClient.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(client_uuid)}
+    )
+    if client is None:
+        # An authorization code is exchanged without a client secret, but
+        # the column is required: the client gets a random one nobody holds.
+        salt = secret_utils.generate_salt(18)
+        client = iam_models.IamClient.restore(
+            uuid=client_uuid,
+            name=client_spec["name"],
+            description=client_spec.get("description", ""),
+            project_id=c.EM_PROJECT_ID,
+            client_id=client_spec["client_id"],
+            registration_auto_provision=client_spec.get(
+                "registration_auto_provision", False
+            ),
+            salt=salt,
+            secret_hash=secret_utils.generate_hash_for_secret(
+                secret=secrets.token_urlsafe(48),
+                secret_salt=salt,
+                global_salt=global_salt,
+            ),
+        )
+        client.insert()
+        LOG.info("IAM client %s is created from spec", client_uuid)
+
+    idp = iam_models.Idp.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(idp_uuid)}
+    )
+    if idp is not None:
+        LOG.info("IdP %s already exists", idp_uuid)
+        return
+
+    idp = iam_models.Idp.restore(
+        uuid=idp_uuid,
+        name=entry["name"],
+        description=entry.get("description", ""),
+        project_id=c.EM_PROJECT_ID,
+        iam_client=client,
+        scope=entry.get("scope", "openid"),
+        nonce_required=entry.get("nonce_required", True),
+        callback=callback,
+    )
+    idp.insert()
+    LOG.info("IdP %s is created from spec", idp_uuid)
 
 
 def _net_range(network: ipaddress.IPv4Network, start_offset: int) -> str:
