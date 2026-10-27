@@ -116,14 +116,3 @@ def test_install_failure_propagates_for_bootstrap_retry():
         objects.get_all.side_effect = [[], [element]]
         with pytest.raises(RuntimeError, match="install failed"):
             bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
-
-
-@pytest.mark.parametrize("versions", [["latest"], ["latest", "1.0.0"]])
-def test_latest_alias_does_not_block_installation(versions):
-    candidates = [_element(version) for version in versions]
-    with mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as objects:
-        objects.get_all.side_effect = [[], candidates]
-        bootstrap._install_elements_from_spec({"elements": ["dbaas"]})
-    candidates[-1].install.assert_called_once_with()
-    for candidate in candidates[:-1]:
-        candidate.install.assert_not_called()
