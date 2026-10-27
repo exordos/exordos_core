@@ -21,7 +21,7 @@ import uuid as sys_uuid
 
 from exordos_core.common import constants as c
 
-PROJECT = str(c.ZERO_UUID)
+PROJECT = str(c.ADMIN_PROJECT_UUID)
 
 
 class TestEcosystemPayloads:
