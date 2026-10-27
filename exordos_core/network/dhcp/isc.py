@@ -19,6 +19,7 @@ import typing as tp
 import netaddr
 
 from exordos_core.compute.dm import models
+from exordos_core.network import subnet as subnet_utils
 
 
 class StaticRoute(tp.NamedTuple):
@@ -160,13 +161,15 @@ def dhcp_config(subnets: tp.Dict[models.Subnet, tp.List[models.Port]]) -> str:
         # addresses nothing is placed in, for instance — took the PXE server
         # down for every network on the host, and the only sign of it was
         # guests looping on "No configuration methods succeeded".
+        effective_dns = subnet_utils.effective_dns_servers(subnet)
+        effective_routes = subnet_utils.effective_routers(subnet)
         dns_servers = (
-            "option domain-name-servers %s;" % ",".join(subnet.dns_servers)
-            if subnet.dns_servers
+            "option domain-name-servers %s;" % ",".join(effective_dns)
+            if effective_dns
             else ""
         )
 
-        routes = [StaticRoute(**r) for r in subnet.routers]
+        routes = [StaticRoute(**r) for r in effective_routes]
 
         config += _subnet_template.format(
             net_address=str(subnet.cidr.network),

@@ -15,13 +15,17 @@
 #    under the License.
 
 import enum
+import ipaddress
+import logging
 import re
+import typing as tp
 import uuid
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from gcl_sdk.agents.universal.dm import models as ua_models
+import netaddr
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -29,13 +33,19 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
 from restalchemy.dm import types_network
+from restalchemy.storage import exceptions as ra_storage_exc
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import utils as u
+from exordos_core.common.dm import models as common_models
+from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
+from exordos_core.network import subnet as subnet_utils
 from exordos_core.quota.dm.models import QuotaModelMixin
 from exordos_core.secret import utils as su
+
+LOG = logging.getLogger(__name__)
 
 
 class LBStatus(str, enum.Enum):
@@ -867,3 +877,1182 @@ class Border(
     #                 to_port}]
     snat_rules = properties.property(types.List(), default=lambda: [])
     forwards = properties.property(types.List(), default=lambda: [])
+
+
+# --- Catalog: reference objects ----------------------------------------------
+# Named objects that ports and NFs cite by uuid instead of inlining; deleting
+# one that is still cited is refused.
+
+FILTER_DIRECTIONS = ("ingress", "egress")
+FILTER_PROTOCOLS = ("tcp", "udp", "icmp", "any")
+
+
+def validate_reference(project_id, model, ref, field: str, session=None) -> None:
+    """Refuse a reference that reaches into another project, or nowhere.
+
+    A cross-project citation would let a caller attach somebody else's
+    object and block its owner's delete; a dangling one would compile to
+    nothing while looking attached.
+    """
+    if not ref:
+        return
+    target = model.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(ref)}, session=session
+    )
+    if target is None:
+        raise ex_exceptions.ValidateException(
+            err=f"{field} references {ref}, which does not exist"
+        )
+    if str(target.project_id) != str(project_id):
+        raise ex_exceptions.ValidateException(
+            err=f"{field} references {ref}, which belongs to another project"
+        )
+
+
+def is_floating_pool(subnet, network=None) -> bool:
+    """Explicit operator-approved, address-only pool, independent of access.
+
+    HTTP creation/update of the flag requires subnet.floating_pool. Manifest
+    installation is operator-authorized. Ordinary tenant subnets never become
+    external pools merely by choosing a CIDR or making a network public.
+    """
+    return (
+        subnet is not None
+        and not getattr(subnet, "placeable", True)
+        and getattr(subnet, "floating_pool", False)
+    )
+
+
+def may_allocate_in(project_id, subnet, network=None) -> bool:
+    """May this project take addresses from this subnet?
+
+    Its own, or another's that is a `shared_pool` or on a public network.
+    Otherwise a tenant could exhaust another project's pool (cross-tenant
+    IPAM DoS).
+    """
+    from exordos_core.compute.dm import models as compute_models
+
+    if str(subnet.project_id) == str(project_id) or subnet.shared_pool:
+        return True
+    if network is None:
+        network = compute_models.Network.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(subnet.network)}
+        )
+    return network is not None and network.access == "public"
+
+
+def validate_floating_pool(project_id, ref, field: str) -> None:
+    """Refuse a floating-address source that is not a pool this project may use.
+
+    Usable means what `Address` allows allocating in (`may_allocate_in`).
+    """
+    from exordos_core.compute.dm import models as compute_models
+
+    subnet = compute_models.Subnet.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(ref)}
+    )
+    if subnet is None:
+        raise ex_exceptions.ValidateException(
+            err=f"{field} references {ref}, which does not exist"
+        )
+    network = compute_models.Network.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(subnet.network)}
+    )
+    if not is_floating_pool(subnet, network):
+        raise ex_exceptions.ValidateException(
+            err=(
+                f"{field} references subnet {ref}, which is not a floating "
+                "pool: an operator-approved address-only subnet"
+            )
+        )
+    if not may_allocate_in(project_id, subnet, network):
+        raise ex_exceptions.ValidateException(
+            err=(
+                f"{field} references subnet {ref}, which belongs to another "
+                "project and is neither a shared pool nor on a public network"
+            )
+        )
+
+
+FILTER_RULE_KEYS = frozenset(
+    {"direction", "protocol", "port", "remote_ip", "remote_group_id"}
+)
+
+
+def validate_filter_rules(rules, project_id) -> None:
+    """Validate a security-group allow-list ruleset.
+
+    Remote security groups must belong to the rule owner's project.
+    """
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            raise ex_exceptions.ValidateException(err="rule must be an object")
+        if rule.get("direction") not in FILTER_DIRECTIONS:
+            raise ex_exceptions.ValidateException(
+                err=f"rule.direction must be one of {FILTER_DIRECTIONS}"
+            )
+        if rule.get("protocol", "any") not in FILTER_PROTOCOLS:
+            raise ex_exceptions.ValidateException(
+                err=f"rule.protocol must be one of {FILTER_PROTOCOLS}"
+            )
+        port = rule.get("port")
+        if port is not None and not (
+            isinstance(port, int) and not isinstance(port, bool) and 0 < port <= 65535
+        ):
+            raise ex_exceptions.ValidateException(err="rule.port must be in 1..65535")
+        unknown = set(rule) - FILTER_RULE_KEYS
+        if unknown:
+            # A key the compiler does not read is not a restriction: a
+            # misspelt `remote` would compile to the rule without its peer,
+            # an allow wider than the one that was written. A raw
+            # `remote_identity` bit is a membership claim with no group to
+            # check.
+            raise ex_exceptions.ValidateException(
+                err=f"rule has keys nothing reads: {sorted(unknown)}"
+            )
+        group = rule.get("remote_group_id")
+        if group is not None:
+            # A packet carries its sender's identity only, so "to that
+            # group" has nothing to match on egress.
+            if rule.get("direction") != "ingress":
+                raise ex_exceptions.ValidateException(
+                    err="rule.remote_group_id is meaningful on ingress rules only"
+                )
+            validate_reference(project_id, SecurityGroup, group, "rule.remote_group_id")
+        remote_ip = rule.get("remote_ip")
+        if remote_ip is not None:
+            # Passed verbatim into an OpenFlow match, where a comma would
+            # start another field; the data plane compiles IPv4 only, and
+            # one rule it cannot compile fails the port's whole bundle.
+            try:
+                ipaddress.IPv4Network(str(remote_ip), strict=False)
+            except ValueError:
+                raise ex_exceptions.ValidateException(
+                    err="rule.remote_ip must be an IPv4 address or CIDR"
+                )
+
+
+class SecurityGroup(
+    common_models.CustomPropertiesMixin,
+    models.ModelWithUUID,
+    models.ModelWithNameDesc,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.ResourceMixin,
+):
+    """A named, shareable allow-list, cited by ports' ``security_groups``.
+
+    Compiled into a per-port stateful allow-list. Established return traffic
+    is allowed by the conntrack pipeline.
+    """
+
+    __tablename__ = "net_security_groups"
+
+    __custom_properties__ = {"rules": types.TypedList(types.Dict())}
+    rules = ()
+
+    def __init__(self, rules=(), **kwargs):
+        super().__init__(**kwargs)
+        self.rules = list(rules)
+
+    @classmethod
+    def project_observations(cls, groups, session=None):
+        from exordos_core.network.views import project_security_groups
+
+        return project_security_groups(groups, session=session)
+
+    @staticmethod
+    def _lock_policy(group, session):
+        # Serialize rules and bindings without locking FK-referenced SG rows.
+        session.execute(
+            "SELECT pg_advisory_xact_lock(1397180754, hashtext(%s))", (str(group),)
+        )
+
+    def delete(self, session=None, **kwargs):
+        if (
+            SecurityGroupRule.objects.get_all(
+                filters={"security_group": dm_filters.EQ(self.uuid)}, session=session
+            )
+            or SecurityGroupRule.objects.get_all(
+                filters={"remote_group_id": dm_filters.EQ(self.uuid)}, session=session
+            )
+            or PortSecurityGroup.objects.get_all(
+                filters={"security_group": dm_filters.EQ(self.uuid)}, session=session
+            )
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="SecurityGroup",
+                msg="still has rules, references or port bindings",
+            )
+        return super().delete(session=session, **kwargs)
+
+
+class SecurityGroupIdentity(models.ModelWithUUID, orm.SQLStorableMixin):
+    """Stable CP-only assignment of a security group to one network's bit."""
+
+    __tablename__ = "net_security_group_identities"
+    network = properties.property(types.UUID(), required=True)
+    security_group = properties.property(types.UUID(), required=True)
+    identity = properties.property(
+        types.Integer(min_value=1, max_value=0x8000), required=True
+    )
+    IDENTITY_BITS = 16
+
+    @classmethod
+    def ensure(cls, network, security_group, session=None):
+        from exordos_core.compute.dm import models as compute_models
+        from exordos_core.network.contracts import atomic_session
+
+        network = uuid.UUID(str(network))
+        security_group = uuid.UUID(str(security_group))
+        with atomic_session(cls._get_engine(), session) as s:
+            compute_models.Network.objects.get_one(
+                filters={"uuid": dm_filters.EQ(network)}, session=s, locked=True
+            )
+            existing = cls.objects.get_all(
+                filters={"network": dm_filters.EQ(network)}, session=s
+            )
+            for assignment in existing:
+                if str(assignment.security_group) == str(security_group):
+                    return assignment
+            taken = {assignment.identity for assignment in existing}
+            for index in range(cls.IDENTITY_BITS):
+                if 1 << index not in taken:
+                    assignment = cls(
+                        network=network,
+                        security_group=security_group,
+                        identity=1 << index,
+                    )
+                    assignment.insert(session=s)
+                    return assignment
+            raise ex_exceptions.ValidateException(
+                err="network %s has no identity bit left: all %d remote security group identities are allocated"
+                % (network, cls.IDENTITY_BITS)
+            )
+
+    @classmethod
+    def reserve_for_port(cls, port, rules, session=None):
+        from exordos_core.compute.dm import models as compute_models
+
+        remote_groups = sorted(
+            {
+                str(rule["remote_group_id"])
+                for rule in rules
+                if rule.get("remote_group_id")
+            }
+        )
+        if not remote_groups:
+            return
+        subnet = compute_models.Subnet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(port.subnet)}, session=session
+        )
+        for group in remote_groups:
+            cls.ensure(subnet.network, group, session=session)
+
+
+class PortSecurityGroup(
+    models.ModelWithUUID,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.ResourceMixin,
+):
+    """An independently owned, immutable port membership in a security group."""
+
+    __tablename__ = "net_port_security_groups"
+    port = properties.property(types.UUID(), required=True)
+    security_group = properties.property(types.UUID(), required=True)
+
+    def _validate_binding(self):
+        from exordos_core.compute.dm import models as compute_models
+
+        validate_reference(self.project_id, compute_models.Port, self.port, "port")
+        validate_reference(
+            self.project_id, SecurityGroup, self.security_group, "security_group"
+        )
+
+    def insert(self, session=None):
+        from exordos_core.compute.dm import models as compute_models
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as s:
+            SecurityGroup._lock_policy(self.security_group, s)
+            self._validate_binding()
+            group = SecurityGroup.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.security_group)},
+                session=s,
+            )
+            port = compute_models.Port.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.port)}, session=s
+            )
+            SecurityGroup.project_observations([group], session=s)
+            SecurityGroupIdentity.reserve_for_port(port, group.rules, session=s)
+            return super().insert(session=s)
+
+    def update(self, session=None, force=False):
+        self._validate_binding()
+        stored = type(self).objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        for field in ("port", "security_group", "project_id"):
+            if getattr(self, field) != getattr(stored, field):
+                raise ra_storage_exc.ConflictRecords(
+                    model=type(self).__name__, msg=f"{field} is immutable"
+                )
+        return super().update(session=session, force=force)
+
+
+class SecurityGroupRule(
+    models.ModelWithUUID,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.ResourceMixin,
+):
+    __tablename__ = "net_security_group_rules"
+
+    security_group = properties.property(types.UUID(), required=True)
+    direction = properties.property(types.Enum(["ingress", "egress"]), required=True)
+    protocol = properties.property(
+        types.Enum(["any", "tcp", "udp", "icmp"]), default="any"
+    )
+    port = properties.property(
+        types.AllowNone(types.Integer(min_value=1, max_value=65535)), default=None
+    )
+    remote_ip = properties.property(
+        types.AllowNone(types.String(max_length=43)), default=None
+    )
+    remote_group_id = properties.property(types.AllowNone(types.UUID()), default=None)
+
+    def rule_view(self):
+        return {
+            key: str(value) if key == "remote_group_id" else value
+            for key in ("direction", "protocol", "port", "remote_ip", "remote_group_id")
+            if (value := getattr(self, key)) is not None
+        }
+
+    def _validate_rule(self):
+        validate_reference(
+            self.project_id, SecurityGroup, self.security_group, "security_group"
+        )
+        if self.remote_ip is not None and self.remote_group_id is not None:
+            raise ex_exceptions.ValidateException(
+                err="remote_ip and remote_group_id are mutually exclusive"
+            )
+        if self.port is not None and self.protocol not in ("tcp", "udp"):
+            raise ex_exceptions.ValidateException(
+                err="port requires protocol tcp or udp"
+            )
+        validate_filter_rules([self.rule_view()], self.project_id)
+
+    def _reserve_identities(self, session):
+        from exordos_core.compute.dm import models as compute_models
+
+        if self.remote_group_id is None:
+            return
+        SecurityGroup._lock_policy(self.security_group, session)
+        links = PortSecurityGroup.objects.get_all(
+            filters={"security_group": dm_filters.EQ(self.security_group)},
+            session=session,
+        )
+        networks = set()
+        for link in links:
+            port = compute_models.Port.objects.get_one(
+                filters={"uuid": dm_filters.EQ(link.port)}, session=session
+            )
+            subnet = compute_models.Subnet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(port.subnet)}, session=session
+            )
+            networks.add(subnet.network)
+        for network in sorted(networks, key=str):
+            SecurityGroupIdentity.ensure(network, self.remote_group_id, session=session)
+
+    def insert(self, session=None):
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as s:
+            self._validate_rule()
+            self._reserve_identities(s)
+            return super().insert(session=s)
+
+    def update(self, session=None, force=False):
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as s:
+            self._validate_rule()
+            stored = type(self).objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=s
+            )
+            if (
+                self.security_group != stored.security_group
+                or self.project_id != stored.project_id
+            ):
+                raise ra_storage_exc.ConflictRecords(
+                    model="SecurityGroupRule",
+                    msg="security_group/project_id are immutable",
+                )
+            self._reserve_identities(s)
+            return super().update(session=s, force=force)
+
+
+class ProxyDestinationNodeKind(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
+    """Where a door leads, as a node of the caller's.
+
+    Not an address: the hypervisor fetches it from the management network,
+    so a caller-supplied address would be an open relay. A node is
+    ownership-checked, its address looked up, and its door goes with it.
+    """
+
+    KIND = "node"
+
+    node = properties.property(types.UUID(), required=True)
+
+
+class ProxyDestinationAddressKind(
+    types_dynamic.AbstractKindModel, models.SimpleViewMixin
+):
+    """Where a door leads, as a bare address — operator-only.
+
+    For services not modelled as nodes; gated by its own permission. An
+    address, not a URL, so no name is resolved after the check.
+    """
+
+    KIND = "address"
+
+    address = properties.property(types_network.IPAddress(), required=True)
+
+
+class ProxyService(
+    models.ModelWithUUID,
+    models.ModelWithNameDesc,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.ResourceMixin,
+):
+    """A door from an overlay network onto a service of the installation.
+
+    The per-host proxy relays HTTP on ``port`` and stamps the caller's node
+    uuid (`NODE_UUID_HEADER`). The header is a second factor, never a
+    credential: the upstream still authenticates its callers.
+
+    Compiled into the network's `proxy` NF, which stays the installation's
+    (`NetworkFunction._refuse_if_the_installations`).
+    """
+
+    __tablename__ = "net_proxy_services"
+
+    network = properties.property(types.UUID(), required=True)
+    # Same port on both ends; claimed by number whatever address the guest
+    # dialled.
+    port = properties.property(
+        types.Integer(min_value=1, max_value=65535),
+        required=True,
+    )
+    destination = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(ProxyDestinationNodeKind),
+            types_dynamic.KindModelType(ProxyDestinationAddressKind),
+        ),
+        required=True,
+    )
+    # Optional name resolving to the metadata address inside this network.
+    domain = properties.property(
+        types.AllowNone(types.String(min_length=1, max_length=255)),
+        default=None,
+    )
+
+    def _validate(self):
+        from exordos_core.compute.dm import models as compute_models
+
+        validate_reference(
+            self.project_id, compute_models.Network, self.network, "network"
+        )
+        network = compute_models.Network.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(self.network)}
+        )
+        if network is not None and not nc.is_overlay(network.driver_spec):
+            # A flat network already routes to the service; a door would be
+            # a second path through the hypervisor.
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"network {self.network} is not an overlay; its guests "
+                    "reach the installation directly and need no door"
+                )
+            )
+        if self.port in nc.PLATFORM_PROXY_PORTS:
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"port {self.port} is the platform's own; a door there "
+                    "would answer for every agent on this network"
+                )
+            )
+        if getattr(self.destination, "KIND", None) == "node":
+            validate_reference(
+                self.project_id,
+                compute_models.Node,
+                self.destination.node,
+                "destination.node",
+            )
+        taken = ProxyService.objects.get_all(
+            filters={
+                "uuid": dm_filters.NE(self.uuid),
+                "network": dm_filters.EQ(self.network),
+                "port": dm_filters.EQ(self.port),
+            },
+            limit=1,
+        )
+        for other in taken:
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"port {self.port} on this network is already the door to "
+                    f"{other.uuid}"
+                )
+            )
+        self._validate_destination_is_the_only_path()
+
+    def _validate_destination_is_the_only_path(self) -> None:
+        """A door has to be the *only* way a guest reaches the service.
+
+        The stamped identity is trustworthy only because guests cannot go
+        around the proxy. Checked here and again on every pass by
+        `upstream`, since a second path can appear later.
+        """
+        reason = self._second_path()
+        if reason:
+            raise ex_exceptions.ValidateException(err=reason)
+
+    def _second_path(self) -> tp.Optional[str]:
+        """Why this destination is reachable other than through the door.
+
+        * an overlay guest: unreachable from the hypervisor's root namespace;
+        * a floating address: `ensure_published_reachable` opens it to every
+          guest on the host.
+
+        Checks every port the node actually has, not its declaration.
+        """
+        from exordos_core.compute.dm import models as compute_models
+
+        if getattr(self.destination, "KIND", None) != "node":
+            # A bare address is the operator's (privileged) call.
+            return None
+        node = compute_models.Node.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(self.destination.node)}
+        )
+        if node is None:
+            return None
+        ports = compute_models.Port.objects.get_all(
+            filters={"node": dm_filters.EQ(getattr(node, "uuid", node))}
+        )
+        for port in ports:
+            if self._is_overlay_subnet(port.subnet):
+                return (
+                    f"destination.node {self.destination.node} is a guest of "
+                    "an overlay, so no hypervisor can reach it; a service "
+                    "behind a door has to sit on a network the installation "
+                    "itself routes to"
+                )
+            # Desired bindings and retained publications both close the door.
+            for field in ("port", "association"):
+                published = Address.objects.get_all(
+                    filters={
+                        field: dm_filters.EQ(port.uuid),
+                        "kind": dm_filters.EQ("floating"),
+                    },
+                    limit=1,
+                )
+                for address in published:
+                    return (
+                        f"destination.node {self.destination.node} answers on the "
+                        f"floating address {address.address}, which its guests can "
+                        "reach directly — a door beside it would identify nobody"
+                    )
+        return None
+
+    @staticmethod
+    def _is_overlay_subnet(subnet_uuid) -> bool:
+        from exordos_core.compute.dm import models as compute_models
+
+        subnet = compute_models.Subnet.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(subnet_uuid)}
+        )
+        if subnet is None:
+            return False
+        network = compute_models.Network.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(subnet.network)}
+        )
+        return network is not None and nc.is_overlay(network.driver_spec)
+
+    def upstream(self) -> tp.Optional[str]:
+        """Where the hypervisor fetches, or None while nothing is there yet.
+
+        The address of the node's primary port, never its `default_network`:
+        the node's owner can write that one. A node without an addressed
+        port (still being built) is left out of the compiled set until it
+        has one.
+        """
+        from exordos_core.compute.dm import models as compute_models
+
+        kind = getattr(self.destination, "KIND", None)
+        if kind == "address":
+            return "http://%s:%d" % (self.destination.address, self.port)
+        reason = self._second_path()
+        if reason:
+            # Shut while a second path exists; reopens when it goes away.
+            LOG.warning("Door %s stays shut: %s", self.uuid, reason)
+            return None
+        for port in compute_models.Port.objects.get_all(
+            filters={"node": dm_filters.EQ(self.destination.node)},
+            order_by={"index": "asc"},
+        ):
+            if port.ipv4 is not None:
+                return "http://%s:%d" % (port.ipv4, self.port)
+        return None
+
+    def insert(self, session=None):
+        self._validate()
+        return super().insert(session=session)
+
+    def update(self, session=None, force=False):
+        self._validate()
+        return super().update(session=session, force=force)
+
+
+class Address(
+    common_models.CustomPropertiesMixin,
+    models.ModelWithUUID,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    # Declarable in manifests as `$core.network.catalog.addresses`.
+    ua_models.ResourceMixin,
+):
+    """An allocated address — the DB-backed IPAM ledger (Elastic-IP model).
+
+    ``port`` is the desired binding; ``association`` records its publication.
+    ``owner_port`` identifies allocations that live and die with their port.
+    """
+
+    __tablename__ = "net_addresses"
+    network = None
+
+    subnet = properties.property(types.UUID())
+    kind = properties.property(
+        types.Enum(["reservation", "floating"]), required=True, default="reservation"
+    )
+    port = properties.property(types.AllowNone(types.UUID()), default=None)
+    __custom_properties__ = {
+        "network": types.AllowNone(types.UUID()),
+        "status": types.String(max_length=32),
+    }
+
+    def __init__(self, network=None, status=None, **kwargs):
+        super().__init__(**kwargs)
+        self._check_custom_property_value("network", network)
+        self._network_selector = network
+        self.network = network
+        self._observed_status = status
+
+    @property
+    def status(self):
+        observed = getattr(self, "_observed_status", None)
+        if observed is not None:
+            return observed
+        if self.kind == "reservation":
+            return "ACTIVE"
+        return (
+            "IN_PROGRESS"
+            if self.port is not None or self.association is not None
+            else "UNBOUND"
+        )
+
+    @status.setter
+    def status(self, value):
+        self._observed_status = value
+
+    @staticmethod
+    def validate_input(value, stored=None):
+        from exordos_core.network.contracts import validate_address_input
+
+        validate_address_input(value, stored)
+
+    @classmethod
+    def project_observations(cls, addresses, session=None):
+        from exordos_core.network.views import project_addresses
+
+        return project_addresses(addresses, session=session)
+
+    def _validate_port(self, session=None, *, lock=True):
+        from exordos_core.compute.dm import models as compute_models
+
+        if self.owner_port is not None and self.port != self.owner_port:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address", msg="a port-owned address cannot move to another port"
+            )
+        if self.kind == "reservation" and self.port is not None:
+            raise ex_exceptions.ValidateException(
+                err="reservation cannot bind to a port"
+            )
+        if self.kind == "floating":
+            validate_floating_pool(self.project_id, self.subnet, "subnet")
+        if self.port is None:
+            return
+        validate_reference(
+            self.project_id, compute_models.Port, self.port, "port", session=session
+        )
+        if lock:
+            compute_models.Port.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.port)}, session=session, locked=True
+            )
+        others = Address.objects.get_all(
+            filters={
+                "port": dm_filters.EQ(self.port),
+                "uuid": dm_filters.NE(self.uuid),
+            },
+            session=session,
+        )
+        if others:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address", msg="port already has a floating address"
+            )
+
+    # Omitted: allocated from the subnet.
+    address = properties.property(
+        types.AllowNone(types.String(min_length=2, max_length=45)),
+        default=None,
+    )
+    owner_port = properties.property(types.AllowNone(types.UUID()), default=None)
+    association = properties.property(types.AllowNone(types.UUID()), default=None)
+
+    def _reserved_addresses(self, subnet):
+        # Network, broadcast and gateways (``routers[*].via``).
+        reserved = {str(subnet.cidr.network), str(subnet.cidr.broadcast)}
+        for router in subnet_utils.effective_routers(subnet):
+            via = router.get("via") if isinstance(router, dict) else None
+            if via is not None:
+                reserved.add(str(via))
+        return reserved
+
+    def _used_addresses(self, session=None):
+        # Ledger plus compute_ports.ipv4, so this and
+        # the reconcile Ipam never collide.
+        from exordos_core.compute.dm import models as compute_models
+
+        used = {
+            a.address
+            for a in Address.objects.get_all(
+                filters={
+                    "subnet": dm_filters.EQ(self.subnet),
+                },
+                session=session,
+            )
+            if a.address is not None
+        }
+        if self.kind == "floating":
+            used.update(
+                a.address
+                for a in Address.objects.get_all(
+                    filters={
+                        "kind": dm_filters.EQ("floating"),
+                    },
+                    session=session,
+                )
+                if a.address is not None
+            )
+        for port in compute_models.Port.objects.get_all(
+            filters={"subnet": dm_filters.EQ(self.subnet)}, session=session
+        ):
+            if port.ipv4 is not None:
+                used.add(str(port.ipv4))
+        return used
+
+    def _validate_address_value(self, subnet) -> None:
+        """An address must be an IP inside the subnet.
+
+        One non-IP row makes `ipam.ledger_reservations` raise and silently
+        disables reservations for the whole subnet.
+        """
+        if self.address is None:
+            return
+        if not u.is_ip(self.address):
+            raise ex_exceptions.ValidateException(
+                err=f"address {self.address!r} is not an IP address"
+            )
+        if subnet.ip_range_pair is not None:
+            first, last = subnet.ip_range_pair
+            if not first <= netaddr.IPAddress(str(self.address)) <= last:
+                raise ex_exceptions.ValidateException(
+                    err="address is outside subnet ip_range"
+                )
+        if subnet.cidr is None:
+            return
+        if netaddr.IPAddress(str(self.address)) not in subnet.cidr:
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"address {self.address} is not in {subnet.cidr}, the "
+                    "subnet it would be held against"
+                )
+            )
+
+    def _validate_address_free(self, subnet, session=None) -> None:
+        """An address asked for by value must be free to hold.
+
+        Not the subnet's network, broadcast or a gateway, and no port's.
+        Another reserved row is the unique index's to refuse.
+        """
+        from exordos_core.compute.dm import models as compute_models
+
+        if self.address is None:
+            return
+        if str(self.address) in self._reserved_addresses(subnet):
+            raise ex_exceptions.ValidateException(
+                err=f"address {self.address} is the subnet's own, not a host's"
+            )
+        taken = compute_models.Port.objects.get_all(
+            filters={
+                "subnet": dm_filters.EQ(self.subnet),
+                "ipv4": dm_filters.EQ(netaddr.IPAddress(str(self.address))),
+            },
+            limit=1,
+            session=session,
+        )
+        filters = {
+            "address": dm_filters.EQ(str(self.address)),
+            "uuid": dm_filters.NE(self.uuid),
+        }
+        filters["subnet"] = dm_filters.EQ(self.subnet)
+        reserved = Address.objects.get_all(filters=filters, session=session)
+        if self.kind == "floating":
+            # Every VNI publishes into the same host routing/ARP namespace.
+            filters.pop("subnet")
+            filters["kind"] = dm_filters.EQ("floating")
+            reserved += Address.objects.get_all(filters=filters, session=session)
+        if reserved:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address", msg="address is already reserved"
+            )
+        for port in taken:
+            raise ex_exceptions.ValidateException(
+                err=f"address {self.address} is already port {port.uuid}'s"
+            )
+
+    def _resolve_subnet(self, session=None):
+        """Fetch the target subnet, refusing one this project may not use."""
+        from exordos_core.compute.dm import models as compute_models
+        from exordos_core.network.contracts import resolve_subnet
+
+        selector = getattr(self, "_network_selector", None)
+        if self.subnet is None:
+            self.subnet = resolve_subnet(
+                self.project_id,
+                self.subnet,
+                selector,
+                self.address,
+                floating=True if self.kind == "floating" else None,
+                session=session,
+            ).uuid
+
+        subnet = compute_models.Subnet.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(self.subnet)}, session=session
+        )
+        if subnet is None:
+            raise ex_exceptions.ValidateException(
+                err=f"subnet {self.subnet} does not exist"
+            )
+        if selector is not None and str(selector) != str(
+            getattr(subnet.network, "uuid", subnet.network)
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="Address", msg="network is immutable"
+            )
+        if not may_allocate_in(self.project_id, subnet):
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"subnet {self.subnet} belongs to another project "
+                    "and is neither a shared pool nor on a public network"
+                )
+            )
+        return subnet
+
+    def _allocate_free_address(self, subnet, session=None):
+        blocked = self._used_addresses(session=session) | self._reserved_addresses(
+            subnet
+        )
+        first = last = None
+        if subnet.ip_range_pair is not None:
+            first, last = subnet.ip_range_pair
+        for host in subnet.cidr.iter_hosts():
+            if first is not None and not (first <= host <= last):
+                continue
+            candidate = str(host)
+            if candidate not in blocked:
+                return candidate
+        raise ex_exceptions.ValidateException(
+            err=f"No free addresses left in subnet {self.subnet}"
+        )
+
+    def insert(self, session=None):
+        from exordos_core.compute.dm import models as compute_models
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            subnet = self._resolve_subnet(session=current)
+            self._validate_port(current)
+            compute_models.Subnet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.subnet)},
+                session=current,
+                locked=True,
+            )
+            self._validate_address_value(subnet)
+            self._validate_address_free(subnet, session=current)
+            if self.address is None:
+                self.address = self._allocate_free_address(subnet, session=current)
+            result = super().insert(session=current)
+            self._touch_node_sets([self.port], current)
+            return result
+
+    @staticmethod
+    def _touch_node_sets(ports, session):
+        ports = [str(port) for port in ports if port is not None]
+        if ports:
+            session.execute(
+                "UPDATE compute_sets SET updated_at = NOW() WHERE uuid IN ("
+                "SELECT n.node_set FROM nodes n JOIN compute_ports p ON p.node = n.uuid "
+                "WHERE p.uuid = ANY(%s::uuid[]) AND n.node_set IS NOT NULL)",
+                (ports,),
+            )
+
+    def update(self, session=None, force=False):
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = Address.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            subnet = self._resolve_subnet(session=current)
+            for field in ("kind", "subnet", "address", "project_id"):
+                if getattr(stored, field) != getattr(self, field):
+                    raise ra_storage_exc.ConflictRecords(
+                        model="Address", msg=f"{field} is immutable"
+                    )
+            self._validate_address_value(subnet)
+            if (
+                stored.port is not None
+                and self.port is not None
+                and stored.port != self.port
+            ):
+                raise ra_storage_exc.ConflictRecords(
+                    model="Address", msg="unbind before moving to another port"
+                )
+            if stored.port is not None and self.port is None:
+                self.owner_port = None
+            # A new binding is publishable without waiting for the former host.
+            self.association = stored.association if stored.port == self.port else None
+            self._validate_port(current, lock=stored.port != self.port)
+            result = super().update(session=current, force=force)
+            if stored.port != self.port:
+                self._touch_node_sets([stored.port, self.port], current)
+            return result
+
+    def claim_publication(self, port, session=None):
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = Address.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            if stored.port != port or stored.association not in (None, port):
+                raise ra_storage_exc.ConflictRecords(
+                    model="Address", msg="floating binding changed before publication"
+                )
+            stored.association = port
+            orm.SQLStorableMixin.update(stored, session=current)
+            self.association = port
+
+    def delete(self, session=None, **kwargs):
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = Address.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            return stored._delete_allocated(session=current, **kwargs)
+
+    def _delete_allocated(self, session=None, owner_port=None, **kwargs):
+        if owner_port is not None and self.owner_port != owner_port:
+            return
+        if self.owner_port is not None and owner_port != self.owner_port:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address",
+                msg=f"owned by port {self.owner_port}; delete the port instead",
+            )
+        if self.kind == "reservation" and self.association is not None:
+            raise ra_storage_exc.ConflictRecords(
+                model="Address", msg=f"still associated with {self.association}"
+            )
+        result = super().delete(session=session, **kwargs)
+        self._touch_node_sets([self.port], session)
+        return result
+
+
+# --- Network functions -------------------------------------------------------
+
+
+class NetworkFunctionKind(str, enum.Enum):
+    # Services the installation runs for a network's guests.
+    DHCP = "dhcp"
+    DNS = "dns"
+    PROXY = "proxy"
+
+
+class NetworkFunction(
+    models.ModelWithUUID,
+    models.ModelWithNameDesc,
+    models.ModelWithTimestamp,
+    models.ModelWithProject,
+    orm.SQLStorableMixin,
+    ua_models.ResourceMixin,
+):
+    """One typed thing done to a guest's traffic.
+
+    How the fabric intercepts and realizes it follows from ``kind``. A
+    function is seeded for its owner (a subnet's DHCP, a
+    network's resolver and metadata proxy); callers read and edit it.
+    """
+
+    __tablename__ = "net_nfs"
+
+    kind = properties.property(
+        types.Enum([k.value for k in NetworkFunctionKind]),
+        required=True,
+    )
+    config = properties.property(types.Dict(), default=dict)
+
+    def render_config(self, defaults):
+        def merge(current, overrides):
+            if not isinstance(current, dict) or not isinstance(overrides, dict):
+                return overrides
+            if "kind" in overrides and overrides["kind"] != current.get("kind"):
+                return overrides
+            result = current.copy()
+            for key, value in overrides.items():
+                result[key] = merge(current.get(key), value)
+            return result
+
+        overrides = {k: v for k, v in self.config.items() if v is not None}
+        return merge(defaults, overrides)
+
+    # What the function was seeded for.
+    owner_subnet = properties.property(types.AllowNone(types.UUID()), default=None)
+    owner_network = properties.property(types.AllowNone(types.UUID()), default=None)
+
+    # Config keys per kind, so a typo is a 400 rather than a silent no-op.
+    _CONFIG_SCHEMA = {
+        # `filename` is what a guest's iPXE ROM chain-loads; `lease_seconds`
+        # overrides the responder's default lease.
+        "dhcp": {"filename": str, "lease_seconds": int},
+        # `platform_names` resolve to the serving hypervisor, the only
+        # platform address an overlay guest can reach.
+        "dns": {"forwarders": list, "zone_suffix": str, "platform_names": list},
+        # `forwards`: published static prefixes, read-only. `ports`: platform
+        # APIs that authenticate nobody, so the proxy scopes the guest.
+        # `apis`: upstreams that authenticate callers, relayed whole.
+        # `services`: ProxyService doors, told who is calling. All else 404.
+        "proxy": {
+            "forwards": list,
+            "ports": dict,
+            "apis": list,
+            "services": dict,
+        },
+    }
+
+    def _validate(self):
+        schema = self._CONFIG_SCHEMA.get(self.kind, {})
+        for key, value in (self.config or {}).items():
+            if key not in schema:
+                raise ex_exceptions.ValidateException(
+                    err=f"{self.kind} config does not accept {key!r} "
+                    f"(known keys: {sorted(schema)})"
+                )
+            if value is None:
+                continue
+            expected = schema[key]
+            # bool is an int subclass; keep them apart so `port: true` fails.
+            if expected is int and isinstance(value, bool):
+                raise ex_exceptions.ValidateException(
+                    err=f"config.{key} must be an integer"
+                )
+            if not isinstance(value, expected):
+                raise ex_exceptions.ValidateException(
+                    err=f"config.{key} must be of type {expected.__name__}"
+                )
+        if self.kind == NetworkFunctionKind.DNS.value:
+            self._validate_forwarders()
+
+    def _validate_forwarders(self) -> None:
+        """A caller's resolver has to be a public IPv4 address.
+
+        The responder relays from the network's namespace through the
+        hypervisor's own routing, past the fabric guard, so any other
+        address would be a relay into the underlay. Existing stored overrides
+        remain valid; installation defaults are added only during compilation.
+        """
+        stored = NetworkFunction.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(self.uuid)}
+        )
+        kept = set((stored.config or {}).get("forwarders") or []) if stored else set()
+        for forwarder in (self.config or {}).get("forwarders") or []:
+            if forwarder in kept:
+                continue
+            try:
+                address = ipaddress.IPv4Address(str(forwarder))
+            except ValueError:
+                raise ex_exceptions.ValidateException(
+                    err=f"forwarder {forwarder!r} is not an IPv4 address"
+                )
+            if not address.is_global:
+                raise ex_exceptions.ValidateException(
+                    err=(
+                        f"forwarder {forwarder} is not a public address; the "
+                        "resolver relays from the hypervisor, not from your "
+                        "network"
+                    )
+                )
+
+    def insert(self, session=None):
+        self._validate()
+        return super().insert(session=session)
+
+    def _refuse_if_the_installations(self, verb: str) -> None:
+        """Refuse a caller's write to the platform's own function.
+
+        `proxy` names the upstreams the hypervisor fetches from the
+        management network for a guest; a tenant editing it (it lives in
+        their project) would get an open relay. So it is not editable or
+        deletable via the API and is refreshed from config on every pass.
+        """
+        if self.kind == NetworkFunctionKind.PROXY.value:
+            raise ex_exceptions.ValidateException(
+                err=(
+                    f"{self.kind} functions are the installation's: they say "
+                    "which upstreams a hypervisor will reach on a guest's "
+                    f"behalf, so they come from its configuration and cannot "
+                    f"be {verb}"
+                )
+            )
+
+    def update(self, session=None, force=False):
+        self._refuse_if_the_installations("edited")
+        self._validate()
+        return super().update(session=session, force=force)
+
+    def delete(self, session=None, **kwargs):
+        # The compiler would reseed it; meanwhile guests reach nothing.
+        self._refuse_if_the_installations("deleted")
+        return super().delete(session=session, **kwargs)
+
+    # --- generator-side API ------------------------------------------------
+
+    def collect_generated(self, session=None) -> None:
+        super().delete(session=session)

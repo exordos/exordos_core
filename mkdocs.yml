@@ -72,6 +72,7 @@ plugins:
             IAM: IAM
             Permissions: Права доступа
             Network: Сеть
+            Network dataplane: Dataplane сети
             LBaaS API: LBaaS API
             Secrets: Секреты
             Certificates: Сертификаты
@@ -168,7 +169,14 @@ nav:
   - IAM:
     - Permissions: iam/permissions_overview.md
   - Network:
+    - Network dataplane: network/dataplane.md
     - LBaaS API: network/load_balancer.md
+    - Realm Connectivity SDN: network/realm-connectivity-sdn.md
+    - SDN API contract: network/sdn-api-contract.md
+    - Private Networks: network/private-network.md
+    - Node ports: network/node-interfaces.md
+    - Security groups across a network: network/security-group-remote-access.md
+    - Networking for a managed service: network/paas-networking-guide.md
   - Secrets:
       - Certificates: secret/certificates.md
       - Passwords: secret/passwords.md

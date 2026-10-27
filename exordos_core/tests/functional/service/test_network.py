@@ -69,6 +69,7 @@ class TestNetworkService:
         return pool
 
     def _add_node(self, **kwargs) -> models.Node:
+        kwargs.setdefault("default_network", {})
         node_uuid = sys_uuid.uuid4()
         node = models.Node(
             uuid=node_uuid,
@@ -188,8 +189,8 @@ class TestNetworkService:
 
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_port(self):
-        node = self._add_node()
         network, subnet = self._add_network()
+        node = self._add_node(default_network={"subnet": str(subnet.uuid)})
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -210,7 +211,10 @@ class TestNetworkService:
 
                 self.__class__.create_port_called = True
                 assert port.subnet == subnet.uuid
-                assert port.ipv4 == netaddr.IPAddress("10.0.0.0")
+                # A DHCP subnet defaults its gateway/DNS to .1 (reserved out
+                # of the guest pool), and .0 is the network address, so the
+                # first guest of a fresh subnet starts at .2.
+                assert port.ipv4 == netaddr.IPAddress("10.0.0.2")
                 assert port.mask == netaddr.IPAddress("255.255.255.0")
                 port_uuid = port.uuid
                 return port
@@ -228,7 +232,8 @@ class TestNetworkService:
                 "uuid": dm_filters.EQ(str(node.uuid)),
             },
         )
-        assert node.default_network["ipv4"] == "10.0.0.0"
+        models.Node.project_observations([node])
+        assert node.default_network["ipv4"] == "10.0.0.2"
         assert node.default_network["mask"] == "255.255.255.0"
         assert node.default_network["mac"]
         assert node.default_network["subnet"] == str(subnet.uuid)
@@ -326,9 +331,10 @@ class TestNetworkService:
 
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_port_target_ip(self):
-        extra = {"default_network": {"target_ipv4": "10.0.0.10"}}
-        node = self._add_node(**extra)
         network, subnet = self._add_network()
+        node = self._add_node(
+            default_network={"subnet": str(subnet.uuid), "target_ipv4": "10.0.0.10"}
+        )
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -367,6 +373,7 @@ class TestNetworkService:
                 "uuid": dm_filters.EQ(str(node.uuid)),
             },
         )
+        models.Node.project_observations([node])
         assert node.default_network["ipv4"] == "10.0.0.10"
         assert node.default_network["target_ipv4"] == "10.0.0.10"
         assert node.default_network["mask"] == "255.255.255.0"
@@ -386,10 +393,9 @@ class TestNetworkService:
 
     @pytest.mark.usefixtures("user_api_client", "auth_user_admin")
     def test_new_node_add_ip_range(self):
-        node = self._add_node()
-
         extra = {"ip_range": netaddr.IPRange("10.0.0.100", "10.0.0.200")}
         network, subnet = self._add_network(**extra)
+        node = self._add_node(default_network={"subnet": str(subnet.uuid)})
         port_uuid = None
 
         class FakeDriver(driver_base.DummyNetworkDriver):
@@ -428,6 +434,7 @@ class TestNetworkService:
                 "uuid": dm_filters.EQ(str(node.uuid)),
             },
         )
+        models.Node.project_observations([node])
         assert node.default_network["ipv4"] == "10.0.0.100"
         assert node.default_network["mask"] == "255.255.255.0"
         assert node.default_network["mac"]
@@ -563,6 +570,7 @@ class TestNetworkService:
                 "uuid": dm_filters.EQ(str(node.uuid)),
             },
         )
+        models.Node.project_observations([node])
         assert node.default_network["ipv4"] == "10.0.0.100"
         assert node.default_network["mask"] == "255.255.255.0"
         assert node.default_network["mac"] == hw_interface.mac
