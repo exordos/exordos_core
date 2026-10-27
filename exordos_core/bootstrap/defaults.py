@@ -607,6 +607,38 @@ def set_realm_uuid_var(spec: dict[str, tp.Any]) -> bool:
     return True
 
 
+def set_realm_domain_var(spec: dict[str, tp.Any]) -> bool:
+    val_uuid = sys_uuid.UUID("a6c149dc-9cfe-49c0-a0f0-d04e156b564e")
+    existing_value = vs_models.Value.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(val_uuid)}
+    )
+    if existing_value:
+        LOG.info("Realm domain variable already exists")
+        return True
+
+    LOG.info("Set realm_domain variable")
+    realm_domain_var = vs_models.Variable.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(c.VAR_REALM_DOMAIN_UUID)}
+    )
+    if not realm_domain_var:
+        return False
+
+    # Get realm domain from spec
+    realm_domain_value = spec.get("realm_domain", "")
+    if not realm_domain_value:
+        LOG.warning("No realm domain found in spec")
+        return True
+
+    realm_domain_val = vs_models.Value(
+        uuid=val_uuid,
+        variable=realm_domain_var,
+        value=realm_domain_value,
+        project_id=c.EM_HIDDEN_PROJECT_ID,
+    )
+    realm_domain_val.insert()
+    return True
+
+
 def set_realm_secret_var(spec: dict[str, tp.Any]) -> bool:
     val_uuid = sys_uuid.UUID("c5548ad1-7990-4283-ba1f-725fd7a7b9d4")
     existing_value = vs_models.Value.objects.get_one_or_none(
