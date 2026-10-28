@@ -483,6 +483,17 @@ class TestCreateInstanceHooks:
 
         assert list(result) == [manifest]
 
+    def test_create_derivatives_installs_available_pending_element(self, monkeypatch):
+        element = FakeElement(
+            installation_state=models.RepoElementInstallationState.INSTALLED.value,
+            element=None,
+        )
+        element.status = models.RepoElementStatus.AVAILABLE.value
+        manifest = object()
+        monkeypatch.setattr(self._service, "_install_manifest", lambda i: manifest)
+
+        assert list(self._service.create_instance_derivatives(element)) == [manifest]
+
     def test_create_derivatives_empty_for_uninstalled_element(self):
         element = FakeElement(
             installation_state=models.RepoElementInstallationState.UNINSTALLED.value,
