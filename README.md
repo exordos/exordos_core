@@ -65,4 +65,5 @@ Contributing to the project is highly appreciated! However, some rules should be
 - Changes can be merged only after receiving an approve from one of the project maintainers.
 
 Native OpenStack pools and routed private links are documented in
-[OpenStack multicloud](docs/network/openstack-multicloud.md).
+[OpenStack multicloud](docs/network/openstack-multicloud.md). Register provider
+credentials through API or CLI; Core supplies agent bootstrap settings.

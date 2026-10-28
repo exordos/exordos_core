@@ -1,11 +1,11 @@
 # OpenStack multicloud
 
-Core can manage several OpenStack accounts through native Nova, Neutron and
-Cinder APIs. Each `CloudConnection` selects one operator-managed `clouds.yaml`
-entry and region. The controller performs provider API calls; guest agents do
-not receive OpenStack credentials. Install Core and SDK with the `openstack`
-extra and make `OS_CLIENT_CONFIG_FILE` available to the Core general service.
-Protect that file with mode `0600`.
+Core manages OpenStack accounts through native Nova, Neutron and Cinder APIs.
+Register project-scoped Keystone credentials through Core's API or
+`exordos compute cloud-connections`. Core authenticates the account and stores
+its provider identity in read-only `driver_state`. Credentials are write-only and stay on Core;
+no provider configuration files are required. Install Core and SDK with the
+`openstack` extra.
 
 For an existing installation, follow [Connect on-premises to OpenStack](onprem-openstack.md).
 
@@ -13,9 +13,11 @@ For an existing installation, follow [Connect on-premises to OpenStack](onprem-o
 
 Create these resources in order through the authenticated user API:
 
-1. `POST /v1/compute/cloud_connections/`: `project_id`, `name`, `cloud`,
-   `driver: "openstack"`, `region`, `orch_endpoint`, `status_endpoint`,
-   `agent_package` (an installable SDK package URL or pinned requirement).
+1. `POST /v1/compute/cloud_connections/`: Core `project_id`, `name` and a typed
+   `driver_spec`. Its `kind: "openstack"` selects the OpenStack schema: `auth_url`,
+   `auth_type` (`v3applicationcredential` or `v3password`), `auth`, optional
+   `region` and catalog `interface` (default `public`). Each driver kind defines
+   its own fields. The installation supplies agent endpoints and the installed SDK requirement.
 2. `POST /v1/network/networks/`: the same `project_id`, and
    `driver_spec: {"driver": "cloud", "connection": "<connection UUID>",
    "external_network": "<Neutron external network UUID>"}`.
@@ -27,7 +29,8 @@ Create these resources in order through the authenticated user API:
    NodeSets referencing the cloud subnet.
 
 Only one pool may consume a connection's shared quotas. Connections and cloud
-pool/network scope and agent bootstrap settings are immutable. Delete dependent nodes, pools, subnets and
+pool/network scope is immutable. Credential replacement authenticates against
+the same provider project; a different project is rejected. Delete dependent nodes, pools, subnets and
 networks before deleting a connection. Connection and link administration use
 the existing compute hypervisor policy.
 
@@ -223,7 +226,8 @@ Cloud-init writes an explicit Core node identity and a mode `0600` encryption
 key, installs the SDK and enables `exordos-agent.service`. The provider's DMI
 UUID and metadata API remain intact. The guest agent uses the private
 Orchestrator and Status endpoints with the existing encrypted agent protocol.
-`agent_package` and its dependencies must be reachable during bootstrap.
+The installed SDK version and its dependencies must be available to bootstrap.
+Agent Orchestrator/Status URLs use the installation's combined Boot API endpoint.
 On images with a preinstalled Exordos agent, cloud-init queues startup after
 `cloud-config.service`, so baked image services
 waiting for agent-delivered configuration cannot hold it behind cloud-final's

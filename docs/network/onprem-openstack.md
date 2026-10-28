@@ -12,9 +12,9 @@ backends through the established tunnel.
 
 - Install compatible Core, SDK and SeedOS images with cloud drivers and
   `OpenVPNCapabilityDriver`. Core and gateway hosts need OpenVPN 2.6+.
-- Give the Core general service a mode `0600` OpenStack `clouds.yaml` and set
-  its `OS_CLIENT_CONFIG_FILE`. The account needs Nova, Neutron, Cinder and
-  Glance permissions. Only Core holds these credentials.
+- Obtain a project-scoped OpenStack application credential, or a username,
+  password, domain and project. It needs Nova, Neutron, Cinder and Glance
+  permissions. Submit it to Core's API; only Core retains the credentials.
 - Ensure Core reaches the Keystone catalog endpoints independently of the
   link. Gateway bootstrap needs access to package repositories.
 - Choose non-overlapping private CIDRs. The examples use `10.80.0.0/24` in
@@ -51,23 +51,69 @@ curl -fsS "$CORE/v1/compute/cloud_connections/" \
 {
   "project_id": "<PROJECT_ID>",
   "name": "remote-openstack",
-  "cloud": "<entry name in clouds.yaml>",
-  "driver": "openstack",
-  "region": "RegionOne",
-  "orch_endpoint": "https://core.example/orch/",
-  "status_endpoint": "https://core.example/status/",
-  "agent_package": "<installable SDK wheel URL or pinned requirement>"
+  "driver_spec": {
+    "kind": "openstack",
+    "auth_url": "https://identity.example/v3",
+    "auth_type": "v3password",
+    "auth": {
+      "username": "<OS_USERNAME>",
+      "password": "<OS_PASSWORD>",
+      "user_domain_name": "<OS_USER_DOMAIN_NAME>",
+      "project_id": "<OS_PROJECT_ID>"
+    },
+    "region": "RegionOne"
+  }
 }
 ```
 
-Use actual Orchestrator/Status URLs reachable by cloud agents through the
-link. If Core lives on a separate management network, expose these services
-through an address or proxy on the connected network, or provide explicit
-routes and return paths. Use a service address separate from the link gateway
-host: new tunnel connections to its own listeners are blocked.
-Local agents and the on-premises managed gateway
-must reach Core without depending on the cloud link. The SDK package URL and
-its dependencies must be reachable during bootstrap.
+The `driver_spec.kind` discriminator selects the driver schema. The
+`openstack` kind holds its Keystone credentials and catalog settings. Core
+records the authenticated project in read-only `driver_state.project_id`. The
+`driver_spec.auth` object is write-only: create, show, list and update responses omit it.
+No provider configuration files or environment variables are needed on Core.
+
+The same registration through CLI prompts for the password without echoing it
+when `OS_PASSWORD` is not supplied in the CLI environment:
+
+```sh
+exordos compute cloud-connections add --name remote-openstack --kind openstack \
+  --project-id "$PROJECT_ID" --auth-url https://identity.example/v3 \
+  --auth-type v3password --username "$OS_USERNAME" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME" \
+  --region RegionOne
+```
+
+`--project-id` names the Core project; `driver_spec.auth.project_id` and `--os-project-id`
+name the OpenStack project. Obtain the username, user domain, project ID and
+Keystone URL from the provider's API access settings. With a project name,
+use `project_name` and `project_domain_name` instead of `driver_spec.auth.project_id`.
+
+Replace the password with `PUT` containing the complete `driver_spec`, including
+its `kind` and updated `auth`. The CLI reads existing public settings automatically:
+
+```sh
+exordos compute cloud-connections update-credentials "$CONNECTION_ID" \
+  --auth-type v3password --username "$OS_USERNAME" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME"
+```
+
+Core authenticates the replacement and rejects a different provider project.
+Auth URL, type, region and interface are immutable; use a different connection
+for a different cloud scope.
+
+Application credentials are an alternative when the provider supports them:
+set `driver_spec.auth_type: "v3applicationcredential"` with `application_credential_id`
+and `application_credential_secret` in `driver_spec.auth`. The CLI accepts
+`--application-credential-id` and prompts for its secret.
+
+Core derives agent Orchestrator/Status URLs from its installation's combined
+Boot API endpoint and pins the installed SDK version for bootstrap. These are
+not cloud connection parameters. This service address must be reachable from
+the connected network; a management network needs its own attachment and
+return route. Use a service address separate from the link gateway host,
+whose own listeners reject new tunnel connections. Local agents must reach
+Core independently of the cloud link. Bootstrap needs access to the package
+repository and SDK dependencies.
 
 ## Create cloud networking and compute capacity
 
@@ -148,7 +194,7 @@ OpenStack keypair, optionally set `key_name` in this driver specification.
 Core creates both gateways and routes. The on-premises gateway dials the
 cloud floating IP. No inbound port forwarding to on-premises is needed.
 The cloud transport bootstraps before guest access to Core is available.
-Poll `GET /v1/compute/cloud_network_links/<LINK_ID>/` until `ACTIVE`, then verify
+Poll `GET /v1/compute/cloud_network_links/<LINK_ID>` until `ACTIVE`, then verify
 workload traffic in both directions. Existing VMs must renew DHCP for routes.
 
 For a pre-existing on-premises routing gateway, replace its endpoint with:

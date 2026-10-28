@@ -26,6 +26,7 @@ from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.cloud.bootstrap import agent_config
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.pool.dm import models as pool_models
@@ -314,16 +315,11 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         if cloud:
             from gcl_sdk.cloud.bootstrap import agent_user_data
 
-            from exordos_core.cloud.models import connection
-
-            config = connection(machine.pool.driver_spec.connection)
             key = ua_models.NodeEncryptionKey.get_or_create(machine.node.uuid)
             pool_machine.user_data = agent_user_data(
                 machine.node.uuid,
                 key.private_key,
-                config.orch_endpoint,
-                config.status_endpoint,
-                config.agent_package,
+                *agent_config(),
                 hostname=machine.node.hostname or machine.node.name,
             )
 

@@ -9,9 +9,9 @@ On-premises шлюз инициирует OpenVPN-соединение и мож
 
 - На Core и узлах нужны совместимые Core, SDK и SeedOS с cloud-драйверами
   и `OpenVPNCapabilityDriver`. На Core и шлюзах нужен OpenVPN 2.6+.
-- Сервису Core general service передайте `OS_CLIENT_CONFIG_FILE`, указывающий
-  на `clouds.yaml` с правами `0600`. Учётная запись должна иметь права на
-  Nova, Neutron, Cinder и Glance. Провайдерские секреты остаются на Core.
+- Получите проектный application credential OpenStack либо имя пользователя,
+  пароль, домен и проект. Нужны права на Nova, Neutron, Cinder и Glance.
+  Учётные данные передаются в API и остаются только на Core.
 - Core должен достигать endpoint из Keystone catalog независимо от link.
   Шлюзам при bootstrap нужен доступ к репозиториям пакетов.
 - Выберите непересекающиеся CIDR. В примере облачная подсеть — `10.80.0.0/24`;
@@ -49,22 +49,70 @@ curl -fsS "$CORE/v1/compute/cloud_connections/" \
 {
   "project_id": "<PROJECT_ID>",
   "name": "remote-openstack",
-  "cloud": "<entry name in clouds.yaml>",
-  "driver": "openstack",
-  "region": "RegionOne",
-  "orch_endpoint": "https://core.example/orch/",
-  "status_endpoint": "https://core.example/status/",
-  "agent_package": "<installable SDK wheel URL or pinned requirement>"
+  "driver_spec": {
+    "kind": "openstack",
+    "auth_url": "https://identity.example/v3",
+    "auth_type": "v3password",
+    "auth": {
+      "username": "<OS_USERNAME>",
+      "password": "<OS_PASSWORD>",
+      "user_domain_name": "<OS_USER_DOMAIN_NAME>",
+      "project_id": "<OS_PROJECT_ID>"
+    },
+    "region": "RegionOne"
+  }
 }
 ```
 
-Укажите реальные URL Orchestrator/Status, доступные облачным агентам через
-link. Если Core находится в отдельной management-сети, подайте API через
-адрес или прокси в подключённой сети либо настройте маршруты и обратный путь.
-Адрес сервиса должен быть отделён от хоста link-шлюза: новые соединения
-из туннеля к его собственным службам блокируются.
-Местные агенты и управляемый on-premises шлюз должны достигать Core без
-облачного link. Пакет SDK и его зависимости должны быть доступны при bootstrap.
+`driver_spec.kind` выбирает схему драйвера. Тип `openstack` содержит параметры
+Keystone и каталога сервисов. Core сохраняет проверенный проект OpenStack
+в доступном только для чтения `driver_state.project_id`.
+Объект `driver_spec.auth` доступен только для записи: ответы создания, просмотра, списка
+и обновления его не содержат. Файлы конфигурации провайдера и переменные
+окружения на Core не требуются.
+
+Та же регистрация через CLI. Если `OS_PASSWORD` не задан в окружении CLI,
+пароль запрашивается без отображения:
+
+```sh
+exordos compute cloud-connections add --name remote-openstack --kind openstack \
+  --project-id "$PROJECT_ID" --auth-url https://identity.example/v3 \
+  --auth-type v3password --username "$OS_USERNAME" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME" \
+  --region RegionOne
+```
+
+`--project-id` обозначает проект Core; `driver_spec.auth.project_id` и `--os-project-id` —
+проект OpenStack. Имя пользователя, его домен, UUID проекта и адрес Keystone
+возьмите из параметров доступа по API у провайдера. Для выбора проекта по имени
+вместо `driver_spec.auth.project_id` укажите `project_name` и `project_domain_name`.
+
+Для замены пароля отправьте `PUT` с полным объектом `driver_spec`, включая
+`kind` и обновлённый `auth`. CLI сам читает существующие открытые параметры:
+
+```sh
+exordos compute cloud-connections update-credentials "$CONNECTION_ID" \
+  --auth-type v3password --username "$OS_USERNAME" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME"
+```
+
+Core проверяет новые данные и отклоняет подмену проекта провайдера. Адрес
+Keystone, тип аутентификации, регион и интерфейс неизменяемы; для другой области
+облака создайте другое подключение.
+
+Application credentials — альтернативный способ, если провайдер их поддерживает:
+задайте `driver_spec.auth_type: "v3applicationcredential"` и поля `application_credential_id`
+и `application_credential_secret` в `driver_spec.auth`. CLI принимает
+`--application-credential-id` и запрашивает соответствующий секрет.
+
+Core берёт адреса Orchestrator/Status из общего Boot API своей инсталляции
+и выбирает установленную версию SDK для bootstrap. Эти параметры не задаются
+при добавлении облака. Адрес сервиса должен быть доступен из подключённой сети;
+для management-сети нужны её подключение и обратный маршрут. Адрес сервиса
+должен быть отделён от хоста link-шлюза: новые соединения из туннеля к его
+собственным службам блокируются. Местные агенты должны достигать Core независимо
+от облачного link. При bootstrap нужны доступ к репозиторию пакетов и
+зависимостям SDK.
 
 ## Облачная сеть и вычислительный пул
 
@@ -145,7 +193,7 @@ link. Если Core находится в отдельной management-сети
 Core создаёт оба шлюза и маршруты. Местный шлюз устанавливает соединение
 с floating IP облачного. Входящий проброс порта на on-premises не требуется.
 Облачный транспорт стартует до появления доступа из гостя к Core.
-Проверяйте `GET /v1/compute/cloud_network_links/<LINK_ID>/` до `ACTIVE`, затем
+Проверяйте `GET /v1/compute/cloud_network_links/<LINK_ID>` до `ACTIVE`, затем
 проверьте трафик рабочих ВМ в обе стороны. Существующим ВМ требуется
 обновление DHCP-аренды для получения маршрутов.
 

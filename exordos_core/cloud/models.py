@@ -7,16 +7,15 @@
 import functools
 
 from gcl_sdk.agents.universal.dm import models as ua
-from gcl_sdk.cloud.bootstrap import validate_agent_config
-from gcl_sdk.cloud.drivers import base
 from restalchemy.dm import filters
 from restalchemy.dm import properties
 from restalchemy.dm import types
+from restalchemy.dm import types_dynamic
 from restalchemy.storage import exceptions
 from restalchemy.storage.sql import orm
 
+from exordos_core.cloud import specs
 from exordos_core.common.dm import models
-from exordos_core.common.exceptions import ValidateException
 
 
 def connection_guard(identity):
@@ -43,69 +42,55 @@ def connection_guard(identity):
 
 
 class CloudConnection(
-    models.ModelWithFullAsset, orm.SQLStorableMixin, ua.ResourceMixin
+    models.ModelWithFullAsset, orm.SQLStorableWithJSONFieldsMixin, ua.ResourceMixin
 ):
-    """Operator-owned reference to credentials held in local clouds.yaml."""
+    """Project-scoped provider credentials retained on the controller."""
 
     __tablename__ = "cloud_connections"
 
-    cloud = properties.property(
-        types.String(min_length=1, max_length=255), required=True
+    __jsonfields__ = ["driver_state"]
+    driver_spec = properties.property(
+        types_dynamic.KindModelSelectorType(
+            types_dynamic.KindModelType(specs.OpenStackConnectionSpec)
+        ),
+        required=True,
     )
-    driver = properties.property(
-        types.String(min_length=1, max_length=255), default="openstack"
-    )
-    region = properties.property(
-        types.AllowNone(types.String(max_length=255)), default=None
-    )
-    orch_endpoint = properties.property(types.String(max_length=2048), required=True)
-    status_endpoint = properties.property(types.String(max_length=2048), required=True)
-    agent_package = properties.property(
-        types.String(min_length=1, max_length=2048), required=True
-    )
-
-    def validate_bootstrap(self):
-        try:
-            validate_agent_config(
-                self.orch_endpoint, self.status_endpoint, self.agent_package
-            )
-        except ValueError as error:
-            raise ValidateException(err=str(error)) from error
-
-    def insert(self, session=None):
-        self.validate_bootstrap()
-        return super().insert(session=session)
+    driver_state = properties.property(types.Dict(), default=dict)
 
     def load_driver(self):
-        return base.load_driver(
-            base.CloudConfig(
-                connection=self.uuid,
-                cloud=self.cloud,
-                driver=self.driver,
-                region=self.region,
-            )
-        )
+        return self.driver_spec.load_driver(self.uuid)
+
+    def _authenticate(self):
+        return self.driver_spec.authenticate(self.uuid)
+
+    @connection_guard(lambda self: self.uuid)
+    def insert(self, session=None):
+        self.driver_spec.validate_config(self.uuid)
+        self.driver_state = self._authenticate()
+        return super().insert(session=session)
 
     @connection_guard(lambda self: self.uuid)
     def update(self, session=None, force=False):
-        self.validate_bootstrap()
+        self.driver_spec.validate_config(self.uuid)
         stored = self.objects.get_one(
             filters={"uuid": filters.EQ(self.uuid)}, session=session
         )
-        if any(
-            getattr(stored, f) != getattr(self, f)
-            for f in (
-                "cloud",
-                "driver",
-                "region",
-                "project_id",
-                "orch_endpoint",
-                "status_endpoint",
-                "agent_package",
-            )
+        if (
+            self.project_id != stored.project_id
+            or self.driver_state != stored.driver_state
+            or self.driver_spec.public_view() != stored.driver_spec.public_view()
         ):
             raise exceptions.ConflictRecords(
-                model="CloudConnection", msg="cloud scope and bootstrap are immutable"
+                model="CloudConnection", msg="cloud scope is immutable"
+            )
+        if (
+            self.driver_spec.dump_to_simple_view()
+            != stored.driver_spec.dump_to_simple_view()
+            and self._authenticate() != stored.driver_state
+        ):
+            raise exceptions.ConflictRecords(
+                model="CloudConnection",
+                msg="credential belongs to a different provider scope",
             )
         return super().update(session=session, force=force)
 
@@ -145,8 +130,4 @@ def bind_pool(pool, session=None):
     spec = pool.driver_spec
     if spec.KIND == "cloud":
         config = connection(spec.connection, session=session)
-        spec.cloud, spec.driver, spec.region = (
-            config.cloud,
-            config.driver,
-            config.region,
-        )
+        return config
