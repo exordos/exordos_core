@@ -24,6 +24,7 @@ def test_sdn_migrations_follow_master():
         "0013-realm-scoped-dns-5bd99b.py",
         "0014-network-sdn-9e41c7.py",
         "0015-paas-networking-485e71.py",
+        "0012-evpn-egress-policy-c3a4f1.py",
     ]
     assert engine.get_latest_migration() == chain[-1]
     steps = engine.get_all_migrations()

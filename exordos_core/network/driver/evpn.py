@@ -124,6 +124,19 @@ evpn_opts = [
         help="Upstream resolvers the host-local DNS responder forwards to",
     ),
     cfg.ListOpt(
+        "flat_prefixes",
+        default=[],
+        help="Operator-selected flat IPv4 subnets reachable from private networks",
+    ),
+    cfg.ListOpt(
+        "protected_prefixes",
+        default=[],
+        help=(
+            "Underlay and management IPv4 prefixes blocked before flat grants; "
+            "include remote infrastructure networks as well as local ones"
+        ),
+    ),
+    cfg.ListOpt(
         "service_addresses",
         default=[],
         help=(
@@ -1360,16 +1373,31 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
     def _write_host(
         self, node_uuid: sys_uuid.UUID, published: tp.Optional[list]
     ) -> None:
+        if published is None:
+            try:
+                current = self._get_resource(
+                    evpn_models.EvpnHost.get_resource_kind(), node_uuid
+                )
+                published = current.value.get("published_addresses", [])
+            except ra_storage_exc.RecordNotFound:
+                published = []
+        policy = {}
+        for name in ("flat_prefixes", "protected_prefixes"):
+            policy[name] = sorted(
+                {
+                    str(ipaddress.IPv4Network(str(prefix).strip(), strict=False))
+                    for prefix in getattr(CONF.evpn, name)
+                }
+            )
         host = evpn_models.EvpnHost(
             uuid=node_uuid,
             as_number=CONF.evpn.as_number,
             rr_addresses=self._configured_or_core(CONF.evpn.rr_addresses),
             published_addresses=published or [],
+            **policy,
             agent_uuid=node_uuid,
         )
-        # An unreadable ledger only creates (a later pass fills in the
-        # published list): updating would close every published door.
-        written = self._write_resource(host, update=published is not None)
+        written = self._write_resource(host)
         if written:
             LOG.info("%s evpn_host resource for node %s", written, node_uuid)
 

@@ -1294,16 +1294,102 @@ def test_an_unreadable_ledger_shuts_no_doors():
     driver = _make_driver()
     node = sys_uuid.uuid4()
     stale = mock.MagicMock()
-    stale.hash = "stale-hash"
+    stale.value = {"published_addresses": ["10.20.3.1"]}
+    stale.hash = (
+        evpn.evpn_models.EvpnHost(
+            uuid=node,
+            as_number=evpn.CONF.evpn.as_number,
+            rr_addresses=[],
+            published_addresses=["10.20.3.1"],
+            agent_uuid=node,
+        )
+        .to_ua_resource()
+        .hash
+    )
 
     with (
         _with_published(None),
         mock.patch.object(driver, "_get_resource", return_value=stale),
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
     ):
         driver._ensure_host(node)
 
     stale.update_value.assert_not_called()
     stale.update.assert_not_called()
+
+
+def test_unreadable_ledger_does_not_delay_flat_policy_revocation():
+    driver = _make_driver()
+    node = sys_uuid.uuid4()
+    stale = mock.MagicMock(
+        hash="stale-hash",
+        value={
+            "published_addresses": ["10.66.0.2:11011"],
+            "flat_prefixes": ["10.66.0.0/24"],
+            "protected_prefixes": [],
+        },
+    )
+    with (
+        _with_published(None),
+        mock.patch.object(driver, "_get_resource", return_value=stale),
+        mock.patch.object(
+            evpn.CONF,
+            "evpn",
+            as_number=65001,
+            rr_addresses=[],
+            flat_prefixes=[],
+            protected_prefixes=["10.66.0.0/24"],
+        ),
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
+    ):
+        driver._ensure_host(node)
+    stale.update_value.assert_called_once()
+    value = stale.update_value.call_args.args[0].value
+    assert value["published_addresses"] == ["10.66.0.2:11011"]
+    assert value["flat_prefixes"] == []
+    assert value["protected_prefixes"] == ["10.66.0.0/24"]
+
+
+def test_flat_and_protected_prefixes_reach_the_host_resource():
+    driver = _make_driver()
+    with (
+        mock.patch.object(
+            evpn.CONF,
+            "evpn",
+            as_number=65001,
+            rr_addresses=[],
+            flat_prefixes=["10.66.0.7/24", "10.66.0.0/24"],
+            protected_prefixes=["198.51.100.10", "10.66.0.11/32"],
+        ),
+        mock.patch.object(driver, "_configured_or_core", return_value=[]),
+        mock.patch.object(driver, "_write_resource") as write,
+    ):
+        driver._write_host(sys_uuid.uuid4(), [])
+    resource = write.call_args.args[0].to_ua_resource()
+    assert resource.value["flat_prefixes"] == ["10.66.0.0/24"]
+    assert resource.value["protected_prefixes"] == ["10.66.0.11/32", "198.51.100.10/32"]
+
+
+@pytest.mark.parametrize(
+    "prefix", ["not-a-prefix", "::/0", "10.0.0.0/33", "10.0.0.0/24 -j ACCEPT"]
+)
+@pytest.mark.parametrize("field", ["flat_prefixes", "protected_prefixes"])
+def test_invalid_egress_configuration_preserves_existing_target(prefix, field):
+    driver = _make_driver()
+    options = {
+        "as_number": 65001,
+        "rr_addresses": [],
+        "flat_prefixes": [],
+        "protected_prefixes": [],
+    }
+    options[field] = [prefix]
+    with (
+        mock.patch.object(evpn.CONF, "evpn", **options),
+        mock.patch.object(driver, "_write_resource") as write,
+        pytest.raises(ValueError),
+    ):
+        driver._write_host(sys_uuid.uuid4(), [])
+    write.assert_not_called()
 
 
 def test_published_hosts_share_one_ledger_read():

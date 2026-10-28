@@ -25,6 +25,9 @@ Nodes can attach additional standalone Ports. Existing flat networking remains
 supported. See the [API contract](docs/network/sdn-api-contract.md),
 [quickstart](docs/network/private-network.md) and
 [dataplane reference](docs/network/dataplane.md).
+Operators can allow private networks to reach selected flat subnets while
+protecting underlay and management destinations; see the
+[deployment policy](docs/network/realm-connectivity-sdn.md#flat-access-and-infrastructure-protection).
 
 ## What Exordos Core does
 
