@@ -278,6 +278,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             )
             guest_agent.save()
 
+        cloud = machine.pool.driver_spec.KIND == "cloud"
+
         # The new machine and the machine with changed image should be booted
         # in the private network with boot=`network`.
         boot = ua_pool.BootAlternative.hd0.value
@@ -285,12 +287,12 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # Do nothing for new machines in the core set.
             # The core machines start in boot=hd0 mode and need to be
             # attached to the main network.
-            if not self._is_core_machine(machine):
+            if not cloud and not self._is_core_machine(machine):
                 boot = ua_pool.BootAlternative.network.value
         else:
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
-            if not self._is_core_machine(machine):
+            if not cloud and not self._is_core_machine(machine):
                 _, guest_actual = machine_guest_pair
                 if guest_actual is None:
                     boot = machine_guest_pair[0].boot
@@ -308,6 +310,22 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         agent_uuid = self._agent_by_pool(machine.pool.uuid)
 
         pool_machine = pool_models.PoolMachine.from_machine(machine, agent_uuid)
+
+        if cloud:
+            from gcl_sdk.cloud.bootstrap import agent_user_data
+
+            from exordos_core.cloud.models import connection
+
+            config = connection(machine.pool.driver_spec.connection)
+            key = ua_models.NodeEncryptionKey.get_or_create(machine.node.uuid)
+            pool_machine.user_data = agent_user_data(
+                machine.node.uuid,
+                key.private_key,
+                config.orch_endpoint,
+                config.status_endpoint,
+                config.agent_package,
+                hostname=machine.node.hostname or machine.node.name,
+            )
 
         # Guest machine
         guest = pool_models.GuestMachine(

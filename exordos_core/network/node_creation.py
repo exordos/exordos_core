@@ -137,10 +137,14 @@ def create_default_port(node, value, project_id, session, *, allow_foreign=False
         if parent
         else value.get("security_groups", [])
     )
-    if groups and port.is_overlay():
+    network = compute.Network.objects.get_one(
+        filters={"uuid": subnet.network}, session=session
+    )
+    managed_policy = network.driver_spec.get("driver") in {"ovs_evpn", "cloud"}
+    if groups and managed_policy:
         port.enforce_security_group = True
     port.insert(session=session)
-    if groups and port.is_overlay():
+    if groups and managed_policy:
         for group in sorted(set(groups)):
             catalog.PortSecurityGroup(
                 project_id=project_id,
