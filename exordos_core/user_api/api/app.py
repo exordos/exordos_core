@@ -19,11 +19,11 @@ from restalchemy.api import applications
 from restalchemy.api import middlewares
 from restalchemy.api import routes
 from restalchemy.api.middlewares import cors as cors_mw
-from restalchemy.api.middlewares import logging as logging_mw
 from restalchemy.openapi import engines as openapi_engines
 from restalchemy.openapi import structures as openapi_structures
 
 from exordos_core import version
+from exordos_core.cloud.api import CloudCredentialsLoggingMiddleware
 from exordos_core.common import contexts as common_contexts
 from exordos_core.common.api.middlewares import errors as errors_mw
 from exordos_core.user_api.api import middlewares as user_api_mw
@@ -91,7 +91,7 @@ def build_wsgi_application(
             )
         )
 
-    middlewares_list.append(logging_mw.LoggingMiddleware)
+    middlewares_list.append(CloudCredentialsLoggingMiddleware)
 
     return middlewares.attach_middlewares(
         applications.OpenApiApplication(

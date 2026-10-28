@@ -23,6 +23,7 @@ from restalchemy.storage.sql import orm
 
 from exordos_core.cloud import local
 from exordos_core.cloud import models
+from exordos_core.cloud.bootstrap import agent_config
 from exordos_core.cloud.locking import provider_lock
 from exordos_core.common.dm.models import ModelWithFullAsset
 from exordos_core.common.exceptions import ValidateException
@@ -678,9 +679,7 @@ class CloudLinkService(basic.BasicService):
         agent_data = bootstrap.agent_user_data(
             endpoint.uuid,
             key.private_key,
-            config.orch_endpoint,
-            config.status_endpoint,
-            config.agent_package,
+            *agent_config(),
             hostname="cloud-link-" + endpoint.uuid.hex[:8],
             caps_drivers="OpenVPNCapabilityDriver",
         )

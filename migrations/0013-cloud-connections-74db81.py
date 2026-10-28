@@ -20,9 +20,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
             uuid UUID PRIMARY KEY, project_id UUID NOT NULL,
             name VARCHAR(255) NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
             created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL,
-            cloud VARCHAR(255) NOT NULL, driver VARCHAR(255) NOT NULL DEFAULT 'openstack',
-            region VARCHAR(255), orch_endpoint VARCHAR(2048) NOT NULL,
-            status_endpoint VARCHAR(2048) NOT NULL, agent_package VARCHAR(2048) NOT NULL
+            driver_spec JSONB NOT NULL,
+            driver_state JSONB NOT NULL DEFAULT '{}'
         )""")
         session.execute(
             "CREATE INDEX cloud_connections_project ON cloud_connections(project_id)"

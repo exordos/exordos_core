@@ -184,3 +184,83 @@ def test_link_material_issues_tls_keys_for_the_selected_server(explicit):
     client, server = (first, second) if explicit else (second, first)
     assert material[str(client.uuid)]["tls_clients"] == {server.uuid.hex: "client-key"}
     assert material[str(server.uuid)]["tls_clients"] == {}
+
+
+def test_cloud_authentication_error_does_not_echo_provider_secrets():
+    from exordos_core.cloud.specs import OpenStackConnectionSpec
+    from exordos_core.common.exceptions import ValidateException
+
+    config = OpenStackConnectionSpec(auth_url="https://identity.example/v3", auth={})
+    with mock.patch.object(
+        config, "load_driver", side_effect=RuntimeError("private-sentinel")
+    ):
+        with pytest.raises(ValidateException) as error:
+            config.authenticate(uuid.uuid4())
+    assert "private-sentinel" not in str(error.value)
+
+
+def test_cloud_bootstrap_uses_the_installation_endpoint_and_sdk():
+    from exordos_core.cloud import bootstrap
+
+    with mock.patch.object(bootstrap, "version", return_value="4.5.6"):
+        bootstrap.CONF.set_override(
+            "gc_boot_api", "https://core.example/bootstrap/", group="boot_api"
+        )
+        try:
+            assert bootstrap.agent_config() == (
+                "https://core.example/bootstrap/",
+                "https://core.example/bootstrap/",
+                "gcl_sdk==4.5.6",
+            )
+        finally:
+            bootstrap.CONF.clear_override("gc_boot_api", group="boot_api")
+
+
+def test_cloud_controller_resolves_credentials_without_serializing_them(monkeypatch):
+    from gcl_sdk.agents.universal.drivers.pool import CloudPoolDriverSpec
+
+    from exordos_core.cloud import agent
+
+    monkeypatch.setattr(agent.ControllerMetaPool, "__driver_map__", {})
+    connection = SimpleNamespace(updated_at=1, load_driver=mock.Mock())
+    pool = agent.ControllerMetaPool(
+        uuid=uuid.uuid4(), driver_spec=CloudPoolDriverSpec(connection=uuid.uuid4())
+    )
+    with mock.patch.object(agent, "connection", return_value=connection):
+        first = pool.load_driver()
+        assert first is pool.load_driver()
+        assert first.cloud is connection.load_driver.return_value
+        assert set(pool.driver_spec.dump_to_simple_view()) == {
+            "kind",
+            "connection",
+            "volume_type",
+            "key_name",
+        }
+        connection.updated_at = 2
+        assert pool.load_driver() is not first
+        second = pool.load_driver()
+        pool.driver_spec.volume_type = "durable"
+        assert pool.load_driver() is not second
+    assert connection.load_driver.call_count == 3
+
+
+def test_cloud_connection_logging_omits_bodies_and_queries(caplog):
+    import logging
+
+    import webob
+
+    from exordos_core.cloud.api import CloudCredentialsLoggingMiddleware
+
+    request = webob.Request.blank(
+        "/v1/compute/cloud_connections/?auth=private-sentinel",
+        method="POST",
+        json_body={"auth": {"password": "private-sentinel"}},
+    )
+    app = CloudCredentialsLoggingMiddleware(
+        lambda env, start: webob.Response(json_body={"ok": True})(env, start)
+    )
+    with caplog.at_level(logging.DEBUG, logger="restalchemy.api.middlewares.logging"):
+        response = request.get_response(app)
+    assert response.status_int == 200
+    assert "private-sentinel" not in caplog.text
+    assert "cloud_connections" in caplog.text

@@ -19,22 +19,34 @@ from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import 
 
 
 @pytest.fixture
-def client(user_api_client, auth_user_admin, user_api):
+def client(user_api_client, auth_user_admin, user_api, monkeypatch):
+    from exordos_core.cloud.models import CloudConnection
+
+    monkeypatch.setattr(
+        CloudConnection,
+        "_authenticate",
+        lambda self: {"project_id": "provider-project"},
+    )
     yield user_api_client(auth_user_admin)
     user_api._restore_seed_snapshot()
 
 
 def connection(client, **kwargs):
-    return create(
-        client,
-        ("compute", "cloud_connections"),
-        cloud="operator-secret-reference",
-        driver="openstack",
-        orch_endpoint="https://core.example/orch/",
-        status_endpoint="https://core.example/status/",
-        agent_package="gcl_sdk==3.7.0",
-        **kwargs,
+    spec = kwargs.pop(
+        "driver_spec",
+        {
+            "kind": "openstack",
+            "auth_url": "https://identity.example/v3",
+            "auth": {
+                "application_credential_id": "test",
+                "application_credential_secret": "private-sentinel",
+            },
+        },
     )
+    for field in ("auth_url", "auth_type", "auth", "region", "interface"):
+        if field in kwargs:
+            spec[field] = kwargs.pop(field)
+    return create(client, ("compute", "cloud_connections"), driver_spec=spec, **kwargs)
 
 
 def network(client, config):
@@ -55,11 +67,12 @@ def test_cloud_connection_persists_and_pool_resolves_only_its_configuration(clie
             "driver_spec": {
                 "kind": "cloud",
                 "connection": config["uuid"],
-                "cloud": "untrusted-override",
             }
         },
     ).json()
-    assert pool["driver_spec"]["cloud"] == config["cloud"]
+    assert set(pool["driver_spec"]) == {"kind", "connection", "volume_type", "key_name"}
+    assert "auth" not in config["driver_spec"]
+    assert config["driver_state"] == {"project_id": "provider-project"}
     assert net["driver_state"] == {}
     with pytest.raises(exceptions.ConflictError):
         client.delete(resource(client, "compute", "cloud_connections", config["uuid"]))
@@ -465,18 +478,27 @@ def test_cloud_pool_delete_holds_foreign_key_barrier_until_commit(client, monkey
 
 @pytest.mark.parametrize(
     "updates",
-    [{"agent_package": ""}, {"agent_package": " \t"}, {"orch_endpoint": "bad-url"}],
+    [
+        {"auth": {}},
+        {
+            "auth": {
+                "application_credential_id": "test",
+                "application_credential_secret": "",
+            }
+        },
+        {"auth_url": "file:///etc/passwd"},
+        {
+            "auth": {
+                "application_credential_id": "test",
+                "application_credential_secret": "secret",
+                "endpoint_override": "http://other",
+            }
+        },
+    ],
 )
-def test_connection_rejects_invalid_bootstrap_configuration(client, updates):
-    fields = dict(
-        cloud="lab",
-        orch_endpoint="https://core.example/orch",
-        status_endpoint="https://core.example/status",
-        agent_package="sdk.whl",
-    )
-    fields.update(updates)
+def test_connection_rejects_invalid_authentication(client, updates):
     with pytest.raises(exceptions.BadRequestError):
-        create(client, ("compute", "cloud_connections"), **fields)
+        connection(client, **updates)
 
 
 def test_gateway_recovery_is_queued_without_needing_the_remote_agent(client):
@@ -607,14 +629,12 @@ def test_link_accepts_more_than_sixteen_endpoints(client):
         ("agent_package", "gcl_sdk==99.0.0"),
     ],
 )
-def test_connection_cannot_silently_change_bootstrap_of_existing_guests(
-    client, field, value
-):
+def test_connection_cannot_override_installation_bootstrap(client, field, value):
     config = connection(client)
     path = resource(client, "compute", "cloud_connections", config["uuid"])
-    with pytest.raises(exceptions.ConflictError):
+    with pytest.raises(exceptions.BadRequestError):
         client.put(path, json={field: value})
-    assert client.get(path).json()[field] == config[field]
+    assert field not in client.get(path).json()
 
 
 def test_gateway_address_reservation_cannot_be_released_through_tenant_api(client):
@@ -917,3 +937,197 @@ def test_client_cloud_gateway_needs_no_floating_ip_or_transport_ingress(
     cloud.ensure_floating_ip.assert_not_called()
     rules = cloud.security_group.call_args.args[1]
     assert not any(rule.get("port_range_min") == 443 for rule in rules)
+
+
+def test_connection_credentials_are_write_only_and_can_rotate_in_same_project(client):
+    from exordos_core.cloud.models import CloudConnection
+
+    config = connection(client)
+    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    for value in (
+        config,
+        client.get(path).json(),
+        client.get(collection(client, "compute", "cloud_connections")).json(),
+    ):
+        assert "private-sentinel" not in str(value)
+    new = {
+        "application_credential_id": "replacement",
+        "application_credential_secret": "replacement-sentinel",
+    }
+    result = client.put(
+        path, json={"driver_spec": dict(config["driver_spec"], auth=new)}
+    ).json()
+    assert "auth" not in result["driver_spec"]
+    saved = CloudConnection.objects.get_one(
+        filters={"uuid": filters.EQ(config["uuid"])}
+    )
+    assert saved.driver_spec.auth == new
+
+
+def test_connection_rotation_cannot_switch_provider_projects(client, monkeypatch):
+    from exordos_core.cloud.models import CloudConnection
+
+    config = connection(client)
+    monkeypatch.setattr(
+        CloudConnection, "_authenticate", lambda self: {"project_id": "foreign-project"}
+    )
+    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    with pytest.raises(exceptions.ConflictError):
+        client.put(
+            path,
+            json={
+                "driver_spec": dict(
+                    config["driver_spec"],
+                    auth={
+                        "application_credential_id": "other",
+                        "application_credential_secret": "other-secret",
+                    },
+                )
+            },
+        )
+    assert (
+        CloudConnection.objects.get_one(
+            filters={"uuid": filters.EQ(config["uuid"])}
+        ).driver_spec.auth["application_credential_id"]
+        == "test"
+    )
+
+
+def test_connection_selects_a_typed_driver_and_keeps_provider_fields_nested(client):
+    result = create(
+        client,
+        ("compute", "cloud_connections"),
+        driver_spec={
+            "kind": "openstack",
+            "auth_url": "https://identity.example/v3",
+            "auth_type": "v3password",
+            "auth": {
+                "username": "operator",
+                "password": "private-sentinel",
+                "user_domain_name": "Default",
+                "project_id": "provider-project",
+            },
+        },
+    )
+    assert result["driver_spec"]["kind"] == "openstack"
+    assert "auth" not in result["driver_spec"]
+    assert (
+        not {
+            "auth_url",
+            "auth_type",
+            "auth",
+            "driver",
+            "region",
+            "interface",
+            "provider_project_id",
+        }
+        & result.keys()
+    )
+    assert result["driver_state"] == {"project_id": "provider-project"}
+
+
+@pytest.mark.parametrize("kind", ["unknown", None, [], {}])
+def test_connection_invalid_kind_never_echoes_credentials(client, kind):
+    with pytest.raises(exceptions.BadRequestError) as error:
+        create(
+            client,
+            ("compute", "cloud_connections"),
+            driver_spec={
+                "kind": kind,
+                "auth_url": "https://identity.example/v3",
+                "auth": {
+                    "application_credential_id": "test",
+                    "application_credential_secret": "private-sentinel",
+                },
+            },
+        )
+    assert "private-sentinel" not in error.value.cause.response.text
+
+
+def test_connection_metadata_update_does_not_reauthenticate(client, monkeypatch):
+    from exordos_core.cloud.models import CloudConnection
+
+    config = connection(client)
+    monkeypatch.setattr(
+        CloudConnection,
+        "_authenticate",
+        lambda self: pytest.fail("Metadata update must not authenticate"),
+    )
+    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    assert client.put(path, json={"name": "renamed"}).json()["name"] == "renamed"
+
+
+def test_connection_kind_dispatch_supports_a_non_openstack_spec(
+    user_api_client, auth_user_admin, user_api, monkeypatch
+):
+    from restalchemy.dm import properties
+    from restalchemy.dm import types
+    from restalchemy.dm import types_dynamic
+
+    from exordos_core.cloud.models import CloudConnection
+    from exordos_core.cloud.specs import AbstractConnectionSpec
+
+    class TestConnectionSpec(AbstractConnectionSpec):
+        KIND = "test"
+        SENSITIVE_FIELDS = frozenset({"api_token"})
+        account = properties.property(types.String(), required=True)
+        api_token = properties.property(types.String(), required=True)
+
+        def validate_config(self, connection):
+            pass
+
+        def authenticate(self, connection):
+            return {"account": self.account}
+
+        def load_driver(self, connection):
+            return "test-driver"
+
+    selector = CloudConnection.properties.properties["driver_spec"].get_property_type()
+    monkeypatch.setitem(
+        selector._kind_type_map, "test", types_dynamic.KindModelType(TestConnectionSpec)
+    )
+    client = user_api_client(auth_user_admin)
+    try:
+        result = create(
+            client,
+            ("compute", "cloud_connections"),
+            driver_spec={
+                "kind": "test",
+                "account": "provider-account",
+                "api_token": "private-sentinel",
+            },
+        )
+        assert result["driver_spec"] == {"kind": "test", "account": "provider-account"}
+        assert result["driver_state"] == {"account": "provider-account"}
+        stored = CloudConnection.objects.get_one(
+            filters={"uuid": filters.EQ(result["uuid"])}
+        )
+        assert stored.load_driver() == "test-driver"
+        assert stored.driver_spec.api_token == "private-sentinel"
+        path = resource(client, "compute", "cloud_connections", result["uuid"])
+        changed = client.put(
+            path,
+            json={
+                "driver_spec": {
+                    "kind": "test",
+                    "account": "provider-account",
+                    "api_token": "replacement-sentinel",
+                }
+            },
+        ).json()
+        assert "replacement-sentinel" not in str(changed)
+        with pytest.raises(exceptions.ConflictError):
+            client.put(
+                path,
+                json={
+                    "driver_spec": {
+                        "kind": "test",
+                        "account": "other-account",
+                        "api_token": "other",
+                    }
+                },
+            )
+        with pytest.raises(exceptions.ForbiddenError):
+            client.put(path, json={"driver_state": {"account": "other-account"}})
+    finally:
+        user_api._restore_seed_snapshot()

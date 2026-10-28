@@ -90,4 +90,5 @@ cannot be represented by the old schema; downgrade refuses that configuration
 rather than silently discarding pool assignments.
 
 Native OpenStack pools and routed private links are documented in
-[OpenStack multicloud](docs/network/openstack-multicloud.md).
+[OpenStack multicloud](docs/network/openstack-multicloud.md). Register provider
+credentials through API or CLI; Core supplies agent bootstrap settings.
