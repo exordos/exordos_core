@@ -29,16 +29,18 @@ import runpy
 from unittest import mock
 import uuid as sys_uuid
 
+from gcl_sdk.agents.universal import utils as ua_utils
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.infra.dm import models as sdk_models
 import netaddr
 from oslo_config import cfg
-import pytest
 from psycopg.errors import DivisionByZero
+import pytest
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_storage_exc
+from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.bootstrap import defaults as bootstrap_defaults
@@ -950,6 +952,7 @@ class _EvpnStand:
         from gcl_sdk.agents.universal.drivers import evpn_nf
         from gcl_sdk.agents.universal.drivers import evpn_proxy
         from gcl_sdk.agents.universal.drivers.evpn import base as dp_base
+
         from exordos_core.user_api.network.dm import models as catalog
 
         network, subnet = self._network()
@@ -1079,6 +1082,77 @@ class _EvpnStand:
 
 
 class TestOvsEvpnE2E(_EvpnStand):
+    def test_existing_host_egress_policy_migrates_and_settles(self, tmp_path):
+        hyp = self._node()
+        network, _ = self._network()
+        driver = network.load_driver()
+        driver._write_host(hyp.uuid, [])
+        target = next(row for row in _resources("evpn_host") if row.uuid == hyp.uuid)
+        old_value = dict(target.value)
+        for key in ("flat_prefixes", "protected_prefixes"):
+            old_value.pop(key)
+        target.value = old_value
+        target.hash = ua_utils.calculate_hash(old_value)
+        target.update()
+        step = runpy.run_path(
+            str(
+                pathlib.Path(__file__).parents[4]
+                / "migrations/0012-evpn-egress-policy-c3a4f1.py"
+            )
+        )["migration_step"]
+        with engines.engine_factory.get_engine().session_manager() as session:
+            session.execute(
+                "UPDATE ua_target_resources SET updated_at = '2000-01-01' WHERE res_uuid = %s",
+                (target.res_uuid,),
+            )
+            step.upgrade(session)
+        migrated = next(row for row in _resources("evpn_host") if row.uuid == hyp.uuid)
+        assert migrated.updated_at.year > 2000
+
+        try:
+            CONF.set_override("flat_prefixes", ["10.66.0.0/24"], group="evpn")
+            CONF.set_override("protected_prefixes", ["10.65.0.0/24"], group="evpn")
+            driver._write_host(hyp.uuid, [])
+            current = next(
+                row for row in _resources("evpn_host") if row.uuid == hyp.uuid
+            )
+            assert current.res_uuid == target.res_uuid and current.agent == hyp.uuid
+            assert current.value["flat_prefixes"] == ["10.66.0.0/24"]
+            assert current.value["protected_prefixes"] == ["10.65.0.0/24"]
+            host = dp_evpn.EvpnHost.from_ua_resource(current)
+            assert host.to_ua_resource(kind="evpn_host").hash == current.hash
+            with (
+                mock.patch.object(
+                    dp_base, "EGRESS_POLICY_FILE", str(tmp_path / "policy.json")
+                ),
+                mock.patch.object(
+                    dp_base, "PUBLISHED_FILE", str(tmp_path / "published.json")
+                ),
+                mock.patch(
+                    "gcl_sdk.agents.universal.drivers.evpn.hostns.vnis_on_host",
+                    return_value=[],
+                ),
+            ):
+                host._ensure_published()
+                assert json.loads((tmp_path / "policy.json").read_text())[
+                    "flat_prefixes"
+                ] == ["10.66.0.0/24"]
+            driver._write_host(hyp.uuid, [])
+            unchanged = next(
+                row for row in _resources("evpn_host") if row.uuid == hyp.uuid
+            )
+            assert (unchanged.hash, unchanged.updated_at) == (
+                current.hash,
+                current.updated_at,
+            )
+        finally:
+            for name in ("flat_prefixes", "protected_prefixes"):
+                CONF.clear_override(name, group="evpn")
+        driver._write_host(hyp.uuid, [])
+        withdrawn = next(row for row in _resources("evpn_host") if row.uuid == hyp.uuid)
+        assert withdrawn.value["flat_prefixes"] == []
+        assert withdrawn.hash != current.hash
+
     @pytest.mark.parametrize("overlay", [False, True])
     def test_inline_port_sets_flat_source(self, overlay):
         _, subnet = self._network() if overlay else self._flat_network()
@@ -1312,6 +1386,27 @@ class TestOvsEvpnE2E(_EvpnStand):
         for stale in ("/tmp/e2e_vlan_map.json", "/tmp/e2e_sg_rules.json"):
             if os.path.exists(stale):
                 os.remove(stale)
+
+        def host_command(command):
+            if command[:4] == [dp_base.IP_BIN, "-json", "route", "show"]:
+                return "[]"
+            if command[:4] == [dp_base.IP_BIN, "-json", "addr", "show"]:
+                return json.dumps(
+                    [
+                        {
+                            "ifname": "eth0",
+                            "addr_info": [
+                                {
+                                    "family": "inet",
+                                    "local": "10.77.0.11",
+                                    "prefixlen": 24,
+                                }
+                            ],
+                        }
+                    ]
+                )
+            return "1042\n"
+
         with (
             # Where an installation puts things is `base`, and running a
             # command is `sh`: patching them on the package would rebind a
@@ -1325,9 +1420,12 @@ class TestOvsEvpnE2E(_EvpnStand):
             # that wrote them would change what that installation allows.
             mock.patch.object(dp_base, "SG_RULES_PATH", "/tmp/e2e_sg_rules.json"),
             mock.patch.object(dp_base, "PUBLISHED_FILE", "/tmp/e2e_published.json"),
+            mock.patch.object(
+                dp_base, "EGRESS_POLICY_FILE", str(tmp_path / "egress_policy.json")
+            ),
             # The port starts the responder it needs, so it owns this too.
             mock.patch.object(dp_base, "NF_UNIT_PATH", "/tmp/e2e_nf.service"),
-            mock.patch.object(dp_sh, "run", return_value="1042\n"),
+            mock.patch.object(dp_sh, "run", side_effect=host_command),
         ):
             dp_port.dump_to_dp()
             with open("/tmp/e2e_vmconf/%s.json" % dp_port.uuid) as fl:
