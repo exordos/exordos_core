@@ -179,7 +179,7 @@ class NetworkService(basic.BasicService):
                 subnet = driver.update_subnet(target_subnet.cast_to_base())
                 target_subnet.cidr = subnet.cidr
                 target_subnet.next_server = subnet.next_server
-                target_subnet.update()
+                target_subnet.cast_to_base().update(force=True)
             except Exception:
                 LOG.exception("Error actualizing subnet %s", actual_subnet.uuid)
 

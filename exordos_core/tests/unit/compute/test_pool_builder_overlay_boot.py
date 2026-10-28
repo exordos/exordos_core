@@ -91,3 +91,37 @@ def test_reimage_without_a_port_does_not_switch_the_guest_to_netboot():
     assert result == ()
     assert machine.boot == "hd0"
     assert machine.image == "old"
+
+
+def test_update_before_first_guest_report_preserves_network_boot():
+    builder = pool_builder.PoolBuilderService.__new__(pool_builder.PoolBuilderService)
+    identity = uuid.uuid4()
+    machine = SimpleNamespace(
+        uuid=identity,
+        name="guest",
+        boot="network",
+        image="image-url",
+        node=SimpleNamespace(uuid=identity, hostname="guest", name="guest"),
+        pool=SimpleNamespace(
+            uuid=uuid.uuid4(), driver_spec=SimpleNamespace(KIND="libvirt")
+        ),
+    )
+    builder._get_or_fetch_machine_ctx = mock.Mock(
+        return_value=(SimpleNamespace(), SimpleNamespace(image="image-url"))
+    )
+    builder._resolve_image = mock.Mock(return_value="image-url")
+    builder._is_core_machine = mock.Mock(return_value=False)
+    builder._agent_by_pool = mock.Mock(return_value=uuid.uuid4())
+    with (
+        mock.patch.object(
+            ua_models.UniversalAgent,
+            "objects",
+            **{"get_one_or_none.return_value": SimpleNamespace(uuid=identity)},
+        ),
+        mock.patch.object(pool_builder.pool_models.PoolMachine, "from_machine"),
+    ):
+        builder._actualize_machine_derivatives_on_create_update(
+            machine,
+            machine_guest_pair=(SimpleNamespace(boot="network"), None),
+        )
+    assert machine.boot == "network"
