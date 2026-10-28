@@ -96,6 +96,67 @@ def link_endpoints(client, count=2, cidrs=None):
     return result
 
 
+@pytest.mark.parametrize("server_first", [False, True])
+def test_link_accepts_explicit_server_and_client_roles(client, server_first):
+    endpoints = link_endpoints(client)
+    endpoints[0]["role"], endpoints[1]["role"] = "client", "server"
+    if server_first:
+        endpoints.reverse()
+    result = create(client, ("compute", "cloud_network_links"), endpoints=endpoints)
+    assert [e["role"] for e in result["endpoints"]] == [e["role"] for e in endpoints]
+    with pytest.raises(exceptions.ConflictError):
+        client.put(
+            resource(client, "compute", "cloud_network_links", result["uuid"]),
+            json={"endpoints": [dict(e, role="auto") for e in endpoints]},
+        )
+
+
+@pytest.mark.parametrize("role", ["server", "client", "invalid", None, []])
+def test_link_rejects_invalid_or_incompatible_mesh_roles(client, role):
+    endpoints = [dict(e, role=role) for e in link_endpoints(client)]
+    with pytest.raises(exceptions.BadRequestError):
+        create(client, ("compute", "cloud_network_links"), endpoints=endpoints)
+
+
+def test_outbound_only_local_endpoint_needs_no_public_address(client):
+    from gcl_sdk.agents.universal.dm import models as ua
+
+    from exordos_core.cloud.links import CloudLinkService
+    from exordos_core.cloud.links import endpoints_for_subnet
+
+    cloud = dict(link_endpoints(client)[0], role="server")
+    network = create(
+        client, ("network", "networks"), driver_spec={"driver": "ovs_evpn"}
+    )
+    subnet = create(
+        client, ("network", "subnets"), network=network["uuid"], cidr="10.246.0.0/24"
+    )
+    agent = ua.UniversalAgent(
+        uuid=uuid.uuid4(),
+        node=uuid.uuid4(),
+        name="outbound-router",
+        capabilities={"capabilities": ["cloud_net_link"]},
+        facts={"facts": []},
+    )
+    agent.insert()
+    result = create(
+        client,
+        ("compute", "cloud_network_links"),
+        endpoints=[
+            cloud,
+            {"subnet": subnet["uuid"], "agent": str(agent.uuid), "role": "client"},
+        ],
+    )
+    endpoint = endpoints_for_subnet(uuid.UUID(subnet["uuid"]))[0]
+    link = CloudNetworkLink.objects.get_one(
+        filters={"uuid": filters.EQ(result["uuid"])}
+    )
+    assert CloudLinkService()._reserve(link, endpoint, []) == {
+        "agent": str(agent.uuid),
+        "endpoint": None,
+    }
+
+
 def test_link_is_symmetric_hides_secrets_and_retains_cleanup_record(client):
     endpoints = link_endpoints(client)
     link = create(client, ("compute", "cloud_network_links"), endpoints=endpoints)
@@ -816,3 +877,43 @@ def test_cloud_nodeset_defaults_unspecified_replica_disks_to_cinder(client, ephe
     assert len(volumes) == 1
     assert volumes[0].ephemeral is (False if ephemeral is None else ephemeral)
     assert group.disk_spec.dump_to_simple_view() == original
+
+
+def test_client_cloud_gateway_needs_no_floating_ip_or_transport_ingress(
+    client, monkeypatch
+):
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from exordos_core.cloud.links import CloudLinkService
+    from exordos_core.cloud.links import endpoints_for_subnet
+    from exordos_core.compute.dm import models as compute
+
+    definitions = link_endpoints(client)
+    definitions[0]["role"], definitions[1]["role"] = "client", "server"
+    result = create(client, ("compute", "cloud_network_links"), endpoints=definitions)
+    link = CloudNetworkLink.objects.get_one(
+        filters={"uuid": filters.EQ(result["uuid"])}
+    )
+    endpoint, peer = [
+        endpoints_for_subnet(uuid.UUID(e["subnet"]))[0] for e in definitions
+    ]
+    subnet = compute.Subnet.objects.get_one(
+        filters={"uuid": filters.EQ(endpoint.subnet)}
+    )
+    cloud = mock.Mock()
+    cloud.ensure_port.return_value = SimpleNamespace(
+        id="gateway-port",
+        fixed_ips=[{"ip_address": "10.244.0.50"}],
+        allowed_address_pairs=[{"ip_address": "10.244.1.0/24"}],
+    )
+    service = CloudLinkService()
+    monkeypatch.setattr(
+        service, "_provider", lambda e: (cloud, subnet, SimpleNamespace(id="subnet"))
+    )
+    state = service._reserve(link, endpoint, [peer])
+    assert state["endpoint"] is None
+    assert state["gateway_ip"] == "10.244.0.50"
+    cloud.ensure_floating_ip.assert_not_called()
+    rules = cloud.security_group.call_args.args[1]
+    assert not any(rule.get("port_range_min") == 443 for rule in rules)

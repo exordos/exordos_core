@@ -7,6 +7,8 @@ not receive OpenStack credentials. Install Core and SDK with the `openstack`
 extra and make `OS_CLIENT_CONFIG_FILE` available to the Core general service.
 Protect that file with mode `0600`.
 
+For an existing installation, follow [Connect on-premises to OpenStack](onprem-openstack.md).
+
 ## Resources
 
 Create these resources in order through the authenticated user API:
@@ -79,15 +81,21 @@ to one link until cleanup completes. Add or remove endpoints with a resource
 `PUT`; placement settings, transport and MTU are immutable. Changes converge
 asynchronously: wait for `ACTIVE` before treating the new topology as ready.
 
-Each cloud endpoint gets one dedicated gateway VM, Neutron port, security
-group and floating IP. Roles follow endpoint UUID order: the larger UUID
-initiates a direct connection to the smaller. One server listener accepts the
-remaining incoming peers. Every pair has exactly one connection; traffic does
+Each cloud endpoint gets one dedicated gateway VM, Neutron port and security
+group. An explicit `client` endpoint uses outbound access without a floating IP;
+`auto` and `server` endpoints get a floating IP. Set endpoint `role` to `server`
+to accept connections, `client` to initiate them, or omit it for `auto`.
+Explicit roles override UUID order. Two `auto` endpoints use the smaller UUID
+as server. A pair of two explicit servers or two explicit clients is rejected:
+every pair in a full mesh needs one accepting side and one initiating side.
+Roles are immutable placement settings; changing one requires removing and
+reattaching the endpoint. One server listener accepts incoming peers.
+Every pair has exactly one connection; traffic does
 not transit Core or a third site. OpenVPN uses routed TUN, TCP/443 and
 `tls-crypt-v2` by default. UDP may be selected explicitly. There is no SNAT or
 L2 extension. TCP/443 does not guarantee passage through provider DPI.
 
-Core reserves all gateway addresses before generating complete cloud-init
+Core reserves the listening gateway addresses before generating complete cloud-init
 configurations. The OpenStack driver checks the actual gzip-compressed, base64
 bootstrap against Nova's 65,535-character user-data limit before server creation;
 oversized payloads fail with their encoded size and the provider limit.
@@ -115,6 +123,7 @@ A Core SDN endpoint uses the same link API:
 ```json
 {
   "subnet": "<Core ovs_evpn subnet UUID>",
+  "role": "client",
   "external_subnet": "<placeable Core flat_bridge subnet UUID>",
   "gateway_image": "https://repo.example/cloud-link-gateway.raw.zst",
   "gateway_cores": 1,
@@ -132,7 +141,10 @@ prefixes. Core publishes peer routes through the subnet's routers; the matching
 SDN SDK advertises those prefixes behind the forwarding port in the L3 fabric.
 A DHCP route alone cannot attach a gateway to a fabric that proxies ARP.
 The external subnet must belong to the project and be placeable (`next_server`
-unset), with a reachable default gateway. Node/port changes go through the link;
+unset), with a reachable default gateway. A `client` can use a private transport
+address behind NAT; it needs outgoing access to the server's transport port.
+A `server` or `auto` endpoint's flat-port address must be reachable from peers.
+Node/port changes go through the link;
 direct tenant mutation is rejected. Missing managed ports are recreated with
 reserved addresses. Deletion uses the ordinary Core builders for teardown.
 
@@ -146,6 +158,13 @@ endpoint. The operator provides local routes to and from its subnet, including
 the attachment to EVPN for this pre-existing gateway mode.
 Core API placement is independent: a private API needs its own attachment and
 return route to a connected subnet.
+
+An outbound-only existing gateway uses
+`{"subnet": "<UUID>", "agent": "<SDK agent UUID>", "role": "client"}`;
+no public `endpoint` is needed. For on-premises workloads behind NAT and cloud
+load balancers, use `client` on-premises and `server` in OpenStack. Connections
+initiated by the load balancer travel inside the established bidirectional
+tunnel; application security groups and return routes must permit them.
 
 `ACTIVE` requires active Nova gateways and healthy direct OpenVPN connections
 reported for the current target hash and gateway incarnation. This is tunnel

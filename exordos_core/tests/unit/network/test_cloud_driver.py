@@ -152,3 +152,35 @@ def test_link_gateway_ports_are_excluded_from_workload_port_reconciliation():
         "exordos_core.network.driver.cloud.endpoints_for_subnet", return_value=[gateway]
     ):
         assert driver.list_ports(SimpleNamespace(uuid=uuid.uuid4())) == [workload]
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_link_material_issues_tls_keys_for_the_selected_server(explicit):
+    first = SimpleNamespace(
+        uuid=uuid.UUID(int=1), definition={"role": "client"} if explicit else {}
+    )
+    second = SimpleNamespace(
+        uuid=uuid.UUID(int=2), definition={"role": "server"} if explicit else {}
+    )
+    endpoints = [first, second]
+    link = SimpleNamespace(uuid=uuid.uuid4(), secrets={}, observed=mock.Mock())
+    service = links.CloudLinkService()
+    with (
+        mock.patch.object(links.CloudNetworkLink, "objects") as stored,
+        mock.patch.object(service, "_bindings", return_value=endpoints),
+        mock.patch.object(
+            service,
+            "_subnet",
+            side_effect=lambda e: SimpleNamespace(cidr=f"10.{e.uuid.int}.0.0/24"),
+        ),
+        mock.patch.object(
+            links.openvpn,
+            "tls_key",
+            side_effect=lambda key=None: "client-key" if key else "server-key",
+        ),
+    ):
+        stored.get_all.return_value = [link]
+        material = service._material(link, endpoints)["endpoints"]
+    client, server = (first, second) if explicit else (second, first)
+    assert material[str(client.uuid)]["tls_clients"] == {server.uuid.hex: "client-key"}
+    assert material[str(server.uuid)]["tls_clients"] == {}
