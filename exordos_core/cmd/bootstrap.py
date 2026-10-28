@@ -1079,6 +1079,7 @@ def main() -> None:
             _install_element_from_bootstrap_repo("core", CONF.manifests_dir)
             _install_element_from_bootstrap_repo("ecosystem_realm", CONF.manifests_dir)
             _ensure_repositories_from_spec(spec)
+            bootstrap_defaults.ensure_idps(spec, CONF["iam"].global_salt)
             _set_defaults_vs(spec)
             _install_elements_from_spec(spec)
             return
