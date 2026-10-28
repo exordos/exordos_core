@@ -292,6 +292,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # is performed by guest machine driver.
             if not self._is_core_machine(machine):
                 _, guest_actual = machine_guest_pair
+                if guest_actual is None:
+                    boot = machine_guest_pair[0].boot
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
                 if guest_actual and guest_actual.image != resolved_image:
