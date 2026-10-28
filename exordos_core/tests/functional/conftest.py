@@ -530,6 +530,9 @@ def node_factory():
         if status is None:
             view.pop("status")
         view.pop("node_set")
+        # Not writable via API
+        view.pop("target_power_state")
+        view.pop("power_state")
         return view
 
     return factory
@@ -563,6 +566,9 @@ def node_factory_with_model():
         if status is None:
             view.pop("status")
         view.pop("node_set")
+        # Not writable via API
+        view.pop("target_power_state")
+        view.pop("power_state")
         return view, node
 
     return factory

@@ -52,6 +52,24 @@ class NodeDetailsActionRoute(routes.Action):
     __controller__ = controllers.NodesController
 
 
+class NodePowerOnActionRoute(routes.Action):
+    """Handler for /v1/compute/nodes/<uuid>/actions/power_on/invoke endpoint"""
+
+    __controller__ = controllers.NodesController
+
+
+class NodePowerOffActionRoute(routes.Action):
+    """Handler for /v1/compute/nodes/<uuid>/actions/power_off/invoke endpoint"""
+
+    __controller__ = controllers.NodesController
+
+
+class NodeRebootActionRoute(routes.Action):
+    """Handler for /v1/compute/nodes/<uuid>/actions/reboot/invoke endpoint"""
+
+    __controller__ = controllers.NodesController
+
+
 class NodeRoute(routes.Route):
     """Handler for /v1/compute/nodes/ endpoint"""
 
@@ -59,6 +77,9 @@ class NodeRoute(routes.Route):
 
     get_private_key = routes.action(NodePrivateKeyActionRoute)
     details = routes.action(NodeDetailsActionRoute)
+    power_on = routes.action(NodePowerOnActionRoute, invoke=True)
+    power_off = routes.action(NodePowerOffActionRoute, invoke=True)
+    reboot = routes.action(NodeRebootActionRoute, invoke=True)
 
 
 class HypervisorRoute(routes.Route):

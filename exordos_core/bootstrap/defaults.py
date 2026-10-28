@@ -314,6 +314,13 @@ def ensure_idps(spec: dict[str, tp.Any], global_salt: str) -> None:
 
 def _ensure_idp(entry: dict[str, tp.Any], global_salt: str) -> None:
     idp_uuid = sys_uuid.UUID(str(entry["uuid"]))
+    idp = iam_models.Idp.objects.get_one_or_none(
+        filters={"uuid": dm_filters.EQ(idp_uuid)}
+    )
+    if idp is not None:
+        LOG.info("IdP %s already exists", idp_uuid)
+        return
+
     client_spec = entry["iam_client"]
     client_uuid = sys_uuid.UUID(str(client_spec["uuid"]))
     # Parsed before anything is written: a callback of an unknown kind
@@ -327,7 +334,8 @@ def _ensure_idp(entry: dict[str, tp.Any], global_salt: str) -> None:
     client = iam_models.IamClient.objects.get_one_or_none(
         filters={"uuid": dm_filters.EQ(client_uuid)}
     )
-    if client is None:
+    create_client = client is None
+    if create_client:
         # An authorization code is exchanged without a client secret, but
         # the column is required: the client gets a random one nobody holds.
         salt = secret_utils.generate_salt(18)
@@ -347,16 +355,6 @@ def _ensure_idp(entry: dict[str, tp.Any], global_salt: str) -> None:
                 global_salt=global_salt,
             ),
         )
-        client.insert()
-        LOG.info("IAM client %s is created from spec", client_uuid)
-
-    idp = iam_models.Idp.objects.get_one_or_none(
-        filters={"uuid": dm_filters.EQ(idp_uuid)}
-    )
-    if idp is not None:
-        LOG.info("IdP %s already exists", idp_uuid)
-        return
-
     idp = iam_models.Idp.restore(
         uuid=idp_uuid,
         name=entry["name"],
@@ -367,6 +365,9 @@ def _ensure_idp(entry: dict[str, tp.Any], global_salt: str) -> None:
         nonce_required=entry.get("nonce_required", True),
         callback=callback,
     )
+    if create_client:
+        client.insert()
+        LOG.info("IAM client %s is created from spec", client_uuid)
     idp.insert()
     LOG.info("IdP %s is created from spec", idp_uuid)
 

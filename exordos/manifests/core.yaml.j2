@@ -119,6 +119,10 @@ resources:
       uuid: "b043aa0d-2535-5908-9198-42dc7faa1ba1"
       name: "compute.node.get_private_key"
       description: "Get node(s) agent private key"
+    compute_node_power:
+      uuid: "d772ebe5-f1e7-52ed-bba4-11745f554ebc"
+      name: "compute.node.power"
+      description: "Power on, power off and reboot own nodes"
     compute_node_read:
       uuid: "62dc01b3-f556-5ba3-bcd6-709c52d7418c"
       name: "compute.node.read"
@@ -833,6 +837,10 @@ resources:
     binding_owner_compute_node_set_get_private_key:
       role: "$core.iam.roles.$owner:uuid"
       permission: "$core.iam.permissions.$compute_node_set_get_private_key:uuid"
+      project_id: "$core.iam.projects.$compute_core:uuid"
+    binding_owner_compute_node_power:
+      role: "$core.iam.roles.$owner:uuid"
+      permission: "$core.iam.permissions.$compute_node_power:uuid"
       project_id: "$core.iam.projects.$compute_core:uuid"
     binding_owner_config_config_read:
       role: "$core.iam.roles.$owner:uuid"
