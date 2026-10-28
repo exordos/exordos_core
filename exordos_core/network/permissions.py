@@ -23,6 +23,9 @@ def _require_unmanaged_node(node_uuid):
         raise exceptions.ValidateException(
             err="manage replica networking through NodeSet"
         )
+    from exordos_core.cloud import local
+
+    local.require_unmanaged(node.uuid)
 
 
 def _require_unmanaged_port(port_uuid):

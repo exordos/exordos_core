@@ -45,7 +45,7 @@ sudo apt install \
   postgresql-common postgresql-"$PG_VERSION" \
   tftpd-hpa nginx-full isc-dhcp-server iptables-persistent \
   pdns-backend-pgsql pdns-server dnsdist \
-  openvswitch-switch \
+  openvswitch-switch openvpn \
   -y
 # Install PostgreSQL $PG_VERSION
 #sudo YES=1 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh

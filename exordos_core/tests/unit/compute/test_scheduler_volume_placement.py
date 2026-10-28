@@ -277,6 +277,7 @@ def test_scheduler_tries_next_compute_pool_after_disk_failure(scheduler, monkeyp
         if pool is first:
             raise ValueError("No durable storage")
 
+    monkeypatch.setattr(scheduler, "_network_matches_pool", lambda node, pool: True)
     monkeypatch.setattr(scheduler, "_place_node_into_pool", place)
     scheduler._schedule_on_pools([node], [first, second])
     assert attempted == [first, second]
@@ -308,6 +309,7 @@ def test_idle_machine_selection_skips_pool_without_requested_disk_policy(
         ),
         [_requested_volume(None, 10, "WARM", False)],
     )
+    monkeypatch.setattr(scheduler, "_network_matches_pool", lambda node, pool: True)
     monkeypatch.setattr(scheduler, "_get_unscheduled_nodes", lambda: [node])
     monkeypatch.setattr(scheduler, "_get_idle_machines", lambda: machines)
     monkeypatch.setattr(scheduler, "_hypervisor_nodes", lambda: set())

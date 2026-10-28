@@ -35,6 +35,8 @@ from restalchemy.dm import types_network as types_net
 from restalchemy.storage import exceptions as ra_storage_exc
 from restalchemy.storage.sql import orm
 
+from exordos_core.cloud.locking import network_delete_guard
+from exordos_core.cloud.models import connection_guard
 from exordos_core.common import constants as cc
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import system
@@ -85,6 +87,7 @@ class MachinePool(
             types_dynamic.KindModelType(ua_pool.LibvirtPoolDriverSpec),
             types_dynamic.KindModelType(ua_pool.ExordosLocalHyperDriverSpec),
             types_dynamic.KindModelType(ua_pool.DummyPoolDriverSpec),
+            types_dynamic.KindModelType(ua_pool.CloudPoolDriverSpec),
         ),
         required=True,
     )
@@ -118,6 +121,62 @@ class MachinePool(
         ),
         default=list,
     )
+
+    @connection_guard(lambda self: getattr(self.driver_spec, "connection", None))
+    def insert(self, session=None):
+        from exordos_core.cloud.models import bind_pool
+
+        bind_pool(self, session)
+        return super().insert(session=session)
+
+    @connection_guard(lambda self: getattr(self.driver_spec, "connection", None))
+    def update(self, session=None, force=False):
+        from exordos_core.cloud.models import bind_pool
+
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if (
+            stored.driver_spec.KIND == "cloud" or self.driver_spec.KIND == "cloud"
+        ) and (
+            stored.driver_spec.KIND != self.driver_spec.KIND
+            or getattr(stored.driver_spec, "connection", None)
+            != getattr(self.driver_spec, "connection", None)
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="MachinePool", msg="cloud scope is immutable"
+            )
+        bind_pool(self, session)
+        return super().update(session=session, force=force)
+
+    @connection_guard(lambda self: getattr(self.driver_spec, "connection", None))
+    def delete(self, session=None, **kwargs):
+        if self.driver_spec.KIND == "cloud":
+            session.execute(
+                "SELECT uuid FROM machine_pools WHERE uuid=%s FOR UPDATE",
+                (str(self.uuid),),
+            )
+            occupied = any(
+                model.objects.get_all(
+                    filters={"pool": dm_filters.EQ(self.uuid)}, session=session
+                )
+                for model in (Machine, MachineVolume, Volume)
+            )
+            for model in (ua_models.TargetResource, ua_models.Resource):
+                occupied |= any(
+                    str(resource.value.get("pool")) == str(self.uuid)
+                    for resource in model.objects.get_all(
+                        filters={
+                            "kind": dm_filters.In(["pool_machine", "pool_volume"])
+                        },
+                        session=session,
+                    )
+                )
+            if occupied:
+                raise ra_storage_exc.ConflictRecords(
+                    model="MachinePool", msg="cloud workloads have not finished cleanup"
+                )
+        return super().delete(session=session, **kwargs)
 
 
 class Volume(
@@ -622,7 +681,20 @@ class Network(
     driver_state = properties.property(types.Dict(), default=dict)
     is_default = properties.property(types.Boolean(), default=False)
 
+    def validate_cloud_spec(self, session=None):
+        if self.driver_spec.get("driver") == "cloud":
+            from exordos_core.cloud.models import connection
+
+            allowed = {"driver", "connection", "external_network"}
+            if set(self.driver_spec) - allowed:
+                raise ex_exceptions.ValidateException(
+                    err="Unknown cloud network option"
+                )
+            connection(self.driver_spec["connection"], self.project_id, session)
+
+    @connection_guard(lambda self: self.driver_spec.get("connection"))
     def insert(self, session=None):
+        self.validate_cloud_spec(session)
         if not nc.is_overlay(self.driver_spec):
             return super().insert(session=session)
         self.validate_overlay_spec(self.driver_spec)
@@ -692,7 +764,9 @@ class Network(
                 % nc.OVERLAY_MTU_RANGE
             )
 
+    @connection_guard(lambda self: self.driver_spec.get("connection"))
     def update(self, session=None, force=False):
+        self.validate_cloud_spec(session)
         if not nc.is_overlay(self.driver_spec):
             stored = Network.objects.get_one(
                 filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
@@ -700,6 +774,10 @@ class Network(
             if (
                 nc.is_overlay(stored.driver_spec)
                 or stored.project_id != self.project_id
+                or (
+                    stored.driver_spec.get("driver") == "cloud"
+                    and stored.driver_spec != self.driver_spec
+                )
             ):
                 raise ra_storage_exc.ConflictRecords(
                     model="Network", msg="driver/project_id are immutable"
@@ -732,6 +810,7 @@ class Network(
         default="private",
     )
 
+    @network_delete_guard
     def delete(self, session=None, **kwargs):
         from exordos_core.network.contracts import atomic_session
         from exordos_core.user_api.network.dm import models as catalog
@@ -754,6 +833,8 @@ class Network(
                 filters={"owner_network": dm_filters.EQ(self.uuid)}, session=s
             ):
                 nf.collect_generated(session=s)
+            if self.driver_spec.get("driver") == "cloud":
+                self.load_driver().delete_network()
             return super().delete(session=s, **kwargs)
 
     def load_driver(self) -> tp.Type["AbstractNetworkDriver"]:
@@ -987,11 +1068,18 @@ class Subnet(
                 )
             )
 
+    @network_delete_guard
     def delete(self, session=None, **kwargs):
         from exordos_core.network.contracts import atomic_session
         from exordos_core.user_api.network.dm import models as net_models
 
         with atomic_session(self._get_engine(), session) as s:
+            from exordos_core.cloud.links import endpoints_for_subnet
+
+            if endpoints_for_subnet(self.uuid, session=s):
+                raise ra_storage_exc.ConflictRecords(
+                    model="Subnet", msg="still has cloud network links"
+                )
             # Same as Network: name what is in the way.
             ports = Port.objects.get_all(
                 filters={"subnet": dm_filters.EQ(self.uuid)}, session=s
@@ -1017,6 +1105,7 @@ class Subnet(
                     msg=f"still has {len(addresses)} reserved address(es); "
                     "release them first",
                 )
+            network = None
             # Tell the driver before the row goes: cascaded port rows leave
             # resources on the hypervisor that nothing could find afterwards.
             try:
@@ -1026,6 +1115,8 @@ class Subnet(
                 network.load_driver().delete_subnet(self)
             except Exception:
                 LOG.exception("Could not retire subnet %s on the data plane", self.uuid)
+                if network is not None and network.driver_spec.get("driver") == "cloud":
+                    raise
             # After the driver, which collects the functions' slices by them.
             for nf in net_models.NetworkFunction.objects.get_all(
                 filters={"owner_subnet": dm_filters.EQ(self.uuid)}, session=s
@@ -1171,9 +1262,24 @@ class Port(
 
         validate_mac(self.mac)
         validate_mac(self.target_mac)
-        if self.enforce_security_group and not self.is_overlay():
+        cloud = False
+        if self.enforce_security_group:
+            subnet = Subnet.objects.get_one(
+                filters={
+                    "uuid": dm_filters.EQ(getattr(self.subnet, "uuid", self.subnet))
+                }
+            )
+            network = Network.objects.get_one(
+                filters={
+                    "uuid": dm_filters.EQ(
+                        getattr(subnet.network, "uuid", subnet.network)
+                    )
+                }
+            )
+            cloud = network.driver_spec.get("driver") == "cloud"
+        if self.enforce_security_group and not (self.is_overlay() or cloud):
             raise ex_exceptions.ValidateException(
-                err="enforce_security_group requires an overlay network"
+                err="enforce_security_group requires an overlay or cloud network"
             )
         subnet = Subnet.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(getattr(self.subnet, "uuid", self.subnet))}
@@ -1355,7 +1461,8 @@ class Port(
             Subnet.objects.get_one(
                 filters={"uuid": dm_filters.EQ(subnet.uuid)}, session=s, locked=True
             )
-            if self.ipv4 is None:
+            cloud = network.driver_spec.get("driver") == "cloud"
+            if self.ipv4 is None and (not cloud or self.target_ipv4 is not None):
                 allocator = catalog.Address(
                     project_id=self.project_id,
                     subnet=subnet.uuid,
@@ -1401,7 +1508,7 @@ class Port(
                     raise ra_storage_exc.ConflictRecords(
                         model="Port", msg="MAC is already allocated in this network"
                     )
-            else:
+            elif not cloud:
                 self.mac = self.generate_mac()
                 while self.mac in used_macs:
                     self.mac = self.generate_mac()

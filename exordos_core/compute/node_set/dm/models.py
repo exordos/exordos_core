@@ -17,6 +17,9 @@
 import typing as tp
 import uuid as sys_uuid
 
+from gcl_sdk.infra.dm import models as sdk_models
+from restalchemy.dm import filters
+
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 
@@ -47,6 +50,23 @@ class NodeSet(compute_models.NodeSet):
         "set_agent_volume": Volume,
     }
 
+    def _replica_disk_spec(self):
+        """Default unspecified cloud replica disks to durable Cinder storage."""
+        subnet_id = self.network_subnet or (self.default_network or {}).get("subnet")
+        if not subnet_id or not isinstance(self.disk_spec, sdk_models.SetDisksSpec):
+            return self.disk_spec
+        subnet = compute_models.Subnet.objects.get_one(
+            filters={"uuid": filters.EQ(subnet_id)}
+        )
+        network = compute_models.Network.objects.get_one(
+            filters={"uuid": filters.EQ(subnet.network)}
+        )
+        if network.driver_spec.get("driver") != "cloud":
+            return self.disk_spec
+        return sdk_models.SetDisksSpec(
+            disks=[{"ephemeral": False, **disk} for disk in self.disk_spec.disks]
+        )
+
     def gen_nodes(
         self,
         project_id: sys_uuid.UUID,
@@ -73,7 +93,7 @@ class NodeSet(compute_models.NodeSet):
                 node_type=self.node_type,
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
-                disk_spec=self.disk_spec.node_spec(self, node_uuid),
+                disk_spec=self._replica_disk_spec().node_spec(self, node_uuid),
                 default_network=self.default_network,
             )
             nodes.append(node)
@@ -87,7 +107,7 @@ class NodeSet(compute_models.NodeSet):
         """Create volumes for the node set."""
         # TODO(akremenetsky): The implementation is not correct since we
         # need to return right volume class. Rework this part later.
-        volumes = self.disk_spec.volumes(self)
+        volumes = self._replica_disk_spec().volumes(self)
         for volume in volumes:
             volume.project_id = project_id
 

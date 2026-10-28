@@ -230,6 +230,7 @@ class PoolMachine(
     ua_models.TargetResourceKindAwareMixin,
     ra_models.ModelWithUUID,
 ):
+    user_data = properties.property(types.AllowNone(types.String()), default=None)
     name = properties.property(types.String(max_length=255), default="")
     cores = properties.property(types.Integer(min_value=0, max_value=4096), default=0)
     ram = properties.property(types.Integer(min_value=0), default=0)
@@ -275,6 +276,7 @@ class PoolMachine(
                 "boot",
                 "pool",
                 "image",
+                "user_data",
             )
         )
 

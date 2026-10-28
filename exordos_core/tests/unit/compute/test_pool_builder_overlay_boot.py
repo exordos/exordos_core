@@ -73,7 +73,13 @@ def test_the_machine_is_built_with_the_leg_at_index_zero():
 
 def test_reimage_without_a_port_does_not_switch_the_guest_to_netboot():
     builder = pool_builder.PoolBuilderService.__new__(pool_builder.PoolBuilderService)
-    machine = SimpleNamespace(uuid=uuid.uuid4(), name="guest", boot="hd0", image="old")
+    machine = SimpleNamespace(
+        uuid=uuid.uuid4(),
+        name="guest",
+        boot="hd0",
+        image="old",
+        pool=SimpleNamespace(driver_spec=SimpleNamespace(KIND="libvirt")),
+    )
     builder._get_or_fetch_machine_ctx = mock.Mock(
         return_value=(None, SimpleNamespace(image="new"))
     )

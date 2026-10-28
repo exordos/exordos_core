@@ -426,6 +426,27 @@ class SchedulerService(basic.BasicService):
             if pool.hypervisor_node is not None
         }
 
+    @staticmethod
+    def _network_matches_pool(node, pool):
+        ports = models.Port.objects.get_all(filters={"node": dm_filters.EQ(node.uuid)})
+        cloud = pool.driver_spec.KIND == "cloud"
+        for port in ports:
+            subnet = models.Subnet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(port.subnet)}
+            )
+            network = models.Network.objects.get_one(
+                filters={"uuid": dm_filters.EQ(subnet.network)}
+            )
+            spec = network.driver_spec
+            if spec.get("driver") == "cloud":
+                if not cloud or str(spec.get("connection")) != str(
+                    pool.driver_spec.connection
+                ):
+                    return False
+            elif cloud:
+                return False
+        return bool(ports) if cloud else True
+
     def _machine_has_disk_capacity(self, node, machine, pools):
         if not node.volumes:
             return True
@@ -486,7 +507,9 @@ class SchedulerService(basic.BasicService):
             idle_machines = [
                 m
                 for m in idle_machines
-                if self._machine_has_disk_capacity(unscheduled_node, m, pools)
+                if m.machine.pool in pools
+                and self._network_matches_pool(node, pools[m.machine.pool].pool)
+                and self._machine_has_disk_capacity(unscheduled_node, m, pools)
             ]
 
             # There are no available HW machines for this node
@@ -569,7 +592,9 @@ class SchedulerService(basic.BasicService):
         origin_pools = pools
 
         for node in nodes:
-            pools = origin_pools
+            pools = tuple(
+                p for p in origin_pools if self._network_matches_pool(node.node, p.pool)
+            )
 
             # Filtering. We filter out unsuitable pools. For instance, pools
             # that doesn't have enough cores or ram or some placement
@@ -644,7 +669,11 @@ class SchedulerService(basic.BasicService):
             # For other pools, exclude local agents (with local_pool capability)
             # since they are dedicated to local hypervisors.
             all_agents = machine_agents[MACHINE_POOL_CAP]
-            if pool.driver_spec.KIND == "exordos_local_hyper":
+            if pool.driver_spec.KIND == "cloud":
+                available_agents = [
+                    a for a in all_agents if "cloud_pool" in a.list_capabilities
+                ]
+            elif pool.driver_spec.KIND == "exordos_local_hyper":
                 available_agents = [
                     a for a in all_agents if a.node == pool.driver_spec.node
                 ]

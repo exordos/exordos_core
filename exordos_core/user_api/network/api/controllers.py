@@ -23,6 +23,7 @@ from restalchemy.api import resources
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as core_constants
+from exordos_core.common import exceptions as common_exceptions
 from exordos_core.common.api.controllers import ObservationResponseMixin
 from exordos_core.common.api.controllers import StoredFieldsQueryMixin
 from exordos_core.compute import constants as nc
@@ -109,9 +110,22 @@ class NetworkCRUDController(
         ),
     )
 
+    @staticmethod
+    def _validate_spec(spec):
+        if spec.get("driver") == "cloud":
+            if (
+                set(spec) - {"driver", "connection", "external_network"}
+                or "connection" not in spec
+            ):
+                raise common_exceptions.ValidateException(
+                    err="cloud network requires a connection reference"
+                )
+        else:
+            compute_models.Network.validate_overlay_spec(spec)
+
     def create(self, **kwargs):
         # `flat_bridge` is operator-only: its spec names a host file.
-        compute_models.Network.validate_overlay_spec(kwargs.get("driver_spec") or {})
+        self._validate_spec(kwargs.get("driver_spec") or {})
         # Publishing exposes the network to every project. Manifests bypass
         # this gate; they are operator-authored.
         if kwargs.get("access") == "public":
@@ -120,7 +134,7 @@ class NetworkCRUDController(
 
     def update(self, uuid, **kwargs):
         if "driver_spec" in kwargs:
-            compute_models.Network.validate_overlay_spec(kwargs["driver_spec"] or {})
+            self._validate_spec(kwargs["driver_spec"] or {})
         if kwargs.get("access") == "public":
             self._enforce("share")
         return super().update(uuid, **kwargs)
@@ -348,6 +362,9 @@ class PortController(
 
     def create(self, **kwargs):
         self.model.validate_input(kwargs)
+        from exordos_core.cloud import local
+
+        local.require_unmanaged(kwargs.get("node"))
         from exordos_core.network.contracts import atomic_session
         from exordos_core.network.permissions import gate_allocated_private_address
         from exordos_core.network.permissions import gate_explicit_address
@@ -373,6 +390,9 @@ class PortController(
 
     def update(self, uuid, **kwargs):
         stored = self.get(uuid)
+        from exordos_core.cloud import local
+
+        local.require_unmanaged(stored.node or stored.owner_node)
         self.model.validate_input(kwargs, stored)
         from exordos_core.network.permissions import gate_port_ownership
 
@@ -636,9 +656,18 @@ class AddressController(
         return super().update(uuid, **kwargs)
 
     def delete(self, uuid):
+        from restalchemy.storage import exceptions as storage_exc
+
+        from exordos_core.cloud.links import CloudLinkEndpoint
         from exordos_core.network.permissions import _require_unmanaged_port
 
         stored = self.get(uuid=uuid)
+        if CloudLinkEndpoint.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(stored.uuid)}
+        ):
+            raise storage_exc.ConflictRecords(
+                model="Address", msg="owned by a cloud link; delete the link instead"
+            )
         if stored.port is not None:
             _require_unmanaged_port(stored.port)
         return super().delete(uuid)

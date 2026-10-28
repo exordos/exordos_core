@@ -16,6 +16,8 @@
 
 from restalchemy.api import routes
 
+from exordos_core.cloud.api import CloudConnectionsRoute
+from exordos_core.cloud.api import CloudNetworkLinksRoute
 from exordos_core.user_api.compute.api import controllers
 
 
@@ -90,4 +92,6 @@ class ComputeRoute(routes.Route):
     volumes = routes.route(VolumesRoute)
     nodes = routes.route(NodeRoute)
     hypervisors = routes.route(HypervisorRoute)
+    cloud_connections = routes.route(CloudConnectionsRoute)
+    cloud_network_links = routes.route(CloudNetworkLinksRoute)
     sets = routes.route(NodeSetsRoute)

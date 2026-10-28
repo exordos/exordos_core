@@ -75,19 +75,9 @@ The chosen storage pool is retained for reuse and resize; an existing disk
 is never moved merely because another pool has more free space. Changing
 `tier` or `ephemeral` after creation is unsupported.
 
-This branch requires the matching `gcl_sdk` branch `feat/disk-scheduling`
-(PR #211) before it can be merged and released. The SDK must provide
-`DiskTier`, the disk policy fields, and `select_storage_pool`; a released
-SDK without these APIs is insufficient.
-
-Until that SDK release is published, `uv.lock` pins the development SDK
-commit `2987730b84e090666ecf46b64a6e6cecdfaf1872` through `tool.uv.sources`.
-This makes `uv sync --locked` reproducible without resolving an older SDK
-from PyPI. Image builds can still use `LOCAL_GENESIS_SDK_PATH`.
-
-The disk scheduling migration also converts existing local hypervisor driver
-configuration to the list-of-pools schema. Update the CLI together with the
-SDK and core so new hypervisor registrations use that schema too.
+Existing local hypervisor driver configurations are migrated to the
+list-of-pools schema. New hypervisor registrations require a CLI version
+that supports this schema.
 
 Disk policy changes on existing node disks are rejected before persisting API
 or manifest updates. Resizing a disk with its existing policy remains supported.
@@ -98,3 +88,6 @@ policy fields, restores single local-pool names, and invalidates resource hashes
 for rebuilding by the previous release. A local hypervisor with multiple pools
 cannot be represented by the old schema; downgrade refuses that configuration
 rather than silently discarding pool assignments.
+
+Native OpenStack pools and routed private links are documented in
+[OpenStack multicloud](docs/network/openstack-multicloud.md).

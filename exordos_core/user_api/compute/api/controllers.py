@@ -189,10 +189,30 @@ class NodesController(
             return node
 
     def update(self, uuid, **kwargs):
+        self._require_unmanaged_gateway(uuid)
         self.model.validate_network_input(kwargs)
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
 
         return super().update(uuid, **kwargs)
+
+    def delete(self, uuid):
+        self._require_unmanaged_gateway(uuid)
+        return super().delete(uuid)
+
+    def _require_unmanaged_gateway(self, uuid):
+        from restalchemy.storage import exceptions
+
+        from exordos_core.cloud import local
+        from exordos_core.cloud.links import CloudLinkEndpoint
+
+        node = self.get(uuid=uuid)
+        endpoint = CloudLinkEndpoint.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(node.uuid)}
+        )
+        if endpoint is not None and local.managed(endpoint):
+            raise exceptions.ConflictRecords(
+                model="Node", msg="owned by a cloud link; change the link instead"
+            )
 
     @actions.get
     def get_private_key(self, resource: user_models.Node):
