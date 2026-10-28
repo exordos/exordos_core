@@ -130,6 +130,20 @@ class CloudNetworkLink(
             seen.add(subnet_id)
             prefixes.append(prefix)
             config = dict(endpoint, subnet=str(subnet_id))
+            role = config.get("role", "auto")
+            if role not in openvpn.ROLES:
+                raise ValidateException(
+                    err="Endpoint role must be auto, server or client"
+                )
+            try:
+                for previous, _, definition in definitions:
+                    openvpn.serves(
+                        subnet_id, previous, role, definition.get("role", "auto")
+                    )
+            except ValueError as error:
+                raise ValidateException(err=str(error)) from error
+            if role == "auto":
+                config.pop("role", None)
             if network.driver_spec.get("driver") == "cloud":
                 try:
                     if set(config) - {
@@ -138,6 +152,7 @@ class CloudNetworkLink(
                         "external_network",
                         "gateway_cores",
                         "gateway_ram",
+                        "role",
                     }:
                         raise ValueError("Unknown cloud endpoint option")
                     if (
@@ -170,6 +185,7 @@ class CloudNetworkLink(
                         "gateway_cores",
                         "gateway_ram",
                         "gateway_disk",
+                        "role",
                     }:
                         raise ValueError("Unknown local gateway option")
                     if network.driver_spec.get("driver") != "ovs_evpn":
@@ -210,12 +226,19 @@ class CloudNetworkLink(
                 connection_id = None
             else:
                 try:
-                    if set(config) != {"subnet", "agent", "endpoint"}:
+                    if (
+                        set(config) - {"subnet", "agent", "endpoint", "role"}
+                        or "agent" not in config
+                        or (role != "client" and "endpoint" not in config)
+                    ):
                         raise ValueError(
-                            "A local endpoint requires subnet, agent and public endpoint"
+                            "A local endpoint requires subnet and agent; auto/server also require a public endpoint"
                         )
                     config["agent"] = str(uuid.UUID(config["agent"]))
-                    config["endpoint"] = str(ipaddress.IPv4Address(config["endpoint"]))
+                    if "endpoint" in config:
+                        config["endpoint"] = str(
+                            ipaddress.IPv4Address(config["endpoint"])
+                        )
                     agent = ua.UniversalAgent.objects.get_one(
                         filters={"uuid": filters.EQ(config["agent"])}, session=session
                     )
@@ -462,7 +485,13 @@ class CloudLinkService(basic.BasicService):
             own = secrets["endpoints"][str(endpoint.uuid)]
             for server in endpoints:
                 if (
-                    server.uuid >= endpoint.uuid
+                    server.uuid == endpoint.uuid
+                    or not openvpn.serves(
+                        server.uuid,
+                        endpoint.uuid,
+                        server.definition.get("role", "auto"),
+                        endpoint.definition.get("role", "auto"),
+                    )
                     or server.uuid.hex in own["tls_clients"]
                 ):
                     continue
@@ -493,7 +522,7 @@ class CloudLinkService(basic.BasicService):
             return local.reserve(link, endpoint)
         if endpoint.connection is None:
             return {
-                "endpoint": endpoint.definition["endpoint"],
+                "endpoint": endpoint.definition.get("endpoint"),
                 "agent": endpoint.definition["agent"],
             }
         cloud, subnet, provider_subnet = self._provider(endpoint)
@@ -520,6 +549,8 @@ class CloudLinkService(basic.BasicService):
                 "remote_ip_prefix": "0.0.0.0/0",
             },
         ]
+        if endpoint.definition.get("role") == "client":
+            rules = rules[1:]
         group = cloud.security_group(endpoint.uuid, rules)
         remote_cidrs = [str(self._subnet(p).cidr) for p in peers]
         port = cloud.ensure_port(
@@ -549,11 +580,13 @@ class CloudLinkService(basic.BasicService):
             cloud.api.network.update_port(
                 port.id, allowed_address_pairs=[{"ip_address": c} for c in remote_cidrs]
             )
-        floating = cloud.ensure_floating_ip(
-            port, endpoint.definition["external_network"]
-        )
+        floating = None
+        if endpoint.definition.get("role") != "client":
+            floating = cloud.ensure_floating_ip(
+                port, endpoint.definition["external_network"]
+            )
         return {
-            "endpoint": floating.floating_ip_address,
+            "endpoint": floating.floating_ip_address if floating is not None else None,
             "gateway_ip": assigned,
             "port_id": port.id,
             "agent": str(endpoint.uuid),
@@ -797,12 +830,14 @@ class CloudLinkService(basic.BasicService):
         for endpoint in endpoints:
             own = dict(
                 secrets["endpoints"][str(endpoint.uuid)],
+                role=endpoint.definition.get("role", "auto"),
                 cidr=str(self._subnet(endpoint).cidr),
                 gateway_ip=state[str(endpoint.uuid)].get("gateway_ip"),
             )
             peers = [
                 {
                     "id": str(p.uuid),
+                    "role": p.definition.get("role", "auto"),
                     "cidr": str(self._subnet(p).cidr),
                     "endpoint": state[str(p.uuid)]["endpoint"],
                 }

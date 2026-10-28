@@ -10,9 +10,12 @@ A link connects two or more existing Core IPv4 subnets. The common API imposes
 no fixed endpoint-count limit. Their networks select provider
 connections; API placement does not select a special local side. Every pair
 of endpoints gets one direct OpenVPN connection, for `N*(N-1)/2` sessions.
-One dedicated gateway per cloud endpoint serves all its peers. The larger
-endpoint UUID initiates the connection; the smaller UUID accepts it on a
-shared server listener. Each gateway may have both server and client roles.
+One dedicated gateway per cloud endpoint serves all its peers. Endpoint `role`
+selects `server` (accept), `client` (initiate), or `auto` (default).
+Explicit roles override UUID order; two `auto` peers use the smaller UUID as
+server. Two explicit servers or two explicit clients cannot form a direct
+pair and are rejected. Each gateway may have both roles when set to `auto`.
+The selected server uses a shared listener for its incoming connections.
 
 ```mermaid
 flowchart LR
@@ -28,12 +31,20 @@ Traffic retains original IPv4 addresses. There is no L2 extension, SNAT,
 inter-site transit through a third gateway, BGP or HA. CIDRs in a link must
 not overlap. A subnet belongs to one link until its cleanup completes.
 A pre-existing local routed SDK gateway uses the same transport, with explicit
-`subnet`, `agent` and public IPv4 `endpoint`. Its EVPN attachment and local
+`subnet`, `agent` and public IPv4 `endpoint`; an explicit `client` needs no
+public address and can omit `endpoint`. Its EVPN attachment and local
 routes are operator prerequisites in this mode. Alternatively, an `ovs_evpn`
 endpoint with `external_subnet` and `gateway_image` creates an ordinary managed
 Core Node with private and flat transport ports. Config/Service start its
 separate link agent, and the SDN driver advertises peer prefixes behind the
 forwarding port. One physical local gateway supports one endpoint.
+
+An on-premises gateway behind NAT can be `client` while an OpenStack gateway
+is `server`. A managed native client's flat port needs outbound reachability,
+not a public address. Application traffic is bidirectional inside the tunnel:
+cloud load balancers can initiate connections to on-premises private backends.
+Explicit cloud clients do not allocate floating IPs or open transport ingress.
+Roles are immutable until the endpoint is removed and reattached.
 
 ## Transport and ownership
 
@@ -60,8 +71,8 @@ Private files have mode `0600`; management sockets are root-only.
 
 ## Bootstrap without guest access to Core
 
-1. Core creates all gateway ports, security groups and floating IPs through
-   provider APIs. This makes every peer address available before any VM boots.
+1. Core creates gateway ports, security groups and listening endpoints' floating IPs through
+   provider APIs. Every listener address is available before any VM boots.
 2. Core generates complete configurations and passes compressed Nova
    user-data to each VM. The OpenStack driver validates the actual encoded
    size against Nova's 65,535-character limit before creating a server.
