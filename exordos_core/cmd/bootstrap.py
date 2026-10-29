@@ -43,6 +43,7 @@ from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
 from exordos_core.repo.builders import element as repo_element_builder
 from exordos_core.repo.dm import models as repo_models
+from exordos_core.vs.dm import models as vs_models
 
 LOG = logging.getLogger(__name__)
 USER = "ubuntu"
@@ -1038,6 +1039,40 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
         time.sleep(0.5)
 
 
+def _set_variables_from_spec(spec: dict[str, tp.Any]) -> None:
+    """Idempotently seed values for variables created by installed elements."""
+    variables = spec.get("variables", {})
+    if not isinstance(variables, dict) or any(
+        not isinstance(key, str) or not key.strip() for key in variables
+    ):
+        raise ValueError("Bootstrap variables must be an object keyed by UUID or name")
+
+    timeout_at = time.monotonic() + 120
+    for key, value in variables.items():
+        try:
+            var_uuid = sys_uuid.UUID(key)
+        except ValueError:
+            var_uuid = None
+
+        while True:
+            if var_uuid is None:
+                matches = vs_models.Variable.objects.get_all(
+                    filters={"name": dm_filters.EQ(key)}
+                )
+                if len(matches) > 1:
+                    raise ValueError(f"Ambiguous variable name {key!r}; use a UUID")
+                if matches:
+                    var_uuid = matches[0].uuid
+
+            if var_uuid is not None and bootstrap_defaults.set_var(
+                str(var_uuid), value, var_uuid
+            ):
+                break
+            if time.monotonic() > timeout_at:
+                raise TimeoutError(f"Timeout reached waiting for variable {key}")
+            time.sleep(0.5)
+
+
 def main() -> None:
     # Parse config
     config.parse(sys.argv[1:])
@@ -1083,6 +1118,7 @@ def main() -> None:
             bootstrap_defaults.ensure_idps(spec, CONF["iam"].global_salt)
             _set_defaults_vs(spec)
             _install_elements_from_spec(spec)
+            _set_variables_from_spec(spec)
             return
         except Exception:
             LOG.exception("Unable to perform bootstrap, retrying...")
