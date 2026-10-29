@@ -169,6 +169,7 @@ nav:
   - IAM:
     - Permissions: iam/permissions_overview.md
     - Authorization Code: iam/authorization_code.md
+    - PKCE: iam/pkce.md
   - Network:
     - LBaaS API: network/load_balancer.md
   - Secrets:

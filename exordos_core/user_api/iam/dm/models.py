@@ -1422,25 +1422,48 @@ class IamClient(
         else:
             raise iam_e.InvalidRefreshTokenError()
 
-    def get_token_by_authorization_code(self, code, redirect_uri):
-        for auth_info in IdpAuthorizationInfo.objects.get_all(
-            filters={"code": ra_filters.EQ(code)}
-        ):
-            if auth_info.redirect_uri != redirect_uri:
-                LOG.warning(
-                    "IAM OIDC: authorization code redirect_uri mismatch "
-                    "auth_info_uuid=%s stored_redirect_uri=%s requested_redirect_uri=%s",
-                    auth_info.uuid,
-                    auth_info.redirect_uri,
-                    redirect_uri,
-                )
-            # TODO: Restore strict redirect_uri validation after URI normalization
-            # and proxy handling are fixed.
-            # if auth_info.redirect_uri == redirect_uri:
-            #     auth_info.delete()
-            #     return auth_info.token
-            auth_info.delete()
-            return auth_info.token
+    def get_token_by_authorization_code(self, code, redirect_uri, code_verifier=None):
+        with IdpAuthorizationInfo._get_engine().session_manager() as session:
+            for auth_info in IdpAuthorizationInfo.objects.get_all(
+                filters={"code": ra_filters.EQ(code)}, session=session, locked=True
+            ):
+                if auth_info.code_challenge:
+                    if (
+                        auth_info.idp.iam_client != self
+                        or auth_info.redirect_uri != redirect_uri
+                        or auth_info.expiration_time_at
+                        <= datetime.datetime.now(datetime.timezone.utc)
+                        or auth_info.token is None
+                        or not isinstance(code_verifier, str)
+                        or not re.fullmatch(r"[A-Za-z0-9._~-]{43,128}", code_verifier)
+                    ):
+                        raise iam_exceptions.InvalidPkceGrant()
+                    challenge = (
+                        base64.urlsafe_b64encode(
+                            hashlib.sha256(code_verifier.encode("ascii")).digest()
+                        )
+                        .rstrip(b"=")
+                        .decode("ascii")
+                    )
+                    if (
+                        auth_info.code_challenge_method != "S256"
+                        or not secrets.compare_digest(
+                            challenge, auth_info.code_challenge
+                        )
+                    ):
+                        raise iam_exceptions.InvalidPkceGrant()
+                elif code_verifier is not None:
+                    raise iam_exceptions.InvalidPkceGrant()
+                elif auth_info.redirect_uri != redirect_uri:
+                    LOG.warning(
+                        "IAM OIDC: authorization code redirect_uri mismatch "
+                        "auth_info_uuid=%s stored_redirect_uri=%s requested_redirect_uri=%s",
+                        auth_info.uuid,
+                        auth_info.redirect_uri,
+                        redirect_uri,
+                    )
+                auth_info.delete(session=session)
+                return auth_info.token
 
         raise iam_e.CredentialsAreInvalidError()
 
@@ -2039,6 +2062,7 @@ class Idp(
                 f"{app_url}/v1/iam/clients/{self.iam_client.uuid}/actions/jwks"
             ),
             "response_types_supported": IdpResponseType.list_response_types(),
+            "code_challenge_methods_supported": ["S256"],
             "subject_types_supported": ["public"],
             "id_token_signing_alg_values_supported": (
                 self.iam_client.get_id_token_signing_alg_values_supported()
@@ -2058,7 +2082,16 @@ class Idp(
         response_type,
         scope,
         nonce=NONCE_DEFAULT,
+        code_challenge=None,
+        code_challenge_method=None,
     ):
+        if code_challenge is not None or code_challenge_method is not None:
+            if (
+                code_challenge_method != "S256"
+                or not isinstance(code_challenge, str)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{43}", code_challenge)
+            ):
+                raise iam_exceptions.InvalidPkceRequest()
         if self.client_id != client_id:
             raise iam_exceptions.InvalidClientId(client_id=client_id)
         if not self.callback.check(redirect_uri):
@@ -2076,6 +2109,8 @@ class Idp(
             nonce=nonce,
             scope=scope,
             redirect_uri=redirect_uri,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method,
         )
 
         auth_info.insert()
@@ -2101,6 +2136,13 @@ class IdpAuthorizationInfo(
     orm.SQLStorableMixin,
 ):
     __tablename__ = "iam_idp_authorization_info"
+
+    code_challenge = properties.property(
+        ra_types.String(max_length=43), required=False, default=None
+    )
+    code_challenge_method = properties.property(
+        ra_types.String(max_length=16), required=False, default=None
+    )
 
     idp = relationships.relationship(
         Idp,
