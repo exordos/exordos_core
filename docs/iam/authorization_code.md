@@ -8,6 +8,10 @@ applications. An application (Relying Party) redirects the user to IAM, the
 user signs in, and the application receives a one-time **authorization code**
 that it exchanges for an access token.
 
+Use [PKCE S256](pkce.md) for new integrations, including public clients such
+as desktop applications and agents. The examples below use PKCE. Existing
+clients can continue the flow without PKCE for compatibility.
+
 ## Entities
 
 * **IAM client** (`/v1/iam/clients/<client_uuid>`) — issues tokens. Its
@@ -24,7 +28,8 @@ that it exchanges for an access token.
 * **Authorization request** (`/v1/iam/authorization_requests/<uuid>`) —
   a short-lived record created by `authorize`. It stores `state`, `nonce`,
   `scope`, `redirect_uri`, the generated `code` (UUID) and, after
-  confirmation, the issued token.
+  confirmation, the issued token. With PKCE it also stores `code_challenge`
+  and `code_challenge_method`; the verifier stays with the application.
 
 ## Discovery
 
@@ -43,7 +48,9 @@ GET /v1/iam/idp/<idp_uuid>/.well-known/openid-configuration
 | `jwks_uri`               | `/v1/iam/clients/<client_uuid>/actions/jwks`              |
 | `end_session_endpoint`   | `/v1/iam/clients/<client_uuid>/actions/logout/invoke`     |
 
-Only the `code` response type is supported.
+Only the `code` response type is supported. PKCE support is advertised as
+`code_challenge_methods_supported: ["S256"]`. Check this before starting a
+PKCE login; a realm without S256 support needs a Core IAM update.
 
 ## Flow
 
@@ -52,16 +59,37 @@ sequenceDiagram
     participant App as Application
     participant Browser
     participant IAM
-    App->>Browser: redirect to authorization_endpoint
+    App->>App: generate verifier, challenge, state and nonce
+    App->>Browser: redirect to authorization_endpoint with challenge and S256
     Browser->>IAM: GET /idp/<idp_uuid>/actions/authorize/invoke
     IAM-->>Browser: 307 to login page (?auth_uuid=...)
     Browser->>IAM: user signs in, gets own token
     Browser->>IAM: POST /authorization_requests/<auth_uuid>/actions/confirm/invoke
     IAM-->>Browser: redirect_uri?code=...&state=...
     Browser->>App: follows redirect_uri
-    App->>IAM: POST /clients/<client_uuid>/actions/get_token/invoke (grant_type=authorization_code)
+    App->>App: verify returned state
+    App->>IAM: POST /clients/<client_uuid>/actions/get_token/invoke (code, redirect_uri, code_verifier)
     IAM-->>App: access token
 ```
+
+### Prepare the login attempt
+
+Generate a fresh random `state` and `nonce` for each login and keep them
+locally. Generate a secret `code_verifier` and derive its challenge:
+
+```python
+import base64
+import hashlib
+import secrets
+
+code_verifier = secrets.token_urlsafe(32)
+code_challenge = base64.urlsafe_b64encode(
+    hashlib.sha256(code_verifier.encode("ascii")).digest()
+).rstrip(b"=").decode("ascii")
+```
+
+Keep the verifier locally until the token exchange. Send only the challenge
+in the authorization URL; do not put the verifier in browser URLs or logs.
 
 ### 1. Authorize
 
@@ -73,13 +101,18 @@ GET /v1/iam/idp/<idp_uuid>/actions/authorize/invoke
     &response_type=code
     &scope=openid
     &nonce=<nonce>
+    &code_challenge=<code_challenge>
+    &code_challenge_method=S256
 ```
 
 IAM checks that:
 
 * `client_id` matches the IdP's IAM client;
 * `redirect_uri` is allowed by the IdP `callback`;
-* `nonce` is present if `nonce_required` is enabled.
+* `nonce` is present if `nonce_required` is enabled;
+* when PKCE parameters are supplied, the challenge is 43 Base64url characters
+  without padding and the method is explicitly `S256`. `plain` and an omitted
+  method are rejected.
 
 IAM then creates an authorization request with a random `code`, valid for
 10 minutes, and answers with `307` to the IAM login page:
@@ -113,17 +146,36 @@ Pass `redirect_me=true` to get a `307` redirect to this URL instead.
 
 ### 3. Exchange the code for a token
 
+Before exchanging, compare the returned `state` with the value saved for this
+login attempt; reject a missing or mismatched value. Send the original
+verifier and exactly the same `redirect_uri` used when authorizing:
+
 ```bash
 curl -X POST \
   '<base_url>/v1/iam/clients/<client_uuid>/actions/get_token/invoke' \
   --data-urlencode 'grant_type=authorization_code' \
   --data-urlencode 'code=<code>' \
-  --data-urlencode 'redirect_uri=<redirect_uri>'
+  --data-urlencode 'redirect_uri=<redirect_uri>' \
+  --data-urlencode 'code_verifier=<code_verifier>'
 ```
 
-IAM finds the authorization request by `code`, deletes it and returns the
-token issued at the confirm step. The code can be used only once; an unknown
-or already used code returns an invalid credentials error.
+For a PKCE code, IAM checks the verifier against the saved challenge, the
+client, exact redirect URI, expiration and completed confirmation. A failed
+exchange returns `invalid_grant` without consuming the code. On success, IAM
+deletes the request under a database row lock in the same transaction and
+returns the token issued at the confirm step. The code can be used only once;
+an unknown or already used code returns `invalid_grant`.
+
+Discard the verifier after exchange. PKCE does not replace the `state` check.
+
+### Compatibility with clients without PKCE
+
+Existing clients may omit both `code_challenge` and `code_challenge_method`
+at authorization and omit `code_verifier` at exchange. Their existing
+behavior is preserved; the additional client, exact redirect URI, expiration
+and confirmation checks described above apply to PKCE codes. Sending a
+verifier for a code issued without a challenge is rejected. Once a challenge
+has been sent, do not retry the exchange without its verifier.
 
 ## Seeding an IdP at bootstrap
 

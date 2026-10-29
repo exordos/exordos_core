@@ -8,6 +8,10 @@ IAM может выступать OpenID Connect Identity Provider (IdP) для 
 пользователь входит в систему, а приложение получает одноразовый
 **код авторизации** и обменивает его на токен доступа.
 
+Для новых интеграций, включая публичные клиенты — настольные приложения
+и агентов — используйте [PKCE S256](pkce.md). Примеры ниже используют PKCE.
+Для совместимости существующие клиенты могут продолжать вход без PKCE.
+
 ## Сущности
 
 * **IAM-клиент** (`/v1/iam/clients/<client_uuid>`) — выпускает токены. Его
@@ -24,7 +28,8 @@ IAM может выступать OpenID Connect Identity Provider (IdP) для 
 * **Запрос авторизации** (`/v1/iam/authorization_requests/<uuid>`) —
   короткоживущая запись, которую создаёт `authorize`. Хранит `state`, `nonce`,
   `scope`, `redirect_uri`, сгенерированный `code` (UUID) и, после
-  подтверждения, выпущенный токен.
+  подтверждения, выпущенный токен. При PKCE также хранит `code_challenge`
+  и `code_challenge_method`; verifier остаётся у приложения.
 
 ## Discovery
 
@@ -43,7 +48,9 @@ GET /v1/iam/idp/<idp_uuid>/.well-known/openid-configuration
 | `jwks_uri`               | `/v1/iam/clients/<client_uuid>/actions/jwks`              |
 | `end_session_endpoint`   | `/v1/iam/clients/<client_uuid>/actions/logout/invoke`     |
 
-Поддерживается только тип ответа `code`.
+Поддерживается только тип ответа `code`. Поддержка PKCE объявляется полем
+`code_challenge_methods_supported: ["S256"]`. Проверьте его перед началом
+входа с PKCE; если realm не поддерживает S256, требуется обновление Core IAM.
 
 ## Схема
 
@@ -52,16 +59,37 @@ sequenceDiagram
     participant App as Приложение
     participant Browser as Браузер
     participant IAM
-    App->>Browser: редирект на authorization_endpoint
+    App->>App: генерация verifier, challenge, state и nonce
+    App->>Browser: редирект на authorization_endpoint с challenge и S256
     Browser->>IAM: GET /idp/<idp_uuid>/actions/authorize/invoke
     IAM-->>Browser: 307 на страницу входа (?auth_uuid=...)
     Browser->>IAM: вход пользователя, получение своего токена
     Browser->>IAM: POST /authorization_requests/<auth_uuid>/actions/confirm/invoke
     IAM-->>Browser: redirect_uri?code=...&state=...
     Browser->>App: переход по redirect_uri
-    App->>IAM: POST /clients/<client_uuid>/actions/get_token/invoke (grant_type=authorization_code)
+    App->>App: проверка возвращённого state
+    App->>IAM: POST /clients/<client_uuid>/actions/get_token/invoke (code, redirect_uri, code_verifier)
     IAM-->>App: токен доступа
 ```
+
+### Подготовка попытки входа
+
+Для каждой попытки входа генерируйте новые случайные `state` и `nonce`
+и сохраняйте их локально. Создайте секретный `code_verifier` и его challenge:
+
+```python
+import base64
+import hashlib
+import secrets
+
+code_verifier = secrets.token_urlsafe(32)
+code_challenge = base64.urlsafe_b64encode(
+    hashlib.sha256(code_verifier.encode("ascii")).digest()
+).rstrip(b"=").decode("ascii")
+```
+
+Сохраните verifier локально до обмена кода. В URL авторизации передаётся
+только challenge; verifier не должен попадать в URL браузера или логи.
 
 ### 1. Authorize
 
@@ -73,13 +101,18 @@ GET /v1/iam/idp/<idp_uuid>/actions/authorize/invoke
     &response_type=code
     &scope=openid
     &nonce=<nonce>
+    &code_challenge=<code_challenge>
+    &code_challenge_method=S256
 ```
 
 IAM проверяет, что:
 
 * `client_id` совпадает с IAM-клиентом IdP;
 * `redirect_uri` разрешён настройкой `callback` IdP;
-* `nonce` передан, если включён `nonce_required`.
+* `nonce` передан, если включён `nonce_required`;
+* при передаче параметров PKCE challenge содержит 43 символа Base64url
+  без дополнения, а метод явно задан как `S256`. Значение `plain`
+  и отсутствие метода отклоняются.
 
 Затем IAM создаёт запрос авторизации со случайным `code`, действующий
 10 минут, и отвечает `307` на страницу входа IAM:
@@ -113,17 +146,36 @@ IAM выпускает для пользователя новый токен с 
 
 ### 3. Обмен кода на токен
 
+Перед обменом сравните возвращённый `state` со значением, сохранённым для
+этой попытки входа; при отсутствии или несовпадении отклоните ответ.
+Передайте исходный verifier и точно тот же `redirect_uri`, что при авторизации:
+
 ```bash
 curl -X POST \
   '<base_url>/v1/iam/clients/<client_uuid>/actions/get_token/invoke' \
   --data-urlencode 'grant_type=authorization_code' \
   --data-urlencode 'code=<code>' \
-  --data-urlencode 'redirect_uri=<redirect_uri>'
+  --data-urlencode 'redirect_uri=<redirect_uri>' \
+  --data-urlencode 'code_verifier=<code_verifier>'
 ```
 
-IAM находит запрос авторизации по `code`, удаляет его и возвращает токен,
-выпущенный на шаге confirm. Код одноразовый: для неизвестного или уже
-использованного кода возвращается ошибка неверных учётных данных.
+Для кода с PKCE IAM проверяет verifier по сохранённому challenge, клиента,
+точное совпадение redirect URI, срок действия и завершённое подтверждение.
+При ошибке возвращается `invalid_grant`, код не погашается. При успешном
+обмене IAM удаляет запрос с блокировкой строки БД в той же транзакции
+и возвращает токен, выпущенный на шаге confirm. Код одноразовый:
+неизвестный или уже использованный код возвращает `invalid_grant`.
+
+После обмена удалите verifier. PKCE не заменяет проверку `state`.
+
+### Совместимость с клиентами без PKCE
+
+Существующие клиенты могут не передавать `code_challenge`
+и `code_challenge_method` при авторизации и `code_verifier` при обмене.
+Их прежнее поведение сохраняется; описанные выше дополнительные проверки
+клиента, точного redirect URI, срока действия и подтверждения применяются
+к кодам с PKCE. Verifier для кода, выданного без challenge, отклоняется.
+Если challenge был передан, не повторяйте обмен без его verifier.
 
 ## IdP из спецификации бутстрапа
 
