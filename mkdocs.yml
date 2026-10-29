@@ -71,6 +71,7 @@ plugins:
             Example commands: Примеры команд
             IAM: IAM
             Permissions: Права доступа
+            Authorization Code: Вход по коду авторизации
             Network: Сеть
             LBaaS API: LBaaS API
             Secrets: Секреты
@@ -167,6 +168,8 @@ nav:
     - Example commands: em/cli.md
   - IAM:
     - Permissions: iam/permissions_overview.md
+    - Authorization Code: iam/authorization_code.md
+    - PKCE: iam/pkce.md
   - Network:
     - LBaaS API: network/load_balancer.md
   - Secrets:
