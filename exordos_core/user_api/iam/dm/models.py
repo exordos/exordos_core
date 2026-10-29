@@ -2178,7 +2178,7 @@ class IdpAuthorizationInfo(
     )
     token = relationships.relationship(
         Token,
-        prefetch=True,
+        # A nullable prefetch join prevents PostgreSQL from locking this row.
         required=False,
     )
 
