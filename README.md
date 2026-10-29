@@ -92,3 +92,5 @@ rather than silently discarding pool assignments.
 Native OpenStack pools and routed private links are documented in
 [OpenStack multicloud](docs/network/openstack-multicloud.md). Register provider
 credentials through API or CLI; Core supplies agent bootstrap settings.
+Use [logical networks](docs/network/logical-networks.md) to allocate a `/23`
+for each subnet and place NodeSet replicas on its referenced hypervisors.

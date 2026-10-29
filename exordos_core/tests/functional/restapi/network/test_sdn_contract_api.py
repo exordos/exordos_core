@@ -134,7 +134,7 @@ def test_flat_ports_reject_unsupported_security_group_enforcement(topology):
             subnet=str(subnet.uuid),
             enforce_security_group=True,
         )
-    assert "enforce_security_group requires an overlay network" in (
+    assert "enforce_security_group requires an overlay or cloud network" in (
         error.value.cause.response.text
     )
     assert not compute.Port.objects.get_all(filters={"subnet": filters.EQ(subnet.uuid)})
@@ -142,7 +142,7 @@ def test_flat_ports_reject_unsupported_security_group_enforcement(topology):
     url = resource(client, "network", "ports", port["uuid"])
     with pytest.raises(exceptions.BadRequestError) as error:
         client.put(url, json={"enforce_security_group": True})
-    assert "enforce_security_group requires an overlay network" in (
+    assert "enforce_security_group requires an overlay or cloud network" in (
         error.value.cause.response.text
     )
     assert client.get(url).json()["enforce_security_group"] is False

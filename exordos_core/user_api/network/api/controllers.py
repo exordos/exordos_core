@@ -14,12 +14,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from gcl_iam import rules
 from gcl_iam.api import controllers as iam_controllers
 from oslo_config import cfg
 from restalchemy.api import constants
 from restalchemy.api import controllers as ra_controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources
+from restalchemy.api import packers
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.common import constants as core_constants
@@ -83,6 +85,22 @@ class _VisibleScopeMixin:
         return super().filter(filters, order_by=order_by)
 
 
+class NetworkPacker(packers.JSONPacker):
+    def pack_resource(self, obj):
+        value = super().pack_resource(obj)
+        if obj.cidr is not None:
+            value.pop("driver_spec", None)
+        return value
+
+
+class SubnetPacker(packers.JSONPacker):
+    def pack_resource(self, obj):
+        value = super().pack_resource(obj)
+        if obj.logical_network is not None:
+            value["network"] = str(obj.logical_network)
+        return value
+
+
 class NetworkCRUDController(
     StoredFieldsQueryMixin,
     _VisibleScopeMixin,
@@ -96,6 +114,7 @@ class NetworkCRUDController(
 
     __policy_service_name__ = "network"
     __policy_name__ = "network"
+    __packer__ = NetworkPacker
 
     __resource__ = resources.ResourceByRAModel(
         compute_models.Network,
@@ -106,13 +125,16 @@ class NetworkCRUDController(
                 # A VNI named here could be another network's overlay.
                 "driver_state": {constants.ALL: field_p.Permissions.RO},
                 "is_default": {constants.ALL: field_p.Permissions.RO},
+                "owner_network": {constants.ALL: field_p.Permissions.HIDDEN},
             },
         ),
     )
 
     @staticmethod
     def _validate_spec(spec):
-        if spec.get("driver") == "cloud":
+        if spec.get("driver") == "routed":
+            return
+        elif spec.get("driver") == "cloud":
             if (
                 set(spec) - {"driver", "connection", "external_network"}
                 or "connection" not in spec
@@ -125,7 +147,15 @@ class NetworkCRUDController(
 
     def create(self, **kwargs):
         # `flat_bridge` is operator-only: its spec names a host file.
-        self._validate_spec(kwargs.get("driver_spec") or {})
+        if kwargs.get("cidr") is None:
+            self._validate_spec(kwargs.get("driver_spec") or {})
+        if (
+            kwargs.get("cidr") is not None
+            or (kwargs.get("driver_spec") or {}).get("driver") == "routed"
+        ):
+            self._enforcer.enforce(
+                rules.Rule("compute", "hypervisor", "create"), do_raise=True
+            )
         # Publishing exposes the network to every project. Manifests bypass
         # this gate; they are operator-authored.
         if kwargs.get("access") == "public":
@@ -133,11 +163,38 @@ class NetworkCRUDController(
         return super().create(**kwargs)
 
     def update(self, uuid, **kwargs):
+        from exordos_core.network.routed import require_unmanaged
+
+        require_unmanaged(network=uuid)
+        if (
+            self.model.objects.get_one(
+                filters={"uuid": dm_filters.EQ(uuid)}
+            ).driver_spec.get("driver")
+            == "routed"
+        ):
+            self._enforcer.enforce(
+                rules.Rule("compute", "hypervisor", "update"), do_raise=True
+            )
         if "driver_spec" in kwargs:
             self._validate_spec(kwargs["driver_spec"] or {})
         if kwargs.get("access") == "public":
             self._enforce("share")
         return super().update(uuid, **kwargs)
+
+    def delete(self, uuid):
+        from exordos_core.network.routed import require_unmanaged
+
+        require_unmanaged(network=uuid)
+        if (
+            self.model.objects.get_one(
+                filters={"uuid": dm_filters.EQ(uuid)}
+            ).driver_spec.get("driver")
+            == "routed"
+        ):
+            self._enforcer.enforce(
+                rules.Rule("compute", "hypervisor", "delete"), do_raise=True
+            )
+        return super().delete(uuid)
 
     def get(self, uuid, **kwargs):
         self._enforce("read")
@@ -152,6 +209,11 @@ class NetworkCRUDController(
             self._ctx_project_id, filters, {"access": dm_filters.EQ("public")}
         )
 
+    def filter(self, filters, order_by=None):
+        filters = dict(filters)
+        filters["owner_network"] = dm_filters.Is(None)
+        return super().filter(filters=filters, order_by=order_by)
+
 
 class SubnetController(
     _VisibleScopeMixin,
@@ -162,6 +224,7 @@ class SubnetController(
 
     __policy_service_name__ = "network"
     __policy_name__ = "subnet"
+    __packer__ = SubnetPacker
 
     __resource__ = resources.ResourceByRAModel(
         compute_models.Subnet,
@@ -171,19 +234,70 @@ class SubnetController(
             fields={
                 # Ownership is checked on create only.
                 "network": {constants.ALL: field_p.Permissions.RW},
+                "logical_network": {constants.ALL: field_p.Permissions.HIDDEN},
+                "status": {constants.ALL: field_p.Permissions.RO},
+                "error": {constants.ALL: field_p.Permissions.RO},
             },
         ),
     )
 
     def create(self, **kwargs):
+        if "network" not in kwargs:
+            return super().create(**kwargs)
+        network = compute_models.Network.objects.get_one(
+            filters={"uuid": dm_filters.EQ(kwargs["network"])}
+        )
+        kwargs.setdefault("project_id", str(network.project_id))
+        from exordos_core.network.routed import require_unmanaged
+
+        require_unmanaged(network=network.uuid)
+        if network.cidr is not None:
+            self._enforcer.enforce(
+                rules.Rule("compute", "hypervisor", "create"), do_raise=True
+            )
         if kwargs.get("floating_pool") or kwargs.get("default_floating_pool"):
             self._enforce("floating_pool")
         return super().create(**kwargs)
 
+    def delete(self, uuid):
+        stored = self.get(uuid=uuid)
+        if stored.logical_network is not None:
+            self._enforcer.enforce(
+                rules.Rule("compute", "hypervisor", "delete"), do_raise=True
+            )
+        return super().delete(uuid)
+
     def update(self, uuid, **kwargs):
+        stored = self.get(uuid=uuid)
+        selected = compute_models.Network.objects.get_one(
+            filters={
+                "uuid": dm_filters.EQ(
+                    kwargs.get("network", stored.logical_network or stored.network)
+                )
+            }
+        )
+        if stored.logical_network is not None or selected.cidr is not None:
+            self._enforcer.enforce(
+                rules.Rule("compute", "hypervisor", "update"), do_raise=True
+            )
+        if stored.logical_network is not None and str(kwargs.get("network")) == str(
+            stored.logical_network
+        ):
+            kwargs["network"] = str(stored.network)
         if "floating_pool" in kwargs or "default_floating_pool" in kwargs:
             self._enforce("floating_pool")
         return super().update(uuid, **kwargs)
+
+    def filter(self, filters, order_by=None):
+        filters = dict(filters)
+        selector = filters.get("network")
+        if selector is not None:
+            network = compute_models.Network.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(getattr(selector, "value", selector))}
+            )
+            if network is not None and network.cidr is not None:
+                filters["logical_network"] = filters.pop("network")
+        return super().filter(filters=filters, order_by=order_by)
 
     def get(self, uuid, **kwargs):
         self._enforce("read")
@@ -200,11 +314,16 @@ class SubnetController(
                 filters={"access": dm_filters.EQ("public")}
             )
         ]
-        return _own_or(
+        scope = _own_or(
             self._ctx_project_id,
-            filters,
+            {},
             {"network": dm_filters.In(public_nets)} if public_nets else None,
         )
+        if public_nets:
+            scope = dm_filters.OR(
+                scope, dm_filters.AND({"logical_network": dm_filters.In(public_nets)})
+            )
+        return dm_filters.AND(filters, scope) if filters else scope
 
 
 class LBController(

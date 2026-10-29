@@ -20,7 +20,7 @@ from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import 
 
 @pytest.fixture
 def client(user_api_client, auth_user_admin, user_api, monkeypatch):
-    from exordos_core.cloud.models import CloudConnection
+    from exordos_core.compute.dm.models import MachinePool as CloudConnection
 
     monkeypatch.setattr(
         CloudConnection,
@@ -46,7 +46,7 @@ def connection(client, **kwargs):
     for field in ("auth_url", "auth_type", "auth", "region", "interface"):
         if field in kwargs:
             spec[field] = kwargs.pop(field)
-    return create(client, ("compute", "cloud_connections"), driver_spec=spec, **kwargs)
+    return create(client, ("compute", "hypervisors"), driver_spec=spec, **kwargs)
 
 
 def network(client, config):
@@ -61,21 +61,13 @@ def network(client, config):
 def test_cloud_connection_persists_and_pool_resolves_only_its_configuration(client):
     config = connection(client)
     net = network(client, config)
-    pool = client.post(
-        collection(client, "compute", "hypervisors"),
-        json={
-            "driver_spec": {
-                "kind": "cloud",
-                "connection": config["uuid"],
-            }
-        },
-    ).json()
-    assert set(pool["driver_spec"]) == {"kind", "connection", "volume_type", "key_name"}
+    pool = config
+    assert pool["uuid"] == config["uuid"]
     assert "auth" not in config["driver_spec"]
     assert config["driver_state"] == {"project_id": "provider-project"}
     assert net["driver_state"] == {}
     with pytest.raises(exceptions.ConflictError):
-        client.delete(resource(client, "compute", "cloud_connections", config["uuid"]))
+        client.delete(resource(client, "compute", "hypervisors", config["uuid"]))
 
 
 def test_network_cannot_reference_another_projects_cloud_account(client):
@@ -300,7 +292,7 @@ def test_connection_delete_serializes_with_dependent_network_insert(client):
             time.sleep(0.01)
         else:
             pytest.fail("Dependent insertion never reached the lifecycle lock")
-        handle.execute("DELETE FROM cloud_connections WHERE uuid=%s", (config["uuid"],))
+        handle.execute("DELETE FROM machine_pools WHERE uuid=%s", (config["uuid"],))
         handle.commit()
         with pytest.raises(storage_exc.RecordNotFound):
             future.result(timeout=10)
@@ -365,10 +357,7 @@ def test_cloud_pool_cannot_disappear_before_its_volume_is_cleaned_up(client):
     from exordos_core.compute.dm.models import Volume
 
     config = connection(client)
-    pool = client.post(
-        collection(client, "compute", "hypervisors"),
-        json={"driver_spec": {"kind": "cloud", "connection": config["uuid"]}},
-    ).json()
+    pool = config
     volume = Volume(
         size=1, pool=uuid.UUID(pool["uuid"]), project_id=uuid.UUID(config["project_id"])
     )
@@ -387,7 +376,6 @@ def test_cloud_pool_cannot_disappear_before_its_volume_is_cleaned_up(client):
         client.delete(resource(client, "compute", "hypervisors", pool["uuid"]))
     pending.delete()
     client.delete(resource(client, "compute", "hypervisors", pool["uuid"]))
-    client.delete(resource(client, "compute", "cloud_connections", config["uuid"]))
 
 
 def test_cloud_pool_delete_holds_foreign_key_barrier_until_commit(client, monkeypatch):
@@ -403,10 +391,7 @@ def test_cloud_pool_delete_holds_foreign_key_barrier_until_commit(client, monkey
     from exordos_core.compute.dm.models import Volume
 
     config = connection(client)
-    pool = client.post(
-        collection(client, "compute", "hypervisors"),
-        json={"driver_spec": {"kind": "cloud", "connection": config["uuid"]}},
-    ).json()
+    pool = config
     model = MachinePool.objects.get_one(filters={"uuid": filters.EQ(pool["uuid"])})
     candidate = Volume(
         size=1, pool=model.uuid, project_id=uuid.UUID(config["project_id"])
@@ -631,7 +616,7 @@ def test_link_accepts_more_than_sixteen_endpoints(client):
 )
 def test_connection_cannot_override_installation_bootstrap(client, field, value):
     config = connection(client)
-    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    path = resource(client, "compute", "hypervisors", config["uuid"])
     with pytest.raises(exceptions.BadRequestError):
         client.put(path, json={field: value})
     assert field not in client.get(path).json()
@@ -940,14 +925,14 @@ def test_client_cloud_gateway_needs_no_floating_ip_or_transport_ingress(
 
 
 def test_connection_credentials_are_write_only_and_can_rotate_in_same_project(client):
-    from exordos_core.cloud.models import CloudConnection
+    from exordos_core.compute.dm.models import MachinePool as CloudConnection
 
     config = connection(client)
-    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    path = resource(client, "compute", "hypervisors", config["uuid"])
     for value in (
         config,
         client.get(path).json(),
-        client.get(collection(client, "compute", "cloud_connections")).json(),
+        client.get(collection(client, "compute", "hypervisors")).json(),
     ):
         assert "private-sentinel" not in str(value)
     new = {
@@ -965,13 +950,13 @@ def test_connection_credentials_are_write_only_and_can_rotate_in_same_project(cl
 
 
 def test_connection_rotation_cannot_switch_provider_projects(client, monkeypatch):
-    from exordos_core.cloud.models import CloudConnection
+    from exordos_core.compute.dm.models import MachinePool as CloudConnection
 
     config = connection(client)
     monkeypatch.setattr(
         CloudConnection, "_authenticate", lambda self: {"project_id": "foreign-project"}
     )
-    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    path = resource(client, "compute", "hypervisors", config["uuid"])
     with pytest.raises(exceptions.ConflictError):
         client.put(
             path,
@@ -996,7 +981,7 @@ def test_connection_rotation_cannot_switch_provider_projects(client, monkeypatch
 def test_connection_selects_a_typed_driver_and_keeps_provider_fields_nested(client):
     result = create(
         client,
-        ("compute", "cloud_connections"),
+        ("compute", "hypervisors"),
         driver_spec={
             "kind": "openstack",
             "auth_url": "https://identity.example/v3",
@@ -1031,7 +1016,7 @@ def test_connection_invalid_kind_never_echoes_credentials(client, kind):
     with pytest.raises(exceptions.BadRequestError) as error:
         create(
             client,
-            ("compute", "cloud_connections"),
+            ("compute", "hypervisors"),
             driver_spec={
                 "kind": kind,
                 "auth_url": "https://identity.example/v3",
@@ -1045,7 +1030,7 @@ def test_connection_invalid_kind_never_echoes_credentials(client, kind):
 
 
 def test_connection_metadata_update_does_not_reauthenticate(client, monkeypatch):
-    from exordos_core.cloud.models import CloudConnection
+    from exordos_core.compute.dm.models import MachinePool as CloudConnection
 
     config = connection(client)
     monkeypatch.setattr(
@@ -1053,7 +1038,7 @@ def test_connection_metadata_update_does_not_reauthenticate(client, monkeypatch)
         "_authenticate",
         lambda self: pytest.fail("Metadata update must not authenticate"),
     )
-    path = resource(client, "compute", "cloud_connections", config["uuid"])
+    path = resource(client, "compute", "hypervisors", config["uuid"])
     assert client.put(path, json={"name": "renamed"}).json()["name"] == "renamed"
 
 
@@ -1064,7 +1049,7 @@ def test_connection_kind_dispatch_supports_a_non_openstack_spec(
     from restalchemy.dm import types
     from restalchemy.dm import types_dynamic
 
-    from exordos_core.cloud.models import CloudConnection
+    from exordos_core.compute.dm.models import MachinePool as CloudConnection
     from exordos_core.cloud.specs import AbstractConnectionSpec
 
     class TestConnectionSpec(AbstractConnectionSpec):
@@ -1090,7 +1075,7 @@ def test_connection_kind_dispatch_supports_a_non_openstack_spec(
     try:
         result = create(
             client,
-            ("compute", "cloud_connections"),
+            ("compute", "hypervisors"),
             driver_spec={
                 "kind": "test",
                 "account": "provider-account",
@@ -1104,7 +1089,7 @@ def test_connection_kind_dispatch_supports_a_non_openstack_spec(
         )
         assert stored.load_driver() == "test-driver"
         assert stored.driver_spec.api_token == "private-sentinel"
-        path = resource(client, "compute", "cloud_connections", result["uuid"])
+        path = resource(client, "compute", "hypervisors", result["uuid"])
         changed = client.put(
             path,
             json={

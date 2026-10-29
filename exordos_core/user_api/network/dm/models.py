@@ -934,6 +934,10 @@ def may_allocate_in(project_id, subnet, network=None) -> bool:
 
     if str(subnet.project_id) == str(project_id) or subnet.shared_pool:
         return True
+    if getattr(subnet, "logical_network", None) is not None:
+        network = compute_models.Network.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(subnet.logical_network)}
+        )
     if network is None:
         network = compute_models.Network.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(subnet.network)}

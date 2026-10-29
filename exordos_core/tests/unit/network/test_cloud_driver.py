@@ -222,7 +222,9 @@ def test_cloud_controller_resolves_credentials_without_serializing_them(monkeypa
     from exordos_core.cloud import agent
 
     monkeypatch.setattr(agent.ControllerMetaPool, "__driver_map__", {})
-    connection = SimpleNamespace(updated_at=1, load_driver=mock.Mock())
+    spec = mock.Mock()
+    spec.dump_to_simple_view.return_value = {"credential": "first"}
+    connection = SimpleNamespace(driver_spec=spec, load_driver=mock.Mock())
     pool = agent.ControllerMetaPool(
         uuid=uuid.uuid4(), driver_spec=CloudPoolDriverSpec(connection=uuid.uuid4())
     )
@@ -236,7 +238,7 @@ def test_cloud_controller_resolves_credentials_without_serializing_them(monkeypa
             "volume_type",
             "key_name",
         }
-        connection.updated_at = 2
+        spec.dump_to_simple_view.return_value = {"credential": "second"}
         assert pool.load_driver() is not first
         second = pool.load_driver()
         pool.driver_spec.volume_type = "durable"
@@ -249,18 +251,18 @@ def test_cloud_connection_logging_omits_bodies_and_queries(caplog):
 
     import webob
 
-    from exordos_core.cloud.api import CloudCredentialsLoggingMiddleware
+    from exordos_core.cloud.api import HypervisorCredentialsLoggingMiddleware
 
     request = webob.Request.blank(
-        "/v1/compute/cloud_connections/?auth=private-sentinel",
+        "/v1/compute/hypervisors/?auth=private-sentinel",
         method="POST",
         json_body={"auth": {"password": "private-sentinel"}},
     )
-    app = CloudCredentialsLoggingMiddleware(
+    app = HypervisorCredentialsLoggingMiddleware(
         lambda env, start: webob.Response(json_body={"ok": True})(env, start)
     )
     with caplog.at_level(logging.DEBUG, logger="restalchemy.api.middlewares.logging"):
         response = request.get_response(app)
     assert response.status_int == 200
     assert "private-sentinel" not in caplog.text
-    assert "cloud_connections" in caplog.text
+    assert "hypervisors" in caplog.text

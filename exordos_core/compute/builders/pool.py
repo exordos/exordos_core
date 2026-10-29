@@ -279,7 +279,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             )
             guest_agent.save()
 
-        cloud = machine.pool.driver_spec.KIND == "cloud"
+        cloud = machine.pool.is_cloud
 
         # The new machine and the machine with changed image should be booted
         # in the private network with boot=`network`.

@@ -78,7 +78,9 @@ def test_reimage_without_a_port_does_not_switch_the_guest_to_netboot():
         name="guest",
         boot="hd0",
         image="old",
-        pool=SimpleNamespace(driver_spec=SimpleNamespace(KIND="libvirt")),
+        pool=SimpleNamespace(
+            is_cloud=False, driver_spec=SimpleNamespace(KIND="libvirt")
+        ),
     )
     builder._get_or_fetch_machine_ctx = mock.Mock(
         return_value=(None, SimpleNamespace(image="new"))
@@ -109,7 +111,9 @@ def test_update_before_first_guest_report_preserves_network_boot():
         image="image-url",
         node=SimpleNamespace(uuid=identity, hostname="guest", name="guest"),
         pool=SimpleNamespace(
-            uuid=uuid.uuid4(), driver_spec=SimpleNamespace(KIND="libvirt")
+            uuid=uuid.uuid4(),
+            is_cloud=False,
+            driver_spec=SimpleNamespace(KIND="libvirt"),
         ),
     )
     builder._get_or_fetch_machine_ctx = mock.Mock(

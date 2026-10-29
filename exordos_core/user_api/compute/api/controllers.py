@@ -33,6 +33,7 @@ from exordos_core.common.api.controllers import StoredFieldsQueryMixin
 from exordos_core.common.dm import networking as networking_types
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as models
+from exordos_core.cloud.api import HypervisorPacker
 from exordos_core.user_api.compute.dm import models as user_models
 
 
@@ -313,6 +314,7 @@ class HypervisorsController(
 
     __policy_name__ = "hypervisor"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
+    __packer__ = HypervisorPacker
 
     __resource__ = resources.ResourceByRAModel(
         model_class=models.MachinePool,
@@ -322,6 +324,7 @@ class HypervisorsController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "driver_state": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
     )

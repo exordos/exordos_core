@@ -16,7 +16,10 @@ class ControllerMetaPool(pool.MetaPool):
             return super().load_driver()
         config = connection(self.driver_spec.connection)
         key = ("cloud", self.uuid)
-        stamp = (config.updated_at, self.driver_spec.dump_to_simple_view())
+        stamp = (
+            config.driver_spec.dump_to_simple_view(),
+            self.driver_spec.dump_to_simple_view(),
+        )
         cached = self.__driver_map__.get(key)
         if cached is None or cached[0] != stamp:
             cached = (

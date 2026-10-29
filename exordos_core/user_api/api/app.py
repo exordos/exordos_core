@@ -23,7 +23,7 @@ from restalchemy.openapi import engines as openapi_engines
 from restalchemy.openapi import structures as openapi_structures
 
 from exordos_core import version
-from exordos_core.cloud.api import CloudCredentialsLoggingMiddleware
+from exordos_core.cloud.api import HypervisorCredentialsLoggingMiddleware
 from exordos_core.common import contexts as common_contexts
 from exordos_core.common.api.middlewares import errors as errors_mw
 from exordos_core.user_api.api import middlewares as user_api_mw
@@ -91,7 +91,7 @@ def build_wsgi_application(
             )
         )
 
-    middlewares_list.append(CloudCredentialsLoggingMiddleware)
+    middlewares_list.append(HypervisorCredentialsLoggingMiddleware)
 
     return middlewares.attach_middlewares(
         applications.OpenApiApplication(

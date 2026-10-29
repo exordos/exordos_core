@@ -22,6 +22,7 @@ def test_sdn_migrations_follow_master():
         "0011-paas-networking-485e71.py",
         "0012-evpn-egress-policy-c3a4f1.py",
         "0013-cloud-connections-74db81.py",
+        "0014-routed-networks-a7162c.py",
     ]
     assert engine.get_latest_migration() == chain[-1]
     steps = engine.get_all_migrations()

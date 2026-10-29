@@ -50,6 +50,12 @@ def network_delete_guard(method):
         from exordos_core.network.contracts import atomic_session
 
         with atomic_session(self._get_engine(), session) as current:
+            logical = getattr(self, "logical_network", None)
+            if logical is not None:
+                current.execute(
+                    "SELECT pg_advisory_xact_lock(1381258580, hashtext(%s))",
+                    (str(logical),),
+                )
             network = (
                 self
                 if isinstance(self, models.Network)

@@ -1,53 +1,38 @@
 # Подключение on-premises к OpenStack
 
-Процедура добавляет OpenStack к существующему Core и соединяет приватные сети.
-On-premises шлюз инициирует OpenVPN-соединение и может находиться за NAT.
-Облачный шлюз принимает соединение на floating IP. Балансировщики в облаке
-обращаются к приватным backend-адресам on-premises через этот туннель.
+Одна логическая сеть объединяет существующую on-premises подсеть и новые
+облачные подсети. Местный клиент за NAT подключается к floating IP облачного
+сервера. Балансировщики в облаке достигают приватных backend через этот туннель.
 
 ## Подготовка
 
-- На Core и узлах нужны совместимые Core, SDK и SeedOS с cloud-драйверами
-  и `OpenVPNCapabilityDriver`. На Core и шлюзах нужен OpenVPN 2.6+.
-- Получите проектный application credential OpenStack либо имя пользователя,
-  пароль, домен и проект. Нужны права на Nova, Neutron, Cinder и Glance.
-  Учётные данные передаются в API и остаются только на Core.
-- Core должен достигать endpoint из Keystone catalog независимо от link.
-  Шлюзам при bootstrap нужен доступ к репозиториям пакетов.
-- Выберите непересекающиеся CIDR. В примере облачная подсеть — `10.80.0.0/24`;
-  замените её, если она пересекается с подключаемыми сетями.
-- Для управляемого on-premises шлюза нужны существующая приватная подсеть
-  `ovs_evpn` и транспортная `flat_bridge` подсеть с исходящим доступом к
-  облачному шлюзу по TCP/443. Транспортная подсеть принадлежит тому же проекту
-  Core, имеет default gateway, разрешает размещение и не имеет `next_server`.
-  Её адрес может быть приватным.
-- Подготовьте образ местного шлюза с guest/render/service-агентами Core и
-  Ubuntu cloud-init образ в Glance для облачного шлюза. В Nova должны быть
-  flavor под шлюзы (по умолчанию 1 vCPU, 1024 MiB RAM) и под рабочие ВМ.
+Установите совместимые Core, SDK и SeedOS с OpenStack extra и
+`OpenVPNCapabilityDriver`. На Core и шлюзах нужен OpenVPN 2.6+.
+Core должен достигать Keystone catalog независимо от приватного link;
+bootstrap требует доступа к репозиториям пакетов. Файл конфигурации провайдера
+на Core не нужен.
 
-`PROJECT_ID` — UUID проекта Core, а не проекта OpenStack.
-`ONPREM_SUBNET_ID` и `ONPREM_TRANSPORT_SUBNET_ID` — UUID существующих подсетей
-Core. `OS_EXTERNAL_NETWORK_ID` и `OS_GATEWAY_IMAGE_ID` — UUID провайдера.
+Получите URL Keystone, имя пользователя, пароль, домен и проект с правами
+Nova, Neutron, Glance и Cinder. Подготовьте Ubuntu cloud-init образ шлюза
+в Glance и подходящие flavor Nova (шлюз по умолчанию: 1 vCPU, 1024 MiB RAM).
+Местному образу нужны guest/render/service-агенты Core.
+Нужны существующая приватная OVS/EVPN подсеть и транспортная `flat_bridge`
+подсеть того же проекта Core, разрешающая размещение, с default gateway
+и без `next_server`. Она должна достигать облачного шлюза по TCP/443
+и может иметь приватный адрес.
 
-Все запросы ниже идут в аутентифицированный пользовательский API Core.
-Для учётных записей облака и link нужны права compute hypervisor.
-Замените параметры в угловых скобках и примерные URL реальными значениями.
-Сохраняйте `uuid` из ответов. Например, тело первого запроса запишите
-в `connection.json` и отправьте:
+Все запросы идут в аутентифицированный пользовательский API Core. Для операций
+с инфраструктурой нужны соответствующие права compute hypervisor.
+UUID проектов Core и OpenStack различаются. Подставьте реальные значения
+и сохраняйте UUID из ответов. Учётные данные не должны попадать в репозиторий.
 
-```sh
-curl -fsS "$CORE/v1/compute/cloud_connections/" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' --data-binary @connection.json
-```
+## Регистрация облачного гипервизора
 
-## Учётная запись облака
-
-`POST /v1/compute/cloud_connections/`; сохраните `CONNECTION_ID`:
+`POST /v1/compute/hypervisors/`; сохраните `CLOUD_HYPERVISOR_ID`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
+  "project_id": "<CORE_PROJECT_ID>",
   "name": "remote-openstack",
   "driver_spec": {
     "kind": "openstack",
@@ -56,192 +41,299 @@ curl -fsS "$CORE/v1/compute/cloud_connections/" \
     "auth": {
       "username": "<OS_USERNAME>",
       "password": "<OS_PASSWORD>",
-      "user_domain_name": "<OS_USER_DOMAIN_NAME>",
+      "user_domain_name": "Default",
       "project_id": "<OS_PROJECT_ID>"
     },
-    "region": "RegionOne"
+    "region": "RegionOne",
+    "volume_type": "__DEFAULT__"
+  },
+  "network_defaults": {
+    "external_network": "<OS_EXTERNAL_NETWORK_ID>",
+    "gateway_image": "<OS_GATEWAY_IMAGE_ID>",
+    "role": "server"
   }
 }
 ```
 
-`driver_spec.kind` выбирает схему драйвера. Тип `openstack` содержит параметры
-Keystone и каталога сервисов. Core сохраняет проверенный проект OpenStack
-в доступном только для чтения `driver_state.project_id`.
-Объект `driver_spec.auth` доступен только для записи: ответы создания, просмотра, списка
-и обновления его не содержат. Файлы конфигурации провайдера и переменные
-окружения на Core не требуются.
+Гипервизор представляет проект и регион провайдера. Core проверяет доступ
+и записывает идентичность провайдера в read-only `driver_state`.
+`driver_spec.auth` доступен только для записи, исключён из ответов и целей агентов.
+`network_defaults` задаёт шлюзы по умолчанию для подсетей этого облака.
+Для готового keypair OpenStack можно указать `driver_spec.key_name`.
 
-Та же регистрация через CLI. Если `OS_PASSWORD` не задан в окружении CLI,
-пароль запрашивается без отображения:
+Регистрация и замена учётных данных через CLI:
 
 ```sh
-exordos compute cloud-connections add --name remote-openstack --kind openstack \
+exordos compute hypervisors add --name remote-openstack --kind openstack \
   --project-id "$PROJECT_ID" --auth-url https://identity.example/v3 \
   --auth-type v3password --username "$OS_USERNAME" \
-  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME" \
-  --region RegionOne
-```
-
-`--project-id` обозначает проект Core; `driver_spec.auth.project_id` и `--os-project-id` —
-проект OpenStack. Имя пользователя, его домен, UUID проекта и адрес Keystone
-возьмите из параметров доступа по API у провайдера. Для выбора проекта по имени
-вместо `driver_spec.auth.project_id` укажите `project_name` и `project_domain_name`.
-
-Для замены пароля отправьте `PUT` с полным объектом `driver_spec`, включая
-`kind` и обновлённый `auth`. CLI сам читает существующие открытые параметры:
-
-```sh
-exordos compute cloud-connections update-credentials "$CONNECTION_ID" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name Default \
+  --region RegionOne --network-defaults-file cloud-network-defaults.json
+exordos compute hypervisors update-credentials "$CLOUD_HYPERVISOR_ID" \
   --auth-type v3password --username "$OS_USERNAME" \
-  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME"
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name Default
 ```
 
-Core проверяет новые данные и отклоняет подмену проекта провайдера. Адрес
-Keystone, тип аутентификации, регион и интерфейс неизменяемы; для другой области
-облака создайте другое подключение.
+Файл настроек содержит объект `network_defaults` из примера.
+Если `OS_PASSWORD` не задан, CLI запрашивает пароль без отображения.
+`--project-id` — проект Core, `--os-project-id` — проект OpenStack.
+Для выбора проекта провайдера по имени используйте `project_name` и
+`project_domain_name` в API auth либо соответствующие параметры CLI.
 
-Application credentials — альтернативный способ, если провайдер их поддерживает:
-задайте `driver_spec.auth_type: "v3applicationcredential"` и поля `application_credential_id`
-и `application_credential_secret` в `driver_spec.auth`. CLI принимает
-`--application-credential-id` и запрашивает соответствующий секрет.
+Для замены через API отправьте `PUT` с полным `driver_spec`, включая новый
+`auth`. Пароль и application credential можно менять друг на друга при
+сохранении идентичности провайдера. URL Keystone, регион и интерфейс неизменяемы.
+Если провайдер поддерживает application credentials, используйте
+`auth_type: "v3applicationcredential"` и `application_credential_id` вместе
+с `application_credential_secret` внутри `auth`.
 
-Core берёт адреса Orchestrator/Status из общего Boot API своей инсталляции
-и выбирает установленную версию SDK для bootstrap. Эти параметры не задаются
-при добавлении облака. Адрес сервиса должен быть доступен из подключённой сети;
-для management-сети нужны её подключение и обратный маршрут. Адрес сервиса
-должен быть отделён от хоста link-шлюза: новые соединения из туннеля к его
-собственным службам блокируются. Местные агенты должны достигать Core независимо
-от облачного link. При bootstrap нужны доступ к репозиторию пакетов и
-зависимостям SDK.
+Адреса Orchestrator/Status берутся из общего Boot API инсталляции.
+Агентам нужны доступный адрес сервиса и обратный маршрут. Адрес сервиса должен
+быть отделён от служб самого link-шлюза: новые соединения из туннеля к ним
+блокируются. Доступ к провайдеру и доступ местных агентов к Core должны
+сохраняться при потере облачного link.
 
-## Облачная сеть и вычислительный пул
+## Создание логической сети
 
-`POST /v1/network/networks/`; сохраните `CLOUD_NETWORK_ID`:
+`POST /v1/network/networks/`; сохраните `NETWORK_ID`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
-  "name": "cloud-private",
-  "driver_spec": {
-    "driver": "cloud",
-    "connection": "<CONNECTION_ID>",
-    "external_network": "<OS_EXTERNAL_NETWORK_ID>"
+  "project_id": "<CORE_PROJECT_ID>",
+  "name": "application",
+  "cidr": "10.80.0.0/16"
+}
+```
+
+CIDR — пул для новых подсетей `/23`. Диапазоны всех участников должны
+не пересекаться, включая существующую on-premises подсеть.
+
+`PUT /v1/network/subnets/<ONPREM_SUBNET_ID>`:
+
+```json
+{
+  "network": "<NETWORK_ID>",
+  "hypervisors": [
+    "<ONPREM_HYPERVISOR_ID>"
+  ],
+  "gateway": {
+    "role": "client",
+    "external_subnet": "<ONPREM_TRANSPORT_SUBNET_ID>",
+    "gateway_image": "https://images.example/onprem-gateway.raw.zst"
   }
 }
 ```
+
+Существующие подсеть и нагрузки сохраняют адреса. Перечислите все совместимые
+on-premises гипервизоры, на которых могут работать её ВМ. Параметры `gateway`
+можно вместо этого задать в их `network_defaults`.
 
 `POST /v1/network/subnets/`; сохраните `CLOUD_SUBNET_ID`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
-  "name": "cloud-private",
-  "network": "<CLOUD_NETWORK_ID>",
-  "cidr": "10.80.0.0/24",
-  "dns_servers": ["1.1.1.1"],
-  "routers": [{"to": "0.0.0.0/0", "via": "10.80.0.1"}]
-}
-```
-
-Укажите DNS-серверы своей инсталляции. Core создаёт принадлежащую ему Neutron
-сеть и маршрутизатор во внешнюю сеть. Ранее созданные немаркированные сети
-и ВМ автоматически не подхватываются.
-
-`POST /v1/compute/hypervisors/` регистрирует облачный пул:
-
-```json
-{
-  "name": "remote-openstack",
-  "driver_spec": {
-    "kind": "cloud",
-    "connection": "<CONNECTION_ID>",
-    "volume_type": "__DEFAULT__"
-  }
-}
-```
-
-Один пул использует общие квоты этой учётной записи. При необходимости SSH
-через готовый OpenStack keypair укажите его имя в `driver_spec.key_name`.
-
-## Приватная связность
-
-`POST /v1/compute/cloud_network_links/`; сохраните `LINK_ID`:
-
-```json
-{
-  "project_id": "<PROJECT_ID>",
-  "name": "onprem-cloud",
-  "transport": {"driver": "openvpn", "protocol": "tcp", "port": 443},
-  "endpoints": [
-    {
-      "subnet": "<ONPREM_SUBNET_ID>",
-      "role": "client",
-      "external_subnet": "<ONPREM_TRANSPORT_SUBNET_ID>",
-      "gateway_image": "https://images.example/onprem-gateway.raw.zst"
-    },
-    {
-      "subnet": "<CLOUD_SUBNET_ID>",
-      "role": "server",
-      "external_network": "<OS_EXTERNAL_NETWORK_ID>",
-      "gateway_image": "<OS_GATEWAY_IMAGE_ID>"
-    }
+  "network": "<NETWORK_ID>",
+  "hypervisors": [
+    "<CLOUD_HYPERVISOR_ID>"
   ],
-  "mtu": 1380
+  "dns_servers": [
+    "1.1.1.1"
+  ]
 }
 ```
 
-Core создаёт оба шлюза и маршруты. Местный шлюз устанавливает соединение
-с floating IP облачного. Входящий проброс порта на on-premises не требуется.
-Облачный транспорт стартует до появления доступа из гостя к Core.
-Проверяйте `GET /v1/compute/cloud_network_links/<LINK_ID>` до `ACTIVE`, затем
-проверьте трафик рабочих ВМ в обе стороны. Существующим ВМ требуется
-обновление DHCP-аренды для получения маршрутов.
+Core выделяет `/23`, создаёт принадлежащие ему ресурсы Neutron и управляет link.
+Местный шлюз инициирует соединение; проброс входящих портов через NAT не нужен.
+Отдельный запрос CloudNetworkLink не требуется. Дождитесь ACTIVE у участников
+через API подсетей, затем проверьте трафик приложения в обе стороны.
+Существующим гостям нужно обновить DHCP для получения маршрутов.
 
-Для готового местного маршрутизирующего шлюза замените его endpoint на:
+## Использование
 
-```json
-{"subnet": "<ONPREM_SUBNET_ID>", "agent": "<GATEWAY_AGENT_ID>", "role": "client"}
-```
-
-SDK-агент должен объявлять `cloud_net_link`. Местные маршруты и подключение
-к SDN обеспечивает оператор; конфигурацию VPN доставляет Core.
-
-## Использование облака
-
-Рабочие ВМ создаются обычным API Core. Пример облачного узла под балансировщик:
+Для создания балансировщика в логической сети отправьте
 `POST /v1/compute/nodes/`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
+  "project_id": "<CORE_PROJECT_ID>",
   "name": "cloud-lb-1",
   "cores": 2,
   "ram": 2048,
-  "default_network": {"subnet": "<CLOUD_SUBNET_ID>"},
+  "default_network": {
+    "network": "<NETWORK_ID>"
+  },
   "disk_spec": {
     "kind": "root_disk",
-    "image": "<compatible Glance image ID or allowed image URL>",
+    "image": "<GLANCE_IMAGE_ID_OR_ALLOWED_URL>",
     "size": 20,
     "ephemeral": false
   }
 }
 ```
 
-Планировщик выбирает облачный пул по учётной записи подсети. Core создаёт ВМ
-в Nova и постоянные диски в Cinder. Для NodeSet укажите ту же подсеть в
-`default_network.subnet`. В балансировщике задайте приватные IP backend-узлов
-on-premises. Для публичного frontend настройте вход в OpenStack, например
-floating IP на порту ВМ балансировщика. Создание Node само по себе его не
-публикует. Floating IP link-шлюза обслуживает VPN и не публикует балансировщик.
-Security groups должны разрешать frontend/backend трафик и ответы.
-Исходные приватные адреса сохраняются. Для дополнительных постоянных дисков
-задавайте `ephemeral: false`. URL образов должны входить в
-`[openstack_cloud] image_origins`.
+NodeSet для распределения по участвующим гипервизорам выбирает логическую сеть:
 
-Наблюдайте Nodes, Ports и Volumes обычным API Core. `ACTIVE` у link означает
-готовность транспорта; приложение проверяйте отдельно. Для добавления площадок
-отправьте `PUT` с полным списком endpoint. CIDR не должны пересекаться;
-два явных клиента или два явных сервера не образуют пару full mesh.
+```json
+{
+  "default_network": {
+    "network": "<NETWORK_ID>"
+  },
+  "placement": {
+    "kind": "anti-affinity",
+    "scope": "site"
+  }
+}
+```
 
-Для отключения удалите рабочие ресурсы и link, дождитесь завершения его
-очистки, затем удалите неиспользуемые пулы, подсети, сети и учётную запись.
+Планировщик выбирает подходящие подсеть и гипервизор каждой реплике.
+Необязательная метка `site` гипервизора объединяет хосты в домен отказа;
+без неё доменом служит UUID гипервизора. См. [Логические сети](logical-networks.ru.md).
+
+В балансировщике укажите приватные on-premises адреса backend.
+Публичный frontend настраивается отдельно; floating IP VPN-шлюза нагрузку
+не публикует. Security groups должны разрешать frontend/backend трафик и ответы.
+Туннель сохраняет приватные исходные адреса. Постоянным дискам нужен
+`ephemeral: false`; URL образов должны соответствовать
+`[openstack_cloud] image_origins`. Flavor провайдера должен подходить
+к запрошенным vCPU/RAM каждой ВМ.
+
+Добавляйте новые подсети через тот же API. Новые подсети одного облачного
+гипервизора при `auto` используют общий маршрутизатор Neutron; другие пары —
+прямой OpenVPN. Транзит и миграция нагрузки в этот контракт связности не входят.
+
+Перед удалением подсети или сети удалите нагрузки. Очистка асинхронна.
+Импортированные on-premises подсети сохраняются при отключении.
+Облачный гипервизор удаляется после всех зависимых ресурсов и записей очистки.
+
+## Ручная настройка через CLI
+
+Последовательность подключает существующую on-premises подсеть и одно облако
+OpenStack к общей сети. В CLI должна быть выбрана нужная инсталляция Core
+и учётная запись с правами управления инфраструктурой. Core, агенты и образы
+должны содержать совместимые OpenStack/SDN-драйверы, описанные выше.
+Команды настраивают существующую инсталляцию; сборка образов описана
+в [Build](../app-developer-guide/build.ru.md).
+
+Подставьте значения параметров. UUID проекта Core отличается от проекта
+провайдера. Для нагрузки нужен URL образа, пригодного и для местных гипервизоров,
+и для OpenStack: Glance UUID не позволяет загрузить on-premises ВМ.
+Flavor Nova должны соответствовать ресурсам шлюза и нагрузки. Для местных ВМ
+с `--durable` также нужен местный storage pool с `ephemeral: false`.
+Сохраните сгенерированные UUID для просмотра и удаления ресурсов.
+
+```sh
+PROJECT_ID='<CORE_PROJECT_UUID>'
+ONPREM_HYPERVISOR_ID='<EXISTING_ONPREM_HYPERVISOR_UUID>'
+ONPREM_SUBNET_ID='<EXISTING_PRIVATE_SUBNET_UUID>'
+ONPREM_TRANSPORT_SUBNET_ID='<EXISTING_FLAT_TRANSPORT_SUBNET_UUID>'
+
+OS_AUTH_URL='https://identity.example/v3'
+OS_USERNAME='<OPENSTACK_USERNAME>'
+OS_PROJECT_ID='<OPENSTACK_PROJECT_ID>'
+OS_REGION='RegionOne'
+OS_EXTERNAL_NETWORK_ID='<NEUTRON_EXTERNAL_NETWORK_UUID>'
+OS_GATEWAY_IMAGE_ID='<GLANCE_GATEWAY_IMAGE_UUID>'
+ONPREM_GATEWAY_IMAGE_URL='https://images.example/gateway.raw.zst'
+WORKLOAD_IMAGE_URL='https://repo.exordos.com/<compatible-workload-image>'
+
+new_uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
+CLOUD_HYPERVISOR_ID=$(new_uuid)
+NETWORK_ID=$(new_uuid)
+CLOUD_SUBNET_ID=$(new_uuid)
+NODESET_ID=$(new_uuid)
+WORK_DIR=$(mktemp -d)
+
+exordos compute hypervisors list
+exordos network subnets show "$ONPREM_SUBNET_ID"
+```
+
+Регистрируем облако. Файл defaults не содержит учётных данных; пароль
+запрашивается без отображения, если не задан через `OS_PASSWORD`.
+
+```sh
+cat > "$WORK_DIR/cloud-network-defaults.json" <<EOF
+{
+  "external_network": "$OS_EXTERNAL_NETWORK_ID",
+  "gateway_image": "$OS_GATEWAY_IMAGE_ID",
+  "role": "server"
+}
+EOF
+
+exordos compute hypervisors add \
+  --uuid "$CLOUD_HYPERVISOR_ID" --name openstack-a \
+  --project-id "$PROJECT_ID" --site openstack-a \
+  --kind openstack --auth-url "$OS_AUTH_URL" --region "$OS_REGION" \
+  --auth-type v3password --username "$OS_USERNAME" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name Default \
+  --network-defaults-file "$WORK_DIR/cloud-network-defaults.json"
+```
+
+Создаём сеть, подключаем существующую подсеть и выделяем облачный `/23`.
+On-premises CIDR сохраняется. Повторите `--hypervisor`, если местная подсеть
+доступна на нескольких совместимых хостах одной фабрики.
+
+```sh
+exordos network networks add \
+  --uuid "$NETWORK_ID" --name application --project-id "$PROJECT_ID" \
+  --cidr 10.80.0.0/16 --connectivity auto
+
+cat > "$WORK_DIR/onprem-gateway.json" <<EOF
+{
+  "role": "client",
+  "external_subnet": "$ONPREM_TRANSPORT_SUBNET_ID",
+  "gateway_image": "$ONPREM_GATEWAY_IMAGE_URL"
+}
+EOF
+
+exordos network subnets update "$ONPREM_SUBNET_ID" \
+  --network "$NETWORK_ID" --hypervisor "$ONPREM_HYPERVISOR_ID" \
+  --gateway-file "$WORK_DIR/onprem-gateway.json"
+
+exordos network subnets add \
+  --uuid "$CLOUD_SUBNET_ID" --name application-openstack-a \
+  --project-id "$PROJECT_ID" --network "$NETWORK_ID" \
+  --hypervisor "$CLOUD_HYPERVISOR_ID" --dns-server 1.1.1.1
+```
+
+Core создаёт link и оба шлюза. Облачный сервер принимает соединение
+на floating IP; местный клиент может находиться за NAT.
+Отдельно создавать link или настраивать VPN не требуется.
+
+```sh
+exordos compute hypervisors show "$CLOUD_HYPERVISOR_ID" --output json
+exordos network networks show "$NETWORK_ID" --output json
+exordos network subnets show "$ONPREM_SUBNET_ID" --output json
+exordos network subnets show "$CLOUD_SUBNET_ID" --output json
+exordos network subnets list --filters "network=$NETWORK_ID"
+```
+
+Дождитесь ACTIVE у облачного гипервизора и обеих подсетей. Ответы подсетей
+в JSON содержат `status` и `error`, наблюдения сети — `driver_state.subnets`.
+Устраните ошибки до создания нагрузки. Существующим гостям нужно обновить
+DHCP для получения маршрутов. Адрес сервиса Core требует собственного
+подключения и обратного маршрута к присоединённой подсети.
+
+При необходимости запускаем две реплики, по одной на домен отказа:
+
+```sh
+exordos compute sets add \
+  --uuid "$NODESET_ID" --name multicloud-smoke --project-id "$PROJECT_ID" \
+  --network "$NETWORK_ID" --image "$WORKLOAD_IMAGE_URL" \
+  --cores 1 --ram 1024 --root-disk 10 --durable --replicas 2 \
+  --placement-kind anti-affinity --placement-scope site
+
+exordos compute sets show "$NODESET_ID" --output json
+exordos compute nodes list --filters "node_set=$NODESET_ID"
+exordos network ports list
+```
+
+Для корневых дисков Cinder нужен `--durable`. На обоих доменах должны быть
+вычислительные мощности и постоянное хранилище. При строгой anti-affinity
+и двух доменах третья реплика останется в ожидании. Необязательная метка
+`site` гипервизора объединяет физические хосты в один домен; без неё доменом
+служит UUID гипервизора.
+
+IP реплик найдите в Ports и проверьте ICMP либо TCP-порт приложения в обе стороны
+из самих ВМ. Security groups должны разрешать проверяемый трафик. ACTIVE подсети
+означает готовность связности, но не подтверждает готовность приложения
+и не публикует публичный frontend.

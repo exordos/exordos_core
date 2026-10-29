@@ -1,38 +1,41 @@
 # OpenStack multicloud
 
 Core manages OpenStack accounts through native Nova, Neutron and Cinder APIs.
-Register project-scoped Keystone credentials through Core's API or
-`exordos compute cloud-connections`. Core authenticates the account and stores
+Register a cloud hypervisor with project-scoped Keystone credentials through Core's API or
+`exordos compute hypervisors`. Core authenticates the account and stores
 its provider identity in read-only `driver_state`. Credentials are write-only and stay on Core;
 no provider configuration files are required. Install Core and SDK with the
 `openstack` extra.
 
 For an existing installation, follow [Connect on-premises to OpenStack](onprem-openstack.md).
 
+For a NodeSet spanning multiple sites, use a [logical network](logical-networks.md).
+It allocates local segments and manages their connectivity without a separate
+CloudNetworkLink request. Workloads select the logical network; the scheduler
+chooses each replica's site and subnet.
+
 ## Resources
 
-Create these resources in order through the authenticated user API:
+Create these resources through the authenticated user API:
 
-1. `POST /v1/compute/cloud_connections/`: Core `project_id`, `name` and a typed
-   `driver_spec`. Its `kind: "openstack"` selects the OpenStack schema: `auth_url`,
-   `auth_type` (`v3applicationcredential` or `v3password`), `auth`, optional
-   `region` and catalog `interface` (default `public`). Each driver kind defines
-   its own fields. The installation supplies agent endpoints and the installed SDK requirement.
-2. `POST /v1/network/networks/`: the same `project_id`, and
-   `driver_spec: {"driver": "cloud", "connection": "<connection UUID>",
-   "external_network": "<Neutron external network UUID>"}`.
-3. `POST /v1/network/subnets/`: `network`, IPv4 `cidr`, `dns_servers`, and
-   `routers: [{"to": "0.0.0.0/0", "via": "<subnet gateway>"}]`.
-4. `POST /v1/compute/hypervisors/`:
-   `driver_spec: {"kind": "cloud", "connection": "<connection UUID>"}`.
-5. Create a private link as described below, then ordinary compute nodes or
-   NodeSets referencing the cloud subnet.
+1. `POST /v1/compute/hypervisors/`: Core `project_id`, `name` and
+   `driver_spec.kind: "openstack"`, Keystone `auth_url`, `auth_type`, write-only
+   `auth`, optional `region` and catalog `interface` (default `public`).
+   Optional `network_defaults` supplies gateway image, external network and role.
+2. `POST /v1/network/networks/`: Core `project_id`, `name`, top-level IPv4
+   `cidr` allocation pool and optional `connectivity` policy.
+3. `POST /v1/network/subnets/`: `network` UUID and a `hypervisors` list containing
+   the cloud hypervisor UUID. Core allocates a `/23`. Optional `gateway` overrides
+   hypervisor defaults. Attach existing Core subnets with a subnet `PUT`.
+4. Create Nodes or NodeSets referencing the logical network.
 
-Only one pool may consume a connection's shared quotas. Connections and cloud
-pool/network scope is immutable. Credential replacement authenticates against
-the same provider project; a different project is rejected. Delete dependent nodes, pools, subnets and
-networks before deleting a connection. Connection and link administration use
-the existing compute hypervisor policy.
+The hypervisor represents one provider project and region and consumes its
+quotas. Provider scope is immutable. Credential replacement must authenticate
+the same provider identity; its authentication method may change.
+Remove dependent workloads, subnets, networks and cleanup records before
+deleting the hypervisor. Administration uses the compute hypervisor policy.
+See [the complete example](onprem-openstack.md) and
+[logical-network API](logical-networks.md).
 
 A cloud node uses a cloud-init capable image with compatible guest agents.
 `disk_spec.image` accepts a Glance image ID/name or an Exordos HTTP(S) image URL.
@@ -209,8 +212,8 @@ through the provider's public or management network before creating a link.
 This access must survive loss of the private link: it is needed to provision
 or replace the remote gateway. Only the controller holds provider credentials.
 
-Configure CloudConnection and PaaS agent endpoints with Core's private service
-address. Allow the required agent ports from the connected private prefixes in
+Configure the installation's Boot API and PaaS agent endpoints with Core's
+private service address. Allow the required agent ports from the connected private prefixes in
 the Core VM's security group. The controller reserves and bootstraps both
 gateways through provider APIs; their saved OpenVPN configuration establishes
 connectivity before remote agents can contact Core. An existing Core VM must

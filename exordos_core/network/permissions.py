@@ -74,6 +74,7 @@ def enforce_network(controller, resource, action):
 
 
 def gate_foreign_subnet(controller, value, project_id):
+    from exordos_core.network.routed import requested_network
     from exordos_core.user_api.network.dm import models as catalog
 
     if value.get("project_id") is not None and str(value["project_id"]) != str(
@@ -81,6 +82,12 @@ def gate_foreign_subnet(controller, value, project_id):
     ):
         enforce_network(controller, "port", "use_foreign_subnet")
         return True
+    network = requested_network(value, project_id, allow_foreign=True)
+    if network is not None:
+        if str(network.project_id) != str(project_id) and network.access != "public":
+            enforce_network(controller, "port", "use_foreign_subnet")
+            return True
+        return False
     if value.get("network") is None and value.get("subnet") is None:
         return False
     subnet = resolve_subnet(
