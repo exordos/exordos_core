@@ -68,6 +68,29 @@ class Pool(
     ua_models.InstanceMixin,
     SchedulableToAgentFromAgentFieldMixin,
 ):
+    def get_ua_all_and_target_values(self):
+        value, target = super().get_ua_all_and_target_values()
+        for field in ("project_id", "network_defaults", "driver_state", "site"):
+            value.pop(field, None)
+        if self.is_cloud:
+            value["driver_spec"] = self.driver_spec.agent_view(self.uuid)
+            target["driver_spec"] = value["driver_spec"]
+        return value, target
+
+    @classmethod
+    def from_ua_resource(cls, resource):
+        if resource.value.get("driver_spec", {}).get("kind") == "cloud":
+            stored = models.MachinePool.objects.get_one(
+                filters={"uuid": dm_filters.EQ(resource.uuid)}
+            )
+            value = dict(
+                resource.value, driver_spec=stored.driver_spec.dump_to_simple_view()
+            )
+            for field in ("project_id", "network_defaults", "driver_state", "site"):
+                value[field] = stored.dump_to_simple_view()[field]
+            return cls.restore_from_simple_view(skip_unknown_fields=True, **value)
+        return super().from_ua_resource(resource)
+
     @classmethod
     def get_resource_kind(cls) -> str:
         return "pool"

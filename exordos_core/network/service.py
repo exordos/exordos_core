@@ -19,10 +19,9 @@ import logging
 import typing as tp
 
 from gcl_looper.services import basic
+from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
-
-from gcl_sdk.agents.universal.dm import models as ua_models
 
 from exordos_core.compute.dm import models
 from exordos_core.network import ipam as net_ipam
@@ -318,6 +317,8 @@ class NetworkService(basic.BasicService):
             # Actualize ports and subnets on the data plane
             driver_ready = {}
             for network, net_subnet_map in network_map.items():
+                if network.driver_spec.get("driver") == "routed":
+                    continue
                 try:
                     driver = network.load_driver()
                     driver_type = type(driver)
@@ -332,3 +333,6 @@ class NetworkService(basic.BasicService):
                             self._actualize_network(driver, net_subnet_map)
                 except Exception:
                     LOG.exception("Error actualizing network %s", network.uuid)
+            from exordos_core.network.routed import reconcile_all
+
+            reconcile_all(network_map)

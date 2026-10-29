@@ -309,8 +309,16 @@ def test_idle_machine_selection_skips_pool_without_requested_disk_policy(
             node_type=ua_pool.NodeType.VM,
             target_power_state=ua_pool.PowerState.ON.value,
             save=mock.Mock(),
+            properties=mock.Mock(get_value=lambda name: None),
+            node_set=None,
+            project_id=sys_uuid.uuid4(),
         ),
         [_requested_volume(None, 10, "WARM", False)],
+    )
+    monkeypatch.setattr(
+        models.PlacementPolicyAllocation,
+        "objects",
+        mock.Mock(get_all=mock.Mock(return_value=[])),
     )
     monkeypatch.setattr(scheduler, "_network_matches_pool", lambda node, pool: True)
     monkeypatch.setattr(scheduler, "_get_unscheduled_nodes", lambda: [node])

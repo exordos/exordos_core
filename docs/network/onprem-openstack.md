@@ -1,55 +1,39 @@
 # Connect on-premises to OpenStack
 
-This procedure adds an OpenStack account to an existing Core installation and
-connects its private network to on-premises. The on-premises gateway initiates
-OpenVPN connections; it can use a private address behind NAT. The cloud gateway
-accepts connections on a floating IP. Cloud load balancers reach on-premises
-backends through the established tunnel.
+One logical network joins the existing on-premises subnet and new cloud
+subnets. An on-premises client behind NAT dials a cloud server's floating IP.
+Cloud load balancers reach on-premises private backends through this tunnel.
 
 [Русская версия](onprem-openstack.ru.md).
 
-## Prerequisites
+## Prepare the installation
 
-- Install compatible Core, SDK and SeedOS images with cloud drivers and
-  `OpenVPNCapabilityDriver`. Core and gateway hosts need OpenVPN 2.6+.
-- Obtain a project-scoped OpenStack application credential, or a username,
-  password, domain and project. It needs Nova, Neutron, Cinder and Glance
-  permissions. Submit it to Core's API; only Core retains the credentials.
-- Ensure Core reaches the Keystone catalog endpoints independently of the
-  link. Gateway bootstrap needs access to package repositories.
-- Choose non-overlapping private CIDRs. The examples use `10.80.0.0/24` in
-  OpenStack; replace it if it overlaps any connected network.
-- For a managed on-premises gateway, use an existing `ovs_evpn` subnet and a
-  placeable `flat_bridge` transport subnet with outbound access to the cloud
-  gateway on TCP/443. The transport subnet belongs to the same Core project,
-  has a default gateway and has `next_server` unset. Its IP can be private.
-- Prepare an on-premises gateway image with Core guest/render/service agents
-  and an Ubuntu cloud-init image in Glance for the cloud gateway. Provide Nova
-  flavors matching gateway resources (default 1 vCPU, 1024 MiB RAM) and the
-  resources requested for workloads.
+Install compatible Core, SDK and SeedOS with the OpenStack extra and
+`OpenVPNCapabilityDriver`. Core and gateways need OpenVPN 2.6+.
+Core must reach Keystone catalog endpoints independently of the private link;
+bootstrap needs access to package repositories. No provider configuration file
+is required on Core.
 
-`PROJECT_ID` below is the Core project UUID, not the OpenStack project UUID.
-`ONPREM_SUBNET_ID` and `ONPREM_TRANSPORT_SUBNET_ID` are existing Core subnet
-UUIDs. `OS_EXTERNAL_NETWORK_ID` and `OS_GATEWAY_IMAGE_ID` are provider UUIDs.
+Obtain a Keystone URL, username, password, domain and project with Nova, Neutron,
+Glance and Cinder permissions. Prepare an Ubuntu cloud-init gateway image in
+Glance and matching Nova flavors (default gateway: 1 vCPU, 1024 MiB RAM).
+The local gateway image needs Core guest/render/service agents.
+Use an existing OVS/EVPN private subnet and a placeable `flat_bridge` transport
+subnet in the same Core project, with a default gateway and no `next_server`.
+It must reach the cloud gateway on TCP/443 and can have a private address.
 
-Replace angle-bracket parameters and example URLs with actual values.
-All requests below go to Core's authenticated user API. Connection and link
-administration require the compute hypervisor policy. Send each JSON body to
-its indicated endpoint and record the returned `uuid`, for example:
+All requests go to Core's authenticated user API. Infrastructure operations
+require the corresponding compute hypervisor permission.
+Core and OpenStack project UUIDs are distinct. Replace placeholders with actual
+values and save the returned UUID from each request. Never commit credentials.
 
-```sh
-curl -fsS "$CORE/v1/compute/cloud_connections/" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' --data-binary @connection.json
-```
+## Register a cloud hypervisor
 
-## Register the account
-
-`POST /v1/compute/cloud_connections/`; record `CONNECTION_ID`:
+`POST /v1/compute/hypervisors/`; save `CLOUD_HYPERVISOR_ID`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
+  "project_id": "<CORE_PROJECT_ID>",
   "name": "remote-openstack",
   "driver_spec": {
     "kind": "openstack",
@@ -58,189 +42,298 @@ curl -fsS "$CORE/v1/compute/cloud_connections/" \
     "auth": {
       "username": "<OS_USERNAME>",
       "password": "<OS_PASSWORD>",
-      "user_domain_name": "<OS_USER_DOMAIN_NAME>",
+      "user_domain_name": "Default",
       "project_id": "<OS_PROJECT_ID>"
     },
-    "region": "RegionOne"
+    "region": "RegionOne",
+    "volume_type": "__DEFAULT__"
+  },
+  "network_defaults": {
+    "external_network": "<OS_EXTERNAL_NETWORK_ID>",
+    "gateway_image": "<OS_GATEWAY_IMAGE_ID>",
+    "role": "server"
   }
 }
 ```
 
-The `driver_spec.kind` discriminator selects the driver schema. The
-`openstack` kind holds its Keystone credentials and catalog settings. Core
-records the authenticated project in read-only `driver_state.project_id`. The
-`driver_spec.auth` object is write-only: create, show, list and update responses omit it.
-No provider configuration files or environment variables are needed on Core.
+This hypervisor represents the provider project and region. Core authenticates
+it and records provider identity in read-only `driver_state`.
+`driver_spec.auth` is write-only and is omitted from responses and agent targets.
+`network_defaults` supplies gateway settings for subnets attached to this cloud.
+For an existing OpenStack keypair, optionally set `driver_spec.key_name`.
 
-The same registration through CLI prompts for the password without echoing it
-when `OS_PASSWORD` is not supplied in the CLI environment:
+CLI registration and credential replacement:
 
 ```sh
-exordos compute cloud-connections add --name remote-openstack --kind openstack \
+exordos compute hypervisors add --name remote-openstack --kind openstack \
   --project-id "$PROJECT_ID" --auth-url https://identity.example/v3 \
   --auth-type v3password --username "$OS_USERNAME" \
-  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME" \
-  --region RegionOne
-```
-
-`--project-id` names the Core project; `driver_spec.auth.project_id` and `--os-project-id`
-name the OpenStack project. Obtain the username, user domain, project ID and
-Keystone URL from the provider's API access settings. With a project name,
-use `project_name` and `project_domain_name` instead of `driver_spec.auth.project_id`.
-
-Replace the password with `PUT` containing the complete `driver_spec`, including
-its `kind` and updated `auth`. The CLI reads existing public settings automatically:
-
-```sh
-exordos compute cloud-connections update-credentials "$CONNECTION_ID" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name Default \
+  --region RegionOne --network-defaults-file cloud-network-defaults.json
+exordos compute hypervisors update-credentials "$CLOUD_HYPERVISOR_ID" \
   --auth-type v3password --username "$OS_USERNAME" \
-  --os-project-id "$OS_PROJECT_ID" --user-domain-name "$OS_USER_DOMAIN_NAME"
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name Default
 ```
 
-Core authenticates the replacement and rejects a different provider project.
-Auth URL, type, region and interface are immutable; use a different connection
-for a different cloud scope.
+The defaults file contains the example's `network_defaults` object.
+The CLI prompts for the password without echo when `OS_PASSWORD` is absent.
+`--project-id` is the Core project; `--os-project-id` is the OpenStack project.
+To choose the provider project by name, use `project_name` and
+`project_domain_name` in API auth, or the corresponding CLI options.
 
-Application credentials are an alternative when the provider supports them:
-set `driver_spec.auth_type: "v3applicationcredential"` with `application_credential_id`
-and `application_credential_secret` in `driver_spec.auth`. The CLI accepts
-`--application-credential-id` and prompts for its secret.
+API credential replacement uses `PUT` with the complete `driver_spec`, including
+new `auth`. Password and application-credential methods can be exchanged if
+the authenticated provider identity stays the same. Auth URL, region and
+interface are immutable. Application credentials use
+`auth_type: "v3applicationcredential"` and `application_credential_id` plus
+`application_credential_secret` inside `auth`, when supported by the provider.
 
-Core derives agent Orchestrator/Status URLs from its installation's combined
-Boot API endpoint and pins the installed SDK version for bootstrap. These are
-not cloud connection parameters. This service address must be reachable from
-the connected network; a management network needs its own attachment and
-return route. Use a service address separate from the link gateway host,
-whose own listeners reject new tunnel connections. Local agents must reach
-Core independently of the cloud link. Bootstrap needs access to the package
-repository and SDK dependencies.
+Agent Orchestrator/Status addresses come from the installation's combined
+Boot API endpoint. Agents need a reachable service address and return route.
+The service address must be separate from a link gateway's host services, which
+reject new connections from the tunnel. Provider access and local agents'
+access to Core must survive loss of the cloud link.
 
-## Create cloud networking and compute capacity
+## Create the logical network
 
-`POST /v1/network/networks/`; record `CLOUD_NETWORK_ID`:
+`POST /v1/network/networks/`; save `NETWORK_ID`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
-  "name": "cloud-private",
-  "driver_spec": {
-    "driver": "cloud",
-    "connection": "<CONNECTION_ID>",
-    "external_network": "<OS_EXTERNAL_NETWORK_ID>"
-  }
+  "project_id": "<CORE_PROJECT_ID>",
+  "name": "application",
+  "cidr": "10.80.0.0/16"
 }
 ```
 
-`POST /v1/network/subnets/`; record `CLOUD_SUBNET_ID`:
+The CIDR is a pool for new `/23` subnets. Choose non-overlapping address ranges
+across all connected subnets, including the existing on-premises range.
+
+`PUT /v1/network/subnets/<ONPREM_SUBNET_ID>`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
-  "name": "cloud-private",
-  "network": "<CLOUD_NETWORK_ID>",
-  "cidr": "10.80.0.0/24",
-  "dns_servers": ["1.1.1.1"],
-  "routers": [{"to": "0.0.0.0/0", "via": "10.80.0.1"}]
-}
-```
-
-Use resolvers appropriate for the installation. Core creates owned Neutron
-networking and a router to the external network; it does not adopt existing
-unmarked networks or VMs.
-
-`POST /v1/compute/hypervisors/` registers the cloud pool:
-
-```json
-{
-  "name": "remote-openstack",
-  "driver_spec": {
-    "kind": "cloud",
-    "connection": "<CONNECTION_ID>",
-    "volume_type": "__DEFAULT__"
-  }
-}
-```
-
-One pool consumes the connection's shared quotas. For SSH through an existing
-OpenStack keypair, optionally set `key_name` in this driver specification.
-
-## Connect the private networks
-
-`POST /v1/compute/cloud_network_links/`; record `LINK_ID`:
-
-```json
-{
-  "project_id": "<PROJECT_ID>",
-  "name": "onprem-cloud",
-  "transport": {"driver": "openvpn", "protocol": "tcp", "port": 443},
-  "endpoints": [
-    {
-      "subnet": "<ONPREM_SUBNET_ID>",
-      "role": "client",
-      "external_subnet": "<ONPREM_TRANSPORT_SUBNET_ID>",
-      "gateway_image": "https://images.example/onprem-gateway.raw.zst"
-    },
-    {
-      "subnet": "<CLOUD_SUBNET_ID>",
-      "role": "server",
-      "external_network": "<OS_EXTERNAL_NETWORK_ID>",
-      "gateway_image": "<OS_GATEWAY_IMAGE_ID>"
-    }
+  "network": "<NETWORK_ID>",
+  "hypervisors": [
+    "<ONPREM_HYPERVISOR_ID>"
   ],
-  "mtu": 1380
+  "gateway": {
+    "role": "client",
+    "external_subnet": "<ONPREM_TRANSPORT_SUBNET_ID>",
+    "gateway_image": "https://images.example/onprem-gateway.raw.zst"
+  }
 }
 ```
 
-Core creates both gateways and routes. The on-premises gateway dials the
-cloud floating IP. No inbound port forwarding to on-premises is needed.
-The cloud transport bootstraps before guest access to Core is available.
-Poll `GET /v1/compute/cloud_network_links/<LINK_ID>` until `ACTIVE`, then verify
-workload traffic in both directions. Existing VMs must renew DHCP for routes.
+The existing subnet and workloads keep their addresses. List all compatible
+on-premises hypervisors that may host its VMs. Values in `gateway` can instead
+be configured in their `network_defaults`.
 
-For a pre-existing on-premises routing gateway, replace its endpoint with:
+`POST /v1/network/subnets/`; save `CLOUD_SUBNET_ID`:
 
 ```json
-{"subnet": "<ONPREM_SUBNET_ID>", "agent": "<GATEWAY_AGENT_ID>", "role": "client"}
+{
+  "network": "<NETWORK_ID>",
+  "hypervisors": [
+    "<CLOUD_HYPERVISOR_ID>"
+  ],
+  "dns_servers": [
+    "1.1.1.1"
+  ]
+}
 ```
 
-Its SDK agent must advertise `cloud_net_link`; the operator supplies local
-subnet routes and its SDN attachment. Core supplies the VPN configuration.
+Core allocates a `/23`, creates owned Neutron networking and manages the link.
+The on-premises gateway initiates it; no inbound NAT forwarding is required.
+No separate CloudNetworkLink request is necessary. Poll the subnet API until
+members are ACTIVE, then test application traffic in both directions.
+Existing guests must renew DHCP for added peer routes.
 
-## Use the cloud
+## Run workloads
 
-Create ordinary Core Nodes in the cloud subnet. For example,
+To create a load balancer in the logical network, use
 `POST /v1/compute/nodes/`:
 
 ```json
 {
-  "project_id": "<PROJECT_ID>",
+  "project_id": "<CORE_PROJECT_ID>",
   "name": "cloud-lb-1",
   "cores": 2,
   "ram": 2048,
-  "default_network": {"subnet": "<CLOUD_SUBNET_ID>"},
+  "default_network": {
+    "network": "<NETWORK_ID>"
+  },
   "disk_spec": {
     "kind": "root_disk",
-    "image": "<compatible Glance image ID or allowed image URL>",
+    "image": "<GLANCE_IMAGE_ID_OR_ALLOWED_URL>",
     "size": 20,
     "ephemeral": false
   }
 }
 ```
 
-The scheduler selects the cloud pool from the subnet's connection. Core creates
-Nova machines and durable Cinder disks. Use the same `default_network.subnet`
-for NodeSets. Configure load balancers with on-premises private backend IPs.
-Configure OpenStack ingress for a public frontend, for example a floating IP
-on the load balancer VM's port. Creating a Node does not publish it. The link
-gateway's floating IP serves the VPN and does not publish the load balancer.
-Application security groups must permit frontend/backend traffic and replies;
-the link retains original private addresses. Additional durable disks use
-`ephemeral: false`. URL images must match `[openstack_cloud] image_origins`.
+For a NodeSet spanning the participating hypervisors, select the logical network:
 
-Observe Nodes, Ports and Volumes through the usual Core APIs. `ACTIVE` on a
-link describes transport health, so check the application separately. Add
-further sites with a `PUT` of the full endpoint list. Keep CIDRs disjoint;
-two forced clients or two forced servers cannot form a full-mesh pair.
+```json
+{
+  "default_network": {
+    "network": "<NETWORK_ID>"
+  },
+  "placement": {
+    "kind": "anti-affinity",
+    "scope": "site"
+  }
+}
+```
 
-To remove the integration, remove workloads and the link, wait for link cleanup
-to finish, then delete unused pools, subnets, networks and the connection.
+The scheduler picks an eligible subnet and hypervisor for each replica.
+Optional hypervisor `site` labels group hosts into failure domains; without a
+label, each hypervisor UUID is a domain. See [Logical networks](logical-networks.md).
+
+Configure the load balancer's backend pool with on-premises private IPs.
+Public frontend ingress is configured separately; the VPN gateway's floating IP
+does not publish workloads. Security groups must permit frontend/backend traffic
+and replies. The tunnel preserves private source addresses. Durable disks use
+`ephemeral: false`; URL images must match `[openstack_cloud] image_origins`.
+Provider flavors must match each requested vCPU/RAM configuration.
+
+Add further subnets through the same API. New subnets in one cloud hypervisor
+use a shared Neutron router under `auto`; other pairs use direct OpenVPN.
+Transit and workload migration are outside this connectivity contract.
+
+Remove workloads before deleting a subnet or the network. Cleanup is asynchronous.
+Imported on-premises subnets survive detachment. Delete the cloud hypervisor
+only after all dependent resources and cleanup records have gone.
+
+## Manual setup through CLI
+
+This sequence attaches an existing on-premises private subnet and one OpenStack
+cloud to a logical network. Use an authenticated CLI context for the intended
+Core installation, with infrastructure management permissions. Core, its agents
+and images must have the compatible OpenStack/SDN drivers described above.
+The commands configure an existing installation; image building is covered in
+[Build](../app-developer-guide/build.md).
+
+Fill the parameters below. Core and provider project IDs are distinct.
+Use a workload image URL usable by both local hypervisors and OpenStack;
+a provider-only Glance UUID cannot boot an on-premises VM. Required Nova flavors
+must match the gateway and workload resources. Local workloads using
+`--durable` also need a local storage pool with `ephemeral: false`.
+Keep the generated UUIDs for subsequent show and delete commands.
+
+```sh
+PROJECT_ID='<CORE_PROJECT_UUID>'
+ONPREM_HYPERVISOR_ID='<EXISTING_ONPREM_HYPERVISOR_UUID>'
+ONPREM_SUBNET_ID='<EXISTING_PRIVATE_SUBNET_UUID>'
+ONPREM_TRANSPORT_SUBNET_ID='<EXISTING_FLAT_TRANSPORT_SUBNET_UUID>'
+
+OS_AUTH_URL='https://identity.example/v3'
+OS_USERNAME='<OPENSTACK_USERNAME>'
+OS_PROJECT_ID='<OPENSTACK_PROJECT_ID>'
+OS_REGION='RegionOne'
+OS_EXTERNAL_NETWORK_ID='<NEUTRON_EXTERNAL_NETWORK_UUID>'
+OS_GATEWAY_IMAGE_ID='<GLANCE_GATEWAY_IMAGE_UUID>'
+ONPREM_GATEWAY_IMAGE_URL='https://images.example/gateway.raw.zst'
+WORKLOAD_IMAGE_URL='https://repo.exordos.com/<compatible-workload-image>'
+
+new_uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
+CLOUD_HYPERVISOR_ID=$(new_uuid)
+NETWORK_ID=$(new_uuid)
+CLOUD_SUBNET_ID=$(new_uuid)
+NODESET_ID=$(new_uuid)
+WORK_DIR=$(mktemp -d)
+
+exordos compute hypervisors list
+exordos network subnets show "$ONPREM_SUBNET_ID"
+```
+
+Register the cloud. The defaults file contains no credentials; the password
+is prompted without echo unless supplied through `OS_PASSWORD`.
+
+```sh
+cat > "$WORK_DIR/cloud-network-defaults.json" <<EOF
+{
+  "external_network": "$OS_EXTERNAL_NETWORK_ID",
+  "gateway_image": "$OS_GATEWAY_IMAGE_ID",
+  "role": "server"
+}
+EOF
+
+exordos compute hypervisors add \
+  --uuid "$CLOUD_HYPERVISOR_ID" --name openstack-a \
+  --project-id "$PROJECT_ID" --site openstack-a \
+  --kind openstack --auth-url "$OS_AUTH_URL" --region "$OS_REGION" \
+  --auth-type v3password --username "$OS_USERNAME" \
+  --os-project-id "$OS_PROJECT_ID" --user-domain-name Default \
+  --network-defaults-file "$WORK_DIR/cloud-network-defaults.json"
+```
+
+Create the network, attach the existing subnet and allocate a cloud `/23`.
+The on-premises CIDR is preserved. Repeat `--hypervisor` when the same local
+subnet spans several compatible hosts in one fabric.
+
+```sh
+exordos network networks add \
+  --uuid "$NETWORK_ID" --name application --project-id "$PROJECT_ID" \
+  --cidr 10.80.0.0/16 --connectivity auto
+
+cat > "$WORK_DIR/onprem-gateway.json" <<EOF
+{
+  "role": "client",
+  "external_subnet": "$ONPREM_TRANSPORT_SUBNET_ID",
+  "gateway_image": "$ONPREM_GATEWAY_IMAGE_URL"
+}
+EOF
+
+exordos network subnets update "$ONPREM_SUBNET_ID" \
+  --network "$NETWORK_ID" --hypervisor "$ONPREM_HYPERVISOR_ID" \
+  --gateway-file "$WORK_DIR/onprem-gateway.json"
+
+exordos network subnets add \
+  --uuid "$CLOUD_SUBNET_ID" --name application-openstack-a \
+  --project-id "$PROJECT_ID" --network "$NETWORK_ID" \
+  --hypervisor "$CLOUD_HYPERVISOR_ID" --dns-server 1.1.1.1
+```
+
+Core creates the link and both gateways. The cloud server accepts the connection
+on a floating IP; the on-premises client can be behind NAT.
+No separate link creation or manual VPN configuration is needed.
+
+```sh
+exordos compute hypervisors show "$CLOUD_HYPERVISOR_ID" --output json
+exordos network networks show "$NETWORK_ID" --output json
+exordos network subnets show "$ONPREM_SUBNET_ID" --output json
+exordos network subnets show "$CLOUD_SUBNET_ID" --output json
+exordos network subnets list --filters "network=$NETWORK_ID"
+```
+
+Wait for the cloud hypervisor and both subnets to become ACTIVE. JSON subnet
+responses contain `status` and `error`; network observations are under
+`driver_state.subnets`. Resolve reported errors before creating workloads.
+Renew DHCP in existing guests so they receive the peer routes.
+The Core service address still needs its own attachment and return route
+to the connected subnet.
+
+Optionally start two replicas, one per failure domain:
+
+```sh
+exordos compute sets add \
+  --uuid "$NODESET_ID" --name multicloud-smoke --project-id "$PROJECT_ID" \
+  --network "$NETWORK_ID" --image "$WORKLOAD_IMAGE_URL" \
+  --cores 1 --ram 1024 --root-disk 10 --durable --replicas 2 \
+  --placement-kind anti-affinity --placement-scope site
+
+exordos compute sets show "$NODESET_ID" --output json
+exordos compute nodes list --filters "node_set=$NODESET_ID"
+exordos network ports list
+```
+
+Use `--durable` for Cinder root disks. Both placement domains need sufficient
+compute and durable storage capacity. With hard anti-affinity and two domains,
+a third replica stays pending. Optional hypervisor `site` labels group multiple
+physical hosts into one domain; otherwise each hypervisor UUID is a domain.
+
+Find the replica IPs in Ports and test ICMP or an application TCP port in both
+directions from the actual workloads. Security groups must permit the tested
+traffic. Subnet ACTIVE describes connectivity readiness; it does not establish
+application readiness or publish a public frontend.

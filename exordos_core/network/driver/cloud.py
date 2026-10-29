@@ -39,7 +39,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             self.external = self.cloud.ensure_network(
                 self.network.uuid, self.network.name
             )
-            state = {"network_id": self.external.id}
+            state = {**self.network.driver_state, "network_id": self.external.id}
             if self.network.driver_state != state:
                 self.network.driver_state = state
                 orm.SQLStorableMixin.update(self.network)
@@ -95,15 +95,29 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
         if external_network:
             if not default:
                 raise ValueError("An external router needs a subnet default gateway")
-            self.cloud.ensure_router(subnet.uuid, external, external_network)
+            from exordos_core.network.routed import router_id
+
+            self.cloud.ensure_router(
+                router_id(self.network) or subnet.uuid, external, external_network
+            )
+        else:
+            from exordos_core.network.routed import router_id
+
+            if router := router_id(self.network):
+                self.cloud.ensure_router(router, external)
         return subnet
 
     def refresh_generated(self, subnet):
         self.update_subnet(subnet)
         external_network = self.network.driver_spec.get("external_network")
-        if external_network:
+        from exordos_core.network.routed import router_id
+
+        shared = router_id(self.network)
+        if external_network or shared:
             self.cloud.ensure_router(
-                subnet.uuid, self._subnet(subnet.uuid), external_network
+                shared or subnet.uuid,
+                self._subnet(subnet.uuid),
+                external_network,
             )
 
     def update_subnet(self, subnet):
@@ -118,12 +132,16 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             if str(r["to"]) != "0.0.0.0/0"
         ]
         for endpoint, link in links:
+            from exordos_core.network.routed import native_subnets
+
+            native = native_subnets(link)
             state = link.state.get(str(endpoint.uuid), {})
             if state.get("gateway_ip") and link.status != "DELETING":
                 destinations = {
                     e["subnet"]
                     for e in link.endpoints
                     if e["subnet"] != str(subnet.uuid)
+                    and frozenset((e["subnet"], str(subnet.uuid))) not in native
                 }
                 routes += [
                     {"destination": str(other.cidr), "nexthop": state["gateway_ip"]}
@@ -156,11 +174,29 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
         )
         if external is None:
             return
+        from exordos_core.network.routed import router_id
+
+        shared = router_id(self.network)
         router = self.cloud._find(
-            self.cloud.api.network.routers(), "router", subnet.uuid
+            self.cloud.api.network.routers(), "router", shared or subnet.uuid
         )
         if router:
-            self.cloud.delete_router(router)
+            if shared:
+                if any(
+                    ip["subnet_id"] == external.id
+                    for p in self.cloud.api.network.ports(device_id=router.id)
+                    for ip in p.fixed_ips
+                ):
+                    self.cloud.api.network.remove_interface_from_router(
+                        router.id, subnet_id=external.id
+                    )
+                if not any(
+                    p.device_owner.startswith("network:router_interface")
+                    for p in self.cloud.api.network.ports(device_id=router.id)
+                ):
+                    self.cloud.delete_router(router)
+            else:
+                self.cloud.delete_router(router)
         self.cloud.delete_subnet(external)
 
     def delete_network(self):
@@ -201,19 +237,30 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
                 filters={"uuid": filters.EQ(binding.security_group)}
             )
             rules = []
-            for rule in catalog.SecurityGroupRule.objects.get_all(
+            source_rules = catalog.SecurityGroupRule.objects.get_all(
                 filters={"security_group": filters.EQ(group.uuid)}
-            ):
-                item = {"direction": rule.direction, "ethertype": "IPv4"}
-                if rule.protocol != "any":
-                    item["protocol"] = rule.protocol
-                if rule.port:
-                    item.update(port_range_min=rule.port, port_range_max=rule.port)
-                if rule.remote_ip:
-                    item["remote_ip_prefix"] = rule.remote_ip
-                if rule.remote_group_id:
+            )
+            source_rules = [r.dump_to_simple_view() for r in source_rules]
+            if getattr(
+                self.network, "owner_network", None
+            ) is not None or self.network.driver_state.get("routed_segments"):
+                from exordos_core.network.routed import expand_security_rules
+
+                source_rules = expand_security_rules(port, source_rules)
+            for source_rule in source_rules:
+                item = {"direction": source_rule["direction"], "ethertype": "IPv4"}
+                if source_rule["protocol"] != "any":
+                    item["protocol"] = source_rule["protocol"]
+                if source_rule.get("port"):
+                    item.update(
+                        port_range_min=source_rule["port"],
+                        port_range_max=source_rule["port"],
+                    )
+                if source_rule.get("remote_ip"):
+                    item["remote_ip_prefix"] = source_rule["remote_ip"]
+                if source_rule.get("remote_group_id"):
                     item["remote_group_id"] = self.cloud.ensure_security_group(
-                        rule.remote_group_id
+                        source_rule["remote_group_id"]
                     ).id
                 rules.append(item)
             groups.append(self.cloud.security_group(group.uuid, rules).id)

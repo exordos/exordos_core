@@ -17,16 +17,15 @@ from restalchemy.api import routes
 from restalchemy.api.middlewares import logging as logging_mw
 from restalchemy.common import exceptions as ra_exceptions
 
-from exordos_core.cloud import models
 from exordos_core.cloud.links import CloudNetworkLink
 from exordos_core.common.exceptions import ValidateException
 
 
-class CloudCredentialsLoggingMiddleware(logging_mw.LoggingMiddleware):
+class HypervisorCredentialsLoggingMiddleware(logging_mw.LoggingMiddleware):
     def process_request(self, req):
         path = req.path_info
-        if path.rstrip("/") != "/v1/compute/cloud_connections" and not path.startswith(
-            "/v1/compute/cloud_connections/"
+        if path.rstrip("/") != "/v1/compute/hypervisors" and not path.startswith(
+            "/v1/compute/hypervisors/"
         ):
             return super().process_request(req)
         started = time.perf_counter()
@@ -45,10 +44,11 @@ class CloudCredentialsLoggingMiddleware(logging_mw.LoggingMiddleware):
             )
 
 
-class CloudConnectionPacker(packers.JSONPacker):
+class HypervisorPacker(packers.JSONPacker):
     def pack_resource(self, obj):
         value = super().pack_resource(obj)
-        value["driver_spec"] = obj.driver_spec.public_view()
+        if hasattr(obj.driver_spec, "public_view"):
+            value["driver_spec"] = obj.driver_spec.public_view()
         return value
 
     def unpack(self, value):
@@ -61,25 +61,8 @@ class CloudConnectionPacker(packers.JSONPacker):
             ra_exceptions.PropertyException,
         ):
             raise ValidateException(
-                err="Invalid cloud connection fields or driver kind"
+                err="Invalid hypervisor fields or driver kind"
             ) from None
-
-
-class CloudConnectionsController(controllers.PolicyBasedController):
-    __policy_name__ = "hypervisor"
-    __policy_service_name__ = "compute"
-    __packer__ = CloudConnectionPacker
-    __resource__ = resources.ResourceByRAModel(
-        models.CloudConnection,
-        convert_underscore=False,
-        fields_permissions=field_permissions.FieldsPermissions(
-            fields={"driver_state": {constants.ALL: field_permissions.Permissions.RO}},
-        ),
-    )
-
-
-class CloudConnectionsRoute(routes.Route):
-    __controller__ = CloudConnectionsController
 
 
 class CloudNetworkLinksController(controllers.PolicyBasedController):
@@ -95,9 +78,26 @@ class CloudNetworkLinksController(controllers.PolicyBasedController):
                 "state": {constants.ALL: field_permissions.Permissions.RO},
                 "recovery": {constants.ALL: field_permissions.Permissions.RO},
                 "status": {constants.ALL: field_permissions.Permissions.RO},
+                "owner_network": {constants.ALL: field_permissions.Permissions.RO},
             },
         ),
     )
+
+    def update(self, uuid, **kwargs):
+        resource = self.get(uuid=uuid)
+        if resource.owner_network is not None:
+            raise ValidateException(
+                err="manage connectivity through its logical network"
+            )
+        return super().update(uuid=uuid, **kwargs)
+
+    def delete(self, uuid):
+        resource = self.get(uuid=uuid)
+        if resource.owner_network is not None:
+            raise ValidateException(
+                err="manage connectivity through its logical network"
+            )
+        return super().delete(uuid=uuid)
 
     @actions.post
     def recover_gateway(self, resource: CloudNetworkLink, subnet: str):

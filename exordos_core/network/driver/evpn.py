@@ -1209,10 +1209,19 @@ class OvsEvpnNetworkDriver(base.AbstractNetworkDriver):
                 )
                 rules.extend(self.DENY_ALL)
                 continue
-            for rule in _comparison_read(
+            source_rules = _comparison_read(
                 ("rules", str(sg_uuid)),
                 lambda: self._security_group_rules(sg_uuid),
+            )
+            network = getattr(self, "_network", None)
+            if isinstance(getattr(network, "owner_network", None), sys_uuid.UUID) or (
+                isinstance(getattr(network, "driver_state", None), dict)
+                and network.driver_state.get("routed_segments")
             ):
+                from exordos_core.network.routed import expand_security_rules
+
+                source_rules = expand_security_rules(port, source_rules)
+            for rule in source_rules:
                 rules.append(
                     self._compile_rule(
                         rule,

@@ -57,6 +57,7 @@ class CloudNetworkLink(
 ):
     __tablename__ = "cloud_network_links"
     __jsonfields__ = ["endpoints", "transport", "secrets", "state", "recovery"]
+    owner_network = properties.property(types.AllowNone(types.UUID()), default=None)
     endpoints = properties.property(types.TypedList(types.Dict()), required=True)
     transport = properties.property(
         types.Dict(),
@@ -73,6 +74,9 @@ class CloudNetworkLink(
     )
 
     def _validate(self, session):
+        from exordos_core.network.routed import native_subnets
+
+        native = native_subnets(self)
         transport = {
             "driver": "openvpn",
             "protocol": "tcp",
@@ -138,6 +142,8 @@ class CloudNetworkLink(
                 )
             try:
                 for previous, _, definition in definitions:
+                    if frozenset((str(subnet_id), str(previous))) in native:
+                        continue
                     openvpn.serves(
                         subnet_id, previous, role, definition.get("role", "auto")
                     )
@@ -422,6 +428,9 @@ class CloudLinkService(basic.BasicService):
         )
 
     def _material(self, link, endpoints):
+        from exordos_core.network.routed import native_subnets
+
+        native = native_subnets(link)
         secrets = link.secrets
         changed = False
         if not secrets:
@@ -487,6 +496,11 @@ class CloudLinkService(basic.BasicService):
             for server in endpoints:
                 if (
                     server.uuid == endpoint.uuid
+                    or (
+                        native
+                        and frozenset((str(server.subnet), str(endpoint.subnet)))
+                        in native
+                    )
                     or not openvpn.serves(
                         server.uuid,
                         endpoint.uuid,
@@ -779,6 +793,9 @@ class CloudLinkService(basic.BasicService):
         return True
 
     def reconcile(self, link):
+        from exordos_core.network.routed import native_subnets
+
+        native = native_subnets(link)
         bindings = self._bindings(link)
         if link.status == "DELETING":
             if all([self._remove(link, e) for e in bindings]):
@@ -842,6 +859,7 @@ class CloudLinkService(basic.BasicService):
                 }
                 for p in endpoints
                 if p.uuid != endpoint.uuid
+                and frozenset((str(p.subnet), str(endpoint.subnet))) not in native
             ]
             bundle = openvpn.render(
                 endpoint.uuid,

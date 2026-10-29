@@ -31,6 +31,14 @@ class AbstractConnectionSpec(types_dynamic.AbstractKindModel, models.SimpleViewM
     def authenticate(self, connection):
         raise NotImplementedError
 
+    def agent_view(self, hypervisor):
+        return {
+            "kind": "cloud",
+            "connection": str(hypervisor),
+            "volume_type": getattr(self, "volume_type", "__DEFAULT__"),
+            "key_name": getattr(self, "key_name", None),
+        }
+
 
 class OpenStackConnectionSpec(AbstractConnectionSpec):
     KIND = "openstack"
@@ -82,3 +90,8 @@ class OpenStackConnectionSpec(AbstractConnectionSpec):
             raise ValidateException(
                 err="Unable to authenticate a project-scoped OpenStack credential"
             ) from None
+
+
+class OpenStackHypervisorSpec(OpenStackConnectionSpec):
+    volume_type = properties.property(types.String(), default="__DEFAULT__")
+    key_name = properties.property(types.AllowNone(types.String()), default=None)

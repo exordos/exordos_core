@@ -16,15 +16,14 @@ class MigrationStep(migrations.AbstractMigrationStep):
         return "74db8134-36c3-4889-94e3-9a552db0ba19"
 
     def upgrade(self, session):
-        session.execute("""CREATE TABLE cloud_connections (
-            uuid UUID PRIMARY KEY, project_id UUID NOT NULL,
-            name VARCHAR(255) NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
-            created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL,
-            driver_spec JSONB NOT NULL,
-            driver_state JSONB NOT NULL DEFAULT '{}'
-        )""")
         session.execute(
-            "CREATE INDEX cloud_connections_project ON cloud_connections(project_id)"
+            "ALTER TABLE machine_pools ADD COLUMN project_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"
+        )
+        session.execute(
+            "ALTER TABLE machine_pools ADD COLUMN driver_state JSONB NOT NULL DEFAULT '{}'"
+        )
+        session.execute(
+            "ALTER TABLE machine_pools ADD COLUMN network_defaults JSONB NOT NULL DEFAULT '{}'"
         )
         session.execute("""CREATE TABLE cloud_network_links (
             uuid UUID PRIMARY KEY, project_id UUID NOT NULL,
@@ -40,7 +39,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             uuid UUID PRIMARY KEY,
             link UUID NOT NULL REFERENCES cloud_network_links(uuid),
             subnet UUID NOT NULL UNIQUE REFERENCES compute_subnets(uuid),
-            connection UUID REFERENCES cloud_connections(uuid),
+            connection UUID REFERENCES machine_pools(uuid),
             definition JSONB NOT NULL
         )""")
         session.execute(
@@ -53,7 +52,9 @@ class MigrationStep(migrations.AbstractMigrationStep):
     def downgrade(self, session):
         session.execute("DROP TABLE cloud_link_endpoints")
         session.execute("DROP TABLE cloud_network_links")
-        session.execute("DROP TABLE cloud_connections")
+        session.execute("ALTER TABLE machine_pools DROP COLUMN network_defaults")
+        session.execute("ALTER TABLE machine_pools DROP COLUMN driver_state")
+        session.execute("ALTER TABLE machine_pools DROP COLUMN project_id")
 
 
 migration_step = MigrationStep()

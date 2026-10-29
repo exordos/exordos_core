@@ -42,9 +42,15 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
         self,
         instance: models.NodeSet,
     ) -> compute_models.PlacementPolicy:
-        # TODO(akremenetsky): Rework default placement policy creation
-        # NOTE(akremenetsky): Default placement policy is soft-anti-affinity
         policy_uuid = sys_uuid.uuid5(instance.uuid, "soft-anti-affinity")
+        from exordos_core.network.routed import requested_network
+
+        logical = requested_network(
+            instance.default_network, instance.project_id, allow_foreign=True
+        )
+        placement = instance.placement or {}
+        scope = placement.get("scope", "site" if logical is not None else "pool")
+        kind = placement.get("kind", nc.PlacementPolicyKind.SOFT_ANTI_AFFINITY.value)
 
         soft_anti_affinity = compute_models.PlacementPolicy.objects.get_one_or_none(
             filters={
@@ -55,15 +61,18 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
         if not soft_anti_affinity:
             soft_anti_affinity = compute_models.PlacementPolicy(
                 uuid=policy_uuid,
-                name="soft-anti-affinity",
-                description=(
-                    f"Soft anti-affinity placement policy for node set {instance.uuid}"
-                ),
-                kind=nc.PlacementPolicyKind.SOFT_ANTI_AFFINITY.value,
+                name=kind,
+                description=(f"Placement policy for node set {instance.uuid}"),
+                kind=kind,
+                scope=scope,
                 domain=None,
                 zone=None,
                 project_id=self._project_id,
             )
+            soft_anti_affinity.save()
+        elif (soft_anti_affinity.kind, soft_anti_affinity.scope) != (kind, scope):
+            soft_anti_affinity.kind, soft_anti_affinity.scope = kind, scope
+            soft_anti_affinity.name = kind
             soft_anti_affinity.save()
 
         return soft_anti_affinity

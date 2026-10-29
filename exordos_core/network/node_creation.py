@@ -88,7 +88,22 @@ def create_default_port(node, value, project_id, session, *, allow_foreign=False
     from exordos_core.compute.dm import models as compute
     from exordos_core.network.defaults import find_legacy_flat_subnet
     from exordos_core.network.defaults import resolve_default_floating_subnet
+    from exordos_core.network.routed import requested_network
     from exordos_core.user_api.network.dm import models as catalog
+
+    if (
+        requested_network(value, project_id, session, allow_foreign=allow_foreign)
+        is not None
+    ):
+        for group in (value or {}).get("security_groups", []):
+            catalog.validate_reference(
+                project_id,
+                catalog.SecurityGroup,
+                group,
+                "security_group",
+                session=session,
+            )
+        return None
 
     parent = None
     if node.node_set is not None:
@@ -96,7 +111,12 @@ def create_default_port(node, value, project_id, session, *, allow_foreign=False
             filters={"uuid": node.node_set},
             session=session,
         )
-        if str(parent.project_id) != str(project_id):
+        parent_project = (parent.default_network or {}).get(
+            "project_id", parent.project_id
+        )
+        if str(parent.project_id) != str(project_id) and not (
+            allow_foreign and str(parent_project) == str(project_id)
+        ):
             raise exceptions.ValidateException(err="NodeSet belongs to another project")
     if (
         value == {}

@@ -65,3 +65,4 @@ class MachineBuildStatus(str, enum.Enum):
 
 class PlacementPolicyKind(str, enum.Enum):
     SOFT_ANTI_AFFINITY = "soft-anti-affinity"
+    ANTI_AFFINITY = "anti-affinity"

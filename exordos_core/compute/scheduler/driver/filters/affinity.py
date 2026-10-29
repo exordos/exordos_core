@@ -28,7 +28,6 @@ class DummySoftAntiAffinityFilter(base.MachinePoolAbstractFilter):
         pools: tp.List[base.MachinePoolBundle],
     ) -> tp.Iterable[base.MachinePoolBundle]:
         """Filter out pools that are not suitable for the node."""
-        # Get all policies for the node
         allocations = models.PlacementPolicyAllocation.objects.get_all(
             filters={
                 "node": dm_filters.EQ(node.node.uuid),
@@ -39,31 +38,31 @@ class DummySoftAntiAffinityFilter(base.MachinePoolAbstractFilter):
         if not allocations:
             return pools
 
-        nodes_in_allocations = models.PlacementPolicyAllocation.objects.get_all(
-            filters={
-                "policy": dm_filters.In(a.policy for a in allocations),
-            }
-        )
-
-        # TODO(akremenetsky): So far all policies are soft anti affinity
-        # Other policies are not supported.
-        machines_in_policy = models.Machine.objects.get_all(
-            filters={
-                "node": dm_filters.In(
-                    a.node.uuid
-                    for a in nodes_in_allocations
-                    if a.node.uuid != node.node.uuid
-                ),
-            }
-        )
-
-        avail_pools = {p.pool.uuid for p in pools} - {
-            m.pool for m in machines_in_policy
-        }
-
-        # For soft anti affinity we allow to schedule machine to any pool
-        # if there are no free pools
-        if not avail_pools:
-            return pools
-
-        return tuple(p for p in pools if p.pool.uuid in avail_pools)
+        for allocation in allocations:
+            policy = allocation.policy
+            members = models.PlacementPolicyAllocation.objects.get_all(
+                filters={"policy": dm_filters.EQ(policy.uuid)}
+            )
+            machines = models.Machine.objects.get_all(
+                filters={
+                    "node": dm_filters.In(
+                        a.node.uuid for a in members if a.node.uuid != node.node.uuid
+                    )
+                }
+            )
+            occupied = {m.pool for m in machines}
+            if policy.scope == "site":
+                used = {
+                    p.site or str(p.uuid)
+                    for p in models.MachinePool.objects.get_all(
+                        filters={"uuid": dm_filters.In(occupied)}
+                    )
+                }
+                available = tuple(
+                    p for p in pools if (p.pool.site or str(p.pool.uuid)) not in used
+                )
+            else:
+                available = tuple(p for p in pools if p.pool.uuid not in occupied)
+            if available or policy.kind == "anti-affinity":
+                pools = available
+        return pools

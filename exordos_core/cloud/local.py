@@ -63,7 +63,8 @@ def reserve(link, endpoint):
                     "port_security": False,
                 },
             )
-            node.insert(session=session)
+            # Both gateway ports are reserved below, including managed subnets.
+            node._insert_node(session=session)
         ports = compute.Port.objects.get_all(
             filters={"node": filters.EQ(endpoint.uuid)}, session=session
         )
