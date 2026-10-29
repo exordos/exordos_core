@@ -88,8 +88,6 @@ class RestServiceTestCase(ra_db_utils.DBEngineMixin):
 
     @classmethod
     def shutdown_engine(cls):
-        # Hack for psycopg to finish fast, otherwise we'll need to wait for GC
-        cls.engine.__del__()
         cls.destroy_engine()
 
     @staticmethod

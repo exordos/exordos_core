@@ -787,7 +787,7 @@ requires-dist = [
     { name = "dnspython", marker = "extra == 'test'", specifier = ">=2.6.0,<3.0.0" },
     { name = "firebase-admin", specifier = ">=6.0.0,<8.0.0" },
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
-    { name = "gcl-iam", specifier = ">=1.4.0,<2.0.0" },
+    { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
     { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.4,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
@@ -807,7 +807,7 @@ requires-dist = [
     { name = "pytest-timer", marker = "extra == 'test'", specifier = ">=1.0.0,<2.0.0" },
     { name = "pytest-xdist", extras = ["psutil"], marker = "extra == 'test'", specifier = ">=3.6.1,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0,<7.0.0" },
-    { name = "restalchemy", specifier = ">=16.1.2,<17.0.0" },
+    { name = "restalchemy", specifier = ">=16.1.5,<17.0.0" },
     { name = "ruamel-yaml", marker = "extra == 'docs'", specifier = "==0.19.1" },
     { name = "ruamel-yaml", marker = "extra == 'test'", specifier = "==0.19.1" },
     { name = "ruff", marker = "extra == 'ruff'", specifier = ">=0.16.0,<0.18.0" },
@@ -862,7 +862,7 @@ wheels = [
 
 [[package]]
 name = "gcl-iam"
-version = "1.4.0"
+version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bazooka" },
@@ -871,9 +871,9 @@ dependencies = [
     { name = "pyjwt" },
     { name = "restalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/93/7b/bb547b0d5e8609985828a8e4a700e7e2608ddef8218f5fe5e4bf2e1975dc/gcl_iam-1.4.0.tar.gz", hash = "sha256:7888e63b295ae1e54f6a43b22f51dbeeb0b69f2c155895d556c68873af1eb2e7", size = 162913, upload-time = "2026-09-02T08:39:00.779Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/e5/7bdab88f9d7e82e7ab4ca63b255b4ad53b1c60c60d2abf12b778fde07677/gcl_iam-1.4.1.tar.gz", hash = "sha256:747cdbbcd0321978d782bc8d2113d1be358f239020b62409f668fc3e1070c790", size = 163088, upload-time = "2026-10-28T09:41:03.669Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/6a/da9cd26debbe3ef5e7b777dee55646bee95143a4f14820e8a21d978681f3/gcl_iam-1.4.0-py3-none-any.whl", hash = "sha256:89b9b86ed00a4b13998205943315c777d15a07015337e070e3456490e3ddec58", size = 93258, upload-time = "2026-09-02T08:38:59.339Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/e4/2c1104ef8af70f09ccf1fde62aaf28049e69f3129a78b3be71ab3357ee1a/gcl_iam-1.4.1-py3-none-any.whl", hash = "sha256:cc89403c5ba8aa5d929f756d6b217966b96b0c5c85191cbee1a6a158c664b916", size = 93469, upload-time = "2026-10-28T09:41:02.065Z" },
 ]
 
 [[package]]
@@ -2687,7 +2687,7 @@ wheels = [
 
 [[package]]
 name = "restalchemy"
-version = "16.1.3"
+version = "16.1.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "email-validator" },
@@ -2700,9 +2700,9 @@ dependencies = [
     { name = "requests" },
     { name = "webob" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/16/650f2476a3c9d93c4c3c0f2ddbfc7ce1c52505ed97533cafc4cd50146d54/restalchemy-16.1.3.tar.gz", hash = "sha256:7125821f4a5e8044491078a2010760e28db1f7292c43157ddee2a9c04c9b76bd", size = 644635, upload-time = "2026-10-21T15:22:09.807Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/65/caf2ae812bd926faea3f65e0bad71c3655cb7391c3cb4401caa415864daf/restalchemy-16.1.5.tar.gz", hash = "sha256:cb61dc906ac0a996b11288e98747e918921d1d1c677ebcb7690519bf32de3a25", size = 649290, upload-time = "2026-10-28T19:47:16.942Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/48/7d3df25ef89c845b3c7e0acdef080d4e5a3d30f5f0d37c3a02bcbd9a2b2a/restalchemy-16.1.3-py3-none-any.whl", hash = "sha256:a141264ef3b7256ac240f4856fdb441d7c5eb2775aa47ff39e8dfff0011833ba", size = 683932, upload-time = "2026-10-21T15:22:07.877Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/2c/6293301c3c715aa3c09aeb1cc07a706729cda9f74ddb516bcebafa3857c1/restalchemy-16.1.5-py3-none-any.whl", hash = "sha256:1184f1c32948bbb3bfad3948ca0c96b93131442074d4c07a7c2fa1a2754466f5", size = 689383, upload-time = "2026-10-28T19:47:15.187Z" },
 ]
 
 [[package]]
