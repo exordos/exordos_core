@@ -17,6 +17,7 @@ from unittest import mock
 
 import pytest
 from gcl_iam import exceptions as iam_exc
+from restalchemy.storage.sql.dialect.query_builder import q
 
 from exordos_core.user_api.iam import exceptions
 from exordos_core.user_api.iam.dm import models
@@ -51,6 +52,19 @@ def redeem(client, info, verifier=None):
     return models.IamClient.get_token_by_authorization_code(
         client, "code", info.redirect_uri, verifier
     )
+
+
+def test_authorization_code_lock_has_no_nullable_join():
+    engine = mock.Mock()
+    engine.escape.side_effect = lambda name: f'"{name}"'
+    query = q.Q.select(
+        models.IdpAuthorizationInfo, SimpleNamespace(engine=engine)
+    ).for_(share=False)
+
+    statement = query.compile()
+
+    assert statement.endswith("FOR UPDATE")
+    assert " JOIN " not in statement
 
 
 def test_s256_and_replay(exchange):
