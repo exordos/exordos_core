@@ -27,6 +27,13 @@ from exordos_core.vs.dm import models
 VAR_UUID = uuid.UUID("8b8a44fc-40b7-4ade-bfd2-20b5c02a9b61")
 
 
+def selector_variable():
+    return mock.Mock(
+        uuid=VAR_UUID,
+        setter=models.SelectorVariableSetter(selector_strategy="latest"),
+    )
+
+
 @pytest.mark.parametrize("spec", [{}, {"variables": {}}])
 def test_no_variables(spec):
     with mock.patch.object(defaults, "set_var") as set_var:
@@ -69,9 +76,11 @@ def test_seeds_json_value_idempotently(value, key):
 
 def test_waits_for_variable_creation():
     with (
+        mock.patch.object(models.Variable, "objects") as variables,
         mock.patch.object(defaults, "set_var", side_effect=[False, True]) as set_var,
         mock.patch.object(bootstrap.time, "sleep") as sleep,
     ):
+        variables.get_one_or_none.return_value = selector_variable()
         bootstrap._set_variables_from_spec({"variables": {str(VAR_UUID): False}})
     assert set_var.call_args_list == [mock.call(str(VAR_UUID), False, VAR_UUID)] * 2
     sleep.assert_called_once_with(0.5)
@@ -79,10 +88,12 @@ def test_waits_for_variable_creation():
 
 def test_missing_variable_times_out():
     with (
+        mock.patch.object(models.Variable, "objects") as variables,
         mock.patch.object(defaults, "set_var", return_value=False),
         mock.patch.object(bootstrap.time, "monotonic", side_effect=[0, 121]),
         pytest.raises(TimeoutError, match=str(VAR_UUID)),
     ):
+        variables.get_one_or_none.return_value = selector_variable()
         bootstrap._set_variables_from_spec({"variables": {str(VAR_UUID): 1}})
 
 
@@ -102,7 +113,8 @@ def test_waits_for_named_variable_creation():
         mock.patch.object(defaults, "set_var", return_value=True) as set_var,
         mock.patch.object(bootstrap.time, "sleep") as sleep,
     ):
-        variables.get_all.side_effect = [[], [mock.Mock(uuid=VAR_UUID)]]
+        variables.get_one_or_none.return_value = selector_variable()
+        variables.get_all.side_effect = [[], [selector_variable()]]
         bootstrap._set_variables_from_spec({"variables": {"custom": False}})
 
     assert (
@@ -141,6 +153,79 @@ def test_uuid_does_not_use_name_lookup():
         mock.patch.object(models.Variable, "objects") as variables,
         mock.patch.object(defaults, "set_var", return_value=True) as set_var,
     ):
+        variables.get_one_or_none.return_value = selector_variable()
         bootstrap._set_variables_from_spec({"variables": {str(VAR_UUID): 1}})
     variables.get_all.assert_not_called()
     set_var.assert_called_once_with(str(VAR_UUID), 1, VAR_UUID)
+
+
+@pytest.mark.parametrize("key", [str(VAR_UUID), "custom"])
+def test_rejects_profile_variable_even_if_value_already_exists(key):
+    variable = mock.Mock(
+        uuid=VAR_UUID, setter=models.ProfileVariableSetter(profiles=[])
+    )
+    with (
+        mock.patch.object(models.Variable, "objects") as variables,
+        mock.patch.object(defaults, "set_var") as set_var,
+    ):
+        variables.get_one_or_none.return_value = variable
+        variables.get_all.return_value = [variable]
+        with pytest.raises(ValueError, match="must use a selector setter"):
+            bootstrap._set_variables_from_spec({"variables": {key: 2}})
+    set_var.assert_not_called()
+
+
+def test_waits_for_all_element_variables_before_resolving_name():
+    first = mock.Mock(name="first")
+    first.name = "first"
+    first.status = bootstrap.repo_models.RepoElementStatus.ACTIVE
+    first.element = uuid.uuid4()
+    second = mock.Mock(name="second")
+    second.name = "second"
+    second.status = bootstrap.repo_models.RepoElementStatus.IN_PROGRESS
+    second.element = uuid.uuid4()
+    published = False
+
+    def advance(_):
+        nonlocal published
+        if second.status != bootstrap.repo_models.RepoElementStatus.ACTIVE:
+            second.status = bootstrap.repo_models.RepoElementStatus.ACTIVE
+        else:
+            published = True
+
+    def lookup(*, filters):
+        if "uuid" in filters:
+            return [selector_variable()] if published else []
+        assert published
+        return [selector_variable(), selector_variable()]
+
+    with (
+        mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as elements,
+        mock.patch.object(bootstrap.em_models.Resource, "objects") as resources,
+        mock.patch.object(models.Variable, "objects") as variables,
+        mock.patch.object(defaults, "set_var") as set_var,
+        mock.patch.object(bootstrap.time, "sleep", side_effect=advance) as sleep,
+    ):
+        elements.get_all.return_value = [first, second]
+        resources.get_all.return_value = [mock.Mock(uuid=VAR_UUID)]
+        variables.get_all.side_effect = lookup
+        with pytest.raises(ValueError, match="Ambiguous variable name"):
+            bootstrap._set_variables_from_spec(
+                {"elements": ["first", "second"], "variables": {"custom": 1}}
+            )
+    assert sleep.call_count == 2
+    set_var.assert_not_called()
+
+
+def test_variable_publication_times_out():
+    with (
+        mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as elements,
+        mock.patch.object(bootstrap.time, "monotonic", side_effect=[0, 121]),
+        mock.patch.object(defaults, "set_var") as set_var,
+    ):
+        elements.get_all.return_value = []
+        with pytest.raises(TimeoutError, match="element variable publication"):
+            bootstrap._set_variables_from_spec(
+                {"elements": ["missing"], "variables": {"custom": 1}}
+            )
+    set_var.assert_not_called()
