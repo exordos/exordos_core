@@ -1,0 +1,243 @@
+#    Copyright 2026 Genesis Corporation.
+#    Licensed under the Apache License, Version 2.0 (the "License").
+
+name: "core_notification_email"
+description: "Core email events through Exordos Notification"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "{{ version }}"
+  notification_email:
+    from_version: "2.0.1-dev"
+
+resources:
+  $core.config.configs:
+    # Wire core's IAM user-api to push events to this notification service.
+    # Instead of coupling core to a VS variable, we deliver the stock gcl_sdk
+    # HTTP event client configuration directly onto the core node(s) as config
+    # drop-ins:
+    #   * event_type_mapping.yaml  — maps core event KINDs to our event_type UUIDs
+    #   * exordos_core.d/90-notification-events.conf — enables the [events]
+    #     section (client_type=async + our endpoint), loaded via the
+    #     `--config-dir /etc/exordos_core/exordos_core.d` of ec-user-api.
+    # ec-user-api is restarted on change so the new client takes effect.
+    # Core uses a dedicated IAM identity restricted to confirmation events.
+    # Keep its rotating token separate: only the async sender needs the token,
+    # so renewal must not restart the user API and interrupt requests.
+    core_event_type_mapping:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exordos_core/event_type_mapping.yaml
+      target:
+        kind: node_set
+        node_set: $core_notification_email.imports.$core_set:uuid
+      on_change:
+        kind: shell
+        # Restart only once BOTH drop-ins are in place. The mapping and the
+        # [events] conf are two independent config renders applied in arbitrary
+        # order; guarding both on_change hooks on the presence of both files
+        # ensures ec-user-api is restarted exactly once (when the second file
+        # arrives) and never starts with [events] enabled but no mapping
+        # (which would crash build_client).
+        command: >-
+          if test -f /etc/exordos_core/event_type_mapping.yaml &&
+          test -f /etc/exordos_core/exordos_core.d/90-notification-events.conf; then
+          systemctl restart ec-user-api && systemctl restart ec-gservice;
+          fi
+      body:
+        kind: text
+        content: |
+          EventTypeMapping:
+              # exordos_core RegistrationEventPayload.KIND ->
+              # notification email_confirmation event_type UUID
+              IamUserRegistration: e0fe8070-e59c-4347-8df1-b3f638c06565
+              IamUserResetPassword: b7ac18fa-3935-4f52-848f-e64bbd19abfb
+    core_events_conf:
+      mode: "0600"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exordos_core/exordos_core.d/90-notification-events.conf
+      target:
+        kind: node_set
+        node_set: $core_notification_email.imports.$core_set:uuid
+      on_change:
+        kind: shell
+        command: >-
+          if test -f /etc/exordos_core/event_type_mapping.yaml &&
+          test -f /etc/exordos_core/exordos_core.d/90-notification-events.conf; then
+          systemctl restart ec-user-api && systemctl restart ec-gservice;
+          fi
+      body:
+        kind: text
+        content: |
+          [events]
+          enabled = true
+          client_type = async
+          event_type_mapping_filepath = /etc/exordos_core/event_type_mapping.yaml
+          project_id = 12345678-c625-4fee-81d5-f691897b8142
+          exordos_notification_endpoint = http://notification-cp.local.genesis-core.tech:8080
+    core_events_token:
+      mode: "0600"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exordos_core/exordos_core.d/91-notification-token.conf
+      target:
+        kind: node_set
+        node_set: $core_notification_email.imports.$core_set:uuid
+      on_change:
+        kind: shell
+        command: >-
+          if test -f /etc/exordos_core/event_type_mapping.yaml &&
+          test -f /etc/exordos_core/exordos_core.d/90-notification-events.conf; then
+          systemctl restart ec-gservice;
+          fi
+      body:
+        kind: text
+        content: |
+          f"
+          [events]
+          exordos_api_token = {$core.iam.tokens.$core_event_sender:access_token}
+          "
+
+  $core.iam.permissions:
+    core_confirmation_create:
+      name: exordos_notification.event_type_e0fe8070-e59c-4347-8df1-b3f638c06565.create
+    core_confirmation_read:
+      name: exordos_notification.event_type_e0fe8070-e59c-4347-8df1-b3f638c06565.read
+    core_reset_password_create:
+      name: exordos_notification.event_type_b7ac18fa-3935-4f52-848f-e64bbd19abfb.create
+    core_reset_password_read:
+      name: exordos_notification.event_type_b7ac18fa-3935-4f52-848f-e64bbd19abfb.read
+  $core.iam.roles:
+    core_event_sender:
+      name: notification-core-confirmation-sender
+      project_id: null
+  $core.iam.permissionbinding:
+    confirmation_create:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core.iam.permissions.$core_confirmation_create:uuid
+      project_id: null
+    confirmation_read:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core.iam.permissions.$core_confirmation_read:uuid
+      project_id: null
+    reset_password_create:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core.iam.permissions.$core_reset_password_create:uuid
+      project_id: null
+    reset_password_read:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core.iam.permissions.$core_reset_password_read:uuid
+      project_id: null
+    event_type_read:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core_notification_email.imports.$event_type_read:uuid
+      project_id: null
+  $core.iam.users:
+    core_event_sender:
+      username: notification-core-confirmation-sender
+      first_name: Notification
+      last_name: Core
+      email: noreply+notification-core@exordos.com
+      type: service
+      password: unused-by-a-service-account
+  $core.iam.rolebinding:
+    core_event_sender:
+      role: $core.iam.roles.$core_event_sender:uuid
+      user: $core.iam.users.$core_event_sender:uuid
+      project: null
+
+  $core.iam.tokens:
+    core_event_sender:
+      name: notification-core-confirmation-sender
+      user: $core.iam.users.$core_event_sender:uuid
+      iam_client: $core_notification_email.imports.$var_iam_default_client_uuid:value
+      issuer: f"http://core.{$core_notification_email.imports.$core_local_domain:name}/api/core/v1/iam/clients/{$core_notification_email.imports.$var_iam_default_client_uuid:value}"
+      scope: ""
+      auto_renew: true
+      expiration_delta: 604800
+
+  $exordos_notification.types.email.event_types:
+    email_confirmation:
+      uuid: "e0fe8070-e59c-4347-8df1-b3f638c06565"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      name: "email_confirmation"
+      description: "User email address confirmation"
+    reset_password:
+      uuid: "b7ac18fa-3935-4f52-848f-e64bbd19abfb"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      name: "reset_password"
+      description: "User password reset"
+
+  # Email letter templates — fully configurable per installation.
+  $exordos_notification.types.email.templates:
+    reset_password_template:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      name: "reset_password"
+      description: "Password reset letter"
+      provider: $core_notification_email.imports.$email_provider:uuid
+      event_type: $exordos_notification.types.email.event_types.$reset_password:uuid
+      is_default: true
+      params: {}
+      content:
+        kind: email
+        title: "Reset your password"
+        bodies:
+          - |
+            <p>A password reset was requested for your Exordos account.</p>
+            <p><a href="{{ '{{' }} site_endpoint {{ '}}' }}/reset-password?user_id={{ '{{' }} user.uuid {{ '}}' }}&amp;code={{ '{{' }} reset_code {{ '}}' }}">Reset password</a></p>
+            <p>If you did not request this change, you can ignore this email.</p>
+    email_confirmation_template:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      name: "email_confirmation"
+      description: "Email confirmation letter"
+      provider: $core_notification_email.imports.$email_provider:uuid
+      event_type: $exordos_notification.types.email.event_types.$email_confirmation:uuid
+      is_default: true
+      params: {}
+      content:
+        kind: email
+        title: "Confirm your email address"
+        bodies:
+          - |
+            <html>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>Welcome to Exordos!</h2>
+            <p>Hello <strong>{{ '{{' }} user.username {{ '}}' }}</strong>,</p>
+            <p>Your account has been created. Please confirm your email address by clicking the button below.</p>
+            <p style="text-align: center; margin: 32px 0;">
+              <a href="{{ '{{' }} site_endpoint {{ '}}' }}/confirm-email?user_id={{ '{{' }} user.uuid {{ '}}' }}&code={{ '{{' }} confirmation_code {{ '}}' }}"
+                 style="background: #1a1a1a; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-size: 16px; display: inline-block;">
+                Confirm email address
+              </a>
+            </p>
+            <p>Or copy the link manually:</p>
+            <p style="word-break: break-all; background: #f4f4f4; padding: 10px; font-size: 12px;">
+              {{ '{{' }} site_endpoint {{ '}}' }}/confirm-email?user_id={{ '{{' }} user.uuid {{ '}}' }}&code={{ '{{' }} confirmation_code {{ '}}' }}
+            </p>
+            <p style="color: #666; font-size: 12px;">The link is valid for 1 hour. This message was sent automatically. Do not reply.</p>
+            </body>
+            </html>
+
+
+imports:
+  core_set:
+    element: "$core"
+    kind: resource
+    link: "$core.compute.sets.$core_set"
+  var_iam_default_client_uuid:
+    element: "$core"
+    kind: resource
+    link: "$core.vs.variables.$iam_default_client_uuid"
+  core_local_domain:
+    element: "$core"
+    kind: resource
+    link: "$core.dns.domains.$local_domain"
+  event_type_read:
+    element: "$exordos_notification"
+    kind: resource
+    link: "$core.iam.permissions.$event_type_read"
+  email_provider:
+    element: "$notification_email"
+    kind: resource
+    link: "$exordos_notification.types.email.providers.$smtp_via_mailaas"

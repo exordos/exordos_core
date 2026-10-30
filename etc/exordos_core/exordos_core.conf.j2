@@ -56,9 +56,9 @@ enabled = False
 # event_type_mapping_filepath = event_type_mapping.yaml
 # exordos_notification_endpoint = http://127.0.0.1:8080/
 # exordos_api_version = v1
-# exordos_api_token = "<insert token here>"
 #
-# Enabling delivery to the notification service is done at runtime by the
-# exordos_notification element, which drops an [events] override into
-# /etc/exordos_core/exordos_core.d/ (loaded via --config-dir by ec-user-api).
-
+# The core_notification_email element enables asynchronous delivery and provisions
+# a managed IAM token. Its 91-notification-token.conf drop-in sets
+# [events] exordos_api_token; do not copy that token into this base config.
+# Both ec-user-api and ec-gservice load /etc/exordos_core/exordos_core.d/.
+# Token replacement restarts only ec-gservice. See docs/usage/notification-email.md.
