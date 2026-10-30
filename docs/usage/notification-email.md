@@ -49,11 +49,11 @@ Existing combined-element installations
 need a validated, data-preserving resource ownership/import migration before
 adopting the new element layout; do not remove their current SMTP resources.
 
-The transport-only Notification dependency is supplied by
-[Notification #115](https://github.com/exordos/exordos_notification/pull/115).
-The initial 2.0.0 transport still owns Core resources. Publish and register the
-companion split version before installing this Core element; its dependency
-floor prevents silently using that combined layout.
+This element requires `notification_email` version
+[2.0.1](https://github.com/exordos/exordos_notification/releases/tag/2.0.1)
+or later. The initial 2.0.0 transport still owns Core resources. Register the
+new transport version in the installation's repository before installing this
+Core element; its dependency floor excludes the old combined layout.
 
 After configuration, verify a real registration event leaves Core's queue,
 passes authenticated submission and status polling, and reaches the intended

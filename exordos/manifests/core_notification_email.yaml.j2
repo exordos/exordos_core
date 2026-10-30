@@ -11,7 +11,7 @@ requirements:
   core:
     from_version: "{{ version }}"
   notification_email:
-    from_version: "2.0.1-dev"
+    from_version: "2.0.1"
 
 resources:
   $core.config.configs:
@@ -111,28 +111,22 @@ resources:
   $core.iam.roles:
     core_event_sender:
       name: notification-core-confirmation-sender
-      project_id: null
   $core.iam.permissionbinding:
     confirmation_create:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core.iam.permissions.$core_confirmation_create:uuid
-      project_id: null
     confirmation_read:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core.iam.permissions.$core_confirmation_read:uuid
-      project_id: null
     reset_password_create:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core.iam.permissions.$core_reset_password_create:uuid
-      project_id: null
     reset_password_read:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core.iam.permissions.$core_reset_password_read:uuid
-      project_id: null
     event_type_read:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core_notification_email.imports.$event_type_read:uuid
-      project_id: null
   $core.iam.users:
     core_event_sender:
       username: notification-core-confirmation-sender
