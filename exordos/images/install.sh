@@ -120,13 +120,8 @@ sudo mkdir -p /etc/nginx/ssl
 sudo chown www-data:www-data /etc/nginx/ssl
 sudo mkdir -p /etc/nginx/exordos/
 
-# Cert to restrict default_server
-sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -subj "/C=PE/ST=Exordos/L=Exordos/O=Exordos core dummy cert. /OU=IT Department/CN=exordos.core" -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt
-
-# Block any connections not explicitly set
+# The LB driver renders a rejecting default_server for every port it listens on
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo cp "$GC_PATH/etc/nginx/sites-available/default" /etc/nginx/sites-available/default
-sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
 cat <<EOF | sudo tee -a /etc/nginx/nginx.conf
 include /etc/nginx/exordos/*.conf;
