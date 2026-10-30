@@ -1927,6 +1927,17 @@ class ManagedToken(
         default=None,
     )
 
+    def _get_project_by_uuid(self, user, str_uuid):
+        # A manifest may create its project after its token. Retry creation
+        # rather than persisting a project-scoped token without its project.
+        project = Project.objects.get_one(filters={"uuid": ra_filters.EQ(str_uuid)})
+        for _ in RoleBinding.objects.get_all(
+            filters={"user": ra_filters.EQ(user), "project": ra_filters.EQ(project)},
+            limit=1,
+        ):
+            return project
+        raise iam_e.Forbidden()
+
     def update(self, session=None, force=False):
         # The project follows the scope, and a new lifetime starts now.
         # Both are derived at creation, so an update has to derive them
