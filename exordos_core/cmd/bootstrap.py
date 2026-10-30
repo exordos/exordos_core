@@ -43,6 +43,7 @@ from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
 from exordos_core.repo.builders import element as repo_element_builder
 from exordos_core.repo.dm import models as repo_models
+from exordos_core.vs.dm import models as vs_models
 
 LOG = logging.getLogger(__name__)
 USER = "ubuntu"
@@ -1037,6 +1038,92 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
         time.sleep(0.5)
 
 
+def _wait_for_variable_publication(spec: dict[str, tp.Any], timeout_at: float) -> None:
+    """Wait for installed manifests and their declared variable records."""
+    if not spec.get("elements"):
+        return
+
+    while True:
+        installed = repo_models.RepoElement.objects.get_all(
+            filters={
+                "project_id": dm_filters.EQ(c.ZERO_UUID),
+                "installation_state": dm_filters.EQ(
+                    repo_models.RepoElementInstallationState.INSTALLED.value
+                ),
+            }
+        )
+        if set(spec["elements"]).issubset({e.name for e in installed}) and all(
+            e.status == repo_models.RepoElementStatus.ACTIVE and e.element is not None
+            for e in installed
+        ):
+            resources = em_models.Resource.objects.get_all(
+                filters={
+                    "element": dm_filters.In([e.element for e in installed]),
+                    "resource_link_prefix": dm_filters.EQ("$core.vs.variables"),
+                }
+            )
+            expected = {r.uuid for r in resources}
+            published = (
+                vs_models.Variable.objects.get_all(
+                    filters={"uuid": dm_filters.In(list(expected))}
+                )
+                if expected
+                else []
+            )
+            if expected == {v.uuid for v in published}:
+                return
+        if time.monotonic() > timeout_at:
+            raise TimeoutError(
+                "Timeout reached waiting for element variable publication"
+            )
+        time.sleep(0.5)
+
+
+def _set_variables_from_spec(spec: dict[str, tp.Any]) -> None:
+    """Idempotently seed values for variables created by installed elements."""
+    variables = spec.get("variables", {})
+    if not isinstance(variables, dict) or any(
+        not isinstance(key, str) or not key.strip() for key in variables
+    ):
+        raise ValueError("Bootstrap variables must be an object keyed by UUID or name")
+
+    timeout_at = time.monotonic() + 120
+    if variables:
+        _wait_for_variable_publication(spec, timeout_at)
+    for key, value in variables.items():
+        try:
+            var_uuid = sys_uuid.UUID(key)
+        except ValueError:
+            var_uuid = None
+
+        while True:
+            if var_uuid is None:
+                matches = vs_models.Variable.objects.get_all(
+                    filters={"name": dm_filters.EQ(key)}
+                )
+                if len(matches) > 1:
+                    raise ValueError(f"Ambiguous variable name {key!r}; use a UUID")
+                if matches:
+                    var_uuid = matches[0].uuid
+
+            if var_uuid is not None:
+                variable = vs_models.Variable.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(var_uuid)}
+                )
+                if variable is not None:
+                    if not isinstance(
+                        variable.setter, vs_models.SelectorVariableSetter
+                    ):
+                        raise ValueError(
+                            f"Variable {key!r} must use a selector setter to seed a value"
+                        )
+                    if bootstrap_defaults.set_var(str(var_uuid), value, var_uuid):
+                        break
+            if time.monotonic() > timeout_at:
+                raise TimeoutError(f"Timeout reached waiting for variable {key}")
+            time.sleep(0.5)
+
+
 def main() -> None:
     # Parse config
     config.parse(sys.argv[1:])
@@ -1082,6 +1169,7 @@ def main() -> None:
             bootstrap_defaults.ensure_idps(spec, CONF["iam"].global_salt)
             _set_defaults_vs(spec)
             _install_elements_from_spec(spec)
+            _set_variables_from_spec(spec)
             return
         except Exception:
             LOG.exception("Unable to perform bootstrap, retrying...")
