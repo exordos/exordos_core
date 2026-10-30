@@ -9,6 +9,7 @@
     "Licensing": "Лицензирование",
     "Local Deployment": "Локальное развёртывание",
     "Admin Guide": "Руководство администратора",
+    "Notification Email": "Почтовые уведомления",
     "Support": "Поддержка",
     "Security": "Безопасность",
     "MCP Server": "MCP-сервер",
