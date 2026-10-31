@@ -1378,6 +1378,8 @@ resources:
             replacement: f"/v1/iam/clients/{$core.vs.variables.$iam_default_client_uuid:value}$1"
 
 exports:
+  admin_project:
+    link: "$core.iam.projects.$admin"
   local_domain:
     link: "$core.dns.domains.$local_domain"
   core_lb:

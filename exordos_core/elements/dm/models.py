@@ -34,6 +34,7 @@ from restalchemy.dm import types_dynamic as ra_types_dyn
 from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import exceptions
 from exordos_core.common import utils as cm_utils
 from exordos_core.common.dm import models as cm
@@ -112,7 +113,7 @@ class Manifest(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.DumpToSimpleViewMixin,
 ):
     __tablename__ = "em_manifests"
@@ -424,7 +425,7 @@ class Element(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.CustomPropertiesMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "em_elements"
     __custom_properties__ = {
@@ -1375,7 +1376,7 @@ class ServiceTarget(srv_models.ServiceTarget):
 class Service(
     cm.ModelWithFullAsset,
     models.ModelWithTags,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):

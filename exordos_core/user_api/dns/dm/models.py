@@ -26,8 +26,8 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
 from restalchemy.dm import types_network
-from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import utils as u
 
 CONF = cfg.CONF
@@ -41,7 +41,7 @@ class SOARecordDeleteRestricted(exceptions.RestAlchemyException):
 class CommonModel(
     models.ModelWithTimestamp,
     models.ModelWithUUID,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     pass

@@ -39,6 +39,7 @@ from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic as ra_types_dynamic
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c
 from exordos_core.common import utils as u
 from exordos_core.events import payloads as event_payloads
@@ -343,7 +344,7 @@ class User(
     ModelWithSecret,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_users"
 
@@ -625,7 +626,7 @@ class Role(
     models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_roles"
 
@@ -653,7 +654,7 @@ class Permission(
     models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_permissions"
 
@@ -662,7 +663,7 @@ class PermissionBinding(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_binding_permissions"
 
@@ -688,6 +689,7 @@ class Organization(
     models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
+    audit_models.AuditLogSQLStorableMixin,
     orm.SQLStorableWithJSONFieldsMixin,
 ):
     __tablename__ = "iam_organizations"
@@ -751,7 +753,7 @@ class Organization(
 class OrganizationMember(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
 ):
     __tablename__ = "iam_organization_members"
@@ -777,7 +779,7 @@ class Project(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_projects"
 
@@ -880,7 +882,7 @@ class RoleBinding(
     models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_binding_roles"
 
@@ -1070,7 +1072,7 @@ class IamClient(
     ModelWithSecret,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_clients"
 
@@ -1563,7 +1565,7 @@ class IamClient(
 class Token(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_tokens"
 
@@ -1972,7 +1974,7 @@ class Idp(
     models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_idp"
 

@@ -29,8 +29,8 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
 from restalchemy.dm import types_network
-from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import utils as u
 from exordos_core.compute.dm import models as compute_models
@@ -114,7 +114,7 @@ class LB(
     models.ModelWithProject,
     models.ModelWithTags,
     QuotaModelMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
 ):
     __tablename__ = "net_lb"
@@ -185,7 +185,7 @@ class ChildModel(
     models.ModelWithTimestamp,
     models.ModelWithProject,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     parent = relationships.relationship(LB, required=True, read_only=True)
 
@@ -834,7 +834,7 @@ class Border(
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
 ):
     __tablename__ = "net_border"

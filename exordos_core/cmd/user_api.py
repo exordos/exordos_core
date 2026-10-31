@@ -20,6 +20,8 @@ import sys
 from gcl_looper.services import bjoern_service
 from gcl_looper.services import hub
 from gcl_sdk import migrations as sdk_migrations
+from gcl_sdk.audit import opts as audit_opts
+from gcl_sdk.audit.services import senders as audit_senders
 from gcl_sdk.events import clients as sdk_clients
 from gcl_sdk.events import constants as event_c
 from gcl_sdk.events import opts as sdk_opts
@@ -84,6 +86,7 @@ CONF.register_cli_opts(api_cli_opts, DOMAIN)
 CONF.register_cli_opts(iam_cli_opts, DOMAIN_IAM)
 ra_config_opts.register_posgresql_db_opts(CONF)
 sdk_opts.register_event_opts(CONF)
+audit_opts.register_audit_delivery_opts(CONF)
 
 
 def main():
@@ -141,7 +144,18 @@ def main():
 
         serv_hub.add_service(service)
 
-    if CONF[DOMAIN].workers > 1:
+    delivery_enabled = audit_opts.get_audit_delivery_config(CONF).enabled
+    if delivery_enabled:
+        audit_sender = audit_senders.AuditSenderService.build_from_config(
+            conf=CONF,
+            iter_min_period=3,
+        )
+        audit_sender.add_setup(
+            lambda: engines.engine_factory.configure_postgresql_factory(conf=CONF)
+        )
+        serv_hub.add_service(audit_sender)
+
+    if CONF[DOMAIN].workers > 1 or delivery_enabled:
         serv_hub.start()
     else:
         service.start()

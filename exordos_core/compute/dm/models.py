@@ -33,6 +33,7 @@ from restalchemy.dm import types_dynamic
 from restalchemy.dm import types_network as types_net
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as cc
 from exordos_core.common import system
 from exordos_core.common import utils
@@ -76,7 +77,7 @@ class MachinePool(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     __tablename__ = "machine_pools"
@@ -119,7 +120,7 @@ class MachinePool(
 
 class Volume(
     infra_models.Volume,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "node_volumes"
 
@@ -191,7 +192,7 @@ class NodeSet(
     ua_models.InstanceWithDerivativesMixin,
     QuotaModelMixin,
     models.ModelWithTags,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "compute_sets"
 
@@ -232,6 +233,7 @@ class Node(
     ImmutableDiskPolicyMixin,
     infra_models.Node,
     QuotaModelMixin,
+    audit_models.AuditLogSQLStorableMixin,
     orm.SQLStorableWithJSONFieldsMixin,
 ):
     __tablename__ = "nodes"
@@ -355,7 +357,9 @@ class Node(
         self.save()
 
 
-class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
+class Machine(
+    cm.ModelWithFullAsset, audit_models.AuditLogSQLStorableMixin, models.SimpleViewMixin
+):
     __tablename__ = "machines"
 
     cores = properties.property(
@@ -408,7 +412,7 @@ class Machine(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixi
 
 class MachineVolume(
     cm.ModelWithFullAsset,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     __tablename__ = "compute_machine_volumes"
@@ -504,7 +508,7 @@ class MachinePoolReservations(
 
 class Network(
     cm.ModelWithFullAsset,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     __tablename__ = "compute_networks"
@@ -534,6 +538,7 @@ class Network(
 
 class Subnet(
     cm.ModelWithFullAsset,
+    audit_models.AuditLogSQLStorableMixin,
     orm.SQLStorableWithJSONFieldsMixin,
     models.SimpleViewMixin,
 ):
@@ -629,7 +634,9 @@ class Subnet(
         )
 
 
-class Port(cm.ModelWithFullAsset, orm.SQLStorableMixin, models.SimpleViewMixin):
+class Port(
+    cm.ModelWithFullAsset, audit_models.AuditLogSQLStorableMixin, models.SimpleViewMixin
+):
     __tablename__ = "compute_ports"
 
     subnet = properties.property(types.UUID())
@@ -732,7 +739,7 @@ class Interface(
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
     models.SimpleViewMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "compute_net_interfaces"
 
@@ -777,7 +784,7 @@ class PlacementDomain(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "compute_placement_domains"
 
@@ -787,7 +794,7 @@ class PlacementZone(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "compute_placement_zones"
 
@@ -801,7 +808,7 @@ class PlacementZone(
 class PlacementPolicy(
     models.SimpleViewMixin,
     cm.ModelWithFullAsset,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "compute_placement_policies"
 
