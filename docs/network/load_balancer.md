@@ -103,7 +103,8 @@ Routing rules that define how traffic is handled:
       `Authorization: "Bearer <repository read token>"`. These headers apply only to the
       archive download, not requests to the served site. Reference a platform-managed
       token in manifests instead of embedding a user's temporary deployment token.
-      With headers, the agent requires `curl` and refuses redirects; use the final archive
+      With headers, the agent uses `wget` with an anonymous configuration file in `/dev/shm`
+      and refuses redirects; use the final archive
       URL. Header changes trigger a fresh download. Public downloads without headers
       keep the existing behavior. Upgrade the LB agent's `gcl_sdk` before using this field.
 - Modifiers (headers, rewrite rules)
