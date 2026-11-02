@@ -150,15 +150,19 @@ class TestUpgradeHandover:
         target = mock.MagicMock(spec=models.RepoElement)
         target.uuid = sys_uuid.uuid4()
         target.name = "empty"
+        target.version = "2.0.0"
         target.installation_state = (
             models.RepoElementInstallationState.UNINSTALLED.value
         )
         target.element = None
+        target.manifest = {"name": "empty"}
+        target.dependencies = {}
         return installed, target
 
     def _upgrade(self, installed, target):
         with mock.patch.object(models.RepoElement, "objects") as element_objects:
             element_objects.get_one.return_value = target
+            element_objects.get_all.return_value = []
             return models.RepoElement.upgrade(installed, target=str(target.uuid))
 
     def test_upgrade_returns_target_element(self):
@@ -205,3 +209,75 @@ class TestUpgradeHandover:
                 common_exc.ValidateException, match="Target element must be uninstalled"
             ):
                 models.RepoElement.upgrade(installed, target=str(target.uuid))
+
+    def test_upgrade_rejects_incompatible_dependency_before_handover(self):
+        installed, target = self._make_pair()
+        target.dependencies = {"opencode_server": {">=": "0.2.4"}}
+        dependency = mock.MagicMock(spec=models.RepoElement)
+        dependency.name = "opencode_server"
+        dependency.version = "0.2.1-dev+20261027111530.5c1c0ec1"
+        dependency.installation_state = models.RepoElementInstallationState.INSTALLED
+        runtime_element = installed.element
+
+        with mock.patch.object(models.RepoElement, "objects") as objects:
+            objects.get_one.return_value = target
+            objects.get_all.return_value = [dependency]
+            with pytest.raises(common_exc.ValidateException, match="opencode_server"):
+                models.RepoElement.upgrade(installed, target=str(target.uuid))
+
+        installed.update.assert_not_called()
+        target.update.assert_not_called()
+        assert installed.element == runtime_element
+        assert (
+            installed.installation_state
+            == models.RepoElementInstallationState.INSTALLED
+        )
+        assert (
+            target.installation_state == models.RepoElementInstallationState.UNINSTALLED
+        )
+        assert target.element is None
+
+    @pytest.mark.parametrize("minimum,allowed", [("3.0.0", False), ("1.0.0", True)])
+    def test_upgrade_checks_installed_dependents(self, minimum, allowed):
+        installed, target = self._make_pair()
+        target.version = "2.0.0"
+        dependent = mock.MagicMock(spec=models.RepoElement)
+        dependent.name = "consumer"
+        dependent.version = "1.0.0"
+        dependent.manifest = {"name": "consumer"}
+        dependent.dependencies = {"empty": {">=": minimum}}
+
+        with mock.patch.object(models.RepoElement, "objects") as objects:
+            objects.get_one.return_value = target
+            objects.get_all.return_value = [installed, dependent]
+            if allowed:
+                assert (
+                    models.RepoElement.upgrade(installed, target=str(target.uuid))
+                    is target
+                )
+            else:
+                with pytest.raises(common_exc.ValidateException, match="consumer"):
+                    models.RepoElement.upgrade(installed, target=str(target.uuid))
+                installed.update.assert_not_called()
+                target.update.assert_not_called()
+
+    def test_upgrade_checks_transitive_dependencies(self):
+        installed, target = self._make_pair()
+        target.dependencies = {"middle": {">=": "1.0.0"}}
+        middle = mock.MagicMock(spec=models.RepoElement)
+        middle.name = "middle"
+        middle.version = "1.0.0"
+        middle.repository = mock.Mock(priority=8192)
+        middle.manifest = {"name": "middle"}
+        middle.dependencies = {"opencode_server": {">=": "0.2.4"}}
+        middle.installation_state = models.RepoElementInstallationState.INSTALLED
+        dependency = mock.MagicMock(spec=models.RepoElement)
+        dependency.version = "0.2.1"
+        dependency.installation_state = models.RepoElementInstallationState.INSTALLED
+        with mock.patch.object(models.RepoElement, "objects") as objects:
+            objects.get_one.return_value = target
+            objects.get_all.side_effect = [[middle], [dependency]]
+            with pytest.raises(common_exc.ValidateException, match="opencode_server"):
+                models.RepoElement.upgrade(installed, target=str(target.uuid))
+        installed.update.assert_not_called()
+        target.update.assert_not_called()

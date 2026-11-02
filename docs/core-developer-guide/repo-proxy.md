@@ -308,7 +308,7 @@ The service determines what action to take based on the combination of
 
 #### Dependency resolution
 
-`_collect_dependencies(instance)` performs a recursive depth-first traversal of
+`repo.dm.models.collect_dependencies(instance)` performs a recursive depth-first traversal of
 the element's dependency graph:
 
 1. If the element's manifest is empty (lazy mode), actualizes it first.
@@ -317,9 +317,9 @@ the element's dependency graph:
 3. Checks if any installed element violates the version constraint
    (`DependencyConstraintError`).
 4. Filters candidates that satisfy the constraint
-   (`_matches_version_constraint`).
+   (`repo.dm.models.matches_version_constraint`).
 5. If no candidates match, raises `DependencyNotFoundError`.
-6. Selects the best candidate using `_element_sort_key` — preferring installed
+6. Selects the best candidate using `element_sort_key` — preferring installed
    elements, higher repository priority, release versions, and higher version
    numbers.
 7. Recurses into the selected dependency.
@@ -604,6 +604,11 @@ graph TB
   table exists solely to prevent uninstallation of elements that other installed
   elements depend on. It stores transitive dependencies, so even indirect
   dependents block uninstallation.
+- **Upgrade validation**: Before changing installation state, the upgrade action
+  resolves the target's full dependency closure and checks that installed
+  consumers accept the target version. Dependency resolution uses the target
+  version in place of the version being upgraded. Incompatible or missing
+  dependencies reject the action without switching the installed version.
 - **Upgrade ordering**: During upgrade, the old `InstalledManifest` is kept
   alive until the new one is confirmed installed with a linked EM Element. This
   prevents a gap where the element is temporarily absent from EM.
