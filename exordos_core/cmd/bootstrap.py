@@ -1039,39 +1039,24 @@ def _set_defaults_vs(spec: dict[str, tp.Any]):
 
 
 def _wait_for_variable_publication(spec: dict[str, tp.Any], timeout_at: float) -> None:
-    """Wait for installed manifests and their declared variable records."""
+    """Wait for declared variable records without requiring element activation."""
     if not spec.get("elements"):
         return
 
     while True:
-        installed = repo_models.RepoElement.objects.get_all(
-            filters={
-                "project_id": dm_filters.EQ(c.ZERO_UUID),
-                "installation_state": dm_filters.EQ(
-                    repo_models.RepoElementInstallationState.INSTALLED.value
-                ),
-            }
+        resources = em_models.Resource.objects.get_all(
+            filters={"resource_link_prefix": dm_filters.EQ("$core.vs.variables")}
         )
-        if set(spec["elements"]).issubset({e.name for e in installed}) and all(
-            e.status == repo_models.RepoElementStatus.ACTIVE and e.element is not None
-            for e in installed
-        ):
-            resources = em_models.Resource.objects.get_all(
-                filters={
-                    "element": dm_filters.In([e.element for e in installed]),
-                    "resource_link_prefix": dm_filters.EQ("$core.vs.variables"),
-                }
+        expected = {r.uuid for r in resources}
+        published = (
+            vs_models.Variable.objects.get_all(
+                filters={"uuid": dm_filters.In(list(expected))}
             )
-            expected = {r.uuid for r in resources}
-            published = (
-                vs_models.Variable.objects.get_all(
-                    filters={"uuid": dm_filters.In(list(expected))}
-                )
-                if expected
-                else []
-            )
-            if expected == {v.uuid for v in published}:
-                return
+            if expected
+            else []
+        )
+        if expected == {v.uuid for v in published}:
+            return
         if time.monotonic() > timeout_at:
             raise TimeoutError(
                 "Timeout reached waiting for element variable publication"

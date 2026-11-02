@@ -176,22 +176,11 @@ def test_rejects_profile_variable_even_if_value_already_exists(key):
 
 
 def test_waits_for_all_element_variables_before_resolving_name():
-    first = mock.Mock(name="first")
-    first.name = "first"
-    first.status = bootstrap.repo_models.RepoElementStatus.ACTIVE
-    first.element = uuid.uuid4()
-    second = mock.Mock(name="second")
-    second.name = "second"
-    second.status = bootstrap.repo_models.RepoElementStatus.IN_PROGRESS
-    second.element = uuid.uuid4()
     published = False
 
     def advance(_):
         nonlocal published
-        if second.status != bootstrap.repo_models.RepoElementStatus.ACTIVE:
-            second.status = bootstrap.repo_models.RepoElementStatus.ACTIVE
-        else:
-            published = True
+        published = True
 
     def lookup(*, filters):
         if "uuid" in filters:
@@ -206,24 +195,49 @@ def test_waits_for_all_element_variables_before_resolving_name():
         mock.patch.object(defaults, "set_var") as set_var,
         mock.patch.object(bootstrap.time, "sleep", side_effect=advance) as sleep,
     ):
-        elements.get_all.return_value = [first, second]
         resources.get_all.return_value = [mock.Mock(uuid=VAR_UUID)]
         variables.get_all.side_effect = lookup
         with pytest.raises(ValueError, match="Ambiguous variable name"):
             bootstrap._set_variables_from_spec(
                 {"elements": ["first", "second"], "variables": {"custom": 1}}
             )
-    assert sleep.call_count == 2
+    sleep.assert_called_once_with(0.5)
+    elements.get_all.assert_not_called()
     set_var.assert_not_called()
+
+
+def test_seeds_published_variable_without_repository_lookup():
+    with (
+        mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as elements,
+        mock.patch.object(bootstrap.em_models.Resource, "objects") as resources,
+        mock.patch.object(models.Variable, "objects") as variables,
+        mock.patch.object(defaults, "set_var", return_value=True) as set_var,
+        mock.patch.object(bootstrap.time, "sleep") as sleep,
+    ):
+        resources.get_all.return_value = [mock.Mock(uuid=VAR_UUID)]
+        variables.get_all.return_value = [selector_variable()]
+        variables.get_one_or_none.return_value = selector_variable()
+        bootstrap._set_variables_from_spec(
+            {"elements": ["custom"], "variables": {str(VAR_UUID): 1}}
+        )
+
+    set_var.assert_called_once_with(str(VAR_UUID), 1, VAR_UUID)
+    sleep.assert_not_called()
+    elements.get_all.assert_not_called()
+    resources.get_all.assert_called_once_with(
+        filters={"resource_link_prefix": bootstrap.dm_filters.EQ("$core.vs.variables")}
+    )
 
 
 def test_variable_publication_times_out():
     with (
-        mock.patch.object(bootstrap.repo_models.RepoElement, "objects") as elements,
+        mock.patch.object(bootstrap.em_models.Resource, "objects") as resources,
         mock.patch.object(bootstrap.time, "monotonic", side_effect=[0, 121]),
         mock.patch.object(defaults, "set_var") as set_var,
+        mock.patch.object(models.Variable, "objects") as variables,
     ):
-        elements.get_all.return_value = []
+        resources.get_all.return_value = [mock.Mock(uuid=VAR_UUID)]
+        variables.get_all.return_value = []
         with pytest.raises(TimeoutError, match="element variable publication"):
             bootstrap._set_variables_from_spec(
                 {"elements": ["missing"], "variables": {"custom": 1}}
