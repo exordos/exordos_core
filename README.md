@@ -52,5 +52,3 @@ Contributing to the project is highly appreciated! However, some rules should be
 - Changes should include not only new functionality or bug fixes, but also tests for the new code.
 - After the changes are completed and **tested**, a Pull Request should be created with a clear description of the new functionality. And add one of the project maintainers as a reviewer.
 - Changes can be merged only after receiving an approve from one of the project maintainers.
-
-LB static archive downloads support optional HTTP headers for authenticated repositories; see [load balancer documentation](docs/network/load_balancer.md).
