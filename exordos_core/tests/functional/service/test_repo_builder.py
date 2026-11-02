@@ -633,7 +633,7 @@ class TestRepoElementBuilderService:
             assert elem.status == repo_models.RepoElementStatus.AVAILABLE.value
 
     def test_collect_dependencies_no_deps(self, bootstrap_repo):
-        """_collect_dependencies should return just the element when no deps."""
+        """collect_dependencies should return just the element when no deps."""
         # Run repo builder to create elements
         repo_service = repo_builder.RepoProxyBuilderService()
         repo_service._iteration()
@@ -645,12 +645,12 @@ class TestRepoElementBuilderService:
             },
         )
 
-        result = self._service._collect_dependencies(core)
+        result = repo_models.collect_dependencies(core)
         assert len(result) == 1
         assert result[0].name == "core"
 
     def test_collect_dependencies_with_dep(self, bootstrap_repo):
-        """_collect_dependencies should return deps + the element itself."""
+        """collect_dependencies should return deps + the element itself."""
         # Run repo builder to create elements
         repo_service = repo_builder.RepoProxyBuilderService()
         repo_service._iteration()
@@ -662,14 +662,14 @@ class TestRepoElementBuilderService:
             },
         )
 
-        result = self._service._collect_dependencies(app)
+        result = repo_models.collect_dependencies(app)
         # core comes before app (dependency order), app is last
         names = [e.name for e in result]
         assert names[-1] == "app"
         assert "core" in names
 
     def test_collect_dependencies_circular(self, manifests_dir, bootstrap_repo):
-        """_collect_dependencies should handle circular dependencies."""
+        """collect_dependencies should handle circular dependencies."""
         _write_manifest(
             manifests_dir,
             "circular_a",
@@ -695,11 +695,11 @@ class TestRepoElementBuilderService:
         )
 
         # Should not hang
-        result = self._service._collect_dependencies(elem_a)
+        result = repo_models.collect_dependencies(elem_a)
         assert elem_a in result
 
     def test_collect_dependencies_not_found(self, manifests_dir, bootstrap_repo):
-        """_collect_dependencies should raise DependencyNotFoundError when dep is missing."""
+        """collect_dependencies should raise DependencyNotFoundError when dep is missing."""
         _write_manifest(
             manifests_dir,
             "missing_dep",
@@ -721,7 +721,7 @@ class TestRepoElementBuilderService:
         from exordos_core.repo import exceptions as repo_exceptions
 
         with pytest.raises(repo_exceptions.DependencyNotFoundError):
-            self._service._collect_dependencies(elem)
+            repo_models.collect_dependencies(elem)
 
     def test_install_element_via_iteration(self, bootstrap_repo):
         """Full iteration should install an element marked as INSTALLED."""

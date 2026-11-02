@@ -41,7 +41,6 @@ from exordos_core.common import exceptions as common_exc
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
-from exordos_core.repo.builders import element as repo_element_builder
 from exordos_core.repo.dm import models as repo_models
 
 LOG = logging.getLogger(__name__)
@@ -919,7 +918,7 @@ def _install_elements_from_spec(spec: dict[str, tp.Any]) -> None:
         if not candidates:
             raise RuntimeError(f"Unable to find available element {name}")
 
-        element = min(candidates, key=repo_element_builder._element_sort_key)
+        element = min(candidates, key=repo_models.element_sort_key)
         if element.status == repo_models.RepoElementStatus.NEW:
             element.status = repo_models.RepoElementStatus.AVAILABLE.value
         element.install()
