@@ -47,7 +47,7 @@ Table: `repo_repositories`
 | `priority` | Integer (0–16384) | Higher = preferred for dependency resolution. Default: 8192 |
 | `refresh_rate` | Integer (seconds) | How often to re-fetch inventory. 0 = periodic refresh disabled. Default: 3600 |
 | `sync_mode` | Enum | `copy` — download full element data immediately; `lazy` — download only name/version, fetch manifest on demand |
-| `driver_spec` | KindModel (JSONB) | Driver configuration. One of `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec`, `DatabaseDriverSpec` |
+| `driver_spec` | KindModel (JSONB) | Driver configuration. One of `RealmDriverSpec`, `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec`, `DatabaseDriverSpec` |
 | `next_refresh` | DateTime | When the next periodic refresh should occur |
 | `refresh_requested` | Boolean | Core-only flag for a one-shot explicit refresh; excluded from UA resources |
 
@@ -143,6 +143,16 @@ whether any `depends_on` record references the element being removed.
 Driver specs are discriminated unions (kind models) stored in the
 `driver_spec` JSONB column. Each spec has a `KIND` string that determines which
 driver class handles it.
+
+### RealmDriverSpec (`kind: "realm"`)
+
+Reads an element repository served by another realm using Bearer authentication.
+Set `url` to the full element repository URL, for example
+`https://realm.example/repo/<project_id>/exordos-elements/`, and `access_token`
+to a token with repository read permission for that project. The token is
+redacted in API responses. Replace it when it expires; this driver does not
+refresh tokens. Inventory, manifests and element inventories use the token.
+Artifact URIs remain ordinary URLs and require authentication by the downloader.
 
 ### NginxDriverSpec (`kind: "nginx"`)
 

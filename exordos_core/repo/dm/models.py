@@ -120,6 +120,27 @@ class NginxDriverSpec(AbstractDriverSpec):
         return urljoin(base_url, self.INVENTORY_FILE)
 
 
+class RealmDriverSpec(AbstractDriverSpec):
+    KIND = "realm"
+    INVENTORY_FILE = "inventory.json"
+
+    SENSITIVE_FIELDS = frozenset({"access_token"})
+
+    url = properties.property(
+        ra_types.String(max_length=2048),
+        required=True,
+    )
+    access_token = properties.property(
+        ra_types.String(),
+        required=True,
+    )
+
+    @property
+    def inventory_path(self) -> str:
+        base_url = self.url if self.url.endswith("/") else f"{self.url}/"
+        return urljoin(base_url, self.INVENTORY_FILE)
+
+
 class BootstrapDriverSpec(AbstractDriverSpec):
     KIND = "bootstrap"
 
@@ -197,6 +218,7 @@ class Repository(
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(NginxDriverSpec),
+            types_dynamic.KindModelType(RealmDriverSpec),
             types_dynamic.KindModelType(BootstrapDriverSpec),
             types_dynamic.KindModelType(DummyMigrationDriverSpec),
             types_dynamic.KindModelType(DatabaseDriverSpec),
