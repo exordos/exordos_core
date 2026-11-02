@@ -98,7 +98,14 @@ Routing rules that define how traffic is handled:
       not on `core_agent` LBs (their nginx is shared by every project) or
       `core` LBs with more than one node (each node has its own disk), and
       not together with `rewrite_url` (nginx rewrites before the auth check)
-    - `local_dir_download` - download tar.gz/zstd on LB itself, unpack it and serve data from local dir
+    - `local_dir_download` - download tar.gz/zstd on LB itself, unpack it and serve data from local dir.
+      Optional `headers` maps HTTP header names to values, for example
+      `Authorization: "Bearer <repository read token>"`. These headers apply only to the
+      archive download, not requests to the served site. Reference a platform-managed
+      token in manifests instead of embedding a user's temporary deployment token.
+      With headers, the agent requires `curl` and refuses redirects; use the final archive
+      URL. Header changes trigger a fresh download. Public downloads without headers
+      keep the existing behavior. Upgrade the LB agent's `gcl_sdk` before using this field.
 - Modifiers (headers, rewrite rules)
     - `headers` - modify headers
         - `auto_header`:

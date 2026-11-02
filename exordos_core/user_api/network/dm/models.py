@@ -493,9 +493,23 @@ class ArchivedTarUrl(types.Url):
         return value.endswith("tar.gz") or value.endswith("tar.zst")
 
 
+class DownloadHeaders(types.TypedDict):
+    def __init__(self):
+        super().__init__(types.String(max_length=8192))
+
+    def validate(self, value):
+        return super().validate(value) and all(
+            isinstance(name, str)
+            and re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", name)
+            and not re.search(r"[\x00-\x1f\x7f]", header)
+            for name, header in value.items()
+        )
+
+
 class RuleStaticDownloadKind(AbstractRuleKind):
     KIND = "local_dir_download"
     url = properties.property(ArchivedTarUrl(), required=True)
+    headers = properties.property(DownloadHeaders(), default=dict)
     is_spa = properties.property(types.Boolean(), default=True)
 
 
