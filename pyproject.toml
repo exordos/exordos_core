@@ -172,6 +172,7 @@ DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
 
 [project.entry-points."exordos.repo_proxy.drivers"]
+RealmProxyRepoDriver = "exordos_core.repo.drivers.realm:RealmProxyRepoDriver"
 NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"

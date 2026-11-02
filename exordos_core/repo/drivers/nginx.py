@@ -29,9 +29,11 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
 class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
+    KIND = "nginx"
+
     def __init__(self, repository: repo_models.Repository) -> None:
         super().__init__(repository)
-        if repository.driver_spec.KIND != "nginx":
+        if repository.driver_spec.KIND != self.KIND:
             raise ValueError(
                 f"Unsupported driver spec kind: {repository.driver_spec.KIND!r}"
             )
@@ -39,11 +41,15 @@ class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
         spec = repository.driver_spec
         self._validate_url(spec.url)
 
-        auth = None
-        if spec.username is not None:
-            auth = requests_auth.HTTPBasicAuth(spec.username, spec.password)
+        auth = self._get_auth(spec)
         self._client = bazooka.Client(default_timeout=30, auth=auth)
         self._spec = spec
+
+    @staticmethod
+    def _get_auth(spec):
+        if spec.username is not None:
+            return requests_auth.HTTPBasicAuth(spec.username, spec.password)
+        return None
 
     @staticmethod
     def _validate_url(url: str) -> None:
