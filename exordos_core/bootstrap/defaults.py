@@ -705,6 +705,7 @@ def ensure_realm_dns_domain(spec: dict[str, tp.Any]) -> bool:
         return True
 
     dns_models.Domain(
+        uuid=sys_uuid.UUID("b8617d7e-7ad0-4bd3-9cf4-4ee2b7a886b8"),
         name=domain_name,
         realm_id=realm_id,
         sync_only=True,

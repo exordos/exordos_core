@@ -15,6 +15,7 @@
 #    under the License.
 
 from unittest import mock
+import uuid as sys_uuid
 
 import pytest
 
@@ -34,6 +35,7 @@ def test_bootstrap_creates_sync_only_domain_from_realm_spec():
         )
 
     domain_model.assert_called_once_with(
+        uuid=sys_uuid.UUID("b8617d7e-7ad0-4bd3-9cf4-4ee2b7a886b8"),
         name="exordos.io",
         realm_id="a5f3957",
         sync_only=True,
