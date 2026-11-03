@@ -109,7 +109,7 @@ def database(empty_database):
         migration("0017-storage-cluster-config-6ab127.py").migration_step.upgrade(
             connection
         )
-        migration("0012-managed-ost-nodes-ade173.py").migration_step.upgrade(connection)
+        migration("0017-managed-ost-nodes-ade173.py").migration_step.upgrade(connection)
     return uri
 
 
@@ -656,7 +656,7 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
         cluster.insert()
         with models.StorageCluster._get_engine().session_manager() as session:
             with pytest.raises(ValueError, match="Delete managed OST clusters"):
-                migration("0012-managed-ost-nodes-ade173.py").migration_step.downgrade(
+                migration("0017-managed-ost-nodes-ade173.py").migration_step.downgrade(
                     session
                 )
         managed.reconcile(cluster)
