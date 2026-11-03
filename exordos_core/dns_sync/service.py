@@ -37,8 +37,6 @@ LOG = logging.getLogger(__name__)
 DNS_SYNC_TIMEOUT = 30
 DNS_SYNC_POOL_SIZE = 1
 FULL_SYNC_INTERVAL = 60
-# dnsdist-public.conf re-reads this file and routes the listed domains
-# to the "privatedns" pool.
 DNSDIST_DOMAINS_FILE = "/etc/dnsdist/publicdns-domains.txt"
 
 
