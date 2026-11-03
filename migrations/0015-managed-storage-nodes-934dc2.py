@@ -18,27 +18,32 @@ from restalchemy.storage.sql import migrations
 
 
 class MigrationStep(migrations.AbstractMigrationStep):
-    """Join storage and opaque-secret branches without changing their history."""
-
     def __init__(self):
-        self._depends = [
-            "0008-storage-nodes-pools-8ce6d2.py",
-            "0004-add-opaque-secrets-362f6d21.py",
-        ]
+        self._depends = ["0014-merge-rawstor-secrets-7a8e91.py"]
 
     @property
     def migration_id(self):
-        return "7a8e91c2-1287-42bf-a937-2d28ba9b63b4"
+        return "934dc209-6433-4ab2-95ec-878a9f7d1332"
 
     @property
     def is_manual(self):
         return False
 
     def upgrade(self, session):
-        pass
+        # Existing endpoints remain externally managed until explicitly adopted.
+        session.execute("""
+            ALTER TABLE storage_nodes
+                ADD COLUMN agent uuid,
+                ADD COLUMN builder uuid,
+                ADD COLUMN status varchar(32) NOT NULL DEFAULT 'ACTIVE';
+            ALTER TABLE storage_nodes ALTER COLUMN status SET DEFAULT 'NEW';
+        """)
 
     def downgrade(self, session):
-        pass
+        session.execute("""
+            ALTER TABLE storage_nodes DROP COLUMN agent, DROP COLUMN builder,
+                DROP COLUMN status;
+        """)
 
 
 migration_step = MigrationStep()
