@@ -1,0 +1,30 @@
+#    Copyright 2026 Genesis Corporation.
+#    Licensed under the Apache License, Version 2.0 (the "License")
+
+name: "workspace_dns"
+description: "Publish a workspace A record through the realm DNS domain"
+schema_version: 1
+version: "0.0.1"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.dns.domains.records:
+    workspace:
+      # Created by ensure_realm_dns_domain during bootstrap.
+      # For an existing domain, replace this with its actual UUID.
+      domain: "b8617d7e-7ad0-4bd3-9cf4-4ee2b7a886b8"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      type: "A"
+      ttl: 300
+      record:
+        kind: "A"
+        name: "workspace"
+        # Replace with the public IPv4 address of the workspace endpoint.
+        address: "203.0.113.10"
+
+# With realm_id=a5f3957 and base zone exordos.io, the published name is
+# workspace-a5f3957.exordos.io. The realm suffix is added automatically.
