@@ -2076,35 +2076,56 @@ class Idp(
 
     def authorize(
         self,
-        client_id,
-        redirect_uri,
-        state,
-        response_type,
-        scope,
+        client_id=None,
+        redirect_uri=None,
+        state=None,
+        response_type=None,
+        scope=None,
         nonce=NONCE_DEFAULT,
         code_challenge=None,
         code_challenge_method=None,
     ):
+        if not client_id or self.client_id != client_id:
+            raise iam_exceptions.InvalidClientId(client_id=client_id)
+        if not redirect_uri or not self.callback.check(redirect_uri):
+            raise iam_exceptions.InvalidRedirectUri(redirect_uri=redirect_uri)
+
+        def error_redirect(error, description):
+            uri = urllib.parse.urlsplit(redirect_uri)
+            params = [("error", error), ("error_description", description)]
+            if state is not None:
+                params.append(("state", state))
+            query = urllib.parse.urlencode(params)
+            if uri.query:
+                query = uri.query + "&" + query
+            return urllib.parse.urlunsplit(uri._replace(query=query))
+
+        if not response_type:
+            return error_redirect("invalid_request", "response_type is required")
+        if response_type not in IdpResponseType.list_response_types():
+            return error_redirect(
+                "unsupported_response_type", "Only response_type=code is supported"
+            )
+        if scope is None:
+            return error_redirect("invalid_request", "scope is required")
+        if self.nonce_required and not nonce:
+            return error_redirect("invalid_request", "nonce is required")
         if code_challenge is not None or code_challenge_method is not None:
             if (
                 code_challenge_method != "S256"
                 or not isinstance(code_challenge, str)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{43}", code_challenge)
             ):
-                raise iam_exceptions.InvalidPkceRequest()
-        if self.client_id != client_id:
-            raise iam_exceptions.InvalidClientId(client_id=client_id)
-        if not self.callback.check(redirect_uri):
-            raise iam_exceptions.InvalidRedirectUri(redirect_uri=redirect_uri)
-        if self.nonce_required and not nonce:
-            raise iam_exceptions.InvalidNonce(nonce=nonce)
+                return error_redirect(
+                    "invalid_request", "PKCE requires a valid S256 code_challenge"
+                )
 
         ctx = contexts.get_context()
         app_url = ctx.get_real_url_with_prefix()
 
         auth_info = IdpAuthorizationInfo(
             idp=self,
-            state=state,
+            state=state if state is not None else "",
             response_type=response_type,
             nonce=nonce,
             scope=scope,

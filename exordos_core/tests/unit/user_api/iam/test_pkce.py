@@ -14,6 +14,7 @@
 import datetime
 from types import SimpleNamespace
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from gcl_iam import exceptions as iam_exc
@@ -154,17 +155,24 @@ def test_verifier_without_challenge_is_rejected(exchange):
     ],
 )
 def test_authorize_rejects_invalid_pkce(challenge, method):
-    with pytest.raises(exceptions.InvalidPkceRequest):
-        models.Idp.authorize(
-            object(),
-            "client",
-            "uri",
-            "state",
-            "code",
-            "openid",
-            code_challenge=challenge,
-            code_challenge_method=method,
-        )
+    idp = SimpleNamespace(
+        client_id="client", callback=mock.Mock(return_value=True), nonce_required=False
+    )
+    uri = models.Idp.authorize(
+        idp,
+        "client",
+        "https://client.example/callback?existing=1",
+        "a+b &é",
+        "code",
+        "openid",
+        code_challenge=challenge,
+        code_challenge_method=method,
+    )
+    query = parse_qs(urlsplit(uri).query)
+    assert query["error"] == ["invalid_request"]
+    assert query["error_description"] == ["PKCE requires a valid S256 code_challenge"]
+    assert query["state"] == ["a+b &é"]
+    assert query["existing"] == ["1"]
 
 
 @pytest.mark.parametrize("challenge,method", [(None, None), (CHALLENGE, "S256")])
@@ -249,3 +257,63 @@ def test_pkce_failure_is_oauth_invalid_grant():
     handler._construct_error_response(request, exceptions.InvalidPkceGrant())
     assert request.ResponseClass.call_args.kwargs["status"] == 400
     assert request.ResponseClass.call_args.kwargs["json"]["error"] == "invalid_grant"
+
+
+@pytest.mark.parametrize(
+    "client_id,redirect_uri,exception",
+    [
+        (None, "https://client.example/cb", exceptions.InvalidClientId),
+        ("other", "https://client.example/cb", exceptions.InvalidClientId),
+        ("client", None, exceptions.InvalidRedirectUri),
+        ("client", "https://untrusted.example/cb", exceptions.InvalidRedirectUri),
+    ],
+)
+def test_authorize_checks_callback_before_pkce(client_id, redirect_uri, exception):
+    idp = SimpleNamespace(
+        client_id="client",
+        callback=SimpleNamespace(check=lambda uri: uri == "https://client.example/cb"),
+    )
+    with pytest.raises(exception):
+        models.Idp.authorize(idp, client_id, redirect_uri, code_challenge="invalid")
+
+
+@pytest.mark.parametrize(
+    "params,error",
+    [
+        ({"response_type": None}, "invalid_request"),
+        ({"response_type": "token"}, "unsupported_response_type"),
+        ({"scope": None}, "invalid_request"),
+        ({"nonce": ""}, "invalid_request"),
+    ],
+)
+@pytest.mark.parametrize("state", [None, "", "a+b &é"])
+def test_authorization_errors(params, error, state):
+    from exordos_core.user_api.iam.api import controllers
+
+    idp = SimpleNamespace(
+        client_id="client", callback=mock.Mock(return_value=True), nonce_required=True
+    )
+    idp.authorize = lambda **kwargs: models.Idp.authorize(idp, **kwargs)
+    controller = object.__new__(controllers.IdpController)
+    kwargs = dict(
+        client_id="client",
+        redirect_uri="https://client.example/cb?keep=1",
+        state=state,
+        response_type="code",
+        scope="openid",
+        nonce="nonce",
+    )
+    kwargs.update(params)
+    with mock.patch.object(models, "IdpAuthorizationInfo") as info:
+        body, status, headers = controller.authorize._get(controller, idp, **kwargs)
+        info.assert_not_called()
+    assert body is None
+    assert status == 307
+    query = parse_qs(urlsplit(dict(headers)["Location"]).query, keep_blank_values=True)
+    assert query["error"] == [error]
+    assert query["error_description"]
+    assert query["keep"] == ["1"]
+    if state is None:
+        assert "state" not in query
+    else:
+        assert query["state"] == [state]

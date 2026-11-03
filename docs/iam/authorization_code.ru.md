@@ -121,6 +121,14 @@ IAM проверяет, что:
 /?auth_uuid=<auth_uuid>&client_uuid=<client_uuid>&idp_uuid=<idp_uuid>
 ```
 
+Ошибки авторизации передаются в query callback через `error`,
+`error_description` и исходный `state` (если он передан), согласно
+[RFC 6749, раздел 4.1.2.1](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.2.1).
+Некорректные параметры PKCE возвращают `invalid_request`, неподдерживаемый
+тип ответа — `unsupported_response_type`. Существующие query-параметры
+callback сохраняются. Отсутствующий или неверный client ID либо redirect URI
+вызывает локальную ошибку API без перенаправления браузера.
+
 ### 2. Confirm
 
 После входа пользователя страница логина подтверждает запрос его токеном:

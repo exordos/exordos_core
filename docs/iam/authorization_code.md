@@ -121,6 +121,14 @@ IAM then creates an authorization request with a random `code`, valid for
 /?auth_uuid=<auth_uuid>&client_uuid=<client_uuid>&idp_uuid=<idp_uuid>
 ```
 
+Authorization errors use the callback query parameters `error`,
+`error_description` and the original `state` (if supplied), as specified by
+[RFC 6749 section 4.1.2.1](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.2.1).
+Invalid PKCE parameters return `invalid_request`; unsupported response types
+return `unsupported_response_type`. Existing callback query parameters are
+preserved. An invalid or missing client ID or redirect URI returns a local
+API error without redirecting the browser.
+
 ### 2. Confirm
 
 After the user signs in, the login page confirms the request with the user's
