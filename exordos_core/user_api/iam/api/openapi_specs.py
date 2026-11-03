@@ -199,6 +199,26 @@ OA_SPEC_GET_TOKEN_KWARGS = dict(
             "oneOf": [
                 {
                     "type": "object",
+                    "required": ["grant_type", "code"],
+                    "properties": {
+                        "grant_type": {
+                            "type": "string",
+                            "enum": [c.GRANT_TYPE_AUTHORIZATION_CODE],
+                        },
+                        "code": {"type": "string"},
+                        "redirect_uri": {"type": "string"},
+                        "client_id": {
+                            "type": "string",
+                            "description": "Required for service-user codes",
+                        },
+                        "client_secret": {
+                            "type": "string",
+                            "description": "Required for service-user codes",
+                        },
+                    },
+                },
+                {
+                    "type": "object",
                     "required": [
                         "grant_type",
                         "client_id",
@@ -317,6 +337,18 @@ OA_SPEC_GET_TOKEN_KWARGS = dict(
                             "enum": ["refresh_token"],
                         },
                         "refresh_token": {"type": "string"},
+                        "scope": {
+                            "type": "string",
+                            "description": "Service-user tokens retain their original project scope",
+                        },
+                        "client_id": {
+                            "type": "string",
+                            "description": "Required for service-user refresh",
+                        },
+                        "client_secret": {
+                            "type": "string",
+                            "description": "Required for service-user refresh",
+                        },
                     },
                 },
             ],
@@ -375,4 +407,105 @@ OA_SPEC_GET_ROLE_PERMISSIONS = dict(
         ),
     ],
     responses=oa_c.build_openapi_list_model_response("Permission_Get"),
+)
+
+
+OA_SPEC_CREATE_SERVICE_CODE = dict(
+    summary="Create a service user with delegated project permissions",
+    request_body=oa_c.build_openapi_req_body(
+        description=(
+            "Requires iam.user.create, iam.service_token.create, and a project-scoped caller token. "
+            "Every requested permission must be covered by the caller's permissions. "
+            "Exchange the returned code before expiration using authorization_code "
+            "at this client's get_token action with its client_id and client_secret. "
+            "The code can be used once; tokens are created only on exchange."
+        ),
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["username", "permissions"],
+            "properties": {
+                "username": {"type": "string", "minLength": 1, "maxLength": 128},
+                "description": {"type": "string", "maxLength": 255, "default": ""},
+                "first_name": {"type": "string", "maxLength": 128, "nullable": True},
+                "last_name": {"type": "string", "maxLength": 128, "nullable": True},
+                "expiration_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": True,
+                    "description": "Optional future timestamp with a timezone, at most 24 hours from creation; defaults to ten minutes",
+                },
+                "permissions": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "string", "example": "compute.node.read"},
+                },
+            },
+        },
+    ),
+    responses=oa_c.build_openapi_object_response(
+        properties={
+            "service_user_uuid": {"type": "string", "format": "uuid"},
+            "code": {"type": "string"},
+            "expires_in": {"type": "integer", "example": 600},
+            "scope": {"type": "string"},
+        },
+        description="Service identity and one-time authorization code",
+    ),
+)
+
+
+OA_SPEC_REVOKE_SERVICE_CODE = dict(
+    summary="Revoke a service-user authorization code",
+    request_body=oa_c.build_openapi_req_body(
+        description=(
+            "Requires iam.service_token.create and a project-scoped caller token. "
+            "Revokes a pending code for this client and the caller's current project. "
+            "Returns revoked=false if no matching pending code exists. "
+            "Tokens already issued from the code are unaffected."
+        ),
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+                "code": {"type": "string", "example": "service.<random_value>"}
+            },
+        },
+    ),
+    responses=oa_c.build_openapi_object_response(
+        properties={"revoked": {"type": "boolean"}},
+        description="Whether a pending code was revoked",
+    ),
+)
+
+
+OA_SPEC_GET_SERVICE_CODE_INFO = dict(
+    summary="Inspect a service-user authorization code",
+    request_body=oa_c.build_openapi_req_body(
+        description=(
+            "Requires iam.service_token.create and the code's project scope. "
+            "Returns pending code metadata for this client without exchanging it. "
+            "Unknown, revoked, exchanged, or differently scoped codes are rejected."
+        ),
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["code"],
+            "properties": {"code": {"type": "string"}},
+        },
+    ),
+    responses=oa_c.build_openapi_object_response(
+        properties={
+            "service_user_uuid": {"type": "string", "format": "uuid"},
+            "username": {"type": "string"},
+            "client_id": {"type": "string"},
+            "project_id": {"type": "string", "format": "uuid"},
+            "scope": {"type": "string"},
+            "permissions": {"type": "array", "items": {"type": "string"}},
+            "expires_at": {"type": "integer"},
+            "active": {"type": "boolean"},
+        },
+        description="Pending code identity, permissions, and validity",
+    ),
 )

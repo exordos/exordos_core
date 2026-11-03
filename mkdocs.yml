@@ -167,6 +167,7 @@ nav:
     - Example commands: em/cli.md
   - IAM:
     - Permissions: iam/permissions_overview.md
+    - Service users: iam/service-users.md
   - Network:
     - LBaaS API: network/load_balancer.md
   - Secrets:
