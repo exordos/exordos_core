@@ -23,7 +23,47 @@ from restalchemy.dm import properties
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
 
+from exordos_core.common import constants
 from exordos_core.compute.dm import models as nm
+
+
+def changed_node_set_targets(
+    model, resource_kind, derivative_kind, singleton_condition="FALSE"
+):
+    """Find existing targets whose assigned agents differ from set membership.
+
+    The table and optional singleton SQL condition come from the caller's
+    model definition; resource kinds are bound parameters.
+    """
+    rows = model._execute_expression(
+        f"""
+        SELECT instance.* FROM {model.__tablename__} AS instance
+        JOIN ua_target_resources AS master
+          ON master.uuid = instance.uuid AND master.kind = %s
+        CROSS JOIN LATERAL (
+            SELECT ARRAY(
+                SELECT child.agent FROM ua_target_resources AS child
+                WHERE child.master = instance.uuid AND child.kind = %s
+            ) AS agents
+        ) AS current
+        CROSS JOIN LATERAL (
+            SELECT ARRAY(
+                SELECT node.uuid FROM nodes AS node
+                WHERE node.node_set = (instance.target->>'node_set')::uuid
+                ORDER BY node.uuid = ANY(current.agents) DESC, node.uuid
+                LIMIT CASE WHEN {singleton_condition} THEN 1 ELSE NULL END
+            ) AS agents
+        ) AS desired
+        WHERE instance.target->>'kind' = 'node_set'
+          AND NOT (current.agents @> desired.agents
+                   AND desired.agents @> current.agents
+                   AND cardinality(current.agents) = cardinality(desired.agents))
+        ORDER BY instance.uuid
+        LIMIT %s
+        """,
+        (resource_kind, derivative_kind, constants.DEFAULT_SQL_LIMIT),
+    )
+    return model.restore_many_from_storage(rows)
 
 
 class AbstractTarget(types_dynamic.AbstractKindModel, models.SimpleViewMixin):
@@ -99,4 +139,9 @@ class NodeSetTarget(AbstractTarget):
         )
 
     def are_owners_alive(self) -> bool:
-        return bool(self._fetch_nodes())
+        return (
+            nm.NodeSet.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(self.node_set)}
+            )
+            is not None
+        )
