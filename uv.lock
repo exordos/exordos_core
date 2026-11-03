@@ -789,7 +789,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.4,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.6,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -892,7 +892,7 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.7.4"
+version = "3.7.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -907,9 +907,9 @@ dependencies = [
     { name = "restalchemy" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/36/cb/0e169a30e4bf05780a03c743cde4fef9507c44b284ed8d7a5836f670b07c/gcl_sdk-3.7.4.tar.gz", hash = "sha256:f1f1334672b4a66fc88f7ff82bb3bbaf7f9a85e029f69e9d2b8666c1996c486b", size = 408800, upload-time = "2026-10-28T09:29:33.085Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/8b/b85adb565e0e576b69bcb5c9bb6664856d19434deb66c4bb8af639052c3d/gcl_sdk-3.7.6.tar.gz", hash = "sha256:2293b884cc01b03563d65cfaaffa67111451e8e0314dd633b901f86f51f11fa2", size = 415454, upload-time = "2026-11-03T10:09:29.141Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/c3/b9ece5bcb12fc704983a134ddc4d8f356ecac87fa6f8b49a718ee00ce09d/gcl_sdk-3.7.4-py3-none-any.whl", hash = "sha256:803c86e6a8b22bdafe8c243d66bd4596897260d7e3169bd2cc7807ea231ff4f3", size = 363905, upload-time = "2026-10-28T09:29:31.447Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/d8/0ea1ff7d09d56df8e7cbcf75764558d8d45a4691afddbc7163521eeb6922/gcl_sdk-3.7.6-py3-none-any.whl", hash = "sha256:8854f93a178e29eb012cab23e8832943589e64d49ac9deb28dcfe64a50824bc4", size = 372302, upload-time = "2026-11-03T10:09:26.652Z" },
 ]
 
 [package.optional-dependencies]

@@ -609,6 +609,12 @@ def set_realm_uuid_var(spec: dict[str, tp.Any]) -> bool:
 
 
 def set_realm_domain_var(spec: dict[str, tp.Any]) -> bool:
+    # Get realm domain from spec
+    realm_domain_value = spec.get("realm_domain", "")
+    if not realm_domain_value:
+        LOG.warning("No realm domain found in spec")
+        return True
+
     val_uuid = sys_uuid.UUID("a6c149dc-9cfe-49c0-a0f0-d04e156b564e")
     existing_value = vs_models.Value.objects.get_one_or_none(
         filters={"uuid": dm_filters.EQ(val_uuid)}
@@ -623,12 +629,6 @@ def set_realm_domain_var(spec: dict[str, tp.Any]) -> bool:
     )
     if not realm_domain_var:
         return False
-
-    # Get realm domain from spec
-    realm_domain_value = spec.get("realm_domain", "")
-    if not realm_domain_value:
-        LOG.warning("No realm domain found in spec")
-        return True
 
     realm_domain_val = vs_models.Value(
         uuid=val_uuid,
