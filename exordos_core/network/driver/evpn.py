@@ -198,10 +198,11 @@ boot_api_opts = [
         help="Name machines know this installation by",
     ),
 ]
-try:
-    CONF.register_opts(boot_api_opts, "boot_api")
-except cfg.DuplicateOptError:  # pragma: no cover
-    pass
+for _boot_opt in boot_api_opts:
+    try:
+        CONF.register_opt(_boot_opt, "boot_api")
+    except cfg.DuplicateOptError:  # pragma: no cover
+        pass
 
 # Orchestration and status APIs, re-registered for the same reason.
 for _api, _port in (("orch_api", 11011), ("status_api", 11012)):
