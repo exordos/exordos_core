@@ -24,8 +24,13 @@ from exordos_core.common.exceptions import ValidateException
 class HypervisorCredentialsLoggingMiddleware(logging_mw.LoggingMiddleware):
     def process_request(self, req):
         path = req.path_info
-        if path.rstrip("/") != "/v1/compute/hypervisors" and not path.startswith(
-            "/v1/compute/hypervisors/"
+        if not any(
+            path.rstrip("/") == prefix or path.startswith(prefix + "/")
+            for prefix in (
+                "/v1/compute/hypervisors",
+                "/v1/compute/nodes",
+                "/v1/config/configs",
+            )
         ):
             return super().process_request(req)
         started = time.perf_counter()
@@ -63,6 +68,25 @@ class HypervisorPacker(packers.JSONPacker):
             raise ValidateException(
                 err="Invalid hypervisor fields or driver kind"
             ) from None
+
+
+class NodeBootstrapPacker(packers.JSONPacker):
+    def pack_resource(self, obj):
+        value = super().pack_resource(obj)
+        value.pop("bootstrap", None)
+        value.pop("ports", None)
+        return value
+
+    def unpack(self, value):
+        try:
+            return super().unpack(value)
+        except (
+            ra_exceptions.ParseError,
+            ra_exceptions.ValidationErrorException,
+            ra_exceptions.TypeError,
+            ra_exceptions.PropertyException,
+        ):
+            raise ValidateException(err="Invalid node or bootstrap fields") from None
 
 
 class CloudNetworkLinksController(controllers.PolicyBasedController):

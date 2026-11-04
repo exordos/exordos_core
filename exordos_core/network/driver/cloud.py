@@ -31,6 +31,8 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
         config = cloud_models.connection(
             network.driver_spec["connection"], network.project_id
         )
+        if config.driver_spec.KIND == "core":
+            raise ValueError("Not an OpenStack network")
         self.cloud = config.load_driver()
         self.external = None
 
@@ -62,6 +64,18 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
         if subnet is None:
             raise ValueError(f"Cloud subnet is not ready: {resource}")
         return subnet
+
+    def native_ready(self, subnet, shared):
+        router = self.cloud._find(self.cloud.api.network.routers(), "router", shared)
+        external = self._subnet(subnet)
+        return bool(
+            router
+            and any(
+                ip["subnet_id"] == external.id
+                for port in self.cloud.api.network.ports(device_id=router.id)
+                for ip in port.fixed_ips
+            )
+        )
 
     def list_subnets(self):
         return [

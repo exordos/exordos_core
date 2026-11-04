@@ -130,7 +130,9 @@ def validate_gateway_options(value, cloud=False):
 
     allowed = {"role", "gateway_image", "gateway_cores", "gateway_ram"}
     allowed |= (
-        {"external_network"}
+        {"external_subnet", "gateway_disk"}
+        if cloud == "core"
+        else {"external_network"}
         if cloud
         else {"external_subnet", "gateway_disk", "agent", "endpoint"}
     )
@@ -242,7 +244,7 @@ def definition_for(subnet, root, session, imported=None):
     clouds = [pool for pool in pools if pool.is_cloud]
     if clouds and (len(clouds) != 1 or len(pools) != 1):
         raise ValidateException(
-            err="An OpenStack subnet belongs to exactly one cloud hypervisor"
+            err="A provider subnet belongs to exactly one cloud hypervisor"
         )
     if clouds and clouds[0].project_id != root.project_id:
         raise ValidateException(err="Cloud hypervisor belongs to another project")
@@ -260,7 +262,7 @@ def definition_for(subnet, root, session, imported=None):
             err="Set subnet gateway overrides for hypervisors with different network defaults"
         )
     gateway = effective[0]
-    validate_gateway_options(gateway, bool(clouds))
+    validate_gateway_options(gateway, clouds[0].driver_spec.KIND if clouds else False)
     driver = {"driver": "ovs_evpn"}
     if clouds:
         driver = {"driver": "cloud", "connection": str(clouds[0].uuid)}
@@ -304,6 +306,7 @@ def validate_topology(root, definitions):
                 if endpoint["driver_spec"]["driver"] == "cloud":
                     if not gateway.get("gateway_image") or not (
                         gateway.get("external_network")
+                        or gateway.get("external_subnet")
                         or endpoint["driver_spec"].get("external_network")
                     ):
                         raise ValidateException(
@@ -328,6 +331,7 @@ def validate_topology(root, definitions):
 
 def save_subnet(subnet, network, session, imported=None):
     import netaddr
+
     from exordos_core.compute.dm import models
 
     lock(network, session)
@@ -515,7 +519,8 @@ def delete_subnet(subnet, session):
 
 
 def busy(segment, session=None):
-    from exordos_core.cloud.links import CloudNetworkLink, endpoints_for_subnet
+    from exordos_core.cloud.links import CloudNetworkLink
+    from exordos_core.cloud.links import endpoints_for_subnet
     from exordos_core.cloud.local import managed
     from exordos_core.compute.dm import models
     from exordos_core.user_api.network.dm import models as catalog
@@ -529,12 +534,18 @@ def busy(segment, session=None):
     endpoints = endpoints_for_subnet(segment.subnet, session)
     if any(endpoint.link not in owned_links for endpoint in endpoints):
         return True
+    gateways = {e.uuid for e in endpoints if managed(e)}
     for model in (models.Node, models.NodeSet):
         if any(
-            str((item.properties.get_value("default_network") or {}).get("subnet"))
-            == str(segment.subnet)
-            or str((item.properties.get_value("default_network") or {}).get("network"))
-            == str(segment.local_network)
+            not (model is models.Node and item.uuid in gateways)
+            and (
+                str((item.properties.get_value("default_network") or {}).get("subnet"))
+                == str(segment.subnet)
+                or str(
+                    (item.properties.get_value("default_network") or {}).get("network")
+                )
+                == str(segment.local_network)
+            )
             for item in model.objects.get_all(session=session)
         ):
             return True
@@ -549,7 +560,6 @@ def busy(segment, session=None):
     ):
         return True
 
-    gateways = {e.uuid for e in endpoints if managed(e)}
     return any(
         p.node not in gateways and p.owner_node not in gateways
         for p in models.Port.objects.get_all(
@@ -590,6 +600,8 @@ def delete_network(network, session=None):
 
 
 def router_id(network):
+    if network.driver_spec.get("driver") != "cloud":
+        return None
     if getattr(network, "owner_network", None) is None:
         return None
     segment = owner(network=network.uuid)
@@ -750,7 +762,7 @@ def _reconcile(network):
                 "subnet": str(part.subnet),
                 **part.definition.get("gateway", {}),
             }
-            if part.definition["driver_spec"].get("driver") == "cloud":
+            if part.definition["driver_spec"].get("external_network"):
                 endpoint.setdefault(
                     "external_network",
                     part.definition["driver_spec"].get("external_network"),
@@ -841,18 +853,7 @@ def _reconcile(network):
             driver = local.load_driver()
             ready = any(s.uuid == part.subnet for s in driver.list_subnets())
             if ready and (shared := router_id(local)):
-                router = driver.cloud._find(
-                    driver.cloud.api.network.routers(), "router", shared
-                )
-                external = driver._subnet(part.subnet)
-                ready = bool(
-                    router
-                    and any(
-                        ip["subnet_id"] == external.id
-                        for port in driver.cloud.api.network.ports(device_id=router.id)
-                        for ip in port.fixed_ips
-                    )
-                )
+                ready = driver.native_ready(part.subnet, shared)
             if vpn:
                 from gcl_sdk.agents.universal.dm import models as ua
 

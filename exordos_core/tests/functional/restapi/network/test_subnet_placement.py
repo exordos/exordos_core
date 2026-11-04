@@ -964,3 +964,6 @@ def test_owned_local_gateway_bootstraps_in_a_logical_subnet(client, monkeypatch)
             filters={"uuid": filters.EQ(pool["uuid"])}
         )
         assert SchedulerService._network_matches_pool(gateway, stored) is expected
+
+    client.delete(resource(client, "network", "networks", net["uuid"]))
+    assert all(part.status == "DELETING" for part in routed.parts(root(net)))

@@ -152,28 +152,36 @@ class CloudNetworkLink(
             if role == "auto":
                 config.pop("role", None)
             if network.driver_spec.get("driver") == "cloud":
+                connection = models.connection(
+                    network.driver_spec["connection"], self.project_id, session
+                )
+                core_provider = connection.driver_spec.KIND == "core"
+                transport_field = (
+                    "external_subnet" if core_provider else "external_network"
+                )
                 try:
-                    if set(config) - {
+                    allowed = {
                         "subnet",
                         "gateway_image",
-                        "external_network",
+                        transport_field,
                         "gateway_cores",
                         "gateway_ram",
                         "role",
-                    }:
+                    }
+                    if core_provider:
+                        allowed.add("gateway_disk")
+                    if set(config) - allowed:
                         raise ValueError("Unknown cloud endpoint option")
                     if (
                         not isinstance(config["gateway_image"], str)
                         or not config["gateway_image"].strip()
                     ):
                         raise ValueError("Gateway image is required")
-                    config["external_network"] = str(
-                        uuid.UUID(config["external_network"])
-                    )
-                    for field, default, minimum in [
-                        ("gateway_cores", 1, 1),
-                        ("gateway_ram", 1024, 512),
-                    ]:
+                    config[transport_field] = str(uuid.UUID(config[transport_field]))
+                    resources = [("gateway_cores", 1, 1), ("gateway_ram", 1024, 512)]
+                    if core_provider:
+                        resources.append(("gateway_disk", 8, 1))
+                    for field, default, minimum in resources:
                         config.setdefault(field, default)
                         if type(config[field]) is not int or config[field] < minimum:
                             raise ValueError("Invalid gateway resources")
@@ -518,12 +526,24 @@ class CloudLinkService(basic.BasicService):
             link.observed(secrets=secrets, status="IN_PROGRESS")
         return secrets
 
+    def _core_provider(self, endpoint):
+        if endpoint.connection is None:
+            return None
+        from gcl_sdk.cloud.drivers.core import CoreDriver
+
+        cloud, _, _ = self._provider(endpoint)
+        return cloud if isinstance(cloud, CoreDriver) else None
+
     def _provider(self, endpoint):
         cloud = models.connection(endpoint.connection).load_driver()
         subnet = self._subnet(endpoint)
         network = compute.Network.objects.get_one(
             filters={"uuid": filters.EQ(subnet.network)}
         )
+        from gcl_sdk.cloud.drivers.core import CoreDriver
+
+        if isinstance(cloud, CoreDriver):
+            return cloud, subnet, cloud.get("subnet", subnet.uuid)
         external = cloud._find(cloud.networks(), "network", network.uuid)
         external_subnet = (
             cloud._find(cloud.subnets(external), "subnet", subnet.uuid)
@@ -533,6 +553,10 @@ class CloudLinkService(basic.BasicService):
         return cloud, subnet, external_subnet
 
     def _reserve(self, link, endpoint, peers):
+        from exordos_core.cloud import core_links
+
+        if remote := self._core_provider(endpoint):
+            return core_links.reserve(remote, link, endpoint)
         if local.managed(endpoint):
             return local.reserve(link, endpoint)
         if endpoint.connection is None:
@@ -608,12 +632,18 @@ class CloudLinkService(basic.BasicService):
         }
 
     def _routes(self, endpoint, state, remote_cidrs):
+        from exordos_core.cloud import core_links
+
+        if remote := self._core_provider(endpoint):
+            return core_links.routes(remote, endpoint, state, remote_cidrs)
         if endpoint.connection is None and not local.managed(endpoint):
             return
         if local.managed(endpoint):
             from exordos_core.network.subnet import effective_routers
 
             subnet = self._subnet(endpoint)
+            if not remote_cidrs and subnet.status == "DELETING":
+                return
             old = [
                 {"destination": str(r["to"]), "nexthop": str(r["via"])}
                 for r in effective_routers(subnet)
@@ -672,6 +702,10 @@ class CloudLinkService(basic.BasicService):
         return target
 
     def _boot(self, link, endpoint, state, bundle):
+        from exordos_core.cloud import core_links
+
+        if remote := self._core_provider(endpoint):
+            return core_links.boot(remote, link, endpoint, state, bundle)
         if local.managed(endpoint):
             return local.booted(endpoint)
         if endpoint.connection is None:
@@ -737,6 +771,10 @@ class CloudLinkService(basic.BasicService):
         actual = ua.Resource.objects.get_all(
             filters={"uuid": filters.EQ(endpoint.uuid), "kind": filters.EQ(KIND)}
         )
+        from exordos_core.cloud import core_links
+
+        if remote := self._core_provider(endpoint):
+            return core_links.remove(remote, link, endpoint)
         if endpoint.connection is None:
             if local.managed(endpoint):
                 if link.state.get(str(endpoint.uuid), {}).get("gateway_ip"):
@@ -812,6 +850,11 @@ class CloudLinkService(basic.BasicService):
             if local.managed(endpoint):
                 local.fence(endpoint)
             elif endpoint.connection is not None:
+                from exordos_core.cloud import core_links
+
+                if remote := self._core_provider(endpoint):
+                    core_links.fence(remote, endpoint)
+                    continue
                 cloud = models.connection(endpoint.connection).load_driver()
                 server = cloud.server(
                     endpoint.uuid, uuid.uuid5(endpoint.connection, "network-gateways")
