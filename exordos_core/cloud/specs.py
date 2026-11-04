@@ -95,3 +95,45 @@ class OpenStackConnectionSpec(AbstractConnectionSpec):
 class OpenStackHypervisorSpec(OpenStackConnectionSpec):
     volume_type = properties.property(types.String(), default="__DEFAULT__")
     key_name = properties.property(types.AllowNone(types.String()), default=None)
+
+
+class CoreHypervisorSpec(AbstractConnectionSpec):
+    KIND = "core"
+    SENSITIVE_FIELDS = frozenset({"auth"})
+
+    api_url = properties.property(
+        types.String(min_length=1, max_length=2048), required=True
+    )
+    project_id = properties.property(types.UUID(), required=True)
+    hypervisors = properties.property(types.TypedList(types.UUID()), required=True)
+    auth = properties.property(types.Dict(), required=True)
+
+    def driver_config(self, connection):
+        from gcl_sdk.cloud.drivers.core import CoreConfig
+
+        try:
+            return CoreConfig(
+                connection,
+                self.api_url,
+                self.project_id,
+                tuple(self.hypervisors),
+                self.auth,
+            )
+        except ValueError as error:
+            raise ValidateException(err=str(error)) from None
+
+    def validate_config(self, connection):
+        self.driver_config(connection)
+
+    def load_driver(self, connection):
+        from gcl_sdk.cloud.drivers.core import CoreDriver
+
+        return CoreDriver(self.driver_config(connection))
+
+    def authenticate(self, connection):
+        try:
+            return self.load_driver(connection).authenticate()
+        except Exception:
+            raise ValidateException(
+                err="Unable to authenticate the remote Core project"
+            ) from None

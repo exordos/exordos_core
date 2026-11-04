@@ -27,17 +27,18 @@ from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as storage_exc
 
+from exordos_core.cloud.api import HypervisorPacker
+from exordos_core.cloud.api import NodeBootstrapPacker
 from exordos_core.common import constants as core_constants
 from exordos_core.common.api.controllers import ObservationResponseMixin
 from exordos_core.common.api.controllers import StoredFieldsQueryMixin
 from exordos_core.common.dm import networking as networking_types
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as models
-from exordos_core.cloud.api import HypervisorPacker
 from exordos_core.user_api.compute.dm import models as user_models
 
 
-class NodeResource(resources.ResourceByRAModel):
+class NodeResource(resources.ResourceByModelWithCustomProps):
     def generate_schema_object(self, method, openapi_version):
         schema = super().generate_schema_object(method, openapi_version)
         if method in (ra_c.CREATE, ra_c.UPDATE):
@@ -146,6 +147,7 @@ class NodesController(
 
     __policy_name__ = "node"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
+    __packer__ = NodeBootstrapPacker
 
     __resource__ = NodeResource(
         model_class=user_models.Node,
@@ -155,12 +157,32 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "ports": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RW,
+                },
+                "bootstrap": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RW,
+                },
             },
         ),
     )
 
     def create(self, **kwargs):
         # Validate disk spec
+        if kwargs.get("ports"):
+            from gcl_iam import rules
+
+            self._enforcer.enforce(
+                rules.Rule("network", "port", "update"), do_raise=True
+            )
+        if kwargs.get("bootstrap"):
+            from gcl_iam import rules
+
+            self._enforcer.enforce(
+                rules.Rule("config", "config", "create"), do_raise=True
+            )
         self.model.validate_network_input(kwargs)
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
         from exordos_core.network.permissions import gate_default_network
@@ -198,7 +220,15 @@ class NodesController(
 
     def delete(self, uuid):
         self._require_unmanaged_gateway(uuid)
-        return super().delete(uuid)
+        from gcl_iam import rules
+
+        self._enforce("delete")
+        node = self.get(uuid=uuid)
+        node.delete(
+            authorize_bootstrap=lambda: self._enforcer.enforce(
+                rules.Rule("config", "config", "delete"), do_raise=True
+            )
+        )
 
     def _require_unmanaged_gateway(self, uuid):
         from restalchemy.storage import exceptions

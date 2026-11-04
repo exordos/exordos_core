@@ -94,3 +94,7 @@ Native OpenStack pools and routed private links are documented in
 credentials through API or CLI; Core supplies agent bootstrap settings.
 Use [logical networks](docs/network/logical-networks.md) to allocate a `/23`
 for each subnet and place NodeSet replicas on its referenced hypervisors.
+
+Another Core installation can provide native VM, disk and network resources;
+see [Core multicloud](docs/network/core-multicloud.md) for project scope,
+guest images and managed private connectivity.

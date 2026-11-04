@@ -37,7 +37,9 @@ from restalchemy.storage.sql import orm
 
 from exordos_core.cloud.locking import network_delete_guard
 from exordos_core.cloud.models import connection_guard
-from exordos_core.cloud.specs import OpenStackHypervisorSpec, AbstractConnectionSpec
+from exordos_core.cloud.specs import AbstractConnectionSpec
+from exordos_core.cloud.specs import CoreHypervisorSpec
+from exordos_core.cloud.specs import OpenStackHypervisorSpec
 from exordos_core.common import constants as cc
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import system
@@ -94,6 +96,7 @@ class MachinePool(
             types_dynamic.KindModelType(ua_pool.ExordosLocalHyperDriverSpec),
             types_dynamic.KindModelType(ua_pool.DummyPoolDriverSpec),
             types_dynamic.KindModelType(OpenStackHypervisorSpec),
+            types_dynamic.KindModelType(CoreHypervisorSpec),
         ),
         required=True,
     )
@@ -145,7 +148,9 @@ class MachinePool(
     def insert(self, session=None):
         from exordos_core.network.routed import validate_gateway_options
 
-        validate_gateway_options(self.network_defaults, self.is_cloud)
+        validate_gateway_options(
+            self.network_defaults, self.driver_spec.KIND if self.is_cloud else False
+        )
         if self.is_cloud:
             self.driver_spec.validate_config(self.uuid)
             self.driver_state = self._authenticate()
@@ -155,7 +160,9 @@ class MachinePool(
     def update(self, session=None, force=False):
         from exordos_core.network.routed import validate_gateway_options
 
-        validate_gateway_options(self.network_defaults, self.is_cloud)
+        validate_gateway_options(
+            self.network_defaults, self.driver_spec.KIND if self.is_cloud else False
+        )
         stored = self.objects.get_one(
             filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
         )
@@ -192,7 +199,10 @@ class MachinePool(
 
     @connection_guard(lambda self: self.uuid)
     def update_driver_settings(self, *, settings, session=None):
-        if not isinstance(settings, dict) or set(settings) - {"volume_type", "key_name"}:
+        if not isinstance(settings, dict) or set(settings) - {
+            "volume_type",
+            "key_name",
+        }:
             raise ex_exceptions.ValidateException(
                 err="Only volume_type and key_name can be updated as driver settings"
             )

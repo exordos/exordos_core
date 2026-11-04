@@ -22,9 +22,15 @@ class ControllerMetaPool(pool.MetaPool):
         )
         cached = self.__driver_map__.get(key)
         if cached is None or cached[0] != stamp:
+            if config.driver_spec.KIND == "core":
+                from gcl_sdk.agents.universal.drivers.core_pool import CorePoolDriver
+
+                driver_class = CorePoolDriver
+            else:
+                driver_class = cloud.CloudPoolDriver
             cached = (
                 stamp,
-                cloud.CloudPoolDriver(self, provider=config.load_driver()),
+                driver_class(self, provider=config.load_driver()),
             )
             self.__driver_map__[key] = cached
         return cached[1]

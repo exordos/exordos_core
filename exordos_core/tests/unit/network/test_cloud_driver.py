@@ -219,6 +219,7 @@ def test_cloud_bootstrap_uses_the_installation_runtime_endpoints_and_sdk(
 ):
     from exordos_core.cloud import bootstrap
 
+    bootstrap.agent_config()
     with mock.patch.object(bootstrap, "version", return_value="4.5.6"):
         bootstrap.CONF.set_override("gc_boot_api", boot, group="boot_api")
         bootstrap.CONF.set_override("bind_port", ports[0], group="orch_api")
@@ -261,7 +262,10 @@ def test_cloud_controller_resolves_credentials_without_serializing_them(monkeypa
     assert connection.load_driver.call_count == 3
 
 
-def test_cloud_connection_logging_omits_bodies_and_queries(caplog):
+@pytest.mark.parametrize(
+    "path", ["compute/hypervisors", "compute/nodes", "config/configs"]
+)
+def test_cloud_connection_logging_omits_bodies_and_queries(caplog, path):
     import logging
 
     import webob
@@ -269,15 +273,17 @@ def test_cloud_connection_logging_omits_bodies_and_queries(caplog):
     from exordos_core.cloud.api import HypervisorCredentialsLoggingMiddleware
 
     request = webob.Request.blank(
-        "/v1/compute/hypervisors/?auth=private-sentinel",
+        "/v1/" + path + "/?auth=private-sentinel",
         method="POST",
         json_body={"auth": {"password": "private-sentinel"}},
     )
     app = HypervisorCredentialsLoggingMiddleware(
-        lambda env, start: webob.Response(json_body={"ok": True})(env, start)
+        lambda env, start: webob.Response(json_body={"value": "private-sentinel"})(
+            env, start
+        )
     )
     with caplog.at_level(logging.DEBUG, logger="restalchemy.api.middlewares.logging"):
         response = request.get_response(app)
     assert response.status_int == 200
     assert "private-sentinel" not in caplog.text
-    assert "hypervisors" in caplog.text
+    assert path in caplog.text
