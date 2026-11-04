@@ -58,6 +58,67 @@ def network(client, config):
     )
 
 
+def test_public_driver_settings_keep_credentials_private(client):
+    config = connection(client)
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    result = client.post(
+        path.rstrip("/") + "/actions/update_driver_settings/invoke",
+        json={"settings": {"volume_type": "fast", "key_name": "operator"}},
+    ).json()
+    assert result["driver_spec"]["volume_type"] == "fast"
+    assert result["driver_spec"]["key_name"] == "operator"
+    assert "auth" not in result["driver_spec"]
+    from exordos_core.compute.dm.models import MachinePool
+
+    saved = MachinePool.objects.get_one(filters={"uuid": filters.EQ(uuid.UUID(config["uuid"]))})
+    assert saved.driver_spec.auth["application_credential_secret"] == "private-sentinel"
+
+
+@pytest.mark.parametrize("settings", [
+    {"auth": {}}, {"auth_url": "https://other/v3"}, {"region": "other"},
+    {"kind": "libvirt"}, {"volume_type": 42},
+])
+def test_public_driver_settings_reject_credential_identity_and_invalid_fields(client, settings):
+    config = connection(client)
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    with pytest.raises(exceptions.BadRequestError):
+        client.post(path.rstrip("/") + "/actions/update_driver_settings/invoke", json={"settings": settings})
+    assert client.get(path).json()["driver_spec"] == config["driver_spec"]
+
+
+def test_driver_setting_update_does_not_restore_stale_credentials(client):
+    from exordos_core.compute.dm.models import MachinePool
+
+    config = connection(client)
+    query = {"uuid": filters.EQ(uuid.UUID(config["uuid"]))}
+    stale = MachinePool.objects.get_one(filters=query)
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    replacement = dict(config["driver_spec"], auth={
+        "application_credential_id": "replacement", "application_credential_secret": "rotated-sentinel",
+    })
+    client.put(path, json={"driver_spec": replacement})
+    stale.update_driver_settings(settings={"volume_type": "fast"})
+    saved = MachinePool.objects.get_one(filters=query)
+    assert saved.driver_spec.volume_type == "fast"
+    assert saved.driver_spec.auth == replacement["auth"]
+
+
+def test_public_driver_settings_require_hypervisor_update_permission(client, auth_test1_user, user_api_client):
+    config = connection(client)
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    unprivileged = user_api_client(auth_test1_user)
+    with pytest.raises(exceptions.ForbiddenError):
+        unprivileged.post(path.rstrip("/") + "/actions/update_driver_settings/invoke", json={"settings": {"volume_type": "fast"}})
+    assert client.get(path).json()["driver_spec"] == config["driver_spec"]
+
+
+def test_public_driver_settings_do_not_apply_to_native_hypervisors(client):
+    config = connection(client, driver_spec={"kind": "libvirt", "connection_uri": "qemu:///system"})
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    with pytest.raises(exceptions.BadRequestError):
+        client.post(path.rstrip("/") + "/actions/update_driver_settings/invoke", json={"settings": {"volume_type": "fast"}})
+
+
 def test_cloud_connection_persists_and_pool_resolves_only_its_configuration(client):
     config = connection(client)
     net = network(client, config)

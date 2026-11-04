@@ -199,21 +199,36 @@ def test_cloud_authentication_error_does_not_echo_provider_secrets():
     assert "private-sentinel" not in str(error.value)
 
 
-def test_cloud_bootstrap_uses_the_installation_endpoint_and_sdk():
+@pytest.mark.parametrize(
+    "boot,ports,expected",
+    [
+        (
+            "http://core.example:11013",
+            (11011, 11012),
+            ("http://core.example:11011", "http://core.example:11012"),
+        ),
+        (
+            "https://[2001:db8::1]:443/boot/",
+            (11443, 12443),
+            ("http://[2001:db8::1]:11443", "http://[2001:db8::1]:12443"),
+        ),
+    ],
+)
+def test_cloud_bootstrap_uses_the_installation_runtime_endpoints_and_sdk(
+    boot, ports, expected
+):
     from exordos_core.cloud import bootstrap
 
     with mock.patch.object(bootstrap, "version", return_value="4.5.6"):
-        bootstrap.CONF.set_override(
-            "gc_boot_api", "https://core.example/bootstrap/", group="boot_api"
-        )
+        bootstrap.CONF.set_override("gc_boot_api", boot, group="boot_api")
+        bootstrap.CONF.set_override("bind_port", ports[0], group="orch_api")
+        bootstrap.CONF.set_override("bind_port", ports[1], group="status_api")
         try:
-            assert bootstrap.agent_config() == (
-                "https://core.example/bootstrap/",
-                "https://core.example/bootstrap/",
-                "gcl_sdk==4.5.6",
-            )
+            assert bootstrap.agent_config() == (*expected, "gcl_sdk==4.5.6")
         finally:
             bootstrap.CONF.clear_override("gc_boot_api", group="boot_api")
+            bootstrap.CONF.clear_override("bind_port", group="orch_api")
+            bootstrap.CONF.clear_override("bind_port", group="status_api")
 
 
 def test_cloud_controller_resolves_credentials_without_serializing_them(monkeypatch):

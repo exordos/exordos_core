@@ -87,7 +87,23 @@ exordos compute hypervisors update-credentials "$CLOUD_HYPERVISOR_ID" \
 `auth_type: "v3applicationcredential"` и `application_credential_id` вместе
 с `application_credential_secret` внутри `auth`.
 
-Адреса Orchestrator/Status берутся из общего Boot API инсталляции.
+Несекретные настройки драйвера меняются без повторной передачи credentials:
+
+```sh
+exordos compute hypervisors update "$CLOUD_HYPERVISOR_ID" --driver-spec volume_type=fast
+```
+
+Частичное изменение OpenStack принимает `volume_type` и `key_name`, отдельно
+от изменения имени/site. Запрос `POST /v1/compute/hypervisors/<uuid>/actions/update_driver_settings/invoke`
+с `{"settings": {"volume_type": "fast"}}` сохраняет credentials на Core.
+Конечные квоты сохраняют значения провайдера. Безлимитные квоты (`-1`)
+представлены верхней границей поддерживаемого счётчика; доступная квота
+не означает физическую ёмкость провайдера.
+
+Адреса Orchestrator/Status используют хост из Boot API инсталляции
+и порты `orch_api.bind_port` и `status_api.bind_port` из её конфигурации.
+Оба порта HTTP API должны быть опубликованы на этом хосте.
+Протокол агента шифрует запросы и ответы ключом узла.
 Агентам нужны доступный адрес сервиса и обратный маршрут. Адрес сервиса должен
 быть отделён от служб самого link-шлюза: новые соединения из туннеля к ним
 блокируются. Доступ к провайдеру и доступ местных агентов к Core должны

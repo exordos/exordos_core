@@ -191,6 +191,22 @@ class MachinePool(
         return super().update(session=session, force=force)
 
     @connection_guard(lambda self: self.uuid)
+    def update_driver_settings(self, *, settings, session=None):
+        if not isinstance(settings, dict) or set(settings) - {"volume_type", "key_name"}:
+            raise ex_exceptions.ValidateException(
+                err="Only volume_type and key_name can be updated as driver settings"
+            )
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if not stored.is_cloud:
+            raise ex_exceptions.ValidateException(err="A cloud hypervisor is required")
+        values = {**stored.driver_spec.dump_to_simple_view(), **settings}
+        stored.driver_spec = type(stored.driver_spec).restore_from_simple_view(**values)
+        stored.update(session=session)
+        return stored
+
+    @connection_guard(lambda self: self.uuid)
     def delete(self, session=None, **kwargs):
         from exordos_core.cloud.links import CloudLinkEndpoint
 

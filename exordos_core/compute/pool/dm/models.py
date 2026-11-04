@@ -287,7 +287,7 @@ class PoolMachine(
 
         Refer to the Resource model for more details about target fields.
         """
-        return frozenset(
+        fields = frozenset(
             (
                 "uuid",
                 "name",
@@ -299,9 +299,11 @@ class PoolMachine(
                 "boot",
                 "pool",
                 "image",
-                "user_data",
             )
         )
+        if self.user_data is not None:
+            return fields | {"user_data"}
+        return fields
 
     @classmethod
     def from_machine(cls, machine: "Machine", agent_uuid=None):

@@ -88,8 +88,23 @@ interface are immutable. Application credentials use
 `auth_type: "v3applicationcredential"` and `application_credential_id` plus
 `application_credential_secret` inside `auth`, when supported by the provider.
 
-Agent Orchestrator/Status addresses come from the installation's combined
-Boot API endpoint. Agents need a reachable service address and return route.
+Change public driver settings without resending credentials:
+
+```sh
+exordos compute hypervisors update "$CLOUD_HYPERVISOR_ID" --driver-spec volume_type=fast
+```
+
+OpenStack partial edits accept `volume_type` and `key_name`, separately from
+name/site updates. They use `POST /v1/compute/hypervisors/<uuid>/actions/update_driver_settings/invoke`
+with `{"settings": {"volume_type": "fast"}}`; saved credentials stay on Core.
+Finite quotas retain their provider values. Unlimited quotas (`-1`) are represented
+by the largest supported counter value; quota availability is not physical capacity.
+
+Agent Orchestrator/Status addresses use the host advertised by
+the installation's Boot API and the configured `orch_api.bind_port` and
+`status_api.bind_port`. Publish both HTTP runtime API ports on that host.
+The agent protocol encrypts runtime requests and responses with the node key.
+Agents need a reachable service address and return route.
 The service address must be separate from a link gateway's host services, which
 reject new connections from the tunnel. Provider access and local agents'
 access to Core must survive loss of the cloud link.

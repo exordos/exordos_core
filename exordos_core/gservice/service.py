@@ -113,6 +113,8 @@ class GeneralService(basic.BasicService):
         pool_agent_uuid = sys_uuid.uuid5(ua_utils.system_uuid(), "machine_pool_agent")
         machine_pool_agent = ua_agent_service.UniversalAgentService(
             agent_uuid=pool_agent_uuid,
+            system_uuid=pool_agent_uuid,
+            verify_node_on_register=False,
             orch_client=orch_db.DatabaseOrchClient(),
             caps_drivers=[pool_driver],
             facts_drivers=[],

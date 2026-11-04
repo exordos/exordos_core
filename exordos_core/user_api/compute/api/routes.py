@@ -62,10 +62,16 @@ class NodeRoute(routes.Route):
     details = routes.action(NodeDetailsActionRoute)
 
 
+class HypervisorDriverSettingsActionRoute(routes.Action):
+    __controller__ = controllers.HypervisorsController
+
+
 class HypervisorRoute(routes.Route):
     """Handler for /v1/compute/hypervisors/ endpoint"""
 
     __controller__ = controllers.HypervisorsController
+
+    update_driver_settings = routes.action(HypervisorDriverSettingsActionRoute, invoke=True)
 
 
 class NodeSetPrivateKeyActionRoute(routes.Action):

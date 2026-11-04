@@ -227,6 +227,10 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             if self.cloud.identity(p, "port") not in gateways
         ]
 
+    def _security_group_id(self, group):
+        scope = getattr(self.network, "owner_network", None) or self.network.uuid
+        return uuid.uuid5(scope, "security-group:" + str(group))
+
     def _security_groups(self, port):
         bindings = catalog.PortSecurityGroup.objects.get_all(
             filters={"port": filters.EQ(port.uuid)}
@@ -260,10 +264,12 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
                     item["remote_ip_prefix"] = source_rule["remote_ip"]
                 if source_rule.get("remote_group_id"):
                     item["remote_group_id"] = self.cloud.ensure_security_group(
-                        source_rule["remote_group_id"]
+                        self._security_group_id(source_rule["remote_group_id"])
                     ).id
                 rules.append(item)
-            groups.append(self.cloud.security_group(group.uuid, rules).id)
+            groups.append(
+                self.cloud.security_group(self._security_group_id(group.uuid), rules).id
+            )
         if not groups:
             default = uuid.uuid5(self.network.uuid, "default-security")
             rules = (

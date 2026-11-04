@@ -340,6 +340,11 @@ class HypervisorsController(
 
         return super().create(**kwargs)
 
+    @actions.post
+    def update_driver_settings(self, resource: models.MachinePool, settings: dict):
+        self._enforce("update")
+        return resource.update_driver_settings(settings=settings)
+
     def _validate_driver_spec_uniqueness(self, kwargs: dict) -> None:
         """Validate that the driver_spec fields are unique among existing pools."""
         driver_spec = kwargs["driver_spec"]
