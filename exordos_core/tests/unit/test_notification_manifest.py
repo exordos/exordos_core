@@ -22,7 +22,10 @@ ROOT = pathlib.Path(__file__).parents[3] / "exordos/manifests"
 def test_email_configs_follow_exported_core_node_set(node_set_uuid):
     environment = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT))
     core = yaml.safe_load(
-        environment.get_template("core.yaml.j2").render(version="3.1.2-dev")
+        environment.get_template("core.yaml.j2").render(
+            version="3.1.2-dev",
+            images={"rawstor_ost_raw_zst": "urn:images:rawstor-ost"},
+        )
     )
     email = yaml.safe_load(
         environment.get_template("core_notification_email.yaml.j2").render(
