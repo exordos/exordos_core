@@ -18,35 +18,27 @@ from restalchemy.storage.sql import migrations
 
 
 class MigrationStep(migrations.AbstractMigrationStep):
+    """Join storage and opaque-secret branches without changing their history."""
+
     def __init__(self):
-        self._depends = ["0015-managed-storage-nodes-934dc2.py"]
+        self._depends = [
+            "0014-storage-nodes-pools-8ce6d2.py",
+            "0004-add-opaque-secrets-362f6d21.py",
+        ]
 
     @property
     def migration_id(self):
-        return "6ab127af-5341-4182-aa0e-3d0ccf1c526f"
+        return "7a8e91c2-1287-42bf-a937-2d28ba9b63b4"
 
     @property
     def is_manual(self):
         return False
 
     def upgrade(self, session):
-        # Nodes and policy resources were created by migration 0005. Their
-        # duplicate agent snapshots are no longer part of the public config.
-        session.execute("""
-            UPDATE storage_clusters SET
-                driver_spec=jsonb_build_object('kind',driver_spec->>'kind',
-                                               'endpoint',driver_spec->>'endpoint'),
-                status=CASE WHEN agent IS NOT NULL THEN 'IN_PROGRESS' ELSE status END
-            WHERE driver_spec->>'kind'='rawstor';
-        """)
+        pass
 
     def downgrade(self, session):
-        session.execute("""
-            UPDATE storage_clusters SET driver_spec=driver_spec ||
-                '{"location":"","ost_endpoint":"","nodes":{},"pools":{},
-                  "managed":true,"tier":"WARM","ephemeral":true}'::jsonb
-            WHERE driver_spec->>'kind'='rawstor';
-        """)
+        pass
 
 
 migration_step = MigrationStep()
