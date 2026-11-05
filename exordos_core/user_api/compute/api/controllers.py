@@ -27,6 +27,8 @@ from restalchemy.common import exceptions as ra_e
 from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as storage_exc
 
+from exordos_core.cloud.api import HypervisorPacker
+from exordos_core.cloud.api import NodeBootstrapPacker
 from exordos_core.common import constants as core_constants
 from exordos_core.common.api.controllers import ObservationResponseMixin
 from exordos_core.common.api.controllers import StoredFieldsQueryMixin
@@ -36,7 +38,7 @@ from exordos_core.compute.dm import models as models
 from exordos_core.user_api.compute.dm import models as user_models
 
 
-class NodeResource(resources.ResourceByRAModel):
+class NodeResource(resources.ResourceByModelWithCustomProps):
     def generate_schema_object(self, method, openapi_version):
         schema = super().generate_schema_object(method, openapi_version)
         if method in (ra_c.CREATE, ra_c.UPDATE):
@@ -145,6 +147,7 @@ class NodesController(
 
     __policy_name__ = "node"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
+    __packer__ = NodeBootstrapPacker
 
     __resource__ = NodeResource(
         model_class=user_models.Node,
@@ -154,19 +157,41 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "power_state": {ra_c.ALL: field_p.Permissions.RO},
+                "ports": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RW,
+                },
+                "bootstrap": {
+                    ra_c.ALL: field_p.Permissions.HIDDEN,
+                    ra_c.CREATE: field_p.Permissions.RW,
+                },
             },
         ),
     )
 
     def create(self, **kwargs):
         # Validate disk spec
+        if kwargs.get("ports"):
+            from gcl_iam import rules
+
+            self._enforcer.enforce(
+                rules.Rule("network", "port", "update"), do_raise=True
+            )
+        if kwargs.get("bootstrap"):
+            from gcl_iam import rules
+
+            self._enforcer.enforce(
+                rules.Rule("config", "config", "create"), do_raise=True
+            )
         self.model.validate_network_input(kwargs)
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        gate_default_network(
+        allow_foreign = gate_default_network(
             self, kwargs, kwargs.get("project_id", core_constants.ZERO_UUID)
         )
+        kwargs["_allow_foreign_subnet"] = allow_foreign
         node = self.model(**kwargs)
         node.disk_spec.validate()
 
@@ -188,10 +213,38 @@ class NodesController(
             return node
 
     def update(self, uuid, **kwargs):
+        self._require_unmanaged_gateway(uuid)
         self.model.validate_network_input(kwargs)
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
 
         return super().update(uuid, **kwargs)
+
+    def delete(self, uuid):
+        self._require_unmanaged_gateway(uuid)
+        from gcl_iam import rules
+
+        self._enforce("delete")
+        node = self.get(uuid=uuid)
+        node.delete(
+            authorize_bootstrap=lambda: self._enforcer.enforce(
+                rules.Rule("config", "config", "delete"), do_raise=True
+            )
+        )
+
+    def _require_unmanaged_gateway(self, uuid):
+        from restalchemy.storage import exceptions
+
+        from exordos_core.cloud import local
+        from exordos_core.cloud.links import CloudLinkEndpoint
+
+        node = self.get(uuid=uuid)
+        endpoint = CloudLinkEndpoint.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(node.uuid)}
+        )
+        if endpoint is not None and local.managed(endpoint):
+            raise exceptions.ConflictRecords(
+                model="Node", msg="owned by a cloud link; change the link instead"
+            )
 
     @actions.get
     def get_private_key(self, resource: user_models.Node):
@@ -247,9 +300,10 @@ class NodeSetsController(
         self._enforce_and_override_project_id_in_kwargs("create", kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        gate_default_network(
+        allow_foreign = gate_default_network(
             self, kwargs, kwargs.get("project_id", core_constants.ZERO_UUID)
         )
+        kwargs["_allow_foreign_subnet"] = allow_foreign
         # Validate disk spec
         node_set = self.model(**kwargs)
         node_set.disk_spec.validate()
@@ -261,11 +315,20 @@ class NodeSetsController(
         self.model.validate_network_input(kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        if "default_network" in kwargs:
-            gate_default_network(self, kwargs, stored.project_id)
+        if (
+            "default_network" in kwargs
+            and kwargs["default_network"] != stored.default_network
+        ):
+            stored._allow_foreign_subnet = gate_default_network(
+                self, kwargs, stored.project_id
+            )
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
-
-        return super().update(uuid, **kwargs)
+        self._enforce("update")
+        if "project_id" in kwargs and self._ctx_project_id:
+            self._force_project_id(kwargs["project_id"])
+        stored.update_dm(values=self._apply_autovalues(kwargs))
+        stored.update()
+        return stored
 
     @actions.get
     def get_private_keys(self, resource: models.NodeSet):
@@ -282,6 +345,7 @@ class HypervisorsController(
 
     __policy_name__ = "hypervisor"
     __policy_service_name__ = nc.POLICY_SERVICE_NAME
+    __packer__ = HypervisorPacker
 
     __resource__ = resources.ResourceByRAModel(
         model_class=models.MachinePool,
@@ -291,6 +355,7 @@ class HypervisorsController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "driver_state": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
     )
@@ -305,6 +370,16 @@ class HypervisorsController(
         self._validate_driver_spec_uniqueness(kwargs)
 
         return super().create(**kwargs)
+
+    @actions.post
+    def update_credentials(self, resource: models.MachinePool, auth_type: str, auth: dict):
+        self._enforce("update")
+        return resource.update_credentials(auth_type=auth_type, auth=auth)
+
+    @actions.post
+    def update_driver_settings(self, resource: models.MachinePool, settings: dict):
+        self._enforce("update")
+        return resource.update_driver_settings(settings=settings)
 
     def _validate_driver_spec_uniqueness(self, kwargs: dict) -> None:
         """Validate that the driver_spec fields are unique among existing pools."""

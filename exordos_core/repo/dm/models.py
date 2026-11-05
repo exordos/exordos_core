@@ -39,6 +39,25 @@ if tp.TYPE_CHECKING:
     from exordos_core.repo.drivers.base import AbstractProxyRepoDriver
 
 
+def resolve_image_uri(image: str | None) -> str | None:
+    """Resolve an image URN from the highest-priority repository."""
+    if image is None or not image.startswith("urn:"):
+        return image
+
+    # The same element may exist in multiple repositories, so the URN
+    # can match several artifacts. Pick the one from the highest-priority
+    # repository (Repository.priority: higher value = more priority).
+    artifacts = RepoArtifact.objects.get_all(filters={"urn": ra_filters.EQ(image)})
+    if not artifacts:
+        raise ValueError(f"Artifact for URN '{image}' not found")
+
+    if len(artifacts) == 1:
+        return artifacts[0].uri
+
+    artifact = max(artifacts, key=lambda a: a.element.repository.priority)
+    return artifact.uri
+
+
 def is_stable_version(version: str) -> bool:
     try:
         return not packaging_version.parse(version).is_prerelease

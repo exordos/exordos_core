@@ -16,6 +16,7 @@
 
 from restalchemy.api import routes
 
+from exordos_core.cloud.api import CloudNetworkLinksRoute
 from exordos_core.user_api.compute.api import controllers
 
 
@@ -61,10 +62,17 @@ class NodeRoute(routes.Route):
     details = routes.action(NodeDetailsActionRoute)
 
 
+class HypervisorDriverSettingsActionRoute(routes.Action):
+    __controller__ = controllers.HypervisorsController
+
+
 class HypervisorRoute(routes.Route):
     """Handler for /v1/compute/hypervisors/ endpoint"""
 
     __controller__ = controllers.HypervisorsController
+
+    update_driver_settings = routes.action(HypervisorDriverSettingsActionRoute, invoke=True)
+    update_credentials = routes.action(HypervisorDriverSettingsActionRoute, invoke=True)
 
 
 class NodeSetPrivateKeyActionRoute(routes.Action):
@@ -90,4 +98,5 @@ class ComputeRoute(routes.Route):
     volumes = routes.route(VolumesRoute)
     nodes = routes.route(NodeRoute)
     hypervisors = routes.route(HypervisorRoute)
+    cloud_network_links = routes.route(CloudNetworkLinksRoute)
     sets = routes.route(NodeSetsRoute)

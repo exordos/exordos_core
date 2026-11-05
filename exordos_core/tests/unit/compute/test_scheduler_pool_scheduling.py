@@ -65,6 +65,7 @@ class TestSchedulePoolsLocalHyper:
         pool = mock.MagicMock()
         pool.uuid = sys_uuid.uuid4()
         pool.driver_spec = driver_spec or _DEFAULT_LIBVIRT_SPEC
+        pool.is_cloud = False
         pool.builder = None
         pool.agent = None
         pool.update = mock.MagicMock()

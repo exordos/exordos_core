@@ -35,6 +35,11 @@ from restalchemy.dm import types_network as types_net
 from restalchemy.storage import exceptions as ra_storage_exc
 from restalchemy.storage.sql import orm
 
+from exordos_core.cloud.locking import network_delete_guard
+from exordos_core.cloud.models import connection_guard
+from exordos_core.cloud.specs import AbstractConnectionSpec
+from exordos_core.cloud.specs import CoreHypervisorSpec
+from exordos_core.cloud.specs import OpenStackHypervisorSpec
 from exordos_core.common import constants as cc
 from exordos_core.common import exceptions as ex_exceptions
 from exordos_core.common import system
@@ -75,18 +80,28 @@ class MachinePool(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    orm.SQLStorableWithJSONFieldsMixin,
     models.SimpleViewMixin,
 ):
     __tablename__ = "machine_pools"
+    __jsonfields__ = ["driver_state", "network_defaults"]
+
+    project_id = properties.property(types.UUID(), default=lambda: sys_uuid.UUID(int=0))
+    driver_state = properties.property(types.Dict(), default=dict)
+    network_defaults = properties.property(types.Dict(), default=dict)
 
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(ua_pool.LibvirtPoolDriverSpec),
             types_dynamic.KindModelType(ua_pool.ExordosLocalHyperDriverSpec),
             types_dynamic.KindModelType(ua_pool.DummyPoolDriverSpec),
+            types_dynamic.KindModelType(OpenStackHypervisorSpec),
+            types_dynamic.KindModelType(CoreHypervisorSpec),
         ),
         required=True,
+    )
+    site = properties.property(
+        types.AllowNone(types.String(min_length=1, max_length=255)), default=None
     )
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
@@ -118,6 +133,151 @@ class MachinePool(
         ),
         default=list,
     )
+
+    def _authenticate(self):
+        return self.driver_spec.authenticate(self.uuid)
+
+    @property
+    def is_cloud(self):
+        return isinstance(self.driver_spec, AbstractConnectionSpec)
+
+    def load_driver(self):
+        return self.driver_spec.load_driver(self.uuid)
+
+    @connection_guard(lambda self: self.uuid)
+    def insert(self, session=None):
+        from exordos_core.network.routed import validate_gateway_options
+
+        validate_gateway_options(
+            self.network_defaults, self.driver_spec.KIND if self.is_cloud else False
+        )
+        if self.is_cloud:
+            self.driver_spec.validate_config(self.uuid)
+            self.driver_state = self._authenticate()
+        return super().insert(session=session)
+
+    @connection_guard(lambda self: self.uuid)
+    def update(self, session=None, force=False):
+        from exordos_core.network.routed import validate_gateway_options
+
+        validate_gateway_options(
+            self.network_defaults, self.driver_spec.KIND if self.is_cloud else False
+        )
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if (stored.is_cloud or self.is_cloud) and (
+            stored.driver_spec.KIND != self.driver_spec.KIND
+            or self.project_id != stored.project_id
+            or {
+                k: v
+                for k, v in stored.driver_spec.public_view().items()
+                if k not in {"volume_type", "key_name", "auth_type"}
+            }
+            != {
+                k: v
+                for k, v in self.driver_spec.public_view().items()
+                if k not in {"volume_type", "key_name", "auth_type"}
+            }
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="MachinePool", msg="cloud scope is immutable"
+            )
+        if self.is_cloud:
+            self.driver_spec.validate_config(self.uuid)
+            if (
+                self.driver_spec.dump_to_simple_view()
+                != stored.driver_spec.dump_to_simple_view()
+                and self._authenticate() != stored.driver_state
+            ):
+                raise ra_storage_exc.ConflictRecords(
+                    model="MachinePool",
+                    msg="credential belongs to a different provider scope",
+                )
+            self.driver_state = stored.driver_state
+        return super().update(session=session, force=force)
+
+    @connection_guard(lambda self: self.uuid)
+    def update_credentials(self, *, auth_type, auth, session=None):
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if stored.driver_spec.KIND != "openstack":
+            raise ex_exceptions.ValidateException(
+                err="Credential replacement requires an OpenStack hypervisor"
+            )
+        values = dict(
+            stored.driver_spec.dump_to_simple_view(), auth_type=auth_type, auth=auth
+        )
+        stored.driver_spec = type(stored.driver_spec).restore_from_simple_view(**values)
+        stored.update(session=session)
+        return stored
+
+    @connection_guard(lambda self: self.uuid)
+    def update_driver_settings(self, *, settings, session=None):
+        if not isinstance(settings, dict) or set(settings) - {
+            "volume_type",
+            "key_name",
+        }:
+            raise ex_exceptions.ValidateException(
+                err="Only volume_type and key_name can be updated as driver settings"
+            )
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if not stored.is_cloud:
+            raise ex_exceptions.ValidateException(err="A cloud hypervisor is required")
+        values = {**stored.driver_spec.dump_to_simple_view(), **settings}
+        stored.driver_spec = type(stored.driver_spec).restore_from_simple_view(**values)
+        stored.update(session=session)
+        return stored
+
+    @connection_guard(lambda self: self.uuid)
+    def delete(self, session=None, **kwargs):
+        from exordos_core.cloud.links import CloudLinkEndpoint
+
+        if (
+            any(
+                str(self.uuid) in [str(ref) for ref in subnet.hypervisors]
+                for subnet in Subnet.objects.get_all(session=session)
+            )
+            or CloudLinkEndpoint.objects.get_all(
+                filters={"connection": dm_filters.EQ(self.uuid)}, session=session
+            )
+            or any(
+                str(network.driver_spec.get("connection")) == str(self.uuid)
+                for network in Network.objects.get_all(session=session)
+            )
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="MachinePool", msg="hypervisor is used by network resources"
+            )
+        if self.is_cloud:
+            session.execute(
+                "SELECT uuid FROM machine_pools WHERE uuid=%s FOR UPDATE",
+                (str(self.uuid),),
+            )
+            occupied = any(
+                model.objects.get_all(
+                    filters={"pool": dm_filters.EQ(self.uuid)}, session=session
+                )
+                for model in (Machine, MachineVolume, Volume)
+            )
+            for model in (ua_models.TargetResource, ua_models.Resource):
+                occupied |= any(
+                    str(resource.value.get("pool")) == str(self.uuid)
+                    for resource in model.objects.get_all(
+                        filters={
+                            "kind": dm_filters.In(["pool_machine", "pool_volume"])
+                        },
+                        session=session,
+                    )
+                )
+            if occupied:
+                raise ra_storage_exc.ConflictRecords(
+                    model="MachinePool", msg="cloud workloads have not finished cleanup"
+                )
+        return super().delete(session=session, **kwargs)
 
 
 class Volume(
@@ -197,6 +357,15 @@ class NodeSet(
     orm.SQLStorableMixin,
 ):
     __tablename__ = "compute_sets"
+    _allow_foreign_subnet = False
+
+    def __init__(self, _allow_foreign_subnet=False, **kwargs):
+        self._allow_foreign_subnet = _allow_foreign_subnet
+        super().__init__(**kwargs)
+
+    network_subnet = properties.property(
+        types.AllowNone(types.UUID()), default=None, read_only=True
+    )
 
     uuid = properties.property(
         types.UUID(),
@@ -224,14 +393,101 @@ class NodeSet(
     def _validate_default_network(self):
         if self.default_network is not None:
             self.validate_network_input({"default_network": self.default_network})
+        if self.placement is not None and (
+            not isinstance(self.placement, dict)
+            or set(self.placement) - {"kind", "scope"}
+            or self.placement.get("kind", "soft-anti-affinity")
+            not in {p.value for p in nc.PlacementPolicyKind}
+            or self.placement.get("scope", "site") not in {"pool", "site"}
+        ):
+            raise ex_exceptions.ValidateException(
+                err="Invalid NodeSet placement policy"
+            )
 
     def insert(self, session=None):
         self._validate_default_network()
-        return super().insert(session=session)
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            self._select_network(current)
+            return super().insert(session=current)
 
     def update(self, session=None, force=False):
         self._validate_default_network()
-        return super().update(session=session, force=force)
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = NodeSet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            if self.default_network != stored.default_network:
+                from exordos_core.network.routed import requested_network
+
+                if Node.objects.get_all(
+                    filters={"node_set": dm_filters.EQ(self.uuid)},
+                    session=current,
+                    limit=1,
+                ) and any(
+                    requested_network(
+                        request, self.project_id, current, allow_foreign=True
+                    )
+                    is not None
+                    for request in (stored.default_network, self.default_network)
+                ):
+                    raise ra_storage_exc.ConflictRecords(
+                        model="NodeSet",
+                        msg="recreate replicas before changing their logical network",
+                    )
+                self._select_network(current)
+            else:
+                self.properties["network_subnet"].set_value_force(stored.network_subnet)
+            return super().update(session=current, force=force)
+
+    def _select_network(self, session):
+        from exordos_core.network.defaults import find_legacy_flat_subnet
+        from exordos_core.network.node_creation import select_subnet
+        from exordos_core.network.routed import requested_network
+        from exordos_core.network.routed import require_logical_request
+
+        require_logical_request(self.default_network, session)
+
+        if (
+            requested_network(
+                self.default_network,
+                self.project_id,
+                session,
+                allow_foreign=self._allow_foreign_subnet,
+            )
+            is not None
+        ):
+            if self.node_type != "VM":
+                raise ex_exceptions.ValidateException(
+                    err="logical networks require virtual machines"
+                )
+            self.properties["network_subnet"].set_value_force(None)
+            return
+
+        subnet = None
+        delegated = (
+            "project_id" in (self.default_network or {}) or self._allow_foreign_subnet
+        )
+        if (
+            delegated
+            and self.node_type == "VM"
+            and (
+                self.default_network != {}
+                or find_legacy_flat_subnet(self.project_id, session) is not None
+            )
+        ):
+            subnet = select_subnet(
+                self.default_network,
+                self.project_id,
+                session,
+                allow_foreign=self._allow_foreign_subnet,
+            )
+        self.properties["network_subnet"].set_value_force(
+            subnet.uuid if subnet else None
+        )
 
     def get_agents_private_keys(self):
         enc_keys = ua_models.NodeEncryptionKey.objects.get_all(
@@ -263,6 +519,11 @@ class Node(
 ):
     __tablename__ = "nodes"
     __jsonfields__ = ["default_network"]
+    _allow_foreign_subnet = False
+
+    def __init__(self, _allow_foreign_subnet=False, **kwargs):
+        self._allow_foreign_subnet = _allow_foreign_subnet
+        super().__init__(**kwargs)
 
     uuid = properties.property(
         types.UUID(),
@@ -344,7 +605,25 @@ class Node(
 
     def insert(self, session=None):
         self._validate_default_network()
+        from exordos_core.network.routed import require_logical_request
+
         if self.node_type != "VM":
+            require_logical_request(
+                self.properties.get_value("default_network"), session
+            )
+            from exordos_core.network.routed import requested_network
+
+            if (
+                requested_network(
+                    self.properties.get_value("default_network"),
+                    self.project_id,
+                    session,
+                )
+                is not None
+            ):
+                raise ex_exceptions.ValidateException(
+                    err="logical networks require a VM node"
+                )
             return self._insert_node(session=session)
         from exordos_core.network.contracts import atomic_session
         from exordos_core.network.node_creation import create_default_port
@@ -352,16 +631,54 @@ class Node(
         request = self.properties.get_value("default_network")
         with atomic_session(self._get_engine(), session) as s:
             project_id = self.project_id
-            if self.node_set is not None and self.project_id == nc.NODE_SET_PROJECT:
-                project_id = NodeSet.objects.get_one(
+            parent = None
+            if self.node_set is not None:
+                parent = NodeSet.objects.get_one(
                     filters={"uuid": dm_filters.EQ(self.node_set)}, session=s
-                ).project_id
+                )
+                if self.project_id == nc.NODE_SET_PROJECT:
+                    project_id = parent.project_id
+                if str(parent.project_id) != str(project_id):
+                    raise ex_exceptions.ValidateException(
+                        err="NodeSet belongs to another project"
+                    )
+            if parent is None or parent.default_network != request:
+                require_logical_request(request, s)
             self._insert_node(session=s)
-            create_default_port(self, request, project_id, s)
+            create_default_port(
+                self,
+                request,
+                project_id,
+                s,
+                allow_foreign=self._allow_foreign_subnet
+                or (parent is not None and parent.default_network == request),
+            )
 
     def update(self, session=None, force=False):
         self.__dict__.pop("_default_network_view", None)
         self._validate_default_network()
+        stored = Node.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        before = stored.properties.get_value("default_network")
+        after = self.properties.get_value("default_network")
+        if before != after:
+            from exordos_core.network.routed import requested_network
+            from exordos_core.network.routed import require_logical_request
+
+            require_logical_request(after, session)
+
+            for request in (before, after):
+                if (
+                    requested_network(
+                        request, self.project_id, session, allow_foreign=True
+                    )
+                    is not None
+                ):
+                    raise ra_storage_exc.ConflictRecords(
+                        model="Node",
+                        msg="logical network is immutable; recreate the node to change placement",
+                    )
         return super().update(session=session, force=force)
 
     def _insert_node(self, session=None):
@@ -562,11 +879,31 @@ class Network(
     __tablename__ = "compute_networks"
     __driver_map__ = {}
 
+    cidr = properties.property(types.AllowNone(types_net.Network()), default=None)
+    connectivity = properties.property(types.Dict(), default=dict)
     driver_spec = properties.property(types.Dict(), default=lambda: {})
     driver_state = properties.property(types.Dict(), default=dict)
     is_default = properties.property(types.Boolean(), default=False)
+    owner_network = properties.property(types.AllowNone(types.UUID()), default=None)
 
+    def validate_cloud_spec(self, session=None):
+        if self.driver_spec.get("driver") == "cloud":
+            from exordos_core.cloud.models import connection
+
+            allowed = {"driver", "connection", "external_network"}
+            if set(self.driver_spec) - allowed:
+                raise ex_exceptions.ValidateException(
+                    err="Unknown cloud network option"
+                )
+            connection(self.driver_spec["connection"], self.project_id, session)
+
+    @connection_guard(lambda self: self.driver_spec.get("connection"))
     def insert(self, session=None):
+        if self.cidr is not None or self.driver_spec.get("driver") == "routed":
+            from exordos_core.network.routed import save_network
+
+            return save_network(self, session=session)
+        self.validate_cloud_spec(session)
         if not nc.is_overlay(self.driver_spec):
             return super().insert(session=session)
         self.validate_overlay_spec(self.driver_spec)
@@ -636,14 +973,25 @@ class Network(
                 % nc.OVERLAY_MTU_RANGE
             )
 
+    @connection_guard(lambda self: self.driver_spec.get("connection"))
     def update(self, session=None, force=False):
+        if self.cidr is not None or self.driver_spec.get("driver") == "routed":
+            from exordos_core.network.routed import save_network
+
+            return save_network(self, session=session, update=True)
+        self.validate_cloud_spec(session)
         if not nc.is_overlay(self.driver_spec):
             stored = Network.objects.get_one(
                 filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
             )
             if (
                 nc.is_overlay(stored.driver_spec)
+                or stored.driver_spec.get("driver") == "routed"
                 or stored.project_id != self.project_id
+                or (
+                    stored.driver_spec.get("driver") == "cloud"
+                    and stored.driver_spec != self.driver_spec
+                )
             ):
                 raise ra_storage_exc.ConflictRecords(
                     model="Network", msg="driver/project_id are immutable"
@@ -676,11 +1024,16 @@ class Network(
         default="private",
     )
 
+    @network_delete_guard
     def delete(self, session=None, **kwargs):
         from exordos_core.network.contracts import atomic_session
         from exordos_core.user_api.network.dm import models as catalog
 
         with atomic_session(self._get_engine(), session) as s:
+            if self.driver_spec.get("driver") == "routed":
+                from exordos_core.network.routed import delete_network
+
+                return delete_network(self, session=s)
             subnets = Subnet.objects.get_all(
                 filters={"network": dm_filters.EQ(self.uuid)}, session=s
             )
@@ -698,6 +1051,8 @@ class Network(
                 filters={"owner_network": dm_filters.EQ(self.uuid)}, session=s
             ):
                 nf.collect_generated(session=s)
+            if self.driver_spec.get("driver") == "cloud":
+                self.load_driver().delete_network()
             return super().delete(session=s, **kwargs)
 
     def load_driver(self) -> tp.Type["AbstractNetworkDriver"]:
@@ -732,12 +1087,20 @@ class Subnet(
     ua_models.ResourceMixin,
 ):
     __tablename__ = "compute_subnets"
-    __jsonfields__ = ["dns_servers", "routers"]
+    __jsonfields__ = ["dns_servers", "routers", "hypervisors", "gateway"]
 
+    logical_network = properties.property(types.AllowNone(types.UUID()), default=None)
+    hypervisors = properties.property(types.TypedList(types.UUID()), default=list)
+    gateway = properties.property(types.Dict(), default=dict)
+    status = properties.property(
+        types.Enum(["ACTIVE", "IN_PROGRESS", "ERROR", "DELETING"]),
+        default="ACTIVE",
+    )
+    error = properties.property(types.String(), default="")
     network = properties.property(types.UUID())
     cidr = properties.property(
         types_net.Network(),
-        required=True,
+        required=False,
         read_only=True,
     )
     ip_range = properties.property(
@@ -795,6 +1158,21 @@ class Subnet(
         from exordos_core.user_api.network.dm import models as net_models
 
         with atomic_session(self._get_engine(), session) as current:
+            selected = Network.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.network)}, session=current
+            )
+            if selected.cidr is not None:
+                from exordos_core.network.routed import save_subnet
+
+                return save_subnet(self, selected, current)
+            if self.hypervisors or self.gateway:
+                raise ex_exceptions.ValidateException(
+                    err="placement requires a logical network"
+                )
+            if self.cidr is None:
+                raise ex_exceptions.ValidateException(
+                    err="CIDR is required for a local subnet"
+                )
             net_models.validate_reference(
                 self.project_id, Network, self.network, "network", session=current
             )
@@ -811,6 +1189,20 @@ class Subnet(
         from exordos_core.network.contracts import atomic_session
 
         with atomic_session(self._get_engine(), session) as current:
+            selected = Network.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.network)}, session=current
+            )
+            stored = Subnet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(self.uuid)}, session=current
+            )
+            if selected.cidr is not None and stored.logical_network is None:
+                from exordos_core.network.routed import save_subnet
+
+                return save_subnet(self, selected, current, imported=stored)
+            if stored.logical_network is not None:
+                from exordos_core.network.routed import update_subnet
+
+                return update_subnet(self, stored, current, force=force)
             Network.objects.get_one(
                 filters={"uuid": dm_filters.EQ(self.network)},
                 session=current,
@@ -931,11 +1323,24 @@ class Subnet(
                 )
             )
 
+    @network_delete_guard
     def delete(self, session=None, **kwargs):
         from exordos_core.network.contracts import atomic_session
         from exordos_core.user_api.network.dm import models as net_models
 
         with atomic_session(self._get_engine(), session) as s:
+            if self.logical_network is not None and not getattr(
+                self, "_retire_routed", False
+            ):
+                from exordos_core.network.routed import delete_subnet
+
+                return delete_subnet(self, s)
+            from exordos_core.cloud.links import endpoints_for_subnet
+
+            if endpoints_for_subnet(self.uuid, session=s):
+                raise ra_storage_exc.ConflictRecords(
+                    model="Subnet", msg="still has cloud network links"
+                )
             # Same as Network: name what is in the way.
             ports = Port.objects.get_all(
                 filters={"subnet": dm_filters.EQ(self.uuid)}, session=s
@@ -944,6 +1349,12 @@ class Subnet(
                 raise ra_storage_exc.ConflictRecords(
                     model="Subnet",
                     msg=f"still has {len(ports)} port(s); delete them first",
+                )
+            if NodeSet.objects.get_all(
+                filters={"network_subnet": dm_filters.EQ(self.uuid)}, session=s
+            ):
+                raise ra_storage_exc.ConflictRecords(
+                    model="Subnet", msg="still selected by a node set; delete it first"
                 )
             # A reserved address is somebody's, maybe a port's floating one.
             addresses = net_models.Address.objects.get_all(
@@ -955,6 +1366,7 @@ class Subnet(
                     msg=f"still has {len(addresses)} reserved address(es); "
                     "release them first",
                 )
+            network = None
             # Tell the driver before the row goes: cascaded port rows leave
             # resources on the hypervisor that nothing could find afterwards.
             try:
@@ -964,6 +1376,8 @@ class Subnet(
                 network.load_driver().delete_subnet(self)
             except Exception:
                 LOG.exception("Could not retire subnet %s on the data plane", self.uuid)
+                if network is not None and network.driver_spec.get("driver") == "cloud":
+                    raise
             # After the driver, which collects the functions' slices by them.
             for nf in net_models.NetworkFunction.objects.get_all(
                 filters={"owner_subnet": dm_filters.EQ(self.uuid)}, session=s
@@ -1027,6 +1441,7 @@ class Port(
     ua_models.ResourceMixin,
 ):
     __tablename__ = "compute_ports"
+    _allow_foreign_subnet = False
 
     network = None
     security_groups = ()
@@ -1036,8 +1451,11 @@ class Port(
         "network": types.AllowNone(types.UUID()),
     }
 
-    def __init__(self, network=None, security_groups=(), **kwargs):
+    def __init__(
+        self, network=None, security_groups=(), _allow_foreign_subnet=False, **kwargs
+    ):
         super().__init__(**kwargs)
+        self._allow_foreign_subnet = _allow_foreign_subnet
         self._check_custom_property_value("network", network)
         self._network_selector = network
         self.network = network
@@ -1105,9 +1523,24 @@ class Port(
 
         validate_mac(self.mac)
         validate_mac(self.target_mac)
-        if self.enforce_security_group and not self.is_overlay():
+        cloud = False
+        if self.enforce_security_group:
+            subnet = Subnet.objects.get_one(
+                filters={
+                    "uuid": dm_filters.EQ(getattr(self.subnet, "uuid", self.subnet))
+                }
+            )
+            network = Network.objects.get_one(
+                filters={
+                    "uuid": dm_filters.EQ(
+                        getattr(subnet.network, "uuid", subnet.network)
+                    )
+                }
+            )
+            cloud = network.driver_spec.get("driver") == "cloud"
+        if self.enforce_security_group and not (self.is_overlay() or cloud):
             raise ex_exceptions.ValidateException(
-                err="enforce_security_group requires an overlay network"
+                err="enforce_security_group requires an overlay or cloud network"
             )
         subnet = Subnet.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(getattr(self.subnet, "uuid", self.subnet))}
@@ -1115,6 +1548,33 @@ class Port(
         self._validate_node_ownership()
         if subnet is not None:
             self._validate_ipv4(subnet)
+        self.validate_security_group_policy()
+
+    def validate_security_group_policy(self, *, binding=False, session=None):
+        if self.port_security:
+            return
+        from exordos_core.cloud.models import connection
+        from exordos_core.user_api.network.dm import models as catalog
+
+        if not (binding or self.enforce_security_group or self.security_groups):
+            if not catalog.PortSecurityGroup.objects.get_all(
+                filters={"port": dm_filters.EQ(self.uuid)}, session=session
+            ):
+                return
+        subnet = Subnet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.subnet)}, session=session
+        )
+        network = Network.objects.get_one(
+            filters={"uuid": dm_filters.EQ(subnet.network)}, session=session
+        )
+        if (
+            network.driver_spec.get("driver") == "cloud"
+            and connection(network.driver_spec["connection"], session=session)
+            .driver_spec.KIND == "openstack"
+        ):
+            raise ex_exceptions.ValidateException(
+                err="OpenStack security groups require port_security=true"
+            )
 
     def _validate_node_ownership(self) -> None:
         node_ref = getattr(self.node, "uuid", self.node)
@@ -1170,6 +1630,8 @@ class Port(
         # legs (generated) sit in the subnet owner's network by design; a
         # hand-made one would hand ISC dhcpd an address of the caller's.
         if subnet is None:
+            return
+        if self._allow_foreign_subnet:
             return
         if self.node is None:
             return
@@ -1260,6 +1722,7 @@ class Port(
                     getattr(self, "_network_selector", None),
                     self.target_ipv4,
                     session=s,
+                    allow_foreign=self._allow_foreign_subnet,
                 )
                 self.subnet = subnet.uuid
             else:
@@ -1286,7 +1749,8 @@ class Port(
             Subnet.objects.get_one(
                 filters={"uuid": dm_filters.EQ(subnet.uuid)}, session=s, locked=True
             )
-            if self.ipv4 is None:
+            cloud = network.driver_spec.get("driver") == "cloud"
+            if self.ipv4 is None and (not cloud or self.target_ipv4 is not None):
                 allocator = catalog.Address(
                     project_id=self.project_id,
                     subnet=subnet.uuid,
@@ -1332,7 +1796,7 @@ class Port(
                     raise ra_storage_exc.ConflictRecords(
                         model="Port", msg="MAC is already allocated in this network"
                     )
-            else:
+            elif not cloud:
                 self.mac = self.generate_mac()
                 while self.mac in used_macs:
                     self.mac = self.generate_mac()
@@ -1584,6 +2048,7 @@ class PlacementPolicy(
         required=True,
         default=nc.PlacementPolicyKind.SOFT_ANTI_AFFINITY.value,
     )
+    scope = properties.property(types.Enum(["pool", "site"]), default="pool")
 
 
 class FlatPlacementPolicyAllocation(

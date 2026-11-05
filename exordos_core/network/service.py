@@ -19,10 +19,9 @@ import logging
 import typing as tp
 
 from gcl_looper.services import basic
+from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
-
-from gcl_sdk.agents.universal.dm import models as ua_models
 
 from exordos_core.compute.dm import models
 from exordos_core.network import ipam as net_ipam
@@ -70,10 +69,13 @@ class NetworkService(basic.BasicService):
 
     def _get_subnet_map(
         self,
+        network=None,
     ) -> tp.Dict[net_models.Subnet, tp.List[net_models.Port]]:
         # TODO(akremenetsky): Take all subnets so far.
         # This snippet will be reworked.
-        subnets = net_models.Subnet.objects.get_all()
+        subnets = net_models.Subnet.objects.get_all(
+            filters={"network": dm_filters.EQ(network.uuid)} if network else None
+        )
         ports = net_models.Port.objects.get_all(
             filters={
                 "subnet": dm_filters.In([str(subnet.uuid) for subnet in subnets]),
@@ -179,7 +181,7 @@ class NetworkService(basic.BasicService):
                 subnet = driver.update_subnet(target_subnet.cast_to_base())
                 target_subnet.cidr = subnet.cidr
                 target_subnet.next_server = subnet.next_server
-                target_subnet.update()
+                target_subnet.cast_to_base().update(force=True)
             except Exception:
                 LOG.exception("Error actualizing subnet %s", actual_subnet.uuid)
 
@@ -202,6 +204,7 @@ class NetworkService(basic.BasicService):
             target_port.mask = p.mask
             target_port.mac = p.mac
             target_port.interface = p.interface
+            target_port.source = p.source
 
             try:
                 target_port.update()
@@ -247,10 +250,14 @@ class NetworkService(basic.BasicService):
                 target_port.status != actual_port.status
                 or target_port.ipv4 != actual_port.ipv4
                 or target_port.mask != actual_port.mask
+                or target_port.source != actual_port.source
+                or target_port.mac != actual_port.mac
             ):
                 target_port.status = actual_port.status
                 target_port.ipv4 = actual_port.ipv4
                 target_port.mask = actual_port.mask
+                target_port.source = actual_port.source
+                target_port.mac = actual_port.mac
 
                 try:
                     target_port.update()
@@ -310,6 +317,8 @@ class NetworkService(basic.BasicService):
             # Actualize ports and subnets on the data plane
             driver_ready = {}
             for network, net_subnet_map in network_map.items():
+                if network.driver_spec.get("driver") == "routed":
+                    continue
                 try:
                     driver = network.load_driver()
                     driver_type = type(driver)
@@ -319,6 +328,11 @@ class NetworkService(basic.BasicService):
                         driver_ready[driver_type] = True
                     if driver_ready[driver_type]:
                         with driver.reconcile():
+                            if network.driver_spec.get("driver") == "cloud":
+                                net_subnet_map = self._get_subnet_map(network)
                             self._actualize_network(driver, net_subnet_map)
                 except Exception:
                     LOG.exception("Error actualizing network %s", network.uuid)
+            from exordos_core.network.routed import reconcile_all
+
+            reconcile_all(network_map)

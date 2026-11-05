@@ -56,6 +56,11 @@ build-backend = "setuptools.build_meta"
 
 
 [project.optional-dependencies]
+openstack = [
+    "openstacksdk>=4.0.0,<5.0.0",  # Apache-2.0
+    "zstandard>=0.23.0,<1.0.0",  # BSD-3-Clause
+]
+
 dev = [
     "tox>=4.0.0",
     "tox-uv",
@@ -168,6 +173,8 @@ ec-em-api-docs = "exordos_core.cmd.em_api_docs:main"
 exordos-repo-proxy-gservice = "exordos_core.cmd.repo_proxy_gservice:main"
 
 [project.entry-points."gcn_network_driver"]
+CloudNetworkDriver = "exordos_core.network.driver.cloud:CloudNetworkDriver"
+CoreNetworkDriver = "exordos_core.network.driver.core:CoreNetworkDriver"
 DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
 OvsEvpnNetworkDriver = "exordos_core.network.driver.evpn:OvsEvpnNetworkDriver"
@@ -247,3 +254,6 @@ directory = "cover"
 
 [tool.coverage.xml]
 output = "cover/coverage.xml"
+
+[tool.uv.sources]
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "cc4255e17550d202563d64c07f99885ac583a90e" }

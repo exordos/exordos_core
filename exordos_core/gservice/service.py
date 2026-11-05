@@ -23,7 +23,6 @@ from gcl_sdk.agents.universal import utils as ua_utils
 from gcl_sdk.agents.universal.clients.backend import db as db_back
 from gcl_sdk.agents.universal.clients.orch import db as orch_db
 from gcl_sdk.agents.universal.drivers import core as ua_core_drivers
-from gcl_sdk.agents.universal.drivers import pool as ua_pool_drivers
 from gcl_sdk.agents.universal.services import agent as ua_agent_service
 from gcl_sdk.agents.universal.services import scheduler as ua_scheduler_service
 from gcl_sdk.events import constants as event_c
@@ -31,6 +30,8 @@ from gcl_sdk.events.services import senders
 from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.cloud.agent import ControllerPoolAgentDriver
+from exordos_core.cloud.links import CloudLinkService
 from exordos_core.compute import constants as nc
 from exordos_core.compute.builders import node as node_builder_svc
 from exordos_core.compute.builders import node_set as set_builder_svc
@@ -106,12 +107,14 @@ class GeneralService(basic.BasicService):
         volume_builder = volume_builder_svc.VolumeBuilderService(
             iter_min_period=iter_min_period
         )
-        pool_driver = ua_pool_drivers.PoolAgentDriver(
+        pool_driver = ControllerPoolAgentDriver(
             meta_file="/var/lib/exordos/exordos_core/pool_agent_meta.json"
         )
-        agent_uuid = sys_uuid.uuid5(ua_utils.system_uuid(), "machine_pool_agent")
+        pool_agent_uuid = sys_uuid.uuid5(ua_utils.system_uuid(), "machine_pool_agent")
         machine_pool_agent = ua_agent_service.UniversalAgentService(
-            agent_uuid=agent_uuid,
+            agent_uuid=pool_agent_uuid,
+            system_uuid=pool_agent_uuid,
+            verify_node_on_register=False,
             orch_client=orch_db.DatabaseOrchClient(),
             caps_drivers=[pool_driver],
             facts_drivers=[],
@@ -249,6 +252,7 @@ class GeneralService(basic.BasicService):
             infra_agent,
             n_scheduler,
             n_network,
+            CloudLinkService(iter_min_period=iter_min_period),
             pool_builder_service,
             node_builder,
             volume_builder,

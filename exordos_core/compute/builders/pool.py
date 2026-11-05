@@ -26,6 +26,7 @@ from gcl_sdk.agents.universal.services import builder as sdk_builder
 from gcl_sdk.agents.universal.services import common as sdk_svc_common
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.cloud.bootstrap import agent_config
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.pool.dm import models as pool_models
@@ -235,23 +236,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         corresponding :class:`RepoArtifact` and return its ``uri``.
         Otherwise return the image as-is.
         """
-        if image is None or not image.startswith("urn:"):
-            return image
-
-        # The same element may exist in multiple repositories, so the URN
-        # can match several artifacts. Pick the one from the highest-priority
-        # repository (Repository.priority: higher value = more priority).
-        artifacts = repo_models.RepoArtifact.objects.get_all(
-            filters={"urn": dm_filters.EQ(image)}
-        )
-        if not artifacts:
-            raise ValueError(f"Artifact for URN '{image}' not found")
-
-        if len(artifacts) == 1:
-            return artifacts[0].uri
-
-        artifact = max(artifacts, key=lambda a: a.element.repository.priority)
-        return artifact.uri
+        return repo_models.resolve_image_uri(image)
 
     def _actualize_machine_derivatives_on_create_update(
         self,
@@ -294,6 +279,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             )
             guest_agent.save()
 
+        cloud = machine.pool.is_cloud
+
         # The new machine and the machine with changed image should be booted
         # in the private network with boot=`network`.
         boot = ua_pool.BootAlternative.hd0.value
@@ -301,13 +288,15 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             # Do nothing for new machines in the core set.
             # The core machines start in boot=hd0 mode and need to be
             # attached to the main network.
-            if not self._is_core_machine(machine):
+            if not cloud and not self._is_core_machine(machine):
                 boot = ua_pool.BootAlternative.network.value
         else:
             # Don't swith boot mode for the core set as the update procedure
             # is performed by guest machine driver.
-            if not self._is_core_machine(machine):
+            if not cloud and not self._is_core_machine(machine):
                 _, guest_actual = machine_guest_pair
+                if guest_actual is None:
+                    boot = machine_guest_pair[0].boot
                 # The image is changed, so the machine should be booted in the
                 # `network` boot mode and flashed with a new image.
                 if guest_actual and guest_actual.image != resolved_image:
@@ -322,6 +311,17 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         agent_uuid = self._agent_by_pool(machine.pool.uuid)
 
         pool_machine = pool_models.PoolMachine.from_machine(machine, agent_uuid)
+
+        if cloud:
+            from gcl_sdk.cloud.bootstrap import agent_user_data
+
+            key = ua_models.NodeEncryptionKey.get_or_create(machine.node.uuid)
+            pool_machine.user_data = agent_user_data(
+                machine.node.uuid,
+                key.private_key,
+                *agent_config(),
+                hostname=machine.node.hostname or machine.node.name,
+            )
 
         # Guest machine
         guest = pool_models.GuestMachine(

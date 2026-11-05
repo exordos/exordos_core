@@ -24,6 +24,12 @@ from exordos_core.common import constants
 
 GLOBAL_SERVICE_NAME = constants.GLOBAL_SERVICE_NAME
 CONF = cfg.CONF
+BOOT_API_ENDPOINT_OPT = cfg.StrOpt(
+    "gc_boot_api",
+    default="http://core.local.genesis-core.tech:11013",
+    help="GC boot API",
+)
+CONF.register_opt(BOOT_API_ENDPOINT_OPT, group="boot_api")
 CONF.register_opts(
     [
         cfg.BoolOpt(

@@ -18,10 +18,12 @@ import typing as tp
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from restalchemy.dm import filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
+from restalchemy.storage import exceptions as storage_exceptions
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import constants as c
@@ -125,6 +127,52 @@ class Config(
         types.String(max_length=128),
         default="root",
     )
+
+    def is_provider_bootstrap(self):
+        return self.target.KIND == "node" and self.uuid == sys_uuid.uuid5(
+            self.target.node, "provider-bootstrap"
+        )
+
+    def update(self, session=None, force=False):
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = self.objects.get_one(
+                filters={"uuid": filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            if self.is_provider_bootstrap() or stored.is_provider_bootstrap():
+                mutable = ("status", "updated_at")
+                if self.dump_to_simple_view(skip=mutable) != stored.dump_to_simple_view(
+                    skip=mutable
+                ):
+                    raise storage_exceptions.ConflictRecords(
+                        model="Config",
+                        msg="provider bootstrap is managed through its node",
+                    )
+            return super().update(session=current, force=force)
+
+    def delete(self, session=None, *, owner_node=None):
+        from exordos_core.compute.dm.models import Node
+        from exordos_core.network.contracts import atomic_session
+
+        with atomic_session(self._get_engine(), session) as current:
+            stored = self.objects.get_one(
+                filters={"uuid": filters.EQ(self.uuid)}, session=current, locked=True
+            )
+            if stored.is_provider_bootstrap() and owner_node != stored.target.node:
+                owner = Node.objects.get_one_or_none(
+                    filters={
+                        "uuid": filters.EQ(stored.target.node),
+                        "project_id": filters.EQ(stored.project_id),
+                    },
+                    session=current,
+                )
+                if owner is not None:
+                    raise storage_exceptions.ConflictRecords(
+                        model="Config",
+                        msg="provider bootstrap is managed through its node",
+                    )
+            return super().delete(session=current)
 
     def target_nodes(self) -> tp.List[sys_uuid.UUID]:
         return self.target.target_nodes()

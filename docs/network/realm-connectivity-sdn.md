@@ -52,6 +52,54 @@ extra image origins on the management network through the boot proxy.
 the egress guard. Keep these operator grants narrow. Tenant-created DNS overrides
 accept public IPv4 resolvers only.
 
+### Flat access and infrastructure protection
+
+The underlay transports VXLAN between hypervisors and BGP to the reflector.
+Management networks carry infrastructure administration. The main flat subnet
+carries ordinary VM and platform-service traffic. These roles are independent
+of the `flat_bridge` driver and of the project's default placement network.
+A connected route on a hypervisor does not identify an underlay network.
+
+Operators can allow private networks to reach selected flat IPv4 subnets:
+
+```ini
+[evpn]
+flat_prefixes = 10.66.0.0/24
+protected_prefixes = 10.65.0.0/24,10.66.0.11/32,198.51.100.0/24
+```
+
+`protected_prefixes` identifies underlay and management destinations, including
+remote networks. It takes precedence over `flat_prefixes`. The hypervisor's own
+addresses, transfer networks, link-local/reserved destinations and fabric ports
+remain protected from flat grants. Existing `service_addresses` and floating-IP
+publications remain explicit exceptions; do not publish infrastructure addresses
+as unrestricted endpoints.
+
+Both lists default to empty, preserving the conservative egress policy. Configure
+the main flat subnet explicitly; the bootstrap flat Network also contains a
+boot/PXE subnet, which requires a separate access decision. No tenant API field
+or project default-network change can modify these installation-wide lists.
+
+Flat access uses the existing SNAT path and permits guest-initiated connections
+and replies. It does not create peering between private networks or allow new
+connections from flat into a private subnet. Established connections retain the
+existing stateful behavior when a grant is withdrawn. Flat services must
+authenticate callers; SNAT does not preserve the tenant's source IP.
+
+Choose flat destination ranges outside tenant subnets. If they overlap, the
+tenant's connected route can take precedence over the external destination;
+flat grants do not translate or disambiguate overlapping addresses.
+
+Flat VM ports use the bridge path without EVPN security groups. Isolate transport
+and management from untrusted flat neighbors with VLANs or infrastructure-side
+ACLs. If infrastructure and services share an address, use explicit service-port
+exceptions or separate hosts with appropriate listener/firewall policy.
+
+Install the matching SDK on hypervisors before upgrading Core. The egress-policy
+migration marks existing `evpn_host` targets for reconciliation. The agent stores
+the policy locally and repairs missing rules; each flat-policy chain replacement
+is atomic. The policy changes neither fabric source selection nor routing.
+
 ## Egress and floating IPs
 
 Each participating host provides a gateway for its local guests in a per-VNI

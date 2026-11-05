@@ -589,3 +589,35 @@ class TestNetworkService:
         hw_machine.delete()
         hw_pool.delete()
         node.delete()
+
+
+@pytest.mark.usefixtures("user_api_client", "auth_user_admin")
+def test_subnet_reconciliation_saves_relationship_view_update():
+    from exordos_core.network.dm import models as network_models
+
+    network = models.Network(project_id=c.ZERO_UUID, driver_spec={"driver": "dummy"})
+    network.insert()
+    subnet = models.Subnet(
+        project_id=c.ZERO_UUID,
+        network=network.uuid,
+        cidr=netaddr.IPNetwork("192.0.2.0/24"),
+        next_server="192.0.2.1",
+    )
+    subnet.insert()
+    target = network_models.Subnet.objects.get_one(
+        filters={"uuid": dm_filters.EQ(subnet.uuid)}
+    )
+    actual = models.Subnet.restore_from_simple_view(**subnet.dump_to_simple_view())
+    actual.next_server = None
+    replacement = models.Subnet.restore_from_simple_view(**subnet.dump_to_simple_view())
+    replacement.next_server = "192.0.2.2"
+    driver = mock.MagicMock()
+    driver.list_ports.return_value = []
+    driver.update_subnet.return_value = replacement
+    service.NetworkService()._actualize_subnet(driver, actual, target, [])
+    assert (
+        models.Subnet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(subnet.uuid)}
+        ).next_server
+        == "192.0.2.2"
+    )

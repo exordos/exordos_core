@@ -109,8 +109,12 @@ Ports require `network.port.create`; FIPs require `network.address.create`.
 Selecting a specific IP in another project's shared/public pool additionally
 requires `network.address.explicit_address`. Network sharing requires
 `network.network.share`. These operator permissions are not granted to project
-owners by default. Private Port placement and Node/Port/SG/FIP bindings stay
-within one project.
+owners by default. `network.port.use_foreign_subnet` allows a trusted service
+to create its own Ports in another project's private Subnet. Node/Port/SG/FIP
+ownership remains within the service project (with the existing replica-Node
+exception). `default_network.project_id` selects that project's default
+placement. NodeSet pins this selection in read-only `network_subnet` for new
+replicas; see [managed service networking](paas-networking-guide.md).
 
 ## Ownership and deletion
 

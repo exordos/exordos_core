@@ -23,6 +23,9 @@ def _require_unmanaged_node(node_uuid):
         raise exceptions.ValidateException(
             err="manage replica networking through NodeSet"
         )
+    from exordos_core.cloud import local
+
+    local.require_unmanaged(node.uuid)
 
 
 def _require_unmanaged_port(port_uuid):
@@ -70,7 +73,36 @@ def enforce_network(controller, resource, action):
     )
 
 
-def gate_explicit_address(controller, value, project_id):
+def gate_foreign_subnet(controller, value, project_id):
+    from exordos_core.network.routed import requested_network
+    from exordos_core.user_api.network.dm import models as catalog
+
+    if value.get("project_id") is not None and str(value["project_id"]) != str(
+        project_id
+    ):
+        enforce_network(controller, "port", "use_foreign_subnet")
+        return True
+    network = requested_network(value, project_id, allow_foreign=True)
+    if network is not None:
+        if str(network.project_id) != str(project_id) and network.access != "public":
+            enforce_network(controller, "port", "use_foreign_subnet")
+            return True
+        return False
+    if value.get("network") is None and value.get("subnet") is None:
+        return False
+    subnet = resolve_subnet(
+        project_id,
+        subnet=value.get("subnet"),
+        network=value.get("network"),
+        allow_foreign=True,
+    )
+    if not catalog.may_allocate_in(project_id, subnet):
+        enforce_network(controller, "port", "use_foreign_subnet")
+        return True
+    return False
+
+
+def gate_explicit_address(controller, value, project_id, *, allow_foreign=False):
     address = value.get("target_ipv4")
     if address is None:
         return
@@ -83,6 +115,7 @@ def gate_explicit_address(controller, value, project_id):
         network=value.get("network"),
         address=address,
         floating=False,
+        allow_foreign=allow_foreign,
     )
     if str(subnet.project_id) != str(project_id):
         enforce_network(controller, "address", "explicit_address")
@@ -103,11 +136,13 @@ def gate_allocated_private_address(controller, port, session):
 
 def gate_default_network(controller, value, project_id):
     if value.get("node_type", "VM") != "VM":
-        return
+        return False
     request = value.get("default_network")
     if request == {}:
-        return
+        return False
     request = request or {}
-    gate_explicit_address(controller, request, project_id)
+    allow_foreign = gate_foreign_subnet(controller, request, project_id)
+    gate_explicit_address(controller, request, project_id, allow_foreign=allow_foreign)
     if request.get("auto_floating_ip"):
         enforce_network(controller, "address", "create")
+    return allow_foreign

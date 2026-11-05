@@ -291,14 +291,15 @@ def test_released_flat_port_can_be_reused_with_compatibility_disabled(client):
         with pytest.raises(exceptions.BadRequestError):
             client.put(url, json={"node": foreign["uuid"]})
         assert stored(compute.Port, uid).node is None
-        with pytest.raises(exceptions.BadRequestError):
-            create(
-                client,
-                ("network", "ports"),
-                project_id=str(project),
-                subnet=str(previous.subnet),
-                node=second["uuid"],
-            )
+        # The admin wildcard includes use_foreign_subnet for explicit placement.
+        extra = create(
+            client,
+            ("network", "ports"),
+            project_id=str(project),
+            subnet=str(previous.subnet),
+            node=second["uuid"],
+        )
+        assert extra["subnet"] == str(previous.subnet)
     finally:
         config.CONF.clear_override("legacy_flat_default", group="network")
 

@@ -934,6 +934,10 @@ def may_allocate_in(project_id, subnet, network=None) -> bool:
 
     if str(subnet.project_id) == str(project_id) or subnet.shared_pool:
         return True
+    if getattr(subnet, "logical_network", None) is not None:
+        network = compute_models.Network.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(subnet.logical_network)}
+        )
     if network is None:
         network = compute_models.Network.objects.get_one_or_none(
             filters={"uuid": dm_filters.EQ(subnet.network)}
@@ -1184,8 +1188,9 @@ class PortSecurityGroup(
                 session=s,
             )
             port = compute_models.Port.objects.get_one(
-                filters={"uuid": dm_filters.EQ(self.port)}, session=s
+                filters={"uuid": dm_filters.EQ(self.port)}, session=s, locked=True
             )
+            port.validate_security_group_policy(binding=True, session=s)
             SecurityGroup.project_observations([group], session=s)
             SecurityGroupIdentity.reserve_for_port(port, group.rules, session=s)
             return super().insert(session=s)

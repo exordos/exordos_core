@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import contextlib
 import copy
 import logging
 import random
@@ -369,6 +370,22 @@ class SchedulerService(basic.BasicService):
     def _place_node_into_pool(
         self, node: base.NodeBundle, pool: base.MachinePoolBundle
     ) -> None:
+        from exordos_core.network import routed
+        from exordos_core.network.contracts import atomic_session
+
+        if routed.candidate(node.node, pool.pool) is not None:
+            with atomic_session(models.Node._get_engine()) as session:
+                session.execute(
+                    "SELECT uuid FROM nodes WHERE uuid=%s FOR UPDATE",
+                    (str(node.node.uuid),),
+                )
+                routed.bind(node.node, pool.pool, session)
+                return self._save_node_into_pool(node, pool)
+        return self._save_node_into_pool(node, pool)
+
+    def _save_node_into_pool(
+        self, node: base.NodeBundle, pool: base.MachinePoolBundle
+    ) -> None:
         """Place a node into a pool.
 
         The scheduling operation has been completed. A particular pool
@@ -426,6 +443,41 @@ class SchedulerService(basic.BasicService):
             if pool.hypervisor_node is not None
         }
 
+    @staticmethod
+    def _network_matches_pool(node, pool):
+        from exordos_core.network import routed
+
+        ports = models.Port.objects.get_all(filters={"node": dm_filters.EQ(node.uuid)})
+        segment = routed.candidate(node, pool)
+        if segment is False:
+            return False
+        if not ports and segment is not None:
+            return True
+        cloud = pool.is_cloud
+        for port in ports:
+            subnet = models.Subnet.objects.get_one(
+                filters={"uuid": dm_filters.EQ(port.subnet)}
+            )
+            network = models.Network.objects.get_one(
+                filters={"uuid": dm_filters.EQ(subnet.network)}
+            )
+            if getattr(
+                network, "owner_network", None
+            ) is not None or network.driver_state.get("routed_segments"):
+                segment = routed.owner(subnet=subnet.uuid)
+                if (
+                    segment is not None
+                    and str(pool.uuid) not in segment.definition["hypervisors"]
+                ):
+                    return False
+            spec = network.driver_spec
+            if spec.get("driver") == "cloud":
+                if not cloud or str(spec.get("connection")) != str(pool.uuid):
+                    return False
+            elif cloud:
+                return False
+        return bool(ports) if cloud else True
+
     def _machine_has_disk_capacity(self, node, machine, pools):
         if not node.volumes:
             return True
@@ -444,6 +496,12 @@ class SchedulerService(basic.BasicService):
     def _schedule_on_existing_machines(
         self, pools=None
     ) -> tp.Tuple[base.MachineBundle, ...]:
+        from exordos_core.compute.scheduler.driver.filters.affinity import (
+            DummySoftAntiAffinityFilter,
+        )
+        from exordos_core.network import routed
+        from exordos_core.network.contracts import atomic_session
+
         hypervisors = self._hypervisor_nodes()
         unscheduled = tuple(
             u for u in self._get_unscheduled_nodes() if u.node.uuid not in hypervisors
@@ -472,6 +530,14 @@ class SchedulerService(basic.BasicService):
 
         for unscheduled_node in unscheduled:
             node: models.Node = unscheduled_node.node
+            logical = (
+                routed.requested_network(
+                    node.properties.get_value("default_network"),
+                    routed.placement_project(node),
+                    allow_foreign=True,
+                )
+                is not None
+            )
             if node.node_type == ua_pool.NodeType.HW:
                 idle_machines = idle_hws
             else:
@@ -486,8 +552,29 @@ class SchedulerService(basic.BasicService):
             idle_machines = [
                 m
                 for m in idle_machines
-                if self._machine_has_disk_capacity(unscheduled_node, m, pools)
+                if m.machine.pool in pools
+                and self._network_matches_pool(node, pools[m.machine.pool].pool)
+                and self._machine_has_disk_capacity(unscheduled_node, m, pools)
             ]
+            if idle_machines:
+                candidates = tuple(
+                    p
+                    for p in pools.values()
+                    if self._network_matches_pool(node, p.pool)
+                )
+                for selector in self._pool_filters:
+                    candidates = tuple(selector.filter(unscheduled_node, candidates))
+                feasible = {p.pool.uuid: p for p in candidates}
+                feasible.update(
+                    {m.machine.pool: pools[m.machine.pool] for m in idle_machines}
+                )
+                eligible = {
+                    p.pool.uuid
+                    for p in DummySoftAntiAffinityFilter().filter(
+                        unscheduled_node, list(feasible.values())
+                    )
+                }
+                idle_machines = [m for m in idle_machines if m.machine.pool in eligible]
 
             # There are no available HW machines for this node
             # This means we unable to proceed scheduling process
@@ -533,8 +620,22 @@ class SchedulerService(basic.BasicService):
             machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
             node.status = nc.NodeStatus.SCHEDULED.value
             try:
-                node.save()
-                machine_bundle.machine.save()
+                with (
+                    atomic_session(models.Node._get_engine())
+                    if logical
+                    else contextlib.nullcontext()
+                ) as session:
+                    if logical:
+                        session.execute(
+                            "SELECT uuid FROM nodes WHERE uuid=%s FOR UPDATE",
+                            (str(node.uuid),),
+                        )
+                        routed.bind(
+                            node, pools[machine_bundle.machine.pool].pool, session
+                        )
+                        node.pool = machine_bundle.machine.pool
+                    node.save()
+                    machine_bundle.machine.save()
                 LOG.info(
                     "The node %s scheduled to %s machine",
                     node.uuid,
@@ -569,7 +670,9 @@ class SchedulerService(basic.BasicService):
         origin_pools = pools
 
         for node in nodes:
-            pools = origin_pools
+            pools = tuple(
+                p for p in origin_pools if self._network_matches_pool(node.node, p.pool)
+            )
 
             # Filtering. We filter out unsuitable pools. For instance, pools
             # that doesn't have enough cores or ram or some placement
@@ -644,7 +747,11 @@ class SchedulerService(basic.BasicService):
             # For other pools, exclude local agents (with local_pool capability)
             # since they are dedicated to local hypervisors.
             all_agents = machine_agents[MACHINE_POOL_CAP]
-            if pool.driver_spec.KIND == "exordos_local_hyper":
+            if pool.is_cloud:
+                available_agents = [
+                    a for a in all_agents if "cloud_pool" in a.list_capabilities
+                ]
+            elif pool.driver_spec.KIND == "exordos_local_hyper":
                 available_agents = [
                     a for a in all_agents if a.node == pool.driver_spec.node
                 ]

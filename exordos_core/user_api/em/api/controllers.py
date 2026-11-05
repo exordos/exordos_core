@@ -115,12 +115,12 @@ class ElementController(
 
 
 class ElementResourceController(
-    # iam_controllers.PolicyBasedWithoutProjectController,  # nested
+    iam_controllers.NestedPolicyBasedController,
     controllers.BaseNestedResourceControllerPaginated,
 ):
     __pr_name__ = "element"
-    # __policy_service_name__ = "em"
-    # __policy_name__ = "resource"
+    __policy_service_name__ = "em"
+    __policy_name__ = "element"
     __resource__ = resources.ResourceByModelWithCustomProps(
         model_class=models.Resource,
         convert_underscore=False,
