@@ -153,3 +153,26 @@ def test_cloud_segments_of_one_logical_network_share_provider_group(topology):
         ports[0]
     )
     assert len(neutron.groups) == 1
+
+
+@pytest.mark.parametrize("binding,enforce", [(False, True), (True, False)])
+@pytest.mark.parametrize("operation", ["create_port", "update_port"])
+def test_openstack_rejects_security_groups_without_port_security(monkeypatch, binding, enforce, operation):
+    driver = CloudNetworkDriver.__new__(CloudNetworkDriver)
+    driver.cloud = mock.Mock()
+    monkeypatch.setattr(catalog.PortSecurityGroup, "objects", mock.Mock())
+    catalog.PortSecurityGroup.objects.get_all.return_value = [object()] if binding else []
+    port = SimpleNamespace(uuid=uuid.uuid4(), port_security=False, enforce_security_group=enforce)
+    with pytest.raises(ValueError, match="port_security=true"):
+        getattr(driver, operation)(port)
+    driver.cloud.ensure_port.assert_not_called()
+    driver.cloud.api.network.update_port.assert_not_called()
+
+
+@pytest.mark.parametrize("kind,expected", [("core", False), ("openstack", True)])
+def test_native_pair_requires_a_provider_that_creates_shared_routers(monkeypatch, kind, expected):
+    from exordos_core.cloud import models as cloud_models
+
+    monkeypatch.setattr(cloud_models, "connection", lambda ref: SimpleNamespace(driver_spec=SimpleNamespace(KIND=kind)))
+    spec = {"driver_spec": {"driver": "cloud", "connection": str(uuid.uuid4())}}
+    assert routed.native_pair(spec, spec) is expected

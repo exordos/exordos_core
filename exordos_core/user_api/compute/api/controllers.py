@@ -157,6 +157,7 @@ class NodesController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {ra_c.ALL: field_p.Permissions.RO},
+                "power_state": {ra_c.ALL: field_p.Permissions.RO},
                 "ports": {
                     ra_c.ALL: field_p.Permissions.HIDDEN,
                     ra_c.CREATE: field_p.Permissions.RW,
@@ -369,6 +370,11 @@ class HypervisorsController(
         self._validate_driver_spec_uniqueness(kwargs)
 
         return super().create(**kwargs)
+
+    @actions.post
+    def update_credentials(self, resource: models.MachinePool, auth_type: str, auth: dict):
+        self._enforce("update")
+        return resource.update_credentials(auth_type=auth_type, auth=auth)
 
     @actions.post
     def update_driver_settings(self, resource: models.MachinePool, settings: dict):

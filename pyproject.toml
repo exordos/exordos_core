@@ -254,3 +254,6 @@ directory = "cover"
 
 [tool.coverage.xml]
 output = "cover/coverage.xml"
+
+[tool.uv.sources]
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "cc4255e17550d202563d64c07f99885ac583a90e" }

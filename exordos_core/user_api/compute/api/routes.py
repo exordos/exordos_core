@@ -72,6 +72,7 @@ class HypervisorRoute(routes.Route):
     __controller__ = controllers.HypervisorsController
 
     update_driver_settings = routes.action(HypervisorDriverSettingsActionRoute, invoke=True)
+    update_credentials = routes.action(HypervisorDriverSettingsActionRoute, invoke=True)
 
 
 class NodeSetPrivateKeyActionRoute(routes.Action):

@@ -303,13 +303,21 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             groups.append(self.cloud.security_group(default, rules).id)
         return groups
 
-    def create_port(self, port):
-        attributes = {
-            "security_group_ids": self._security_groups(port)
-            if port.port_security
-            else [],
+    def _port_attributes(self, port):
+        if not port.port_security and (
+            port.enforce_security_group
+            or catalog.PortSecurityGroup.objects.get_all(
+                filters={"port": filters.EQ(port.uuid)}
+            )
+        ):
+            raise ValueError("OpenStack security groups require port_security=true")
+        return {
+            "security_group_ids": self._security_groups(port) if port.port_security else [],
             "is_port_security_enabled": port.port_security,
         }
+
+    def create_port(self, port):
+        attributes = self._port_attributes(port)
         if port.ipv4:
             attributes["ip_address"] = str(port.ipv4)
         if port.mac:
@@ -330,6 +338,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             self.cloud.delete_port(external)
 
     def update_port(self, port):
+        attributes = self._port_attributes(port)
         external = self.cloud._find(
             self.cloud.ports(self._network()), "port", port.uuid
         )
@@ -337,10 +346,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             return self.create_port(port)
         external = self.cloud.api.network.update_port(
             external.id,
-            security_group_ids=self._security_groups(port)
-            if port.port_security
-            else [],
-            is_port_security_enabled=port.port_security,
+            **attributes,
         )
         return self._port_model(external)
 
@@ -348,6 +354,9 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
         external = self.cloud._find(
             self.cloud.ports(self._network()), "port", port.uuid
         )
-        return external is None or set(external.security_group_ids) != set(
-            self._security_groups(port)
+        attributes = self._port_attributes(port)
+        return (
+            external is None
+            or set(external.security_group_ids) != set(attributes["security_group_ids"])
+            or external.is_port_security_enabled != port.port_security
         )

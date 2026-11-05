@@ -220,7 +220,8 @@ def test_cloud_bootstrap_uses_the_installation_runtime_endpoints_and_sdk(
     from exordos_core.cloud import bootstrap
 
     bootstrap.agent_config()
-    with mock.patch.object(bootstrap, "version", return_value="4.5.6"):
+    with mock.patch.object(bootstrap, "version", return_value="4.5.6"), mock.patch.object(bootstrap, "distribution") as dist:
+        dist.return_value.read_text.return_value = None
         bootstrap.CONF.set_override("gc_boot_api", boot, group="boot_api")
         bootstrap.CONF.set_override("bind_port", ports[0], group="orch_api")
         bootstrap.CONF.set_override("bind_port", ports[1], group="status_api")
@@ -287,3 +288,30 @@ def test_cloud_connection_logging_omits_bodies_and_queries(caplog, path):
     assert response.status_int == 200
     assert "private-sentinel" not in caplog.text
     assert path in caplog.text
+
+
+def test_cloud_agent_package_can_use_a_published_wheel():
+    from exordos_core.cloud import bootstrap
+
+    bootstrap.CONF.set_override("gc_boot_api", "http://core.example:11013", group="boot_api")
+    bootstrap.CONF.set_override("agent_package", "https://repo.example/gcl_sdk.whl", group="cloud_agent")
+    try:
+        assert bootstrap.agent_config()[2] == "https://repo.example/gcl_sdk.whl"
+    finally:
+        bootstrap.CONF.clear_override("agent_package", group="cloud_agent")
+        bootstrap.CONF.clear_override("gc_boot_api", group="boot_api")
+
+
+def test_git_sdk_is_bootstrapped_from_its_exact_installed_commit():
+    from exordos_core.cloud import bootstrap
+    import json
+
+    revision = "1234567890abcdef1234567890abcdef12345678"
+    metadata = json.dumps({"url": "https://github.com/exordos/gcl_sdk.git", "vcs_info": {"vcs": "git", "commit_id": revision}})
+    bootstrap.CONF.set_override("gc_boot_api", "http://core.example:11013", group="boot_api")
+    try:
+        with mock.patch.object(bootstrap, "distribution") as dist:
+            dist.return_value.read_text.return_value = metadata
+            assert bootstrap.agent_config()[2] == "git+https://github.com/exordos/gcl_sdk.git@" + revision
+    finally:
+        bootstrap.CONF.clear_override("gc_boot_api", group="boot_api")

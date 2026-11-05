@@ -116,12 +116,15 @@ def requested_network(value, project_id, session=None, *, allow_foreign=False):
 
 def native_pair(left, right):
     """New segments in one Neutron scope share a managed router."""
+    from exordos_core.cloud.models import connection
+
     a, b = left["driver_spec"], right["driver_spec"]
     return (
         not left.get("subnet")
         and not right.get("subnet")
         and a.get("driver") == b.get("driver") == "cloud"
         and a["connection"] == b["connection"]
+        and connection(a["connection"]).driver_spec.KIND == "openstack"
     )
 
 

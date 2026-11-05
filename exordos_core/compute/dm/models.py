@@ -198,6 +198,22 @@ class MachinePool(
         return super().update(session=session, force=force)
 
     @connection_guard(lambda self: self.uuid)
+    def update_credentials(self, *, auth_type, auth, session=None):
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if stored.driver_spec.KIND != "openstack":
+            raise ex_exceptions.ValidateException(
+                err="Credential replacement requires an OpenStack hypervisor"
+            )
+        values = dict(
+            stored.driver_spec.dump_to_simple_view(), auth_type=auth_type, auth=auth
+        )
+        stored.driver_spec = type(stored.driver_spec).restore_from_simple_view(**values)
+        stored.update(session=session)
+        return stored
+
+    @connection_guard(lambda self: self.uuid)
     def update_driver_settings(self, *, settings, session=None):
         if not isinstance(settings, dict) or set(settings) - {
             "volume_type",
@@ -1532,6 +1548,33 @@ class Port(
         self._validate_node_ownership()
         if subnet is not None:
             self._validate_ipv4(subnet)
+        self.validate_security_group_policy()
+
+    def validate_security_group_policy(self, *, binding=False, session=None):
+        if self.port_security:
+            return
+        from exordos_core.cloud.models import connection
+        from exordos_core.user_api.network.dm import models as catalog
+
+        if not (binding or self.enforce_security_group or self.security_groups):
+            if not catalog.PortSecurityGroup.objects.get_all(
+                filters={"port": dm_filters.EQ(self.uuid)}, session=session
+            ):
+                return
+        subnet = Subnet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.subnet)}, session=session
+        )
+        network = Network.objects.get_one(
+            filters={"uuid": dm_filters.EQ(subnet.network)}, session=session
+        )
+        if (
+            network.driver_spec.get("driver") == "cloud"
+            and connection(network.driver_spec["connection"], session=session)
+            .driver_spec.KIND == "openstack"
+        ):
+            raise ex_exceptions.ValidateException(
+                err="OpenStack security groups require port_security=true"
+            )
 
     def _validate_node_ownership(self) -> None:
         node_ref = getattr(self.node, "uuid", self.node)

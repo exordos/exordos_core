@@ -11,6 +11,7 @@ import pytest
 from restalchemy.dm import filters
 
 from exordos_core.cloud.links import CloudNetworkLink
+from exordos_core.compute.dm import models as compute
 from exordos_core.tests.functional.restapi.network.test_sdn_contract_api import (
     collection,
 )
@@ -101,6 +102,28 @@ def test_driver_setting_update_does_not_restore_stale_credentials(client):
     saved = MachinePool.objects.get_one(filters=query)
     assert saved.driver_spec.volume_type == "fast"
     assert saved.driver_spec.auth == replacement["auth"]
+
+
+def test_credential_action_keeps_settings_changed_after_the_clients_read(client):
+    from exordos_core.compute.dm.models import MachinePool
+
+    config = connection(client)
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    client.post(path.rstrip("/") + "/actions/update_driver_settings/invoke", json={"settings": {"volume_type": "fast", "key_name": "operator"}})
+    auth = {"application_credential_id": "replacement", "application_credential_secret": "rotated-sentinel"}
+    result = client.post(path.rstrip("/") + "/actions/update_credentials/invoke", json={"auth_type": "v3applicationcredential", "auth": auth}).json()
+    saved = MachinePool.objects.get_one(filters={"uuid": filters.EQ(uuid.UUID(config["uuid"]))})
+    assert saved.driver_spec.volume_type == "fast"
+    assert saved.driver_spec.key_name == "operator"
+    assert saved.driver_spec.auth == auth
+    assert "auth" not in result["driver_spec"]
+
+
+def test_credential_action_requires_update_permission(client, auth_test1_user, user_api_client):
+    config = connection(client)
+    path = resource(client, "compute", "hypervisors", config["uuid"])
+    with pytest.raises(exceptions.ForbiddenError):
+        user_api_client(auth_test1_user).post(path.rstrip("/") + "/actions/update_credentials/invoke", json={"auth_type": "v3applicationcredential", "auth": {}})
 
 
 def test_public_driver_settings_require_hypervisor_update_permission(client, auth_test1_user, user_api_client):
@@ -204,6 +227,10 @@ def test_outbound_only_local_endpoint_needs_no_public_address(client):
         capabilities={"capabilities": ["cloud_net_link"]},
         facts={"facts": []},
     )
+    compute.Node(
+        uuid=agent.node, project_id=uuid.UUID(subnet["project_id"]),
+        name="local-router", node_type="HW", cores=1, ram=512, disk_spec=compute.infra_models.DisksSpec(disks=[]),
+    ).insert()
     agent.insert()
     result = create(
         client,
@@ -585,6 +612,7 @@ def test_local_gateway_requires_capability_and_cannot_share_a_routing_domain(cli
     subnet = create(
         client, ("network", "subnets"), network=net["uuid"], cidr="10.246.0.0/24"
     )
+    compute.Node(uuid=agent.node, project_id=uuid.UUID(subnet["project_id"]), name="router", node_type="HW", cores=1, ram=512, disk_spec=compute.infra_models.DisksSpec(disks=[])).insert()
     local = {
         "subnet": subnet["uuid"],
         "agent": str(agent.uuid),
@@ -786,6 +814,7 @@ def test_unmanaged_gateway_coexists_with_managed_binding_without_reusing_its_hos
         capabilities={"capabilities": ["cloud_net_link"]},
         facts={"facts": []},
     )
+    compute.Node(uuid=agent.node, project_id=uuid.UUID(subnet["project_id"]), name="router", node_type="HW", cores=1, ram=512, disk_spec=compute.infra_models.DisksSpec(disks=[])).insert()
     agent.insert()
     other_subnet = create(
         client, ("network", "subnets"), network=private["uuid"], cidr="10.249.0.0/24"
@@ -1177,3 +1206,44 @@ def test_connection_kind_dispatch_supports_a_non_openstack_spec(
             client.put(path, json={"driver_state": {"account": "other-account"}})
     finally:
         user_api._restore_seed_snapshot()
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_local_link_cannot_target_a_foreign_or_missing_agent_node(client, missing):
+    from gcl_sdk.agents.universal.dm import models as ua
+
+    cloud = dict(link_endpoints(client)[0], role="server")
+    net = create(client, ("network", "networks"), driver_spec={"driver": "ovs_evpn"})
+    subnet = create(client, ("network", "subnets"), network=net["uuid"], cidr="10.246.0.0/24")
+    node = uuid.uuid4()
+    if not missing:
+        compute.Node(uuid=node, project_id=uuid.uuid4(), name="foreign-router", node_type="HW", cores=1, ram=512, disk_spec=compute.infra_models.DisksSpec(disks=[])).insert()
+    agent = ua.UniversalAgent(uuid=uuid.uuid4(), node=node, name="router", capabilities={"capabilities": ["cloud_net_link"]}, facts={"facts": []})
+    agent.insert()
+    with pytest.raises(exceptions.NotFoundError):
+        create(client, ("compute", "cloud_network_links"), endpoints=[cloud, {"subnet": subnet["uuid"], "agent": str(agent.uuid), "role": "client"}])
+
+
+@pytest.mark.parametrize("bound", [False, True])
+def test_openstack_rejects_disabling_anti_spoofing_while_sg_is_required(client, bound):
+    config = connection(client)
+    net = network(client, config)
+    subnet = create(client, ("network", "subnets"), network=net["uuid"], cidr="10.245.0.0/24")
+    port = create(client, ("network", "ports"), subnet=subnet["uuid"], enforce_security_group=not bound)
+    if bound:
+        group = create(client, ("network", "catalog", "security_groups"))
+        create(client, ("network", "port_security_groups"), port=port["uuid"], security_group=group["uuid"])
+    path = resource(client, "network", "ports", port["uuid"])
+    with pytest.raises(exceptions.BadRequestError):
+        client.put(path, json={"port_security": False})
+    assert client.get(path).json()["port_security"] is True
+
+
+def test_openstack_cannot_bind_sg_after_disabling_anti_spoofing(client):
+    config = connection(client)
+    net = network(client, config)
+    subnet = create(client, ("network", "subnets"), network=net["uuid"], cidr="10.245.0.0/24")
+    port = create(client, ("network", "ports"), subnet=subnet["uuid"], port_security=False)
+    group = create(client, ("network", "catalog", "security_groups"))
+    with pytest.raises(exceptions.BadRequestError):
+        create(client, ("network", "port_security_groups"), port=port["uuid"], security_group=group["uuid"])

@@ -215,7 +215,7 @@ cleanup_iam_cache
 trap - EXIT
 
 cd "$GC_PATH"
-uv sync
+uv sync --extra openstack
 source "$GC_PATH"/.venv/bin/activate
 
 sudo chown -R ubuntu:ubuntu "$GC_PATH"
@@ -226,7 +226,7 @@ sudo chown -R ubuntu:ubuntu "$GC_PATH"
 # libvirt-python silently goes missing and PoolAgentDriver can't be built.
 if [[ "$SDK_DEV_MODE" == "true" ]]; then
     uv pip uninstall gcl_sdk
-    uv pip install -e "$DEV_SDK_PATH[libvirt]"
+    uv pip install -e "$DEV_SDK_PATH[libvirt,openstack]"
 fi
 
 # Configuration for universal agent

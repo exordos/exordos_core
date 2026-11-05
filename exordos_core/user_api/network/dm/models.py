@@ -1188,8 +1188,9 @@ class PortSecurityGroup(
                 session=s,
             )
             port = compute_models.Port.objects.get_one(
-                filters={"uuid": dm_filters.EQ(self.port)}, session=s
+                filters={"uuid": dm_filters.EQ(self.port)}, session=s, locked=True
             )
+            port.validate_security_group_policy(binding=True, session=s)
             SecurityGroup.project_observations([group], session=s)
             SecurityGroupIdentity.reserve_for_port(port, group.rules, session=s)
             return super().insert(session=s)

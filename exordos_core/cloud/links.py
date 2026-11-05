@@ -261,6 +261,13 @@ class CloudNetworkLink(
                         raise ValueError(
                             "Local gateway agent must advertise cloud_net_link"
                         )
+                    compute.Node.objects.get_one(
+                        filters={
+                            "uuid": filters.EQ(agent.node),
+                            "project_id": filters.EQ(self.project_id),
+                        },
+                        session=session,
+                    )
                     if agent.node in local_nodes:
                         raise ValueError(
                             "A local host can serve only one link endpoint"
