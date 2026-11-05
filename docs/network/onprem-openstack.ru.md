@@ -80,8 +80,9 @@ exordos compute hypervisors update-credentials "$CLOUD_HYPERVISOR_ID" \
 Для выбора проекта провайдера по имени используйте `project_name` и
 `project_domain_name` в API auth либо соответствующие параметры CLI.
 
-Для замены через API отправьте `PUT` с полным `driver_spec`, включая новый
-`auth`. Пароль и application credential можно менять друг на друга при
+Для замены через API отправьте
+`POST /v1/compute/hypervisors/<uuid>/actions/update_credentials/invoke`
+с `auth_type` и новым `auth`. Действие сохраняет параллельные изменения настроек драйвера. Пароль и application credential можно менять друг на друга при
 сохранении идентичности провайдера. URL Keystone, регион и интерфейс неизменяемы.
 Если провайдер поддерживает application credentials, используйте
 `auth_type: "v3applicationcredential"` и `application_credential_id` вместе
@@ -353,3 +354,19 @@ IP реплик найдите в Ports и проверьте ICMP либо TCP-
 из самих ВМ. Security groups должны разрешать проверяемый трафик. ACTIVE подсети
 означает готовность связности, но не подтверждает готовность приложения
 и не публикует публичный frontend.
+
+В OpenStack security groups требуют Neutron port security. Core отклоняет
+`port_security: false`, если включён `enforce_security_group` или к порту
+привязана security group. Для провайдера Core эти настройки независимы.
+Node локального шлюзового агента должен принадлежать проекту связи.
+Секрет OpenStack читается из соответствующей переменной `OS_PASSWORD` или
+`OS_APPLICATION_CREDENTIAL_SECRET` либо запрашивается без отображения ввода.
+Параметры командной строки со значениями секретов не принимаются.
+
+По умолчанию облачные гостевые машины устанавливают версию SDK контроллера.
+Если SDK установлен из официального Git-репозитория, гостевая машина
+установит тот же коммит. Для другого источника укажите в настройке Core
+`[cloud_agent] agent_package` доступный URL wheel-файла SDK или требование к
+пакету. Настройка общая для всех облачных провайдеров и должна указывать на
+соответствующую сборку SDK. URL пакета не может содержать userinfo и
+query-параметры; во fragment разрешён только SHA-256 хеш целостности.

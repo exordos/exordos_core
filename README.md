@@ -29,6 +29,9 @@ Operators can allow private networks to reach selected flat subnets while
 protecting underlay and management destinations; see the
 [deployment policy](docs/network/realm-connectivity-sdn.md#flat-access-and-infrastructure-protection).
 
+See [OpenStack multicloud](docs/network/openstack-multicloud.md) and
+[Core multicloud](docs/network/core-multicloud.md) for provider integration.
+
 ## What Exordos Core does
 
 Exordos Core is the next step beyond classic DevOps. Instead of a collection of disconnected tools requiring constant manual coordination, it gives your organization a single declarative platform layer where infrastructure, policies, and service lifecycle are managed as one coherent system.
@@ -63,13 +66,3 @@ Contributing to the project is highly appreciated! However, some rules should be
 - Changes should include not only new functionality or bug fixes, but also tests for the new code.
 - After the changes are completed and **tested**, a Pull Request should be created with a clear description of the new functionality. And add one of the project maintainers as a reviewer.
 - Changes can be merged only after receiving an approve from one of the project maintainers.
-
-Native OpenStack pools and routed private links are documented in
-[OpenStack multicloud](docs/network/openstack-multicloud.md). Register provider
-credentials through API or CLI; Core supplies agent bootstrap settings.
-Use [logical networks](docs/network/logical-networks.md) to allocate a `/23`
-for each subnet and place NodeSet replicas on its referenced hypervisors.
-
-Another Core installation can provide native VM, disk and network resources;
-see [Core multicloud](docs/network/core-multicloud.md) for project scope,
-guest images and managed private connectivity.

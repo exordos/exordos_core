@@ -360,12 +360,15 @@ class NodeSetsController(
         self.model.validate_network_input(kwargs)
         from exordos_core.network.permissions import gate_default_network
 
-        if (
-            "default_network" in kwargs
-            and kwargs["default_network"] != stored.default_network
+        node_type = kwargs.get("node_type", stored.node_type)
+        request = kwargs.get("default_network", stored.default_network)
+        if request != stored.default_network or (
+            node_type == "VM" and node_type != stored.node_type
         ):
             stored._allow_foreign_subnet = gate_default_network(
-                self, kwargs, stored.project_id
+                self,
+                {"default_network": request, "node_type": node_type},
+                stored.project_id,
             )
         kwargs["status"] = nc.NodeStatus.IN_PROGRESS.value
         self._enforce("update")
@@ -415,6 +418,11 @@ class HypervisorsController(
         self._validate_driver_spec_uniqueness(kwargs)
 
         return super().create(**kwargs)
+
+    @actions.post
+    def update_credentials(self, resource: models.MachinePool, auth_type: str, auth: dict):
+        self._enforce("update")
+        return resource.update_credentials(auth_type=auth_type, auth=auth)
 
     @actions.post
     def update_driver_settings(self, resource: models.MachinePool, settings: dict):

@@ -78,15 +78,19 @@ def require_logical_request(value, session=None):
         )
 
 
-def requested_network(value, project_id, session=None, *, allow_foreign=False):
+def requested_network(
+    value, project_id, session=None, *, allow_foreign=False, allow_missing=False
+):
     from exordos_core.compute.dm import models
 
     if not isinstance(value, dict) or not value.get("network"):
         return None
-    network = models.Network.objects.get_one(
+    objects = models.Network.objects
+    lookup = objects.get_one_or_none if allow_missing else objects.get_one
+    network = lookup(
         filters={"uuid": filters.EQ(value["network"])}, session=session
     )
-    if network.driver_spec.get("driver") != "routed":
+    if network is None or network.driver_spec.get("driver") != "routed":
         return None
     if session is not None:
         session.execute(
@@ -116,12 +120,15 @@ def requested_network(value, project_id, session=None, *, allow_foreign=False):
 
 def native_pair(left, right):
     """New segments in one Neutron scope share a managed router."""
+    from exordos_core.cloud.models import connection
+
     a, b = left["driver_spec"], right["driver_spec"]
     return (
         not left.get("subnet")
         and not right.get("subnet")
         and a.get("driver") == b.get("driver") == "cloud"
         and a["connection"] == b["connection"]
+        and connection(a["connection"]).driver_spec.KIND == "openstack"
     )
 
 
@@ -420,6 +427,7 @@ def save_subnet(subnet, network, session, imported=None):
         local = models.Network.objects.get_one(
             filters={"uuid": filters.EQ(subnet.network)}, session=session
         )
+        subnet._validate_cloud_gateway_update(imported, local, session)
         local.driver_state = {
             **local.driver_state,
             "routed_segments": {
@@ -472,6 +480,11 @@ def update_subnet(subnet, stored, session, force=False):
             raise exceptions.ConflictRecords(
                 model="Subnet", msg=f"{field} is immutable"
             )
+    if subnet.routers != stored.routers:
+        local = models.Network.objects.get_one(
+            filters={"uuid": filters.EQ(part.local_network)}, session=session
+        )
+        subnet._validate_cloud_gateway_update(stored, local, session)
     if subnet.gateway != stored.gateway:
         if endpoints_for_subnet(subnet.uuid, session):
             raise exceptions.ConflictRecords(
@@ -599,17 +612,19 @@ def delete_network(network, session=None):
     return orm.SQLStorableMixin.update(network, session=session)
 
 
-def router_id(network):
+def router_id(network, session=None):
     if network.driver_spec.get("driver") != "cloud":
         return None
     if getattr(network, "owner_network", None) is None:
         return None
-    segment = owner(network=network.uuid)
+    segment = owner(network=network.uuid, session=session)
     if segment is None or segment.definition.get("subnet"):
         return None
     from exordos_core.compute.dm import models
 
-    root = models.Network.objects.get_one(filters={"uuid": filters.EQ(segment.network)})
+    root = models.Network.objects.get_one(
+        filters={"uuid": filters.EQ(segment.network)}, session=session
+    )
     if root.connectivity.get("driver", "auto") != "auto":
         return None
     return uuid.uuid5(root.uuid, "router:" + str(network.driver_spec["connection"]))
@@ -638,7 +653,9 @@ def candidate(node, pool):
     from exordos_core.compute.dm import models
 
     network = requested_network(
-        node.properties.get_value("default_network"), placement_project(node)
+        node.properties.get_value("default_network"),
+        placement_project(node),
+        allow_missing=True,
     )
     if network is None:
         return None

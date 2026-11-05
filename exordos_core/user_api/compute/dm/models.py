@@ -31,6 +31,9 @@ class Node(common_models.CustomPropertiesMixin, models.Node):
         "ports": types.TypedList(types.UUID()),
         "bootstrap": types.Dict(),
     }
+    __audit_excluded_fields__ = models.Node.__audit_excluded_fields__ | frozenset(
+        __custom_properties__
+    )
     node_set = relationships.relationship(models.NodeSet, read_only=True)
 
     def __init__(self, ports=(), bootstrap=None, **kwargs):

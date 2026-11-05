@@ -209,6 +209,22 @@ class MachinePool(
         return super().update(session=session, force=force)
 
     @connection_guard(lambda self: self.uuid)
+    def update_credentials(self, *, auth_type, auth, session=None):
+        stored = self.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.uuid)}, session=session
+        )
+        if stored.driver_spec.KIND != "openstack":
+            raise ex_exceptions.ValidateException(
+                err="Credential replacement requires an OpenStack hypervisor"
+            )
+        values = dict(
+            stored.driver_spec.dump_to_simple_view(), auth_type=auth_type, auth=auth
+        )
+        stored.driver_spec = type(stored.driver_spec).restore_from_simple_view(**values)
+        stored.update(session=session)
+        return stored
+
+    @connection_guard(lambda self: self.uuid)
     def update_driver_settings(self, *, settings, session=None):
         if not isinstance(settings, dict) or set(settings) - {
             "volume_type",
@@ -263,7 +279,9 @@ class MachinePool(
                     str(resource.value.get("pool")) == str(self.uuid)
                     for resource in model.objects.get_all(
                         filters={
-                            "kind": dm_filters.In(["pool_machine", "pool_volume"])
+                            "kind": dm_filters.In(
+                                ["pool_machine", "pool_volume", "pool_port"]
+                            )
                         },
                         session=session,
                     )
@@ -424,7 +442,11 @@ class NodeSet(
                     limit=1,
                 ) and any(
                     requested_network(
-                        request, self.project_id, current, allow_foreign=True
+                        request,
+                        self.project_id,
+                        current,
+                        allow_foreign=True,
+                        allow_missing=True,
                     )
                     is not None
                     for request in (stored.default_network, self.default_network)
@@ -673,7 +695,11 @@ class Node(
             for request in (before, after):
                 if (
                     requested_network(
-                        request, self.project_id, session, allow_foreign=True
+                        request,
+                        self.project_id,
+                        session,
+                        allow_foreign=True,
+                        allow_missing=True,
                     )
                     is not None
                 ):
@@ -1003,7 +1029,10 @@ class Network(
                 or stored.driver_spec.get("driver") == "routed"
                 or stored.project_id != self.project_id
                 or (
-                    stored.driver_spec.get("driver") == "cloud"
+                    "cloud" in (
+                        stored.driver_spec.get("driver"),
+                        self.driver_spec.get("driver"),
+                    )
                     and stored.driver_spec != self.driver_spec
                 )
             ):
@@ -1218,7 +1247,7 @@ class Subnet(
                 from exordos_core.network.routed import update_subnet
 
                 return update_subnet(self, stored, current, force=force)
-            Network.objects.get_one(
+            selected = Network.objects.get_one(
                 filters={"uuid": dm_filters.EQ(self.network)},
                 session=current,
                 locked=True,
@@ -1234,9 +1263,37 @@ class Subnet(
                     raise ra_storage_exc.ConflictRecords(
                         model="Subnet", msg=f"{field} is immutable"
                     )
+            self._validate_cloud_gateway_update(stored, selected, current)
             self._validate_routes()
             self._validate_no_overlapping_pool(session=current)
             return super().update(session=current, force=force)
+
+    def _validate_cloud_gateway_update(self, stored, network, session):
+        if (
+            self.routers == stored.routers
+            or network.driver_spec.get("driver") != "cloud"
+        ):
+            return
+        from exordos_core.cloud.models import connection
+        from exordos_core.network.driver.cloud import default_gateway
+        from exordos_core.network.routed import router_id
+
+        previous_gateway = default_gateway(stored.routers)
+        if (
+            previous_gateway is not None
+            and default_gateway(self.routers) != previous_gateway
+            and (
+                network.driver_spec.get("external_network")
+                or router_id(network, session)
+            )
+            and connection(
+                network.driver_spec["connection"], network.project_id, session
+            ).driver_spec.KIND == "openstack"
+        ):
+            raise ra_storage_exc.ConflictRecords(
+                model="Subnet",
+                msg="default gateway is immutable with a managed cloud router",
+            )
 
     def _allocatable(self) -> netaddr.IPSet:
         """The CIDR narrowed by `ip_range`, if set."""
@@ -1563,6 +1620,33 @@ class Port(
         self._validate_node_ownership()
         if subnet is not None:
             self._validate_ipv4(subnet)
+        self.validate_security_group_policy()
+
+    def validate_security_group_policy(self, *, binding=False, session=None):
+        if self.port_security:
+            return
+        from exordos_core.cloud.models import connection
+        from exordos_core.user_api.network.dm import models as catalog
+
+        if not (binding or self.enforce_security_group or self.security_groups):
+            if not catalog.PortSecurityGroup.objects.get_all(
+                filters={"port": dm_filters.EQ(self.uuid)}, session=session
+            ):
+                return
+        subnet = Subnet.objects.get_one(
+            filters={"uuid": dm_filters.EQ(self.subnet)}, session=session
+        )
+        network = Network.objects.get_one(
+            filters={"uuid": dm_filters.EQ(subnet.network)}, session=session
+        )
+        if (
+            network.driver_spec.get("driver") == "cloud"
+            and connection(network.driver_spec["connection"], session=session)
+            .driver_spec.KIND == "openstack"
+        ):
+            raise ex_exceptions.ValidateException(
+                err="OpenStack security groups require port_security=true"
+            )
 
     def _validate_node_ownership(self) -> None:
         node_ref = getattr(self.node, "uuid", self.node)

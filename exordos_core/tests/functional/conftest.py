@@ -531,6 +531,7 @@ def node_factory():
         view = node.dump_to_simple_view(
             skip=[
                 "ports",
+                "power_state",
                 *([] if "default_network" in kwargs else ["default_network"]),
             ]
         )
@@ -539,7 +540,6 @@ def node_factory():
         view.pop("node_set")
         # Not writable via API
         view.pop("target_power_state")
-        view.pop("power_state")
         return view
 
     return factory
@@ -572,6 +572,7 @@ def node_factory_with_model():
         view = node.dump_to_simple_view(
             skip=[
                 "ports",
+                "power_state",
                 *([] if "default_network" in kwargs else ["default_network"]),
             ]
         )
@@ -580,7 +581,6 @@ def node_factory_with_model():
         view.pop("node_set")
         # Not writable via API
         view.pop("target_power_state")
-        view.pop("power_state")
         return view, node
 
     return factory
@@ -664,7 +664,7 @@ def pool_factory():
             storage_pools=[storage_pool.dump_to_simple_view()],
             **kwargs,
         )
-        view = pool.dump_to_simple_view()
+        view = pool.dump_to_simple_view(skip=["driver_state"])
         if status is None:
             view.pop("status")
         return view
@@ -1091,7 +1091,7 @@ def network_factory():
             ),
             **kwargs,
         )
-        return network.dump_to_simple_view(skip=["driver_state", "is_default"])
+        return network.dump_to_simple_view(skip=["driver_state", "is_default", "owner_network"])
 
     return factory
 
@@ -1115,7 +1115,7 @@ def subnet_factory():
             cidr=netaddr.IPNetwork(cidr),
             **kwargs,
         )
-        return subnet.dump_to_simple_view()
+        return subnet.dump_to_simple_view(skip=["logical_network", "status", "error"])
 
     return factory
 

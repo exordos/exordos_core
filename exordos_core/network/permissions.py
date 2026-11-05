@@ -82,7 +82,7 @@ def gate_foreign_subnet(controller, value, project_id):
     ):
         enforce_network(controller, "port", "use_foreign_subnet")
         return True
-    network = requested_network(value, project_id, allow_foreign=True)
+    network = requested_network(value, project_id, allow_foreign=True, allow_missing=True)
     if network is not None:
         if str(network.project_id) != str(project_id) and network.access != "public":
             enforce_network(controller, "port", "use_foreign_subnet")
@@ -135,9 +135,11 @@ def gate_allocated_private_address(controller, port, session):
 
 
 def gate_default_network(controller, value, project_id):
+    request = value.get("default_network")
+    if request and request.get("security_groups"):
+        enforce_network(controller, "port_security_group", "create")
     if value.get("node_type", "VM") != "VM":
         return False
-    request = value.get("default_network")
     if request == {}:
         return False
     request = request or {}

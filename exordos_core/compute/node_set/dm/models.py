@@ -61,12 +61,16 @@ class NodeSet(compute_models.NodeSet):
         if not subnet_id and (self.default_network or {}).get("network"):
             from exordos_core.network.routed import parts
 
-            network = compute_models.Network.objects.get_one(
+            network = compute_models.Network.objects.get_one_or_none(
                 filters={"uuid": filters.EQ(self.default_network["network"])}
             )
-            if network.driver_spec.get("driver") == "routed" and any(
-                s.definition["driver_spec"].get("driver") == "cloud"
-                for s in parts(network)
+            if (
+                network is not None
+                and network.driver_spec.get("driver") == "routed"
+                and any(
+                    segment.definition["driver_spec"].get("driver") == "cloud"
+                    for segment in parts(network)
+                )
             ):
                 return (
                     sdk_models.SetDisksSpec(

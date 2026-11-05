@@ -24,7 +24,6 @@ from restalchemy.dm import properties
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
 from restalchemy.storage import exceptions as storage_exceptions
-from restalchemy.storage.sql import orm
 
 from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c

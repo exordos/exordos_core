@@ -261,6 +261,13 @@ class CloudNetworkLink(
                         raise ValueError(
                             "Local gateway agent must advertise cloud_net_link"
                         )
+                    compute.Node.objects.get_one(
+                        filters={
+                            "uuid": filters.EQ(agent.node),
+                            "project_id": filters.EQ(self.project_id),
+                        },
+                        session=session,
+                    )
                     if agent.node in local_nodes:
                         raise ValueError(
                             "A local host can serve only one link endpoint"
@@ -297,10 +304,14 @@ class CloudNetworkLink(
             definitions.append((subnet_id, connection_id, config))
         return definitions
 
-    def _sync_bindings(self, definitions, session):
+    def _sync_bindings(self, definitions, session, *, previous_subnets=frozenset()):
         for subnet_id, connection, definition in definitions:
             existing = endpoints_for_subnet(subnet_id, session)
             if existing:
+                if subnet_id not in previous_subnets:
+                    raise exceptions.ConflictRecords(
+                        model="CloudNetworkLink", msg="Endpoint cleanup is in progress"
+                    )
                 if existing[0].definition != definition:
                     raise exceptions.ConflictRecords(
                         model="CloudNetworkLink",
@@ -343,7 +354,13 @@ class CloudNetworkLink(
                     model="CloudNetworkLink",
                     msg="Link transport and project are immutable",
                 )
-            self._sync_bindings(self._validate(current), current)
+            self._sync_bindings(
+                self._validate(current),
+                current,
+                previous_subnets={
+                    uuid.UUID(endpoint["subnet"]) for endpoint in stored.endpoints
+                },
+            )
             self.state, self.secrets, self.recovery = (
                 stored.state,
                 stored.secrets,

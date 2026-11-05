@@ -81,8 +81,8 @@ The CLI prompts for the password without echo when `OS_PASSWORD` is absent.
 To choose the provider project by name, use `project_name` and
 `project_domain_name` in API auth, or the corresponding CLI options.
 
-API credential replacement uses `PUT` with the complete `driver_spec`, including
-new `auth`. Password and application-credential methods can be exchanged if
+API credential replacement uses `POST /v1/compute/hypervisors/<uuid>/actions/update_credentials/invoke`
+with `auth_type` and new `auth`. The action preserves concurrently updated driver settings. Password and application-credential methods can be exchanged if
 the authenticated provider identity stays the same. Auth URL, region and
 interface are immutable. Application credentials use
 `auth_type: "v3applicationcredential"` and `application_credential_id` plus
@@ -352,3 +352,18 @@ Find the replica IPs in Ports and test ICMP or an application TCP port in both
 directions from the actual workloads. Security groups must permit the tested
 traffic. Subnet ACTIVE describes connectivity readiness; it does not establish
 application readiness or publish a public frontend.
+
+OpenStack security groups require Neutron port security. Core rejects
+`port_security: false` when `enforce_security_group` is true or a security group
+is bound to the port. Core-backed providers keep these controls independent.
+Manual local gateway agents must belong to a Node in the link project.
+OpenStack secrets are read from the matching `OS_PASSWORD` or
+`OS_APPLICATION_CREDENTIAL_SECRET` environment variable, or prompted without echo;
+secret-valued command-line options are not accepted.
+
+Cloud guests install the controller's SDK version by default. An SDK installed
+from the official Git repository is installed from the same commit in guests.
+To use another source, set `[cloud_agent] agent_package` in Core's
+configuration to a reachable SDK wheel URL or package requirement. The setting
+applies to all cloud providers and must reference the matching SDK build.
+Package URLs cannot contain user information or query parameters; fragments must be SHA-256 integrity hashes.

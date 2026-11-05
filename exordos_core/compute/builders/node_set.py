@@ -46,7 +46,10 @@ class NodeSetBuilderService(builder.CoreInfraBuilder):
         from exordos_core.network.routed import requested_network
 
         logical = requested_network(
-            instance.default_network, instance.project_id, allow_foreign=True
+            instance.default_network,
+            instance.project_id,
+            allow_foreign=True,
+            allow_missing=True,
         )
         placement = instance.placement or {}
         scope = placement.get("scope", "site" if logical is not None else "pool")

@@ -47,6 +47,7 @@ Foreign Ports are visible to the owner of their overlay Subnet for reading;
 the owner cannot edit or delete the service's Ports.
 
 `default_network.security_groups` lists SG UUIDs from the NodeSet's project.
+Setting the list requires `network.port_security_group.create`.
 Overlay replica creation binds them atomically with the Port and enables
 `enforce_security_group`. A missing or invalid group rolls creation back.
 Flat replicas retain legacy networking and do not receive overlay SG bindings.

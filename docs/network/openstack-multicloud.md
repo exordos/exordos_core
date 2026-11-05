@@ -38,6 +38,7 @@ See [the complete example](onprem-openstack.md) and
 [logical-network API](logical-networks.md).
 
 A cloud node uses a cloud-init capable image with compatible guest agents.
+Core supplies the guest agent bootstrap settings when provisioning the VM.
 `disk_spec.image` accepts a Glance image ID/name or an Exordos HTTP(S) image URL.
 The provider imports raw/qcow2, optionally gzip/zstd-compressed, into a private,
 connection-owned Glance image and reuses the active import on retries. Incomplete
@@ -54,6 +55,9 @@ volume contract. A NodeSet using a cloud subnet defaults unspecified replica
 disks to durable Cinder storage, preserving explicitly requested values. Nova-local (ephemeral) disk placement is not implemented.
 The selected volume type defaults to `__DEFAULT__`. Provider IPAM assigns
 automatic addresses and MACs; Core records the observed Neutron binding.
+Once a subnet has a default gateway and uses a Core-managed Neutron router,
+the subnet API rejects changes to that gateway. For a subnet without a managed
+router, Core reconciles changes to the default gateway in Neutron.
 
 ## Private routed connectivity
 

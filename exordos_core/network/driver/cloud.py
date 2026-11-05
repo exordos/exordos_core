@@ -20,6 +20,17 @@ from exordos_core.network.driver import base
 from exordos_core.user_api.network.dm import models as catalog
 
 
+def default_gateway(routers):
+    return next(
+        (
+            str(route["via"])
+            for route in (routers or [])
+            if str(route["to"]) == "0.0.0.0/0"
+        ),
+        None,
+    )
+
+
 class CloudNetworkDriver(base.AbstractNetworkDriver):
     def __init__(self, network):
         if network.driver_spec.get("driver") != "cloud":
@@ -91,7 +102,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
 
     def create_subnet(self, subnet):
         routers = subnet.routers or []
-        default = [r for r in routers if str(r["to"]) == "0.0.0.0/0"]
+        gateway_ip = default_gateway(routers)
         attributes = {
             "is_dhcp_enabled": subnet.dhcp,
             "dns_nameservers": subnet.dns_servers or [],
@@ -101,13 +112,13 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
                 if str(r["to"]) != "0.0.0.0/0"
             ],
         }
-        attributes["gateway_ip"] = str(default[0]["via"]) if default else None
+        attributes["gateway_ip"] = gateway_ip
         external = self.cloud.ensure_subnet(
             subnet.uuid, self._network(), subnet.cidr, **attributes
         )
         external_network = self.network.driver_spec.get("external_network")
         if external_network:
-            if not default:
+            if gateway_ip is None:
                 raise ValueError("An external router needs a subnet default gateway")
             from exordos_core.network.routed import router_id
 
@@ -164,6 +175,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
                     )
                 ]
         desired = {
+            "gateway_ip": default_gateway(subnet.routers),
             "is_dhcp_enabled": subnet.dhcp,
             "dns_nameservers": subnet.dns_servers or [],
             "host_routes": sorted(
@@ -171,6 +183,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             ),
         }
         observed = {
+            "gateway_ip": str(external.gateway_ip) if external.gateway_ip else None,
             "is_dhcp_enabled": external.is_dhcp_enabled,
             "dns_nameservers": external.dns_nameservers or [],
             "host_routes": sorted(
@@ -303,13 +316,21 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             groups.append(self.cloud.security_group(default, rules).id)
         return groups
 
-    def create_port(self, port):
-        attributes = {
-            "security_group_ids": self._security_groups(port)
-            if port.port_security
-            else [],
+    def _port_attributes(self, port):
+        if not port.port_security and (
+            port.enforce_security_group
+            or catalog.PortSecurityGroup.objects.get_all(
+                filters={"port": filters.EQ(port.uuid)}
+            )
+        ):
+            raise ValueError("OpenStack security groups require port_security=true")
+        return {
+            "security_group_ids": self._security_groups(port) if port.port_security else [],
             "is_port_security_enabled": port.port_security,
         }
+
+    def create_port(self, port):
+        attributes = self._port_attributes(port)
         if port.ipv4:
             attributes["ip_address"] = str(port.ipv4)
         if port.mac:
@@ -330,6 +351,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             self.cloud.delete_port(external)
 
     def update_port(self, port):
+        attributes = self._port_attributes(port)
         external = self.cloud._find(
             self.cloud.ports(self._network()), "port", port.uuid
         )
@@ -337,10 +359,7 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
             return self.create_port(port)
         external = self.cloud.api.network.update_port(
             external.id,
-            security_group_ids=self._security_groups(port)
-            if port.port_security
-            else [],
-            is_port_security_enabled=port.port_security,
+            **attributes,
         )
         return self._port_model(external)
 
@@ -348,6 +367,9 @@ class CloudNetworkDriver(base.AbstractNetworkDriver):
         external = self.cloud._find(
             self.cloud.ports(self._network()), "port", port.uuid
         )
-        return external is None or set(external.security_group_ids) != set(
-            self._security_groups(port)
+        attributes = self._port_attributes(port)
+        return (
+            external is None
+            or set(external.security_group_ids) != set(attributes["security_group_ids"])
+            or external.is_port_security_enabled != port.port_security
         )

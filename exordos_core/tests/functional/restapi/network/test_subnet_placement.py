@@ -107,6 +107,14 @@ def test_subnets_own_placement_and_allocate_stable_23_ranges(client):
     )
 
 
+def test_native_cloud_subnet_rejects_default_gateway_change(client):
+    member = subnet(client, network(client), cloud(client))
+    path = resource(client, "network", "subnets", member["uuid"])
+    with pytest.raises(exceptions.ConflictError):
+        client.put(path, json={"routers": [{"to": "0.0.0.0/0", "via": "10.80.0.2"}]})
+    assert client.put(path, json={"dns_servers": ["192.0.2.53"]}).json()["routers"] == member["routers"]
+
+
 def local(client, **kwargs):
     return create(
         client,

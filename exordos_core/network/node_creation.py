@@ -92,7 +92,9 @@ def create_default_port(node, value, project_id, session, *, allow_foreign=False
     from exordos_core.user_api.network.dm import models as catalog
 
     if (
-        requested_network(value, project_id, session, allow_foreign=allow_foreign)
+        requested_network(
+            value, project_id, session, allow_foreign=allow_foreign, allow_missing=True
+        )
         is not None
     ):
         for group in (value or {}).get("security_groups", []):

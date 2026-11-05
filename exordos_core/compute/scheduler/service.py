@@ -536,10 +536,12 @@ class SchedulerService(basic.BasicService):
                     node.properties.get_value("default_network"),
                     routed.placement_project(node),
                     allow_foreign=True,
+                    allow_missing=True,
                 )
                 is not None
             )
-            if node.node_type == ua_pool.NodeType.HW:
+            is_hw = node.node_type == ua_pool.NodeType.HW
+            if is_hw:
                 idle_machines = idle_hws
             else:
                 idle_machines = idle_vms
@@ -553,11 +555,16 @@ class SchedulerService(basic.BasicService):
             idle_machines = [
                 m
                 for m in idle_machines
-                if m.machine.pool in pools
-                and self._network_matches_pool(node, pools[m.machine.pool].pool)
+                if (
+                    is_hw
+                    or (
+                        m.machine.pool in pools
+                        and self._network_matches_pool(node, pools[m.machine.pool].pool)
+                    )
+                )
                 and self._machine_has_disk_capacity(unscheduled_node, m, pools)
             ]
-            if idle_machines:
+            if idle_machines and not is_hw:
                 candidates = tuple(
                     p
                     for p in pools.values()

@@ -220,7 +220,8 @@ def test_cloud_bootstrap_uses_the_installation_runtime_endpoints_and_sdk(
     from exordos_core.cloud import bootstrap
 
     bootstrap.agent_config()
-    with mock.patch.object(bootstrap, "version", return_value="4.5.6"):
+    with mock.patch.object(bootstrap, "version", return_value="4.5.6"), mock.patch.object(bootstrap, "distribution") as dist:
+        dist.return_value.read_text.return_value = None
         bootstrap.CONF.set_override("gc_boot_api", boot, group="boot_api")
         bootstrap.CONF.set_override("bind_port", ports[0], group="orch_api")
         bootstrap.CONF.set_override("bind_port", ports[1], group="status_api")
@@ -287,3 +288,69 @@ def test_cloud_connection_logging_omits_bodies_and_queries(caplog, path):
     assert response.status_int == 200
     assert "private-sentinel" not in caplog.text
     assert path in caplog.text
+
+
+def test_cloud_agent_package_can_use_a_published_wheel():
+    from exordos_core.cloud import bootstrap
+
+    bootstrap.CONF.set_override("gc_boot_api", "http://core.example:11013", group="boot_api")
+    bootstrap.CONF.set_override("agent_package", "https://repo.example/gcl_sdk.whl", group="cloud_agent")
+    try:
+        assert bootstrap.agent_config()[2] == "https://repo.example/gcl_sdk.whl"
+    finally:
+        bootstrap.CONF.clear_override("agent_package", group="cloud_agent")
+        bootstrap.CONF.clear_override("gc_boot_api", group="boot_api")
+
+
+def test_git_sdk_is_bootstrapped_from_its_exact_installed_commit():
+    from exordos_core.cloud import bootstrap
+    import json
+
+    revision = "1234567890abcdef1234567890abcdef12345678"
+    metadata = json.dumps({"url": "https://github.com/exordos/gcl_sdk.git", "vcs_info": {"vcs": "git", "commit_id": revision}})
+    bootstrap.CONF.set_override("gc_boot_api", "http://core.example:11013", group="boot_api")
+    try:
+        with mock.patch.object(bootstrap, "distribution") as dist:
+            dist.return_value.read_text.return_value = metadata
+            assert bootstrap.agent_config()[2] == "git+https://github.com/exordos/gcl_sdk.git@" + revision
+    finally:
+        bootstrap.CONF.clear_override("gc_boot_api", group="boot_api")
+
+
+
+@pytest.mark.parametrize("gateway", ["10.10.0.254", None])
+def test_cloud_subnet_reconciles_default_gateway(gateway):
+    from exordos_core.network.driver import cloud
+
+    driver = cloud.CloudNetworkDriver.__new__(cloud.CloudNetworkDriver)
+    driver.cloud = mock.Mock()
+    driver._subnet = mock.Mock(
+        return_value=SimpleNamespace(
+            id="external", gateway_ip="10.10.0.1", is_dhcp_enabled=True,
+            dns_nameservers=[], host_routes=[],
+        )
+    )
+    subnet = SimpleNamespace(
+        uuid=uuid.uuid4(), dhcp=True, dns_servers=[],
+        routers=[{"to": "0.0.0.0/0", "via": gateway}] if gateway else [],
+    )
+    with mock.patch.object(cloud, "endpoints_for_subnet", return_value=[]):
+        driver.update_subnet(subnet)
+    driver.cloud.api.network.update_subnet.assert_called_once_with(
+        "external", gateway_ip=gateway, is_dhcp_enabled=True,
+        dns_nameservers=[], host_routes=[],
+    )
+
+
+def test_default_network_checks_security_group_binding_permission():
+    from exordos_core.network import permissions
+
+    controller = mock.Mock()
+    request = {"default_network": {"security_groups": [str(uuid.uuid4())]}}
+    with mock.patch.object(permissions, "gate_foreign_subnet", return_value=False):
+        permissions.gate_default_network(controller, request, uuid.uuid4())
+    controller._enforcer.enforce.assert_called_once()
+    assert str(controller._enforcer.enforce.call_args.args[0]) == (
+        "network.port_security_group.create"
+    )
+    assert controller._enforcer.enforce.call_args.kwargs == {"do_raise": True}
