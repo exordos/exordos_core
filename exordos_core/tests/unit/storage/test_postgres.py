@@ -99,14 +99,14 @@ def database(empty_database):
         connection.execute(
             "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
-        migration("0012-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
-        migration("0013-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
+        migration("0013-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
+        migration("0014-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
             connection
         )
-        migration("0015-managed-storage-nodes-934dc2.py").migration_step.upgrade(
+        migration("0016-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
-        migration("0016-storage-cluster-config-6ab127.py").migration_step.upgrade(
+        migration("0017-storage-cluster-config-6ab127.py").migration_step.upgrade(
             connection
         )
     return uri
@@ -368,7 +368,7 @@ def test_migration_preserves_legacy_ost_and_pool(database):
             storage_pool="default",
         ).insert()
     with psycopg.connect(database) as connection:
-        step = migration("0013-storage-nodes-pools-8ce6d2.py").migration_step
+        step = migration("0014-storage-nodes-pools-8ce6d2.py").migration_step
         step.downgrade(connection)
         spec = {
             "kind": "rawstor",
@@ -404,10 +404,10 @@ def test_migration_preserves_legacy_ost_and_pool(database):
             ).fetchall()
             == []
         )
-        migration("0015-managed-storage-nodes-934dc2.py").migration_step.upgrade(
+        migration("0016-managed-storage-nodes-934dc2.py").migration_step.upgrade(
             connection
         )
-        migration("0016-storage-cluster-config-6ab127.py").migration_step.upgrade(
+        migration("0017-storage-cluster-config-6ab127.py").migration_step.upgrade(
             connection
         )
         assert connection.execute(
@@ -428,7 +428,7 @@ def test_migration_preserves_legacy_ost_and_pool(database):
     "previous_head",
     [
         None,
-        "0013-storage-nodes-pools-8ce6d2.py",
+        "0014-storage-nodes-pools-8ce6d2.py",
         "0004-add-opaque-secrets-362f6d21.py",
     ],
 )
