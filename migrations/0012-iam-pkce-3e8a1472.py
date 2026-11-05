@@ -19,7 +19,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstarctMigrationStep):
     def __init__(self):
-        self._depends = ["0010-node-power-state-8c74f270.py"]
+        self._depends = ["0011-backfill-pool-machine-power-state-f1ad94.py"]
 
     @property
     def migration_id(self):

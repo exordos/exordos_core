@@ -34,7 +34,7 @@ PKCE does not replace client authentication or `state` validation.
 
 ## Deployment
 
-Apply migration `0011-iam-pkce-3e8a1472.py` before starting the updated API.
+Apply migration `0012-iam-pkce-3e8a1472.py` before starting the updated API.
 It adds two nullable columns; existing authorization records remain usable.
 
 Protocol reference: [RFC 7636](https://www.rfc-editor.org/rfc/rfc7636).
