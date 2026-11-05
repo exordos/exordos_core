@@ -176,7 +176,7 @@ OA_SPEC_RESET_PASSWORD_USER = dict(
 )
 
 OA_SPEC_GET_TOKEN_KWARGS = dict(
-    summary="Create token by password",
+    summary="Create token",
     parameters=[
         oa_c.build_openapi_parameter(
             name="IamClientUuid",
@@ -197,6 +197,23 @@ OA_SPEC_GET_TOKEN_KWARGS = dict(
         content_type="application/x-www-form-urlencoded",
         schema={
             "oneOf": [
+                {
+                    "type": "object",
+                    "required": ["grant_type", "code", "redirect_uri"],
+                    "properties": {
+                        "grant_type": {
+                            "type": "string",
+                            "enum": [c.GRANT_TYPE_AUTHORIZATION_CODE],
+                        },
+                        "code": {"type": "string"},
+                        "redirect_uri": {"type": "string"},
+                        "code_verifier": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
+                            "description": "Required when the code was issued with PKCE S256",
+                        },
+                    },
+                },
                 {
                     "type": "object",
                     "required": [

@@ -312,3 +312,13 @@ class CanNotAddUserToProject(
         " `{uuid}`. This action requires the `{rule}`, which has not"
         " been granted."
     )
+
+
+class InvalidPkceRequest(exceptions.CommonValueErrorException):
+    __template__ = "invalid_request: PKCE requires a valid S256 code_challenge"
+
+
+class InvalidPkceGrant(
+    exceptions.CommonValueErrorException, iam_exc.CredentialsAreInvalidError
+):
+    __template__ = "invalid_grant: PKCE authorization code verification failed"
