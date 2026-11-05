@@ -250,4 +250,4 @@ output = "cover/coverage.xml"
 
 [tool.uv.sources]
 # Pin the SDK with the matching rawstor driver API.
-gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "5348937dc9b802bffa32508a61c7e1aec2e3932f" }
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "9f8816aad531042eea3cb3f0fa8fc4f0d3cc7563" }
