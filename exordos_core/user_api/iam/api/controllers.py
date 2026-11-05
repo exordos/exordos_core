@@ -985,6 +985,8 @@ class IdpController(
         approval_prompt="auto",
         access_type="online",
         include_granted_scopes=None,
+        code_challenge=None,
+        code_challenge_method=None,
     ):
         # TODO(agent): Implement approval_prompt
         redirect_uri = resource.authorize(
@@ -994,6 +996,8 @@ class IdpController(
             response_type=response_type,
             scope=scope,
             nonce=nonce,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method,
         )
 
         return None, 307, [("Location", redirect_uri)]
@@ -1169,6 +1173,7 @@ class ClientsController(controllers.BaseResourceControllerPaginated, EnforceMixi
                 token = resource.get_token_by_authorization_code(
                     code=kwargs.get(c.PARAM_CODE),
                     redirect_uri=kwargs.get(c.PARAM_REDIRECT_URI),
+                    code_verifier=kwargs.get("code_verifier"),
                 )
             except Exception:
                 LOG.info(
@@ -1341,6 +1346,8 @@ class AuthorizationInfoController(controllers.BaseResourceControllerPaginated):
             "nonce",
             "code",
             "response_type",
+            "code_challenge",
+            "code_challenge_method",
             "token",
         ],
     )
