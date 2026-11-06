@@ -16,22 +16,8 @@ from typing import Any
 from gcl_sdk.audit.dm import models as audit_models
 from restalchemy.storage import base
 
-_SECRET_FIELDS = frozenset(
+_CORE_EXCLUDED_FIELDS = frozenset(
     {
-        "password",
-        "password_hash",
-        "secret",
-        "secret_hash",
-        "salt",
-        "otp_secret",
-        "confirmation_code",
-        "private_key",
-        "key",
-        "access_token",
-        "refresh_token",
-        "refresh_token_uuid",
-        "code",
-        "nonce",
         "value",
         "default_value",
         "body",
@@ -41,29 +27,19 @@ _SECRET_FIELDS = frozenset(
         "inventory",
         "specification",
         "custom_props",
-        "access_key",
-        "secret_key",
-        "encryption_key",
     }
 )
 
 
 def _without_secrets(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {
-            key: _without_secrets(item)
-            for key, item in value.items()
-            if key not in _SECRET_FIELDS
-        }
-    if isinstance(value, list):
-        return [_without_secrets(item) for item in value]
-    return value
+    return audit_models.filter_sensitive_fields(value, _CORE_EXCLUDED_FIELDS)
 
 
 class AuditLogSQLStorableMixin(audit_models.AuditLogSQLStorableMixin):
     """Record stored Core properties without credentials or opaque payloads."""
 
     __audit_service_name__ = "core"
+    __audit_excluded_fields__ = _CORE_EXCLUDED_FIELDS
 
     @base.error_catcher
     def update(self, session: Any = None, force: bool = False) -> None:
@@ -75,12 +51,3 @@ class AuditLogSQLStorableMixin(audit_models.AuditLogSQLStorableMixin):
     @classmethod
     def get_audit_resource_type(cls) -> str:
         return cls.__tablename__
-
-    def dump_to_audit_snapshot(self) -> dict[str, Any]:
-        return _without_secrets(
-            {
-                name: prop.get_property_type().to_simple_type(getattr(self, name))
-                for name, prop in self.properties.properties.items()
-                if name not in _SECRET_FIELDS
-            }
-        )
