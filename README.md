@@ -30,6 +30,7 @@ Key capabilities:
 - **AI-ready architecture** — the platform is designed from the ground up to be controlled by an AI agent, reducing manual toil and letting teams operate at the level of intent rather than low-level steps. An [MCP server](https://exordos.github.io/exordos_core/usage/mcp/) runs alongside the User API for agents to connect to directly.
 - **Unified lifecycle management** — infrastructure, internal services, and application lifecycle all managed through a single control plane. One system instead of a zoo of tools.
 - **Sovereign deployment** — run entirely within your own on-prem or private cloud perimeter with no dependency on external services. Full control over data, access, and the operational boundary.
+- **Resource audit** — record resource changes locally and optionally deliver them to central Audit with the `core_audit` element.
 - **Element ecosystem** — install and manage ready-to-use software elements (databases, messengers, internal services, and more) directly from the platform marketplace, just like an app store for enterprise software.
 
 > **For a full overview of architecture, configuration, and advanced usage, visit the [documentation](https://exordos.github.io/exordos_core/).**
