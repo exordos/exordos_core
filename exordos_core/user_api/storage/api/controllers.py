@@ -64,6 +64,15 @@ class StorageController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/storage/"
 
 
+class StorageClusterResource(resources.ResourceByRAModel):
+    def generate_schema_object(self, method, openapi_version):
+        schema = super().generate_schema_object(method, openapi_version)
+        if method == ra_c.CREATE:
+            for field in ("nodes", "size"):
+                schema["properties"][field].pop("readOnly", None)
+        return schema
+
+
 class StorageClustersController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
@@ -73,7 +82,7 @@ class StorageClustersController(
     __policy_name__ = "storage_cluster"
     __policy_service_name__ = sc.POLICY_SERVICE_NAME
 
-    __resource__ = resources.ResourceByRAModel(
+    __resource__ = StorageClusterResource(
         model_class=models.StorageCluster,
         process_filters=True,
         convert_underscore=False,

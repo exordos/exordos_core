@@ -94,6 +94,9 @@ def finish_cluster_deletion(cluster):
             )
         ):
             return False
+    from exordos_core.storage import managed
+
+    managed.delete_nodes(cluster)
     for policy in models.StoragePool.objects.get_all(
         filters={"cluster": filters.EQ(cluster.uuid)}
     ):
