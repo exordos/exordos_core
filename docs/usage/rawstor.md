@@ -169,8 +169,8 @@ currently unsupported.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.aa0fd44`, from
-[Actions run 42206175066](https://github.com/rawstor/librawstor/actions/runs/42206175066).
+`99.0.0+0.5a39a56`, from
+[Actions run 42299335945](https://github.com/rawstor/librawstor/actions/runs/42299335945).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
