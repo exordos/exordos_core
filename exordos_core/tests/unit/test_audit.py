@@ -17,6 +17,7 @@ from unittest import mock
 import uuid
 
 from oslo_config import cfg
+from gcl_sdk.audit.dm import models as audit_sdk_models
 import pytest
 from restalchemy.storage.sql import orm
 
@@ -110,7 +111,10 @@ def test_nested_credentials_and_opaque_payloads_are_removed():
         "body": "arbitrary secret",
         "value": "secret",
     }
-    assert audit._without_secrets(value) == {
+    assert audit_sdk_models.filter_sensitive_fields(
+        value,
+        {"body", "value"},
+    ) == {
         "name": "keep",
         "storage": [{"bucket": "keep"}],
     }

@@ -31,10 +31,6 @@ _CORE_EXCLUDED_FIELDS = frozenset(
 )
 
 
-def _without_secrets(value: Any) -> Any:
-    return audit_models.filter_sensitive_fields(value, _CORE_EXCLUDED_FIELDS)
-
-
 class AuditLogSQLStorableMixin(audit_models.AuditLogSQLStorableMixin):
     """Record stored Core properties without credentials or opaque payloads."""
 
