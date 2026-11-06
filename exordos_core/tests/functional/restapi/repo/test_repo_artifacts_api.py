@@ -87,7 +87,7 @@ class TestRepoArtifacts:
         elements_url = client.build_collection_uri(self.REPO_ELEMENTS_PATH)
         elements = client.get(
             elements_url,
-            params={"repository": repo_uuid},
+            params={"repository": f"/v1/repo/repositories/{repo_uuid}"},
         ).json()
         return next(
             element
@@ -168,7 +168,8 @@ class TestRepoArtifacts:
 
         artifacts_url = client.build_collection_uri(self.REPO_ARTIFACTS_PATH)
         artifacts = client.get(
-            artifacts_url, params={"element": element_a["uuid"]}
+            artifacts_url,
+            params={"element": f"/v1/repo/elements/{element_a['uuid']}"},
         ).json()
 
         assert len(artifacts) == 1
