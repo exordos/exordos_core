@@ -17,6 +17,7 @@
 import functools
 import logging
 import typing as tp
+import urllib.request
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.clients.orch import base as orch_base
@@ -269,6 +270,32 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
 
         # Resolve image URN to URI if the image is specified as a URN
         resolved_image = self._resolve_image(volume.image)
+
+        # Core updates reboot the only running API. Reject a missing image
+        # before publishing a guest target that could start that reboot.
+        previous_guest = (
+            (machine_guest_pair[1] or machine_guest_pair[0])
+            if machine_guest_pair
+            else None
+        )
+        if self._is_core_machine(machine) and (
+            previous_guest is None or previous_guest.image != resolved_image
+        ):
+            try:
+                if not resolved_image:
+                    raise ValueError("No Core update image in the manifest")
+                request = urllib.request.Request(
+                    resolved_image, headers={"Range": "bytes=0-0"}
+                )
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    if not response.read(1):
+                        raise ValueError("Empty Core update image")
+            except (OSError, ValueError) as exc:
+                raise ValueError(
+                    "Core update image is unavailable; restore access to the "
+                    "selected image repository and retry the deployment. "
+                    "The running Core target was not changed."
+                ) from exc
 
         # Save guest agent to speed up scheduling process
         guest_agent = ua_models.UniversalAgent.objects.get_one_or_none(
