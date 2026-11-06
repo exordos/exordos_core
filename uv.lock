@@ -703,7 +703,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -789,7 +789,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.6,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=16a748239c69298885232cf011ba55a1c83eee4e" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -892,8 +892,8 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.7.6"
-source = { registry = "https://pypi.org/simple" }
+version = "3.7.7.dev46+g16a748239"
+source = { git = "https://github.com/exordos/gcl_sdk.git?rev=16a748239c69298885232cf011ba55a1c83eee4e#16a748239c69298885232cf011ba55a1c83eee4e" }
 dependencies = [
     { name = "bjoern" },
     { name = "cryptography" },
@@ -906,10 +906,6 @@ dependencies = [
     { name = "renameat2", marker = "sys_platform == 'linux'" },
     { name = "restalchemy" },
     { name = "xxhash" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/03/8b/b85adb565e0e576b69bcb5c9bb6664856d19434deb66c4bb8af639052c3d/gcl_sdk-3.7.6.tar.gz", hash = "sha256:2293b884cc01b03563d65cfaaffa67111451e8e0314dd633b901f86f51f11fa2", size = 415454, upload-time = "2026-11-03T10:09:29.141Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/d8/0ea1ff7d09d56df8e7cbcf75764558d8d45a4691afddbc7163521eeb6922/gcl_sdk-3.7.6-py3-none-any.whl", hash = "sha256:8854f93a178e29eb012cab23e8832943589e64d49ac9deb28dcfe64a50824bc4", size = 372302, upload-time = "2026-11-03T10:09:26.652Z" },
 ]
 
 [package.optional-dependencies]
@@ -1959,7 +1955,7 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "pbr", marker = "python_full_version < '3.11'" },
+    { name = "pbr" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5f/26/85800d24c3aa7650bbd5fa0398aca78a84e8a8693f9c6a852148a196ddac/oslo_i18n-6.8.0.tar.gz", hash = "sha256:a0b4c64c1396869d7144dca60ad97c7eb028f78f61f91c7007531238051997df", size = 50114, upload-time = "2026-05-18T09:16:54.09Z" }
 wheels = [
@@ -1977,7 +1973,7 @@ resolution-markers = [
     "python_full_version >= '3.11' and python_full_version < '3.13'",
 ]
 dependencies = [
-    { name = "pbr", marker = "python_full_version >= '3.11'" },
+    { name = "pbr" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5e/69/72b03bb4d33f51a157c02d5297227bae48b9c359103856942b8774b608df/oslo_i18n-6.9.0.tar.gz", hash = "sha256:574bcf21873b185068bcec951de1ec093158ffdff05a8055fd18ddcb69f69e65", size = 50369, upload-time = "2026-07-10T13:44:34.301Z" }
 wheels = [

@@ -71,6 +71,7 @@ build:
         envs:
           - ALLOW_USER_PASSWD
           - FREQUENT_LOG_VACUUM
+          - RAWSTOR_VERSION
     - manifest: manifests/core_notification_email.yaml.j2
     # eco manifest must be after core manifest!
     - manifest: manifests/ecosystem_realm.yaml.j2

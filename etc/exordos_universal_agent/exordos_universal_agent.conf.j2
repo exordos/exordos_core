@@ -21,7 +21,8 @@ caps_drivers =
     BorderAgentCapabilityDriver,
     GuestMachineCapabilityDriver,
     SSHKeyCapabilityDriver,
-    RenderAgentDriver
+    RenderAgentDriver,
+    StorageClusterAgentDriver
 
 
 [universal_agent_scheduler]
@@ -32,7 +33,8 @@ capabilities =
     certificate,
     paas_lb_agent,
     repo_proxy_installed_element,
-    border_agent
+    border_agent,
+    storage_cluster
 
 
 [CoreDNSCertificateCapabilityDriver]
@@ -47,3 +49,7 @@ password = {{ admin_password }}
 user_api_base_url = http://localhost:80/api/core
 em_core_iam_users = /v1/iam/users/, password
 em_core_iam_clients = /v1/iam/clients/, secret, filter:project_id:12345678-c625-4fee-81d5-f691897b8142
+
+
+[StorageClusterAgentDriver]
+meta_file = /var/lib/exordos/exordos_core/storage_agent_meta.json
