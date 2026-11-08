@@ -125,6 +125,10 @@ def test_missing_import_does_not_stop_iteration(element, inline, has_target, cap
         if target is not None:
             assert target.mock_calls == []
         assert str(resource.uuid) in caplog.text
+        assert (
+            "by reason: Resource with link string "
+            "'$notification.imports.$email_provider' does not exist."
+        ) in caplog.text
         assert "_namespace_resources" not in caplog.text
 
         # Restoring the import makes the same resource eligible on the next pass.

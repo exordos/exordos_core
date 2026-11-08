@@ -878,13 +878,14 @@ class Resource(
                 e.args[0] if e.args else repr(e),
             )
             return
-        except exceptions.ValidateException:
+        except exceptions.ValidateException as e:
             LOG.warning(
                 "Target state is not available for resource %s (%s) in element %s: "
-                "invalid resource reference or value",
+                "by reason: %s",
                 self.uuid,
                 self.link,
                 self.element.name,
+                e.err,
             )
             return
         self.actual_resource = self._find_actual_resource()
@@ -1173,7 +1174,7 @@ class Namespace:
         clear_link = utils.clear_parameters(link)
         if clear_link not in self._namespace_resources:
             raise exceptions.ValidateException(
-                err=f"Resource with link string '{clear_link}' does not exist. _namespace_resources: {self._namespace_resources}"
+                err=f"Resource with link string '{clear_link}' does not exist."
             )
         return self._namespace_resources[clear_link]
 
