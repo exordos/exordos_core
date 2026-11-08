@@ -54,6 +54,7 @@ def test_resource_audit_identity(module):
         ):
             assert model.get_audit_service_name() == "core"
             assert model.get_audit_resource_type() == model.__tablename__
+            assert callable(getattr(model, "dump_to_simple_view", None))
 
 
 @pytest.mark.parametrize("action", ["insert", "update", "delete"])
@@ -93,6 +94,33 @@ def test_secret_snapshots_contain_metadata_only():
     assert snapshot["name"] == "test"
     assert snapshot["project_id"] == str(secret.project_id)
     assert {"value", "default_value"}.isdisjoint(snapshot)
+
+
+def test_login_token_insert_serializes_audit_snapshot(monkeypatch):
+    monkeypatch.setattr(iam.ModelWithSecret, "_global_salt", "test-salt")
+    token = iam.Token(
+        user=iam.User(name="user", email="user@example.com", secret="password"),
+        iam_client=iam.IamClient(
+            name="client", client_id="client", secret="client-secret"
+        ),
+        nonce="private-nonce",
+    )
+    engine = mock.MagicMock()
+    session = engine.session_manager.return_value.__enter__.return_value
+    with (
+        mock.patch.object(token, "_get_engine", return_value=engine),
+        mock.patch.object(orm.SQLStorableMixin, "insert") as insert,
+        mock.patch.object(token, "_write_audit_event") as write,
+    ):
+        token.insert()
+
+    insert.assert_called_once_with(session=session)
+    snapshot = write.call_args.kwargs["snapshot"]
+    assert snapshot["uuid"] == str(token.uuid)
+    assert snapshot["user"] == str(token.user.uuid)
+    assert snapshot["iam_client"] == str(token.iam_client.uuid)
+    assert {"nonce", "refresh_token_uuid"}.isdisjoint(snapshot)
+    assert write.call_args.kwargs["session"] is session
 
 
 def test_iam_snapshot_does_not_render_computed_credentials(monkeypatch):

@@ -178,6 +178,7 @@ class QuotaLimit(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
     models.ModelWithProject,
+    models.SimpleViewMixin,
     audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "quota_limits"

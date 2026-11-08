@@ -1565,6 +1565,7 @@ class IamClient(
 class Token(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
+    models.SimpleViewMixin,
     audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_tokens"

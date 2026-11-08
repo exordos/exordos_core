@@ -425,6 +425,7 @@ class Element(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.CustomPropertiesMixin,
+    models.SimpleViewMixin,
     audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "em_elements"

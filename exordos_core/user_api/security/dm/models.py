@@ -302,6 +302,7 @@ class Rule(
     ra_models.ModelWithNameDesc,
     ra_models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
+    ra_models.SimpleViewMixin,
     audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "security_rules"
