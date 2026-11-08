@@ -12,6 +12,7 @@
 #    limitations under the License.
 
 from contextlib import ExitStack
+import datetime
 from importlib import import_module
 from unittest import mock
 import uuid
@@ -60,6 +61,7 @@ def test_resource_audit_identity(module):
 @pytest.mark.parametrize("action", ["insert", "update", "delete"])
 def test_audit_event_shares_resource_transaction(action):
     resource = compute.PlacementDomain(name="test")
+    resource.name = "changed"
     session = mock.Mock()
     engine = mock.MagicMock()
     engine.session_manager.return_value.__enter__.return_value = session
@@ -223,6 +225,53 @@ def test_clean_update_does_not_record_event():
         resource.update()
     write.assert_not_called()
     update.assert_not_called()
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_timestamp_only_update_does_not_record_event(force):
+    resource = compute.PlacementDomain(name="test")
+    previous = resource.updated_at - datetime.timedelta(days=1)
+    resource.properties["updated_at"].set_value_force(previous)
+    session = mock.Mock()
+    engine = mock.MagicMock()
+    engine.session_manager.return_value.__enter__.return_value = session
+    with (
+        mock.patch.object(resource, "_get_engine", return_value=engine),
+        mock.patch.object(resource, "_write_audit_event") as write,
+        mock.patch.object(orm.SQLStorableMixin, "update", autospec=True) as update,
+    ):
+        resource.update(session=session, force=force)
+
+    update.assert_called_once_with(resource, session=session, force=force)
+    write.assert_not_called()
+    assert resource.updated_at > previous
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("sensitive", [False, True])
+def test_data_update_still_records_event(force, sensitive):
+    if sensitive:
+        resource = secrets.Secret(
+            name="test", project_id=uuid.uuid4(), value="original"
+        )
+        resource.value = "changed"
+    else:
+        resource = compute.PlacementDomain(name="test")
+        resource.name = "changed"
+    session = mock.Mock()
+    engine = mock.MagicMock()
+    engine.session_manager.return_value.__enter__.return_value = session
+    with (
+        mock.patch.object(resource, "_get_engine", return_value=engine),
+        mock.patch.object(resource, "_write_audit_event") as write,
+        mock.patch.object(orm.SQLStorableMixin, "update", autospec=True) as update,
+    ):
+        resource.update(session=session, force=force)
+
+    update.assert_called_once_with(resource, session=session, force=force)
+    write.assert_called_once_with(
+        action="update", snapshot=resource.dump_to_audit_snapshot(), session=session
+    )
 
 
 def test_optional_manifest_config(tmp_path):

@@ -15,6 +15,7 @@ from typing import Any
 
 from gcl_sdk.audit.dm import models as audit_models
 from restalchemy.storage import base
+from restalchemy.storage.sql import orm
 
 _CORE_EXCLUDED_FIELDS = frozenset(
     {
@@ -42,6 +43,13 @@ class AuditLogSQLStorableMixin(audit_models.AuditLogSQLStorableMixin):
         # Preserve SQLStorableMixin's validation before opening a transaction.
         if force or self.is_dirty():
             self.validate()
+            # ModelWithTimestamp may already have refreshed updated_at.
+            if not any(
+                prop.is_dirty()
+                for name, prop in self.properties.properties.items()
+                if name not in {"created_at", "updated_at"}
+            ):
+                return orm.SQLStorableMixin.update(self, session=session, force=force)
         super().update(session=session, force=force)
 
     @classmethod
