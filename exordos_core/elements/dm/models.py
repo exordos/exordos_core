@@ -878,6 +878,15 @@ class Resource(
                 e.args[0] if e.args else repr(e),
             )
             return
+        except exceptions.ValidateException:
+            LOG.warning(
+                "Target state is not available for resource %s (%s) in element %s: "
+                "invalid resource reference or value",
+                self.uuid,
+                self.link,
+                self.element.name,
+            )
+            return
         self.actual_resource = self._find_actual_resource()
         hash = sdk_utils.calculate_hash(target_state)
         self.full_hash = self.calculate_full_hash(target_state)
