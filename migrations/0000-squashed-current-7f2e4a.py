@@ -802,7 +802,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             # Admin user
             f"""INSERT INTO "iam_users" (
                 "uuid", "name", "description", "first_name", "last_name",
-                "email", "secret_hash", "salt"
+                "email", "secret_hash", "salt", "email_verified"
             ) VALUES (
                 '{ZERO_UUID}',
                 'admin',
@@ -811,7 +811,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 'User',
                 'admin@example.com',
                 '{default_admin_secret}',
-                '{default_admin_salt}'
+                '{default_admin_salt}',
+                true
             ) ON CONFLICT (uuid) DO NOTHING;""",
             # Admin organization
             f"""INSERT INTO "iam_organizations" (
