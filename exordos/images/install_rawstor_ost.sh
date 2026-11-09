@@ -55,6 +55,12 @@ sudo "$AGENT_PYTHON" -m pip install --force-reinstall --no-deps "$PACKAGES"/raws
 
 sudo install -m 0755 "$CORE_PATH/exordos/images/ost/prepare.py" /usr/local/sbin/exordos-prepare-ost
 sudo install -m 0644 "$CORE_PATH/exordos/images/ost/prepare.service" /etc/systemd/system/exordos-prepare-ost.service
+# LVM needs metadata backups and runtime locks inside the OST unit sandbox.
+sudo mkdir -p /etc/systemd/system/rawstor-ost@.service.d
+sudo tee /etc/systemd/system/rawstor-ost@.service.d/lvm.conf >/dev/null <<'EOF'
+[Service]
+ReadWritePaths=/etc/lvm /run
+EOF
 sudo mkdir -p /etc/systemd/system/exordos-universal-agent.service.d
 sudo tee /etc/systemd/system/exordos-universal-agent.service.d/ost.conf >/dev/null <<'EOF'
 [Unit]
