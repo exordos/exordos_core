@@ -28,6 +28,10 @@ prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
 
 
+OST_UUID = "f0aa9354-dfa3-5280-b1f9-33d351edc655"
+VG = f"rawstor-{OST_UUID}"
+
+
 def commands(physical_volumes=(), mounted=False, signature=False):
     def run(command, **kwargs):
         return SimpleNamespace(
@@ -59,27 +63,27 @@ def test_first_boot_creates_lvm_on_data_disk():
         mock.patch.object(prepare.subprocess, "run", side_effect=run) as invoked,
         mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
     ):
-        prepare.prepare()
+        prepare.prepare(OST_UUID)
     assert [call.args[0] for call in invoked.call_args_list] == [
         ["blkid", "-p", "/dev/vdb"],
         ["pvcreate", "/dev/vdb"],
-        ["vgcreate", "rawstor-ost", "/dev/vdb"],
-        ["vgchange", "--activate", "y", "rawstor-ost"],
+        ["vgcreate", VG, "/dev/vdb"],
+        ["vgchange", "--activate", "y", VG],
     ]
 
 
-@pytest.mark.parametrize("group", ["rawstor-ost", ""])
+@pytest.mark.parametrize("group", [VG, ""])
 def test_existing_pv_is_preserved_and_partial_initialization_can_resume(group):
     run, output = commands(physical_volumes=[{"pv_name": "/dev/vdb", "vg_name": group}])
     with (
         mock.patch.object(prepare.subprocess, "run", side_effect=run) as invoked,
         mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
     ):
-        prepare.prepare()
-    expected = [] if group else [["vgcreate", "rawstor-ost", "/dev/vdb"]]
+        prepare.prepare(OST_UUID)
+    expected = [] if group else [["vgcreate", VG, "/dev/vdb"]]
     assert [call.args[0] for call in invoked.call_args_list] == [
         *expected,
-        ["vgchange", "--activate", "y", "rawstor-ost"],
+        ["vgchange", "--activate", "y", VG],
     ]
 
 
@@ -91,7 +95,7 @@ def test_preparation_refuses_mounted_or_nonempty_disks(mounted, signature):
         mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
     ):
         with pytest.raises(RuntimeError):
-            prepare.prepare()
+            prepare.prepare(OST_UUID)
     assert all(call.args[0][0] == "blkid" for call in invoked.call_args_list)
 
 
@@ -99,10 +103,10 @@ def test_preparation_refuses_mounted_or_nonempty_disks(mounted, signature):
     "physical_volumes",
     [
         [{"pv_name": "/dev/vdb", "vg_name": "other"}],
-        [{"pv_name": "/dev/vdc", "vg_name": "rawstor-ost"}],
+        [{"pv_name": "/dev/vdc", "vg_name": VG}],
         [
-            {"pv_name": "/dev/vdb", "vg_name": "rawstor-ost"},
-            {"pv_name": "/dev/vdc", "vg_name": "rawstor-ost"},
+            {"pv_name": "/dev/vdb", "vg_name": VG},
+            {"pv_name": "/dev/vdc", "vg_name": VG},
         ],
     ],
 )
@@ -113,7 +117,7 @@ def test_preparation_rejects_wrong_volume_group_devices(physical_volumes):
         mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
     ):
         with pytest.raises(RuntimeError):
-            prepare.prepare()
+            prepare.prepare(OST_UUID)
     invoked.assert_not_called()
 
 

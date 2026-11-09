@@ -32,7 +32,6 @@ from exordos_core.vs.dm import models as vs
 
 LOG = logging.getLogger(__name__)
 IMAGE_VARIABLE = uuid.UUID("9b7c0dfa-1562-4e87-88d5-e3af8cb10725")
-LOCATION = "lvm://rawstor-ost"
 
 
 def vm_uuid(cluster, index):
@@ -109,7 +108,7 @@ def reconcile(cluster):
             driver_spec=rawstor_specs.RawstorNodeDriverSpec(
                 endpoint=f"ost://{host}:7777",
                 bind_address=f"{host}:7777",
-                location=LOCATION,
+                location=f"lvm://rawstor-{ost_id}",
                 failure_domain_path=str(node_id),
                 weight=100,
             ),
