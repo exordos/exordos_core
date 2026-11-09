@@ -65,8 +65,8 @@ def agent_driver_spec(cluster):
 
 
 def sync_cluster(cluster):
-    # The builder regenerates the agent snapshot from nodes/pools. Never persist
-    # that snapshot in the public cluster configuration.
+    # Publish membership changes before capacity reports can consume updated_at.
+    # The public cluster configuration still contains no agent-only snapshot.
     targets = ua_models.TargetResource.objects.get_all(
         filters={
             "uuid": filters.EQ(cluster.uuid),
@@ -75,6 +75,12 @@ def sync_cluster(cluster):
     )
     snapshot = agent_driver_spec(cluster).dump_to_simple_view()
     if not targets or targets[0].value.get("driver_spec") != snapshot:
+        if targets:
+            instance = models.Cluster.restore_from_simple_view(
+                **cluster.dump_to_simple_view()
+            )
+            targets[0].update_value(instance.to_ua_resource())
+            targets[0].update()
         if cluster.status != sc.CLUSTER_DELETING:
             cluster.status = pool.MachinePoolStatus.IN_PROGRESS.value
         cluster.update()
