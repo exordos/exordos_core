@@ -26,6 +26,7 @@ import urllib.parse
 import uuid as sys_uuid
 
 from gcl_iam import algorithms
+from gcl_iam import enforcers
 from gcl_iam import exceptions as iam_e
 from gcl_iam import tokens
 from gcl_sdk.agents.universal.dm import models as ua_models
@@ -1211,20 +1212,13 @@ class IamClient(
         """
         Check if user has service token creation permission
         """
-        # Get the service token creation permission
-        perm_uuid = Permission.objects.get_one(
-            filters={"name": ra_filters.EQ("iam.service_token.create")}
-        ).uuid
-
-        # Check if any of user's roles has the service token creation permission
-        return bool(
-            PermissionBinding.objects.get_all(
-                filters={
-                    "role": ra_filters.In([rb.role for rb in user_role_bindings]),
-                    "permission": ra_filters.EQ(perm_uuid),
-                }
-            )
+        permission_bindings = PermissionBinding.objects.get_all(
+            filters={"role": ra_filters.In([rb.role for rb in user_role_bindings])}
         )
+        enforcer = enforcers.Enforcer(
+            [binding.permission.name for binding in permission_bindings]
+        )
+        return bool(enforcer.enforce_raw("iam.service_token.create"))
 
     def _handle_service_account_token_request(
         self,
@@ -1248,12 +1242,15 @@ class IamClient(
         except ValueError:
             raise iam_exceptions.CanNotCreateServiceToken()
 
-        # Check if user has any role binding to the project
+        # Include global roles and roles scoped to the requested project.
         user_role_bindings = RoleBinding.objects.get_all(
-            filters={
-                "user": ra_filters.EQ(authenticated_user.uuid),
-                "project": ra_filters.EQ(project_uuid),
-            }
+            filters=ra_filters.AND(
+                {"user": ra_filters.EQ(authenticated_user.uuid)},
+                ra_filters.OR(
+                    {"project": ra_filters.EQ(project_uuid)},
+                    {"project": ra_filters.Is(None)},
+                ),
+            )
         )
 
         if not user_role_bindings:
