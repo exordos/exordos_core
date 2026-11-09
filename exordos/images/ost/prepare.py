@@ -20,9 +20,10 @@
 import json
 import os
 import subprocess
+import sys
+import uuid
 
 DATA_DEVICE = "/dev/vdb"
-VOLUME_GROUP = "rawstor-ost"
 
 
 def mounted(devices):
@@ -32,7 +33,8 @@ def mounted(devices):
     )
 
 
-def prepare():
+def prepare(ost_uuid):
+    volume_group = f"rawstor-{uuid.UUID(str(ost_uuid))}"
     info = json.loads(
         subprocess.check_output(
             ["lsblk", "--json", "--output", "NAME,TYPE,MOUNTPOINTS", DATA_DEVICE]
@@ -52,12 +54,12 @@ def prepare():
     for pv in physical_volumes:
         device = os.path.realpath(pv["pv_name"])
         group = pv["vg_name"].strip()
-        if group == VOLUME_GROUP and device != DATA_DEVICE:
+        if group == volume_group and device != DATA_DEVICE:
             raise RuntimeError(
                 "OST volume group does not use only the designated data device"
             )
         if device == DATA_DEVICE:
-            if group not in ("", VOLUME_GROUP):
+            if group not in ("", volume_group):
                 raise RuntimeError("OST data device belongs to another volume group")
             data_pv = pv
 
@@ -67,9 +69,9 @@ def prepare():
             raise RuntimeError("OST data device is not empty or cannot be inspected")
         subprocess.run(["pvcreate", DATA_DEVICE], check=True)
     if data_pv is None or not data_pv["vg_name"].strip():
-        subprocess.run(["vgcreate", VOLUME_GROUP, DATA_DEVICE], check=True)
-    subprocess.run(["vgchange", "--activate", "y", VOLUME_GROUP], check=True)
+        subprocess.run(["vgcreate", volume_group, DATA_DEVICE], check=True)
+    subprocess.run(["vgchange", "--activate", "y", volume_group], check=True)
 
 
 if __name__ == "__main__":
-    prepare()
+    prepare(sys.argv[1])
