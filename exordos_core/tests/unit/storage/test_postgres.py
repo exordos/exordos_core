@@ -697,3 +697,58 @@ def test_default_names_and_partial_cluster_spec(database):
                 filters={"cluster": dm_filters.EQ(long_cluster.uuid)}
             )
         )
+
+
+def test_ready_ost_membership_survives_a_capacity_report(database):
+    from exordos_core.storage.builders.cluster import StorageClusterBuilderService
+
+    with contexts.Context().session_manager():
+        cluster = controller(controllers.StorageClustersController).create(
+            name="storage",
+            driver_spec={"kind": "rawstor", "endpoint": "mds://core:7776/"},
+        )
+        current = models.Cluster.restore_from_simple_view(
+            **cluster.dump_to_simple_view()
+        )
+        target = current.to_ua_resource()
+        target.insert()
+        actual = ua_models.Resource(
+            uuid=target.uuid,
+            kind=target.kind,
+            hash=target.hash,
+            value={**target.value, "status": "ACTIVE"},
+        )
+        actual.insert()
+        node = models.StorageNode(
+            cluster=cluster.uuid,
+            name="ready",
+            status="ACTIVE",
+            driver_spec=rawstor_specs.RawstorNodeDriverSpec(
+                endpoint="ost://10.0.0.1:7777", failure_domain_path="server"
+            ),
+        )
+        node.insert()
+        state.sync_cluster(cluster)
+        target = ua_models.TargetResource.objects.get_one(
+            filters={"uuid": dm_filters.EQ(cluster.uuid)}
+        )
+        assert str(node.uuid) in target.value["driver_spec"]["nodes"]
+        assert target.hash != actual.hash
+        service = StorageClusterBuilderService.__new__(StorageClusterBuilderService)
+        service._instance_model = models.Cluster
+        current = models.Cluster.objects.get_one(
+            filters={"uuid": dm_filters.EQ(cluster.uuid)}
+        )
+        service._actualize_outdated_instance(current, target, actual)
+        target = ua_models.TargetResource.objects.get_one(
+            filters={"uuid": dm_filters.EQ(cluster.uuid)}
+        )
+        assert str(node.uuid) in target.value["driver_spec"]["nodes"]
+        assert target.hash != actual.hash
+        assert current.status == "IN_PROGRESS"
+        # MDS applies the new target and the cluster can finally converge.
+        actual.value = {**target.value, "status": "ACTIVE"}
+        actual.hash = target.hash
+        actual.update()
+        service._actualize_outdated_instance(current, target, actual)
+        assert current.status == "ACTIVE"
