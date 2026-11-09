@@ -559,9 +559,11 @@ def test_committed_idle_placement_reserves_remote_space(scheduler, monkeypatch):
             [_requested_volume(None, 10, "COLD", False)],
         )
 
+    original = request()
     assert scheduler._machine_has_disk_capacity(
-        request(), machine, {pool.pool.uuid: pool}, reserve=True
+        original, machine, {pool.pool.uuid: pool}, reserve=True
     )
+    scheduler._place_volume_into_pool(original.volumes[0], pool)
     assert not scheduler._machine_has_disk_capacity(
         request(), machine, {pool.pool.uuid: pool}
     )
@@ -606,4 +608,23 @@ def test_assigned_pool_remains_resolvable_while_cluster_reconciles(monkeypatch):
     )
     assert (
         storage_select.select_storage_pool_with_clusters([], "COLD", False, 1) is None
+    )
+
+
+def test_assigned_pool_growth_requires_fresh_capacity(monkeypatch):
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    cluster.capacity_info["reported_at"] = 0
+    selected = cluster.storage_pools[0]
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    assert (
+        storage_select.select_storage_pool_with_clusters(
+            [], "COLD", False, 1, assigned_name=str(selected.uuid)
+        )
+        is None
+    )
+    assert (
+        storage_select.select_storage_pool_with_clusters(
+            [], "COLD", False, 0, assigned_name=str(selected.uuid)
+        )[1]
+        is cluster
     )

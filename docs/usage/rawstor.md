@@ -54,7 +54,8 @@ preserving an existing agent's UUID and other drivers for the same core.
 `--pool-agent-name` is the local service name and defaults to `universal_agent`.
 On this feature branch, `LOCAL_GENESIS_SDK_PATH` selects the matching SDK checkout
 for the agent's virtualenv. Omit it once a compatible SDK release is available.
-`init` does not create or start an OST.
+`init` does not create, start or stop an OST. An existing legacy OST keeps
+serving until an administrator explicitly migrates it.
 
 Declare each OST through the core API from any host:
 
@@ -96,7 +97,9 @@ sharing a pool also share its free space and cannot be counted independently.
 `--location` defaults to `file:///var/lib/rawstor/ost/UUID`. Each OST must have a
 dedicated backing filesystem; sharing one between OSTs would count its free
 space more than once. Multiple OSTs on one host need separate backing filesystems
-and bind ports. `--bind` defaults to `0.0.0.0` and the advertised endpoint port.
+and bind ports. `--bind` defaults to the IP address and port of the advertised endpoint.
+Hostname endpoints require an explicit `--bind` IP. Listening on every
+interface requires an explicit `--bind 0.0.0.0:PORT` or `--bind [::]:PORT`.
 When adding on the same host without `--endpoint`, CLI detects the host address
 and chooses an unused managed bind port starting at 7777. For a remote host,
 provide `--endpoint`. The advertised endpoint may differ from the bind address.
@@ -231,3 +234,20 @@ probed by the agent, so only trusted administrators should supply them.
 Managed file-backed OST directories must be direct children of
 `/var/lib/rawstor/ost`, `/data`, `/srv/rawstor` or `/mnt/rawstor`.
 Symlink components and system directories are rejected before ownership changes.
+
+## Run Core from a source checkout
+
+Rawstor's Python binding is bundled for the image build and is not installed by
+an ordinary `uv sync`. For a source installation on Linux x86-64, install the
+matching native packages and then the bundled binding:
+
+```bash
+sudo apt-get install ./exordos/images/rawstor/librawstor_99.0.0_amd64.deb \
+  ./exordos/images/rawstor/rawstor-mds_99.0.0_amd64.deb
+uv sync
+uv pip install --python .venv/bin/python exordos/images/rawstor/rawstor-*.whl
+```
+
+Use `uv sync --inexact` for later synchronizations to retain the separately
+installed binding; otherwise install the wheel again after synchronization.
+The core image's installation script performs the binding installation itself.

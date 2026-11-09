@@ -15,6 +15,7 @@
 #    under the License.
 from __future__ import annotations
 
+import configparser
 import grp
 import ipaddress
 import json
@@ -445,6 +446,27 @@ def _migrate_ua_secret_driver(content: str) -> str:
     return content
 
 
+def _ensure_ua_driver(content: str, driver: str) -> str:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(content)
+    drivers = [
+        name.strip()
+        for name in parser.get("universal_agent", "caps_drivers").split(",")
+        if name.strip()
+    ]
+    if driver in drivers:
+        return content
+    section = re.search(r"(?ms)^\[universal_agent\][ \t]*\n.*?(?=^\[|\Z)", content)
+    block = re.search(
+        r"(?m)^[ \t]*caps_drivers[ \t]*=[^\n]*(?:\n[ \t]+[^\n]*)*", section.group()
+    )
+    if block is None:
+        raise ValueError("Cannot update universal agent caps_drivers")
+    value = "caps_drivers =\n    " + ",\n    ".join([*drivers, driver])
+    start, end = section.start() + block.start(), section.start() + block.end()
+    return content[:start] + value + content[end:]
+
+
 def _ensure_ua_config_current() -> None:
     """Bring the universal agent config up to date with this image.
 
@@ -506,11 +528,7 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
-    if "StorageClusterAgentDriver" not in new_content:
-        new_content = new_content.replace(
-            _UA_BORDER_DRIVER_LINE,
-            _UA_BORDER_DRIVER_LINE + "    StorageClusterAgentDriver,\n",
-        )
+    new_content = _ensure_ua_driver(new_content, "StorageClusterAgentDriver")
     new_content = _ensure_section(
         new_content,
         "StorageClusterAgentDriver",

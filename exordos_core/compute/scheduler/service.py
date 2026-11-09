@@ -205,6 +205,7 @@ class SchedulerService(basic.BasicService):
             volume.ephemeral,
             size,
             staged=getattr(self, "_storage_reservations", {}),
+            exclude_volume=volume.uuid,
             allow_remote=isinstance(
                 pool.pool.driver_spec, ua_pool.ExordosLocalHyperDriverSpec
             ),
@@ -344,6 +345,13 @@ class SchedulerService(basic.BasicService):
             storage_pool, owner_cluster = self._find_storage_pool_by_name(
                 pool, pool_volume.storage_pool
             )
+
+            if (
+                need_size
+                and owner_cluster is not None
+                and not storage_select.capacity_is_fresh(owner_cluster)
+            ):
+                continue
 
             # Not enough space for the resize - try the next candidate
             # instead of giving up on reuse altogether.

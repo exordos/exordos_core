@@ -17,6 +17,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
+from urllib.parse import urlparse
 import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.drivers import pool
@@ -44,14 +45,26 @@ def _cluster(spec):
     )
 
 
-def _validate(spec, clusters, exclude_uuid=None):
+def _validate(spec, clusters, exclude_uuid=None, resources=()):
     controller = controllers.StorageClustersController.__new__(
         controllers.StorageClustersController
     )
-    with patch.object(
-        models.StorageCluster,
-        "objects",
-        MagicMock(get_all=MagicMock(return_value=clusters)),
+    with (
+        patch.object(
+            controllers.ua_models.TargetResource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=resources)),
+        ),
+        patch.object(
+            controllers.ua_models.Resource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        patch.object(
+            models.StorageCluster,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=clusters)),
+        ),
     ):
         controller._validate_driver_spec_uniqueness({"driver_spec": spec}, exclude_uuid)
 
@@ -115,7 +128,9 @@ def test_cluster_rejects_node_and_pool_settings(field, value):
         _validate(spec, [])
 
 
-@pytest.mark.parametrize("weight", [0, 1.5, float("inf"), 1 << 64])
+@pytest.mark.parametrize(
+    "weight", [0, 1.5, float("inf"), float("nan"), None, "100", True, False, 1 << 64]
+)
 def test_node_rejects_weights_that_cannot_be_parsed_by_mds(weight):
     controller = controllers.StorageNodesController.__new__(
         controllers.StorageNodesController
@@ -210,3 +225,47 @@ def test_in_use_pool_policy_cannot_be_changed():
         with pytest.raises(storage_exc.ConflictRecords):
             controller.validate_member(data, _cluster(_spec()), existing)
     assert guard.call_args.args[1] == existing.uuid
+
+
+def test_removed_cluster_port_remains_reserved_until_resources_disappear():
+    resource = SimpleNamespace(uuid=sys_uuid.uuid4(), value={"driver_spec": _spec()})
+    with pytest.raises(storage_exc.ConflictRecords):
+        _validate(_spec(), [], resources=[resource])
+    _validate(_spec(7778), [], resources=[resource])
+    _validate(_spec(), [], exclude_uuid=resource.uuid, resources=[resource])
+
+
+@pytest.mark.parametrize(
+    "endpoint,expected",
+    [
+        ("ost://10.0.0.1:7777", "10.0.0.1:7777"),
+        ("ost://[::1]:7777", "[::1]:7777"),
+    ],
+)
+def test_default_bind_uses_advertised_ip(endpoint, expected):
+    assert controllers._default_bind_address(urlparse(endpoint)) == expected
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["ost://host:7777", "ost://0.0.0.0:7777", "ost://[::]:7777"]
+)
+def test_non_specific_endpoint_requires_explicit_bind(endpoint):
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        controllers._default_bind_address(urlparse(endpoint))
+
+
+@pytest.mark.parametrize(
+    "controller_type,policy",
+    [
+        (controllers.StorageNodesController, "storage_node"),
+        (controllers.StoragePoolsController, "storage_pool"),
+    ],
+)
+def test_member_permissions_use_their_own_policy(controller_type, policy):
+    controller = controller_type.__new__(controller_type)
+    controller._enforcer = MagicMock()
+    controller._enforce("update")
+    controller._enforcer.enforce.assert_called_once()
+    call = controller._enforcer.enforce.call_args
+    assert str(call.args[0]) == f"storage.{policy}.update"
+    assert call.kwargs == {"do_raise": True}

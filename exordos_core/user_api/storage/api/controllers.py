@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import math
+import ipaddress
 from urllib.parse import urlparse
 import uuid as sys_uuid
 
@@ -70,6 +70,21 @@ def _canonical_endpoint(endpoint):
     if ":" in host:
         host = f"[{host}]"
     return f"{endpoint.scheme}://{host}:{endpoint.port}"
+
+
+def _default_bind_address(endpoint):
+    try:
+        address = ipaddress.ip_address(endpoint.hostname)
+    except ValueError:
+        raise InvalidRawstorEndpoint(
+            msg="An explicit bind_address is required for a hostname endpoint"
+        ) from None
+    if address.is_unspecified:
+        raise InvalidRawstorEndpoint(
+            msg="An explicit bind_address is required for a wildcard endpoint"
+        )
+    host = f"[{address}]" if address.version == 6 else str(address)
+    return f"{host}:{endpoint.port}"
 
 
 class StorageController(controllers.RoutesListController):
@@ -217,6 +232,24 @@ class StorageClustersController(
                     model="StorageCluster", msg=f"MDS port={mds.port}"
                 )
 
+        # SQL rows disappear before the agent has stopped MDS. Its target
+        # and actual resources continue to reserve the port during teardown.
+        for model in (ua_models.TargetResource, ua_models.Resource):
+            for resource in model.objects.get_all(
+                filters={"kind": dm_filters.EQ("storage_cluster")}
+            ):
+                if str(resource.uuid) == str(exclude_uuid):
+                    continue
+                spec = resource.value["driver_spec"]
+                if (
+                    spec["kind"] == driver_spec["kind"]
+                    and urlparse(spec["endpoint"]).port == mds.port
+                ):
+                    raise storage_exc.ConflictRecords(
+                        model="StorageCluster",
+                        msg="MDS port is still reconciled; wait for removal",
+                    )
+
 
 def _require_cluster_not_deleting(cluster):
     if cluster.status == sc.CLUSTER_DELETING:
@@ -268,8 +301,6 @@ class ClusterMemberController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
 ):
-    # Nodes and policies are governed by the same storage administrator policy.
-    __policy_name__ = "storage_cluster"
     __policy_service_name__ = sc.POLICY_SERVICE_NAME
 
     def create(self, **kwargs):
@@ -331,6 +362,7 @@ class ClusterMemberController(
 
 
 class StorageNodesController(ClusterMemberController):
+    __policy_name__ = "storage_node"
     driver_spec_model = ua_pool.rawstor_specs.RawstorNodeDriverSpec
     __resource__ = resources.ResourceByRAModel(
         model_class=models.StorageNode,
@@ -353,7 +385,9 @@ class StorageNodesController(ClusterMemberController):
         )
         endpoint = _validate_endpoint(spec["endpoint"], "ost")
         spec["endpoint"] = _canonical_endpoint(endpoint)
-        spec["bind_address"] = spec.get("bind_address") or f"0.0.0.0:{endpoint.port}"
+        spec["bind_address"] = spec.get("bind_address") or _default_bind_address(
+            endpoint
+        )
         kwargs["driver_spec"] = spec
         kwargs["status"] = "NEW"
         return super().create(**kwargs)
@@ -365,9 +399,9 @@ class StorageNodesController(ClusterMemberController):
                 endpoint = _validate_endpoint(spec["endpoint"], "ost")
                 spec["endpoint"] = _canonical_endpoint(endpoint)
                 if "bind_address" in spec:
-                    spec["bind_address"] = (
-                        spec["bind_address"] or f"0.0.0.0:{endpoint.port}"
-                    )
+                    spec["bind_address"] = spec[
+                        "bind_address"
+                    ] or _default_bind_address(endpoint)
             kwargs["driver_spec"] = spec
             previous = self.get(uuid=uuid).driver_spec
             if any(
@@ -406,7 +440,8 @@ class StorageNodesController(ClusterMemberController):
                 )
         weight = data.get("weight", 100)
         if (
-            not math.isfinite(weight)
+            isinstance(weight, bool)
+            or not isinstance(weight, (int, float))
             or not 1 <= weight <= (1 << 63) - 1
             or weight != int(weight)
         ):
@@ -508,6 +543,7 @@ class StorageNodesController(ClusterMemberController):
 
 
 class StoragePoolsController(ClusterMemberController):
+    __policy_name__ = "storage_pool"
     driver_spec_model = ua_pool.rawstor_specs.RawstorPoolDriverSpec
     __resource__ = resources.ResourceByRAModel(
         model_class=models.StoragePool,

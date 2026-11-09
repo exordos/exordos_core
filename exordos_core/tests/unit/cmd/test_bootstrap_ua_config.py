@@ -347,3 +347,16 @@ def test_ensure_section_appends_missing_section():
 
 def test_ensure_section_skips_missing_section_with_only_removals():
     assert bootstrap._ensure_section("[a]\n", "b", {"key": None}) == "[a]\n"
+
+
+def test_storage_driver_registration_ignores_existing_section():
+    from exordos_core.cmd import bootstrap
+
+    content = "[universal_agent]\ncaps_drivers = BorderAgentCapabilityDriver\n\n[StorageClusterAgentDriver]\nmeta_file = /tmp/meta\n"
+    result = bootstrap._ensure_ua_driver(content, "StorageClusterAgentDriver")
+    import configparser
+
+    parser = configparser.ConfigParser()
+    parser.read_string(result)
+    assert "StorageClusterAgentDriver" in parser.get("universal_agent", "caps_drivers")
+    assert bootstrap._ensure_ua_driver(result, "StorageClusterAgentDriver") == result
