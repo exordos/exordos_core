@@ -192,8 +192,8 @@ The guest must expand its partitions and filesystem separately.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.891a250`, from
-[Actions run 42651185217](https://github.com/rawstor/librawstor/actions/runs/42651185217).
+`99.0.0+0.c99dace`, from
+[Actions run 42694624442](https://github.com/rawstor/librawstor/actions/runs/42694624442).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
