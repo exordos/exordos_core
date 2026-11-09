@@ -238,13 +238,15 @@ def test_upgrades_core_agent_config(tmp_path):
     assert (
         "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142" in content
     )
-    assert (
-        "em_core_vs_profiles = exordos_core.vs.dm.models:Profile\n"
-        "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
-        "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
-        "em_core_iam_tokens = exordos_core.user_api.iam.dm.models:ManagedToken\n"
-        "\n[filters]\n" in content
-    )
+    for kind, model in (
+        ("clusters", "StorageCluster"),
+        ("nodes", "StorageNode"),
+        ("pools", "StoragePool"),
+    ):
+        assert (
+            f"em_core_storage_{kind} = exordos_core.storage.dm.models:{model}"
+            in content
+        )
     assert (
         "[resource_transformer:em_core_secret_secrets]\n"
         "ignore_null_attributes = True\n"

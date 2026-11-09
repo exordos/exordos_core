@@ -73,6 +73,13 @@ class MigrationStep(migrations.AbstractMigrationStep):
             WHERE p->>'uuid' IS NOT NULL;
         """)
 
+        session.execute("""
+            UPDATE compute_machine_volumes v SET storage_pool=p.uuid::text
+            FROM storage_pools p JOIN storage_clusters c ON c.uuid=p.cluster
+            WHERE v.storage_pool=p.name
+              AND COALESCE(to_jsonb(v)->>'storage_location','')=c.driver_spec->>'endpoint';
+        """)
+
         # Rebuild agent assignments from SQL after adding the rawstor payload.
         # This also refreshes existing qcow2 resources without rewriting JSON.
         session.execute(

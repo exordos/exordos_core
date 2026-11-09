@@ -44,7 +44,9 @@ def _machine_pool_bundle(storage_pools, volumes):
     machine_pool = models.MachinePool(
         uuid=sys_uuid.uuid4(),
         name="pool1",
-        driver_spec=ua_pool.DummyPoolDriverSpec(),
+        driver_spec=ua_pool.ExordosLocalHyperDriverSpec(
+            connection_uri="test:///default", node=sys_uuid.uuid4()
+        ),
         storage_pools=storage_pools,
     )
     return base.MachinePoolBundle(pool=machine_pool, volumes=volumes)
@@ -541,3 +543,67 @@ def test_idle_machine_reuse_preflight_does_not_save_cluster(scheduler, monkeypat
     cluster.save.assert_not_called()
     assert pool.volumes[0].node_volume is None
     assert cluster.storage_pools[0].capacity_provisioned == 0
+
+
+def test_committed_idle_placement_reserves_remote_space(scheduler, monkeypatch):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=15)
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    pool = _machine_pool_bundle([], [])
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+
+    def request():
+        return base.NodeBundle(
+            SimpleNamespace(uuid=sys_uuid.uuid4()),
+            [_requested_volume(None, 10, "COLD", False)],
+        )
+
+    assert scheduler._machine_has_disk_capacity(
+        request(), machine, {pool.pool.uuid: pool}, reserve=True
+    )
+    assert not scheduler._machine_has_disk_capacity(
+        request(), machine, {pool.pool.uuid: pool}
+    )
+
+
+def test_unprepared_hypervisor_cannot_receive_remote_disks(scheduler, monkeypatch):
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    pool = _machine_pool_bundle([], [])
+    pool.pool.driver_spec = ua_pool.DummyPoolDriverSpec()
+    with pytest.raises(ValueError):
+        scheduler._place_volume_into_pool(
+            _requested_volume(None, 1, "COLD", False), pool
+        )
+
+
+def test_assigned_pool_remains_resolvable_while_cluster_reconciles(monkeypatch):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    cluster.status = "IN_PROGRESS"
+    cluster.capacity_info["reported_at"] = 0
+    selected = cluster.storage_pools[0]
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [])
+    monkeypatch.setattr(
+        storage_models.StoragePool,
+        "objects",
+        MagicMock(
+            get_all=MagicMock(return_value=[SimpleNamespace(cluster=cluster.uuid)])
+        ),
+    )
+    monkeypatch.setattr(
+        storage_models.StorageCluster,
+        "objects",
+        MagicMock(get_all=MagicMock(return_value=[cluster])),
+    )
+    assert (
+        storage_select.find_storage_pool_by_name_with_clusters([], str(selected.uuid))[
+            1
+        ]
+        is cluster
+    )
+    assert (
+        storage_select.select_storage_pool_with_clusters([], "COLD", False, 1) is None
+    )

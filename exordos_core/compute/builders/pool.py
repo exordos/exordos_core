@@ -507,6 +507,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.storage_pool or None,
             # This check admits the volume itself; other reservations still count.
             exclude_volume=volume.uuid,
+            allow_remote=isinstance(
+                getattr(pool, "driver_spec", None), ua_pool.ExordosLocalHyperDriverSpec
+            ),
         )
 
     def _has_enough_space_in_pool(
@@ -557,8 +560,6 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(volume.size)
-        if cluster is not None:
-            cluster.save()
         if not volume.storage_pool:
             volume.storage_pool = (
                 str(storage_pool.uuid) if cluster else storage_pool.name
@@ -596,8 +597,6 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(target_volume.size - actual_volume.size)
-        if cluster is not None:
-            cluster.save()
         if not volume.storage_pool:
             volume.storage_pool = (
                 str(storage_pool.uuid) if cluster else storage_pool.name

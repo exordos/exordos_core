@@ -42,10 +42,17 @@ class MigrationStep(migrations.AbstractMigrationStep):
 
     def downgrade(self, session):
         session.execute("""
-            UPDATE storage_clusters SET driver_spec=driver_spec ||
-                '{"location":"","ost_endpoint":"","nodes":{},"pools":{},
-                  "managed":true,"tier":"WARM","ephemeral":true}'::jsonb
-            WHERE driver_spec->>'kind'='rawstor';
+            UPDATE storage_clusters c SET driver_spec=c.driver_spec || jsonb_build_object(
+                'location','','ost_endpoint','','managed',true,'tier','WARM','ephemeral',true,
+                'nodes',COALESCE((SELECT jsonb_object_agg(n.uuid::text,
+                    jsonb_build_object('endpoint',n.driver_spec->>'endpoint',
+                    'weight',(n.driver_spec->>'weight')::bigint,
+                    'failure_domain_path',n.driver_spec->>'failure_domain_path'))
+                    FROM storage_nodes n WHERE n.cluster=c.uuid),'{}'::jsonb),
+                'pools',COALESCE((SELECT jsonb_object_agg(p.uuid::text,
+                    p.driver_spec || jsonb_build_object('name',p.name,'tier',p.tier,'ephemeral',p.ephemeral))
+                    FROM storage_pools p WHERE p.cluster=c.uuid),'{}'::jsonb))
+            WHERE c.driver_spec->>'kind'='rawstor';
         """)
 
 
