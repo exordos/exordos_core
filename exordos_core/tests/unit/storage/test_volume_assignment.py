@@ -24,7 +24,9 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
         driver_spec=rawstor_specs.RawstorPoolDriverSpec(),
     )
     monkeypatch.setattr(
-        storage.StoragePool, "objects", MagicMock(get_one=MagicMock(return_value=pool))
+        storage.StoragePool,
+        "objects",
+        MagicMock(get_all=MagicMock(return_value=[pool])),
     )
     monkeypatch.setattr(
         storage.StorageCluster,
@@ -67,3 +69,13 @@ def test_local_volume_does_not_resolve_cluster(monkeypatch):
     assert resource.value["storage_location"] is None
     assert resource.value["storage_policy"] == {}
     objects.get_one.assert_not_called()
+
+
+def test_missing_uuid_pool_falls_back_to_local_volume(monkeypatch):
+    monkeypatch.setattr(
+        storage.StoragePool, "objects", MagicMock(get_all=MagicMock(return_value=[]))
+    )
+    volume = compute.MachineVolume(
+        project_id=uuid.uuid4(), name="v", size=10, storage_pool=str(uuid.uuid4())
+    )
+    assert volume.to_ua_resource().value["storage_location"] is None

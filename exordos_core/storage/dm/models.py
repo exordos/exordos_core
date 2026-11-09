@@ -117,7 +117,9 @@ class Cluster(
         value = dict(resource.value)
         spec = value["driver_spec"]
         value["driver_spec"] = {"kind": spec["kind"], "endpoint": spec["endpoint"]}
-        return cls.restore_from_simple_view(skip_unknown_fields=True, **value)
+        instance = cls.restore_from_simple_view(skip_unknown_fields=True, **value)
+        instance._reported_driver_spec = spec
+        return instance
 
     def get_resource_target_fields(self) -> tp.Collection[str]:
         """Return the collection of target fields.

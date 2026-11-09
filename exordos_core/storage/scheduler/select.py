@@ -16,6 +16,7 @@
 
 import time
 import typing as tp
+import uuid
 
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.drivers import storage_capacity
@@ -44,6 +45,8 @@ def collect_storage_pool_candidates(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     staged=None,
     exclude_volume=None,
+    assigned_name=None,
+    allow_remote=True,
 ) -> tp.List[PoolCandidate]:
     """Pair every candidate pool with the StorageCluster that owns it.
 
@@ -52,10 +55,30 @@ def collect_storage_pool_candidates(
     per the operator's choice recorded in the storages feature plan.
     """
     candidates: tp.List[PoolCandidate] = [(p, None) for p in local_pools]
-    for cluster in _active_clusters():
+    if not allow_remote:
+        return candidates
+    clusters = list(_active_clusters())
+    if assigned_name and not any(
+        str(p.uuid) == assigned_name for c in clusters for p in c.storage_pools
+    ):
+        try:
+            pool_uuid = uuid.UUID(assigned_name)
+        except ValueError:
+            pool_uuid = None
+        if pool_uuid is not None:
+            matches = storage_models.StoragePool.objects.get_all(
+                filters={"uuid": dm_filters.EQ(pool_uuid)}
+            )
+            if matches:
+                owners = storage_models.StorageCluster.objects.get_all(
+                    filters={"uuid": dm_filters.EQ(matches[0].cluster)}
+                )
+                if owners and all(c.uuid != owners[0].uuid for c in clusters):
+                    clusters.append(owners[0])
+    for cluster in clusters:
         if cluster.storage_pools:
             info = cluster.capacity_info
-            if time.time() - info.get("reported_at", 0) > 60:
+            if assigned_name is None and time.time() - info.get("reported_at", 0) > 60:
                 continue
             volumes = compute_models.MachineVolume.objects.get_all(
                 filters={
@@ -99,13 +122,18 @@ def select_storage_pool_with_clusters(
     assigned_name: tp.Optional[str] = None,
     staged=None,
     exclude_volume=None,
+    allow_remote=True,
 ) -> tp.Optional[PoolCandidate]:
     """Like `ua_pool.select_storage_pool`, but drawing from local pools
     and active StorageClusters' pools together (see
     `collect_storage_pool_candidates`).
     """
     candidates = collect_storage_pool_candidates(
-        local_pools, staged, exclude_volume=exclude_volume
+        local_pools,
+        staged,
+        exclude_volume=exclude_volume,
+        assigned_name=assigned_name,
+        allow_remote=allow_remote,
     )
 
     if assigned_name is not None:
@@ -143,7 +171,9 @@ def find_storage_pool_by_name_with_clusters(
     """
     matches = [
         (pool, owner)
-        for pool, owner in collect_storage_pool_candidates(local_pools)
+        for pool, owner in collect_storage_pool_candidates(
+            local_pools, assigned_name=name
+        )
         if (str(pool.uuid) if owner else pool.name) == name
     ]
 

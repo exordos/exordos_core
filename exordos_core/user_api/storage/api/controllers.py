@@ -60,6 +60,18 @@ def _validate_endpoint(endpoint, scheme):
     return parsed
 
 
+def _endpoint_identity(endpoint):
+    parsed = urlparse(endpoint)
+    return parsed.hostname.lower(), parsed.port
+
+
+def _canonical_endpoint(endpoint):
+    host = endpoint.hostname.lower()
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{endpoint.scheme}://{host}:{endpoint.port}"
+
+
 class StorageController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/storage/"
 
@@ -83,6 +95,8 @@ class StorageClustersController(
                 "status": {ra_c.ALL: field_p.Permissions.RO},
                 "capacity_info": {ra_c.ALL: field_p.Permissions.RO},
                 "storage_pools": {ra_c.ALL: field_p.Permissions.RO},
+                "agent": {ra_c.ALL: field_p.Permissions.RO},
+                "builder": {ra_c.ALL: field_p.Permissions.RO},
             },
         ),
     )
@@ -90,6 +104,7 @@ class StorageClustersController(
     def create(self, **kwargs):
         with models.StorageCluster._get_engine().session_manager() as session:
             state.lock(session)
+            kwargs.setdefault("name", "")
             self._validate_driver_spec_uniqueness(kwargs)
             if isinstance(kwargs["driver_spec"], dict):
                 kwargs["driver_spec"] = (
@@ -106,7 +121,7 @@ class StorageClustersController(
                 )
             cluster = super().create(**kwargs)
             for uuid, policy in storage_capacity.default_policies(cluster.uuid).items():
-                policy["name"] = f"{cluster.name}-{policy['name']}"
+                policy["name"] = f"{cluster.name[:244]}-{policy['name']}"
                 models.StoragePool(
                     uuid=sys_uuid.UUID(uuid),
                     cluster=cluster.uuid,
@@ -126,8 +141,13 @@ class StorageClustersController(
     def update(self, uuid, **kwargs):
         with models.StorageCluster._get_engine().session_manager() as session:
             state.lock(session)
-            _require_cluster_not_deleting(self.get(uuid=uuid))
+            current = self.get(uuid=uuid)
+            _require_cluster_not_deleting(current)
             if "driver_spec" in kwargs:
+                kwargs["driver_spec"] = {
+                    **current.driver_spec.dump_to_simple_view(),
+                    **_driver_spec_values(kwargs["driver_spec"]),
+                }
                 self._validate_driver_spec_uniqueness(kwargs, exclude_uuid=uuid)
                 if isinstance(kwargs["driver_spec"], dict):
                     kwargs["driver_spec"] = (
@@ -219,7 +239,14 @@ def _require_no_disks(cluster, pool_uuid=None):
     volumes = compute_models.MachineVolume.objects.get_all(
         filters={"storage_pool": dm_filters.In(pool_ids)}
     )
-    if volumes:
+    pending_resources = any(
+        str(resource.value.get("storage_pool")) in pool_ids
+        for model in (ua_models.TargetResource, ua_models.Resource)
+        for resource in model.objects.get_all(
+            filters={"kind": dm_filters.EQ("pool_volume")}
+        )
+    )
+    if volumes or pending_resources:
         raise storage_exc.ConflictRecords(
             model="StorageCluster", msg="Storage still has allocated or pending disks"
         )
@@ -252,6 +279,7 @@ class ClusterMemberController(
                 filters={"uuid": dm_filters.EQ(kwargs["cluster"])}
             )
             _require_cluster_not_deleting(cluster)
+            kwargs.setdefault("name", "")
             kwargs["driver_spec"] = _driver_spec_values(kwargs["driver_spec"])
             self.validate_member(kwargs, cluster)
             kwargs["driver_spec"] = self.driver_spec_model.restore_from_simple_view(
@@ -324,7 +352,8 @@ class StorageNodesController(ClusterMemberController):
             spec.get("location") or f"file:///var/lib/rawstor/ost/{kwargs['uuid']}"
         )
         endpoint = _validate_endpoint(spec["endpoint"], "ost")
-        spec["bind_address"] = spec.get("bind_address") or endpoint.netloc
+        spec["endpoint"] = _canonical_endpoint(endpoint)
+        spec["bind_address"] = spec.get("bind_address") or f"0.0.0.0:{endpoint.port}"
         kwargs["driver_spec"] = spec
         kwargs["status"] = "NEW"
         return super().create(**kwargs)
@@ -334,7 +363,11 @@ class StorageNodesController(ClusterMemberController):
             spec = _driver_spec_values(kwargs["driver_spec"])
             if "endpoint" in spec:
                 endpoint = _validate_endpoint(spec["endpoint"], "ost")
-                spec["bind_address"] = spec.get("bind_address") or endpoint.netloc
+                spec["endpoint"] = _canonical_endpoint(endpoint)
+                if "bind_address" in spec:
+                    spec["bind_address"] = (
+                        spec["bind_address"] or f"0.0.0.0:{endpoint.port}"
+                    )
             kwargs["driver_spec"] = spec
             previous = self.get(uuid=uuid).driver_spec
             if any(
@@ -378,7 +411,9 @@ class StorageNodesController(ClusterMemberController):
             or weight != int(weight)
         ):
             raise InvalidRawstorEndpoint(msg="OST weight must be a positive integer")
-        path = data["failure_domain_path"]
+        path = data.get("failure_domain_path")
+        if not isinstance(path, str):
+            raise InvalidRawstorEndpoint(msg="A failure domain path is required")
         if (
             not 1 <= len(path.split("/")) <= 4
             or any(not p or p in (".", "..") for p in path.split("/"))
@@ -397,10 +432,10 @@ class StorageNodesController(ClusterMemberController):
             if existing and node.uuid == existing.uuid:
                 continue
             if agent_uuid is not None and node.agent is not None:
-                other_agent = ua_models.UniversalAgent.objects.get_one(
+                previous_agents = ua_models.UniversalAgent.objects.get_all(
                     filters={"uuid": dm_filters.EQ(node.agent)}
                 )
-                if other_agent.node == agent.node:
+                if previous_agents and previous_agents[0].node == agent.node:
                     if (
                         node.driver_spec.location == data["location"]
                         or urlparse("ost://" + node.driver_spec.bind_address).port
@@ -410,7 +445,9 @@ class StorageNodesController(ClusterMemberController):
                             model="StorageNode",
                             msg="OST backing location or bind port already used on this host",
                         )
-            if node.driver_spec.endpoint.rstrip("/") == data["endpoint"].rstrip("/"):
+            if _endpoint_identity(node.driver_spec.endpoint) == _endpoint_identity(
+                data["endpoint"]
+            ):
                 raise storage_exc.ConflictRecords(
                     model="StorageNode", msg="OST already registered"
                 )
@@ -422,22 +459,26 @@ class StorageNodesController(ClusterMemberController):
             if existing and resource.uuid == existing.uuid:
                 continue
             value = {**resource.value, **resource.value["driver_spec"]}
-            if str(resource.uuid) == str(data.get("uuid")) or value["endpoint"].rstrip(
-                "/"
-            ) == data["endpoint"].rstrip("/"):
+            if str(resource.uuid) == str(data.get("uuid")) or _endpoint_identity(
+                value["endpoint"]
+            ) == _endpoint_identity(data["endpoint"]):
                 raise storage_exc.ConflictRecords(
                     model="StorageNode",
                     msg="OST endpoint or identity is still reconciled; wait for removal",
                 )
             previous_agent = value.get("agent") or resource.agent
             if agent_uuid is not None and previous_agent is not None:
-                other_agent = ua_models.UniversalAgent.objects.get_one(
+                previous_agents = ua_models.UniversalAgent.objects.get_all(
                     filters={"uuid": dm_filters.EQ(previous_agent)}
                 )
-                if other_agent.node == agent.node and (
-                    value["location"] == data["location"]
-                    or urlparse("ost://" + value["bind_address"]).port
-                    == urlparse("ost://" + data["bind_address"]).port
+                if (
+                    previous_agents
+                    and previous_agents[0].node == agent.node
+                    and (
+                        value["location"] == data["location"]
+                        or urlparse("ost://" + value["bind_address"]).port
+                        == urlparse("ost://" + data["bind_address"]).port
+                    )
                 ):
                     raise storage_exc.ConflictRecords(
                         model="StorageNode",
@@ -479,6 +520,16 @@ class StoragePoolsController(ClusterMemberController):
         return super().create(**kwargs)
 
     def validate_member(self, data, cluster, existing=None):
+        if existing is not None:
+            before = existing.dump_to_simple_view()
+            if (
+                any(
+                    data.get(field, before[field]) != before[field]
+                    for field in ("tier", "ephemeral")
+                )
+                or _driver_spec_values(data["driver_spec"]) != before["driver_spec"]
+            ):
+                _require_no_disks(cluster, existing.uuid)
         # Apply model defaults before validating an add request.
         data = {**data, **data.get("driver_spec", {"kind": "rawstor"})}
         policy = {

@@ -136,3 +136,77 @@ def test_node_rejects_weights_that_cannot_be_parsed_by_mds(weight):
                 agent=None, driver_spec=SimpleNamespace(location="")
             ),
         )
+
+
+@pytest.mark.parametrize(
+    "resource_type",
+    [controllers.ua_models.TargetResource, controllers.ua_models.Resource],
+)
+def test_pool_removal_rejects_pending_and_actual_disks(resource_type):
+    cluster = _cluster(_spec())
+    pool_uuid = sys_uuid.uuid4()
+    with (
+        patch.object(
+            controllers.compute_models.MachineVolume,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        patch.object(
+            controllers.ua_models.TargetResource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        patch.object(
+            controllers.ua_models.Resource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+    ):
+        resource_type.objects.get_all.return_value = [
+            SimpleNamespace(value={"storage_pool": str(pool_uuid)})
+        ]
+        with pytest.raises(storage_exc.ConflictRecords):
+            controllers._require_no_disks(cluster, pool_uuid)
+
+
+def test_node_endpoint_update_preserves_explicit_bind_address():
+    controller = controllers.StorageNodesController.__new__(
+        controllers.StorageNodesController
+    )
+    previous = SimpleNamespace(
+        driver_spec=SimpleNamespace(
+            endpoint="ost://host:7777",
+            bind_address="127.0.0.1:7777",
+            location="file:///data/ost",
+        )
+    )
+    with (
+        patch.object(controller, "get", return_value=previous),
+        patch.object(controllers.ClusterMemberController, "update") as update,
+    ):
+        controller.update(
+            sys_uuid.uuid4(), driver_spec={"endpoint": "ost://HOST:7777/"}
+        )
+    assert update.call_args.kwargs["driver_spec"] == {"endpoint": "ost://host:7777"}
+    assert "status" not in update.call_args.kwargs
+
+
+def test_in_use_pool_policy_cannot_be_changed():
+    existing = models.StoragePool(
+        name="persistent",
+        cluster=sys_uuid.uuid4(),
+        driver_spec=controllers.ua_pool.rawstor_specs.RawstorPoolDriverSpec(),
+    )
+    data = existing.dump_to_simple_view()
+    data["driver_spec"]["mirrors"] = 3
+    controller = controllers.StoragePoolsController.__new__(
+        controllers.StoragePoolsController
+    )
+    with patch.object(
+        controllers,
+        "_require_no_disks",
+        side_effect=storage_exc.ConflictRecords(model="StoragePool", msg="in use"),
+    ) as guard:
+        with pytest.raises(storage_exc.ConflictRecords):
+            controller.validate_member(data, _cluster(_spec()), existing)
+    assert guard.call_args.args[1] == existing.uuid

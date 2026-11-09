@@ -88,11 +88,25 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
         current_instance.storage_pools = actual_instance.storage_pools
         current_instance.capacity_info = actual_instance.capacity_info
         if current_instance.status != sc.CLUSTER_DELETING:
-            current_instance.status = actual_instance.status
+            matches = state.agent_driver_spec(
+                current_instance
+            ).dump_to_simple_view() == getattr(
+                actual_instance,
+                "_reported_driver_spec",
+                actual_instance.driver_spec.dump_to_simple_view(),
+            )
+            current_instance.status = (
+                actual_instance.status if matches else "IN_PROGRESS"
+            )
 
     def can_delete_instance_resource(self, resource):
         if resource.kind != "storage_node":
             return super().can_delete_instance_resource(resource)
+        # A never-created OST does not need an MDS acknowledgement.
+        if not ua_models.Resource.objects.get_all(
+            filters={"uuid": resource.uuid, "kind": "storage_node"}
+        ):
+            return True
         # Keep the OST running until the MDS has acknowledged its removal.
         actual = ua_models.Resource.objects.get_all(
             filters={"uuid": resource.value["cluster"], "kind": "storage_cluster"}

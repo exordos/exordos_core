@@ -122,7 +122,12 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(other_size, allow
         tier="COLD",
         ephemeral=False,
         storage_pool=str(storage_pool.uuid),
-        pool=SimpleNamespace(storage_pools=[]),
+        pool=SimpleNamespace(
+            storage_pools=[],
+            driver_spec=ua_pool.ExordosLocalHyperDriverSpec(
+                connection_uri="test:///default", node=uuid.uuid4()
+            ),
+        ),
     )
     reservations = [volume]
     if other_size:
