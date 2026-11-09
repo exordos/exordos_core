@@ -21,6 +21,7 @@ set -euo pipefail
 CORE_PATH=/opt/exordos_core
 AGENT_PYTHON=/opt/universal_agent/.venv/bin/python
 RAWSTOR_VERSION=${RAWSTOR_VERSION:-99.0.0}
+RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 PACKAGES="$CORE_PATH/exordos/images/rawstor"
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update
@@ -35,8 +36,8 @@ else
         curl -fsSLo "$PACKAGES/${package}_${RAWSTOR_VERSION}_amd64.deb" \
             "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/${package}_${RAWSTOR_VERSION}_amd64.deb"
     done
-    curl -fsSLo "$PACKAGES/rawstor-${RAWSTOR_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" \
-        "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/rawstor-${RAWSTOR_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl"
+    curl -fsSLo "$PACKAGES/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" \
+        "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl"
 fi
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     "$PACKAGES/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
