@@ -149,6 +149,20 @@ class Volume(
     # Internal field for scheduling purposes
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
 
+    def update_dm(self, values):
+        if "size" in values:
+            validate_volume_growth(self.size, values["size"])
+        super().update_dm(values)
+
+
+class DiskShrinkNotSupportedError(ra_e.ValidationErrorException):
+    message = "Shrinking disks is unsupported"
+
+
+def validate_volume_growth(old_size, new_size):
+    if new_size < old_size:
+        raise DiskShrinkNotSupportedError()
+
 
 class UnscheduledVolume(models.ModelWithUUID, orm.SQLStorableMixin):
     __tablename__ = "compute_unscheduled_volumes"
@@ -172,6 +186,7 @@ def validate_disk_policy_update(old_spec, new_spec):
         return value.get("disks", [])
 
     for old, new in zip(disks(old_spec), disks(new_spec)):
+        validate_volume_growth(old["size"], new["size"])
         if any(
             old.get(field, default) != new.get(field, default)
             for field, default in (("tier", "WARM"), ("ephemeral", True))
