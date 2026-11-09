@@ -205,6 +205,9 @@ class SchedulerService(basic.BasicService):
             volume.ephemeral,
             size,
             staged=getattr(self, "_storage_reservations", {}),
+            allow_remote=isinstance(
+                pool.pool.driver_spec, ua_pool.ExordosLocalHyperDriverSpec
+            ),
         )
         if result is not None:
             if getattr(self, "_placement_preview", False) and result[1] is not None:
@@ -440,7 +443,7 @@ class SchedulerService(basic.BasicService):
         pool.pool.avail_cores -= machine.cores
         pool.pool.avail_ram -= machine.ram
 
-    def _machine_has_disk_capacity(self, node, machine, pools):
+    def _machine_has_disk_capacity(self, node, machine, pools, reserve=False):
         if not node.volumes:
             return True
         pool = pools.get(machine.machine.pool)
@@ -458,6 +461,8 @@ class SchedulerService(basic.BasicService):
             preview._allocate_node_volumes(node, candidate)
         except ValueError:
             return False
+        if reserve:
+            self._storage_reservations = preview._storage_reservations
         return True
 
     def _schedule_on_existing_machines(
@@ -552,6 +557,9 @@ class SchedulerService(basic.BasicService):
             try:
                 node.save()
                 machine_bundle.machine.save()
+                self._machine_has_disk_capacity(
+                    unscheduled_node, machine_bundle, pools, reserve=True
+                )
                 LOG.info(
                     "The node %s scheduled to %s machine",
                     node.uuid,

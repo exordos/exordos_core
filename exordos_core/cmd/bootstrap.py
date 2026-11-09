@@ -387,7 +387,8 @@ capabilities =
     certificate,
     paas_lb_agent,
     repo_proxy_installed_element,
-    border_agent
+    border_agent,
+    storage_cluster
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
 _UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
@@ -504,6 +505,17 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
+    if "StorageClusterAgentDriver" not in new_content:
+        new_content = new_content.replace(
+            _UA_BORDER_DRIVER_LINE,
+            _UA_BORDER_DRIVER_LINE + "    StorageClusterAgentDriver,\n",
+        )
+    new_content = _ensure_section(
+        new_content,
+        "StorageClusterAgentDriver",
+        {"meta_file": "/var/lib/exordos/exordos_core/storage_agent_meta.json"},
+    )
+
     new_content = _migrate_ua_secret_driver(new_content)
 
     if new_content == content:
@@ -535,6 +547,9 @@ def _ensure_ua_config_current() -> None:
 # not be in its section.
 _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
+        "em_core_storage_pools": "exordos_core.storage.dm.models:StoragePool",
+        "em_core_storage_nodes": "exordos_core.storage.dm.models:StorageNode",
+        "em_core_storage_clusters": "exordos_core.storage.dm.models:StorageCluster",
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
         "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
