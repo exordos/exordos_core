@@ -54,18 +54,16 @@ fi
 sudo "$AGENT_PYTHON" -m pip install --force-reinstall --no-deps "$PACKAGES"/rawstor-*.whl
 
 sudo install -m 0755 "$CORE_PATH/exordos/images/ost/prepare.py" /usr/local/sbin/exordos-prepare-ost
-sudo install -m 0644 "$CORE_PATH/exordos/images/ost/prepare.service" /etc/systemd/system/exordos-prepare-ost.service
+sudo install -m 0644 "$CORE_PATH/exordos/images/ost/prepare.service" /etc/systemd/system/exordos-prepare-ost@.service
 # LVM needs metadata backups and runtime locks inside the OST unit sandbox.
 sudo mkdir -p /etc/systemd/system/rawstor-ost@.service.d
 sudo tee /etc/systemd/system/rawstor-ost@.service.d/lvm.conf >/dev/null <<'EOF'
+[Unit]
+Requires=exordos-prepare-ost@%i.service
+After=exordos-prepare-ost@%i.service
+
 [Service]
 ReadWritePaths=/etc/lvm /run
-EOF
-sudo mkdir -p /etc/systemd/system/exordos-universal-agent.service.d
-sudo tee /etc/systemd/system/exordos-universal-agent.service.d/ost.conf >/dev/null <<'EOF'
-[Unit]
-Requires=exordos-prepare-ost.service
-After=exordos-prepare-ost.service
 EOF
 sudo python3 - <<'PY'
 import configparser
@@ -82,4 +80,3 @@ with path.open('w') as stream:
     config.write(stream)
 PY
 sudo systemctl daemon-reload
-sudo systemctl enable exordos-prepare-ost.service
