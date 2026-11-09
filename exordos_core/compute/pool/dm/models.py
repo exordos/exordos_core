@@ -155,9 +155,11 @@ class MachineVolume(
             pool_uuid = None
         location, policy = None, {}
         if pool_uuid is not None:
-            storage_pool = storage_models.StoragePool.objects.get_one(
+            matches = storage_models.StoragePool.objects.get_all(
                 filters={"uuid": dm_filters.EQ(pool_uuid)}
             )
+            storage_pool = matches[0] if matches else None
+        if pool_uuid is not None and storage_pool is not None:
             cluster = storage_models.StorageCluster.objects.get_one(
                 filters={"uuid": dm_filters.EQ(storage_pool.cluster)}
             )

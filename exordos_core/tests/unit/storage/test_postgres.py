@@ -36,6 +36,7 @@ import psycopg
 from psycopg import sql
 import pytest
 from restalchemy.common import contexts
+from restalchemy.dm import filters as dm_filters
 from restalchemy.storage.sql import engines
 
 from exordos_core.compute.dm import models as compute
@@ -174,7 +175,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
                 }
             ),
         )
-        assert first.driver_spec.bind_address == "10.0.0.1:7777"
+        assert first.driver_spec.bind_address == "0.0.0.0:7777"
         assert first.driver_spec.weight == 100
         assert isinstance(node_api.get(uuid=first.uuid).driver_spec.weight, int)
         second = node_api.create(
@@ -393,7 +394,19 @@ def test_migration_preserves_legacy_ost_and_pool(database):
             "UPDATE compute_machine_volumes SET updated_at='2000-01-01' WHERE uuid=%s",
             (volume_uuid,),
         )
+        connection.execute(
+            "ALTER TABLE compute_machine_volumes ADD storage_location varchar(255)"
+        )
+        connection.execute(
+            "UPDATE compute_machine_volumes SET storage_location=%s WHERE uuid=%s",
+            (endpoint, volume_uuid),
+        )
         step.upgrade(connection)
+        assert connection.execute(
+            "SELECT storage_pool FROM compute_machine_volumes WHERE uuid=%s",
+            (volume_uuid,),
+        ).fetchone() == (str(pool_uuid),)
+        connection.execute("ALTER TABLE compute_machine_volumes DROP storage_location")
         assert connection.execute(
             "SELECT updated_at > '2000-01-01' FROM compute_machine_volumes WHERE uuid=%s",
             (volume_uuid,),
@@ -422,6 +435,14 @@ def test_migration_preserves_legacy_ost_and_pool(database):
         assert connection.execute(
             "SELECT uuid,(driver_spec->>'mirrors')::integer FROM storage_pools"
         ).fetchone() == (pool_uuid, 1)
+        config_step = migration("0017-storage-cluster-config-6ab127.py").migration_step
+        config_step.downgrade(connection)
+        restored = connection.execute(
+            "SELECT driver_spec FROM storage_clusters"
+        ).fetchone()[0]
+        assert restored["nodes"][str(cluster_uuid)]["endpoint"] == "ost://host:7777"
+        assert restored["pools"][str(pool_uuid)]["name"] == "default"
+        assert restored["pools"][str(pool_uuid)]["mirrors"] == 1
 
 
 @pytest.mark.parametrize(
@@ -460,9 +481,20 @@ def test_full_migration_graph_applies_from_empty_database(
 
 
 def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
-    database, tmp_path
+    database, tmp_path, monkeypatch
 ):
     from gcl_sdk.agents.universal.drivers import rawstor_node
+
+    monkeypatch.setattr(
+        controllers.storage_capacity,
+        "OST_BACKING_ROOTS",
+        (*controllers.storage_capacity.OST_BACKING_ROOTS, str(tmp_path)),
+    )
+    monkeypatch.setattr(
+        rawstor_node,
+        "_prepare_file_backing",
+        lambda path: Path(path).mkdir(exist_ok=True),
+    )
 
     from exordos_core.storage.builders import cluster as cluster_builder
 
@@ -571,7 +603,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
         )
         assert cluster_api.get(uuid=cluster.uuid).status == "DELETING"
         backing = tmp_path / "data"
-        backing.mkdir()
+        backing.mkdir(exist_ok=True)
         (backing / "keep").write_text("data")
         with (
             patch.object(rawstor_node.subprocess, "run") as run,
@@ -622,3 +654,39 @@ def test_cluster_metadata_update_does_not_request_an_mds_reconcile(database):
             "kind": "rawstor",
             "endpoint": "mds://core:7776/",
         }
+
+
+def test_default_names_and_partial_cluster_spec(database):
+    cluster_api = controller(controllers.StorageClustersController)
+    pool_api = controller(controllers.StoragePoolsController)
+    with contexts.Context().session_manager():
+        cluster = cluster_api.create(
+            driver_spec={"kind": "rawstor", "endpoint": "mds://core:7776/"}
+        )
+        assert cluster.name == ""
+        updated = cluster_api.update(
+            cluster.uuid, driver_spec={"endpoint": "mds://core:7776/"}
+        )
+        assert updated.driver_spec.KIND == "rawstor"
+        created = pool_api.create(
+            cluster=cluster.uuid,
+            tier="HOT",
+            ephemeral=False,
+            driver_spec={
+                "kind": "rawstor",
+                "mirrors": 2,
+                "chunk_size": 1073741824,
+                "failure_domain": "server",
+            },
+        )
+        assert created.name == ""
+        long_cluster = cluster_api.create(
+            name="a" * 255,
+            driver_spec={"kind": "rawstor", "endpoint": "mds://core:7778/"},
+        )
+        assert all(
+            len(p.name) <= 255
+            for p in models.StoragePool.objects.get_all(
+                filters={"cluster": dm_filters.EQ(long_cluster.uuid)}
+            )
+        )
