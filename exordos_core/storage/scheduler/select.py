@@ -41,12 +41,17 @@ def _active_clusters() -> tp.List[storage_models.StorageCluster]:
     )
 
 
+def capacity_is_fresh(cluster):
+    return time.time() - cluster.capacity_info.get("reported_at", 0) <= 60
+
+
 def collect_storage_pool_candidates(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     staged=None,
     exclude_volume=None,
     assigned_name=None,
     allow_remote=True,
+    require_fresh=True,
 ) -> tp.List[PoolCandidate]:
     """Pair every candidate pool with the StorageCluster that owns it.
 
@@ -78,7 +83,7 @@ def collect_storage_pool_candidates(
     for cluster in clusters:
         if cluster.storage_pools:
             info = cluster.capacity_info
-            if assigned_name is None and time.time() - info.get("reported_at", 0) > 60:
+            if require_fresh and not capacity_is_fresh(cluster):
                 continue
             volumes = compute_models.MachineVolume.objects.get_all(
                 filters={
@@ -134,6 +139,7 @@ def select_storage_pool_with_clusters(
         exclude_volume=exclude_volume,
         assigned_name=assigned_name,
         allow_remote=allow_remote,
+        require_fresh=size > 0,
     )
 
     if assigned_name is not None:
@@ -172,7 +178,7 @@ def find_storage_pool_by_name_with_clusters(
     matches = [
         (pool, owner)
         for pool, owner in collect_storage_pool_candidates(
-            local_pools, assigned_name=name
+            local_pools, assigned_name=name, require_fresh=False
         )
         if (str(pool.uuid) if owner else pool.name) == name
     ]

@@ -87,6 +87,10 @@ class MigrationStep(migrations.AbstractMigrationStep):
         )
 
     def downgrade(self, session):
+        session.execute("""
+            UPDATE compute_machine_volumes v SET storage_pool=p.name
+            FROM storage_pools p WHERE v.storage_pool=p.uuid::text;
+        """)
         session.execute(
             "DROP TABLE storage_pools; DROP TABLE storage_nodes; DROP INDEX storage_clusters_name_unique"
         )
