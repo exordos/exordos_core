@@ -175,7 +175,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
                 }
             ),
         )
-        assert first.driver_spec.bind_address == "0.0.0.0:7777"
+        assert first.driver_spec.bind_address == "10.0.0.1:7777"
         assert first.driver_spec.weight == 100
         assert isinstance(node_api.get(uuid=first.uuid).driver_spec.weight, int)
         second = node_api.create(
@@ -443,6 +443,13 @@ def test_migration_preserves_legacy_ost_and_pool(database):
         assert restored["nodes"][str(cluster_uuid)]["endpoint"] == "ost://host:7777"
         assert restored["pools"][str(pool_uuid)]["name"] == "default"
         assert restored["pools"][str(pool_uuid)]["mirrors"] == 1
+        step.downgrade(connection)
+        assert (
+            connection.execute(
+                "SELECT storage_pool FROM compute_machine_volumes"
+            ).fetchone()[0]
+            == "default"
+        )
 
 
 @pytest.mark.parametrize(
