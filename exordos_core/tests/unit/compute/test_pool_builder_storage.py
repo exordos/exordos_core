@@ -80,8 +80,11 @@ def no_storage_clusters(monkeypatch):
     monkeypatch.setattr(select, "_active_clusters", lambda: [])
 
 
+@pytest.mark.parametrize("actual_size,target_size,available", [(0, 5, 9), (4, 8, 5)])
 @pytest.mark.parametrize("other_size,allowed", [(0, True), (5, False)])
-def test_builder_does_not_charge_own_cluster_reservation_twice(other_size, allowed):
+def test_builder_does_not_charge_own_cluster_reservation_twice(
+    other_size, allowed, actual_size, target_size, available
+):
     import time
 
     from gcl_sdk.agents.universal.drivers import rawstor_specs
@@ -108,7 +111,7 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(other_size, allow
             "nodes": [
                 {
                     "uuid": str(uuid.uuid4()),
-                    "available": 9 << 30,
+                    "available": available << 30,
                     "weight": 100,
                     "failure_domain_path": domain,
                 }
@@ -118,7 +121,7 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(other_size, allow
     )
     volume = SimpleNamespace(
         uuid=uuid.uuid4(),
-        size=5,
+        size=target_size,
         tier="COLD",
         ephemeral=False,
         storage_pool=str(storage_pool.uuid),
@@ -129,6 +132,7 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(other_size, allow
             ),
         ),
     )
+    cluster.capacity_info["objects"][str(volume.uuid)] = actual_size << 30
     reservations = [volume]
     if other_size:
         reservations.append(SimpleNamespace(uuid=uuid.uuid4(), size=other_size))
@@ -140,8 +144,18 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(other_size, allow
             Mock(get_all=Mock(return_value=reservations)),
         ),
     ):
-        assert service._has_enough_space_in_pool(volume.pool, volume) is allowed
+        assert (
+            service._has_enough_space_in_pool(
+                volume.pool, volume, SimpleNamespace(size=actual_size)
+            )
+            is allowed
+        )
         if allowed:
-            assert service._select_storage_pool(volume.pool, volume, 5)[1] is cluster
+            assert (
+                service._select_storage_pool(
+                    volume.pool, volume, target_size - actual_size
+                )[1]
+                is cluster
+            )
         # New placements must still account for this volume's reservation.
         assert select.select_storage_pool_with_clusters([], "COLD", False, 5) is None

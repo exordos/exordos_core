@@ -162,14 +162,35 @@ The estimate is conservative for pending disks and is a placement upper bound
 for completed inventory. MDS performs the final placement and can reject an
 allocation when its weighted placement cannot fit. Deleting a pending disk
 releases its reservation; deleting an allocated disk releases physical space
-when OST cleanup is reflected in the next sample. Rawstor disk resizing is
-currently unsupported.
+when OST cleanup is reflected in the next sample. Rawstor disks support grow-only resizing.
+
+## Grow a disk
+
+Increase a VM's root disk in GiB:
+
+```bash
+exordos compute nodes update -u VM_UUID --root-disk 20
+```
+
+For a disk declared in an element, increase its `disk_spec` size and update the
+element. Standalone volumes use `PUT /v1/compute/volumes/VOLUME_UUID` with
+`{"size": 20}`. Sizes can only increase; shrinking is rejected before changing
+the desired state. The existing pool, mirror count and chunk size are preserved.
+Core admits only the additional capacity on the assigned pool, including other
+pending allocations. MDS performs the final allocation.
+
+After the object grows, the agent sends `SIGHUP` to its running vhost backend.
+The backend reopens its queues and notifies QEMU of the larger disk without
+restarting the VM. Failed notifications are retried during discovery; an
+inactive backend reads the new size when it next starts. Existing hypervisors
+must have the matching updated Rawstor library, Python binding and vhost package.
+The guest must expand its partitions and filesystem separately.
 
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.723cc03`, from
-[Actions run 42485659433](https://github.com/rawstor/librawstor/actions/runs/42485659433).
+`99.0.0+0.891a250`, from
+[Actions run 42651185217](https://github.com/rawstor/librawstor/actions/runs/42651185217).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
