@@ -115,7 +115,7 @@ def test_managed_vms_wait_for_storage_agent_and_reconcile_idempotently():
         assert len(vms) == len(osts) == 2
         assert len({n.driver_spec.failure_domain_path for n in osts.values()}) == 2
         for ost in osts.values():
-            assert ost.driver_spec.location == "zfs://rawstor-ost/data"
+            assert ost.driver_spec.location == "lvm://rawstor-ost"
             assert ost.driver_spec.endpoint == f"ost://{ost.driver_spec.bind_address}"
             assert ost.agent in {a.uuid for a in agents}
 
