@@ -279,9 +279,9 @@ this build. Updating packages does not convert or delete existing storage.
 ## Managed OST virtual machines
 
 `e build` also builds the `rawstor-ost` image in the core element. Its provisioning
-script installs the pinned rawstor packages, matching SDK and ZFS support. On
-first boot it creates `rawstor-ost/data` on the second disk (`/dev/vdb`), refusing
-mounted or non-empty disks. Later boots import and preserve the existing pool.
+script installs the pinned rawstor packages, matching SDK and LVM support. On
+first boot it creates the `rawstor-ost` volume group on the second disk (`/dev/vdb`),
+refusing mounted or non-empty disks. Later boots activate and preserve the existing VG.
 The storage agent starts after the data backend is ready.
 
 Create managed OST VMs with:
@@ -292,7 +292,7 @@ exordos storages clusters add --type rawstor --name storage --nodes 3 --size 30
 
 Core reconciles three VMs, each with 2 CPUs, 2048 MiB RAM, a 10 GiB root disk
 and a 30 GiB data disk. Both disks request `WARM`/`ephemeral=true`; data uses a
-native ZFS backend, `zfs://rawstor-ost/data`. Registered storage agents reconcile
+native LVM backend, `lvm://rawstor-ost`. Registered storage agents reconcile
 OST services and the existing cluster builder admits ready OSTs into MDS topology.
 Each VM has a distinct server failure-domain path. These are VM failure domains;
 physical host redundancy also requires placing VMs on separate hosts.
