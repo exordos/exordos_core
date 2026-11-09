@@ -28,14 +28,11 @@ prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
 
 
-def commands(existing=False, mounted=False, signature=False):
+def commands(physical_volumes=(), mounted=False, signature=False):
     def run(command, **kwargs):
-        code = 0
-        if command[:2] in (["zpool", "list"], ["zpool", "import"], ["zfs", "list"]):
-            code = 0 if existing else 1
-        elif command[0] == "blkid":
-            code = 0 if signature else 2
-        return SimpleNamespace(returncode=code)
+        return SimpleNamespace(
+            returncode=(0 if signature else 2) if command[0] == "blkid" else 0
+        )
 
     def output(command, **kwargs):
         if command[0] == "lsblk":
@@ -50,35 +47,40 @@ def commands(existing=False, mounted=False, signature=False):
                     ]
                 }
             )
-        return "rawstor-ost ONLINE /dev/vdb ONLINE"
+        assert command[0] == "pvs"
+        return json.dumps({"report": [{"pv": list(physical_volumes)}]})
 
     return run, output
 
 
-def test_first_boot_creates_zfs_on_data_disk_and_second_boot_preserves_it():
+def test_first_boot_creates_lvm_on_data_disk():
     run, output = commands()
     with (
         mock.patch.object(prepare.subprocess, "run", side_effect=run) as invoked,
         mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
     ):
         prepare.prepare()
-        creates = [
-            c.args[0]
-            for c in invoked.call_args_list
-            if c.args[0][:2] == ["zpool", "create"]
-        ]
-        assert len(creates) == 1
-        assert creates[0][-1] == "/dev/vdb"
-        assert "-f" not in creates[0]
-    run, output = commands(existing=True)
+    assert [call.args[0] for call in invoked.call_args_list] == [
+        ["blkid", "-p", "/dev/vdb"],
+        ["pvcreate", "/dev/vdb"],
+        ["vgcreate", "rawstor-ost", "/dev/vdb"],
+        ["vgchange", "--activate", "y", "rawstor-ost"],
+    ]
+
+
+@pytest.mark.parametrize("group", ["rawstor-ost", ""])
+def test_existing_pv_is_preserved_and_partial_initialization_can_resume(group):
+    run, output = commands(physical_volumes=[{"pv_name": "/dev/vdb", "vg_name": group}])
     with (
         mock.patch.object(prepare.subprocess, "run", side_effect=run) as invoked,
         mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
     ):
         prepare.prepare()
-        assert not any(
-            c.args[0][:2] == ["zpool", "create"] for c in invoked.call_args_list
-        )
+    expected = [] if group else [["vgcreate", "rawstor-ost", "/dev/vdb"]]
+    assert [call.args[0] for call in invoked.call_args_list] == [
+        *expected,
+        ["vgchange", "--activate", "y", "rawstor-ost"],
+    ]
 
 
 @pytest.mark.parametrize("mounted,signature", [(True, False), (False, True)])
@@ -90,9 +92,29 @@ def test_preparation_refuses_mounted_or_nonempty_disks(mounted, signature):
     ):
         with pytest.raises(RuntimeError):
             prepare.prepare()
-        assert not any(
-            c.args[0][:2] == ["zpool", "create"] for c in invoked.call_args_list
-        )
+    assert all(call.args[0][0] == "blkid" for call in invoked.call_args_list)
+
+
+@pytest.mark.parametrize(
+    "physical_volumes",
+    [
+        [{"pv_name": "/dev/vdb", "vg_name": "other"}],
+        [{"pv_name": "/dev/vdc", "vg_name": "rawstor-ost"}],
+        [
+            {"pv_name": "/dev/vdb", "vg_name": "rawstor-ost"},
+            {"pv_name": "/dev/vdc", "vg_name": "rawstor-ost"},
+        ],
+    ],
+)
+def test_preparation_rejects_wrong_volume_group_devices(physical_volumes):
+    run, output = commands(physical_volumes=physical_volumes)
+    with (
+        mock.patch.object(prepare.subprocess, "run", side_effect=run) as invoked,
+        mock.patch.object(prepare.subprocess, "check_output", side_effect=output),
+    ):
+        with pytest.raises(RuntimeError):
+            prepare.prepare()
+    invoked.assert_not_called()
 
 
 def test_build_configuration_contains_ost_provisioner_and_manifest_reference():

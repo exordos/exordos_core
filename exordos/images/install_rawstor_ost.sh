@@ -26,7 +26,7 @@ PACKAGES="$CORE_PATH/exordos/images/rawstor"
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    zfsutils-linux zfs-dkms "linux-headers-$(uname -r)" git python3-dev build-essential libjemalloc2
+    lvm2 git python3-dev build-essential libjemalloc2
 
 if [[ "$RAWSTOR_VERSION" == 99.0.0 ]]; then
     (cd "$PACKAGES" && sha256sum --check SHA256SUMS)
