@@ -32,7 +32,7 @@ from exordos_core.vs.dm import models as vs
 
 LOG = logging.getLogger(__name__)
 IMAGE_VARIABLE = uuid.UUID("9b7c0dfa-1562-4e87-88d5-e3af8cb10725")
-LOCATION = "zfs://rawstor-ost/data"
+LOCATION = "lvm://rawstor-ost"
 
 
 def vm_uuid(cluster, index):
