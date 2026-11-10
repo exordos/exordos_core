@@ -80,6 +80,42 @@ and so on). See [Troubleshooting](../usage/troubleshooting.md) for the symptoms 
 - `$core.config.configs` — files delivered to a node; requires `project_id` and `body.kind`, see
   [Troubleshooting](../usage/troubleshooting.md)
 
+## Resource audit
+
+Core records create, dirty update, and delete operations on its business models
+in the SDK's local `gcl_sdk_audit_events` outbox, in the resource transaction.
+Events identify the service as `core`, the resource type by its SQL table name,
+and the actor and project through the SDK audit contract. Background operations
+without an IAM context have no user actor.
+
+Snapshots include stored properties and relationship UUIDs. Credentials and
+opaque payloads are omitted, including secret values and private keys, IAM
+password hashes and OTP secrets, config bodies and commands, manifest resources,
+repository manifests and inventories, and value-store values. These events
+record resource changes; snapshots cannot reconstruct those excluded payloads.
+Internal scheduling records and SQL views are not separately audited.
+
+Recording is always enabled. Delivery is disabled by default; undelivered events
+remain in the local outbox. Install the optional `core_audit` element alongside
+`core` and `audit` to provision a service account, renewable token with
+`audit.events.create`, and a mode `0600` config drop-in on the Core node set.
+The base `core` element does not require Audit.
+
+Alternatively configure delivery in
+`/etc/exordos_core/exordos_core.d/audit.conf` and restart `ec-user-api`:
+
+```ini
+[audit_delivery]
+enabled = true
+endpoint = http://audit.local.genesis-core.tech:8080/
+auth_token = <token with audit.events.create>
+```
+
+The User API starts one SDK sender alongside its API workers, including when
+`workers = 1`. Successfully delivered events are removed from the outbox.
+Transient delivery failures retain events for retry; a permanent UUID conflict
+blocks delivery until the conflicting event is resolved.
+
 ## See also
 
 - [Manifest reference](../em/manifest.md)
