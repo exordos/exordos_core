@@ -54,7 +54,7 @@ FROM public.dns_records
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0011-backfill-pool-machine-power-state-f1ad94.py"]
+        self._depends = ["0012-iam-pkce-3e8a1472.py"]
 
     @property
     def migration_id(self):
