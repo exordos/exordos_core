@@ -100,16 +100,7 @@ def database(empty_database):
         connection.execute(
             "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
-        migration("0013-storage-clusters-3d8a1c.py").migration_step.upgrade(connection)
-        migration("0014-storage-nodes-pools-8ce6d2.py").migration_step.upgrade(
-            connection
-        )
-        migration("0016-managed-storage-nodes-934dc2.py").migration_step.upgrade(
-            connection
-        )
-        migration("0017-storage-cluster-config-6ab127.py").migration_step.upgrade(
-            connection
-        )
+        migration("0014-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
     return uri
 
 
@@ -361,133 +352,70 @@ def test_shared_budget_lock_blocks_another_transaction(database):
             assert future.result(timeout=5)
 
 
-def test_migration_preserves_legacy_ost_and_pool(database):
-    cluster_uuid, pool_uuid, volume_uuid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    endpoint = "mds://core:7788/"
+def test_storage_schema_upgrade_and_downgrade_preserve_local_volumes(database):
+    volume_uuid = uuid.uuid4()
     with contexts.Context().session_manager():
         compute.MachineVolume(
             uuid=volume_uuid,
             project_id=uuid.uuid4(),
-            name="legacy",
+            name="local",
             size=10,
             storage_pool="default",
         ).insert()
     with psycopg.connect(database) as connection:
-        step = migration("0014-storage-nodes-pools-8ce6d2.py").migration_step
+        step = migration("0014-rawstor-storage-0b42fe.py").migration_step
         step.downgrade(connection)
-        spec = {
-            "kind": "rawstor",
-            "endpoint": endpoint,
-            "location": "file:///data/rawstor",
-            "ost_endpoint": "ost://host:7777",
-            "tier": "HOT",
-            "ephemeral": False,
-        }
-        policy = {
-            "uuid": str(pool_uuid),
-            "name": "default",
-            "tier": "HOT",
-            "ephemeral": False,
-        }
-        connection.execute(
-            """INSERT INTO storage_clusters(uuid,name,description,driver_spec,status,storage_pools)
-            VALUES (%s,'legacy','',%s::jsonb,'ACTIVE',ARRAY[%s::jsonb])""",
-            (cluster_uuid, json.dumps(spec), json.dumps(policy)),
-        )
+        for table in ("storage_clusters", "storage_nodes", "storage_pools"):
+            assert connection.execute(
+                "SELECT to_regclass(%s)", (table,)
+            ).fetchone() == (None,)
         connection.execute(
             "UPDATE compute_machine_volumes SET updated_at='2000-01-01' WHERE uuid=%s",
             (volume_uuid,),
         )
-        connection.execute(
-            "ALTER TABLE compute_machine_volumes ADD storage_location varchar(255)"
-        )
-        connection.execute(
-            "UPDATE compute_machine_volumes SET storage_location=%s WHERE uuid=%s",
-            (endpoint, volume_uuid),
-        )
         step.upgrade(connection)
-        assert connection.execute(
-            "SELECT storage_pool FROM compute_machine_volumes WHERE uuid=%s",
-            (volume_uuid,),
-        ).fetchone() == (str(pool_uuid),)
-        connection.execute("ALTER TABLE compute_machine_volumes DROP storage_location")
         assert connection.execute(
             "SELECT updated_at > '2000-01-01' FROM compute_machine_volumes WHERE uuid=%s",
             (volume_uuid,),
         ).fetchone() == (True,)
-        assert (
-            connection.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_name='compute_machine_volumes' AND column_name IN ('storage_location','storage_policy')"
-            ).fetchall()
-            == []
+        cluster_uuid = uuid.uuid4()
+        connection.execute(
+            "INSERT INTO storage_clusters (uuid,name,description,driver_spec,status) "
+            "VALUES (%s,'cluster','',%s::jsonb,'DISABLED')",
+            (
+                cluster_uuid,
+                json.dumps({"kind": "rawstor", "endpoint": "mds://core:7776/"}),
+            ),
         )
-        migration("0016-managed-storage-nodes-934dc2.py").migration_step.upgrade(
-            connection
+        node_uuid = uuid.uuid4()
+        connection.execute(
+            "INSERT INTO storage_nodes (uuid,name,cluster,driver_spec) "
+            "VALUES (%s,'ost',%s,%s::jsonb)",
+            (
+                node_uuid,
+                cluster_uuid,
+                json.dumps({"kind": "rawstor", "endpoint": "ost://host:7777"}),
+            ),
         )
-        migration("0017-storage-cluster-config-6ab127.py").migration_step.upgrade(
-            connection
-        )
         assert connection.execute(
-            "SELECT driver_spec FROM storage_clusters"
-        ).fetchone()[0] == {"kind": "rawstor", "endpoint": spec["endpoint"]}
+            "SELECT agent,builder,status FROM storage_nodes"
+        ).fetchone() == (None, None, "NEW")
         assert connection.execute(
-            "SELECT agent,status FROM storage_nodes"
-        ).fetchone() == (None, "ACTIVE")
-        assert connection.execute(
-            "SELECT uuid,driver_spec->>'endpoint',driver_spec->>'failure_domain_path' FROM storage_nodes"
-        ).fetchone() == (cluster_uuid, "ost://host:7777", str(cluster_uuid))
-        assert connection.execute(
-            "SELECT uuid,(driver_spec->>'mirrors')::integer FROM storage_pools"
-        ).fetchone() == (pool_uuid, 1)
-        config_step = migration("0017-storage-cluster-config-6ab127.py").migration_step
-        # Downgrades must not publish managed nodes before provisioning succeeds.
-        included = {str(cluster_uuid)}
-        for status in ("ACTIVE", "NEW", "IN_PROGRESS", "ERROR"):
-            node_uuid = uuid.uuid4()
-            connection.execute(
-                "INSERT INTO storage_nodes (uuid,cluster,name,agent,status,driver_spec) "
-                "VALUES (%s,%s,%s,%s,%s,%s::jsonb)",
-                (
-                    node_uuid,
-                    cluster_uuid,
-                    status,
-                    uuid.uuid4(),
-                    status,
-                    json.dumps(
-                        {
-                            "kind": "rawstor",
-                            "endpoint": f"ost://managed-{status.lower()}:7777",
-                            "weight": 100,
-                            "failure_domain_path": str(node_uuid),
-                        }
-                    ),
-                ),
-            )
-            if status == "ACTIVE":
-                included.add(str(node_uuid))
-        config_step.downgrade(connection)
-        restored = connection.execute(
-            "SELECT driver_spec FROM storage_clusters"
-        ).fetchone()[0]
-        assert set(restored["nodes"]) == included
-        assert restored["nodes"][str(cluster_uuid)]["endpoint"] == "ost://host:7777"
-        assert restored["pools"][str(pool_uuid)]["name"] == "default"
-        assert restored["pools"][str(pool_uuid)]["mirrors"] == 1
+            "SELECT capacity_info,storage_pools FROM storage_clusters"
+        ).fetchone() == ({}, [])
         step.downgrade(connection)
-        assert (
-            connection.execute(
-                "SELECT storage_pool FROM compute_machine_volumes"
-            ).fetchone()[0]
-            == "default"
-        )
+        assert connection.execute(
+            "SELECT storage_pool FROM compute_machine_volumes WHERE uuid=%s",
+            (volume_uuid,),
+        ).fetchone() == ("default",)
 
 
 @pytest.mark.parametrize(
     "previous_head",
     [
         None,
-        "0014-storage-nodes-pools-8ce6d2.py",
         "0004-add-opaque-secrets-362f6d21.py",
+        "0013-realm-scoped-dns-5bd99b.py",
     ],
 )
 def test_full_migration_graph_applies_from_empty_database(
