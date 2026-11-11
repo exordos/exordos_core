@@ -155,6 +155,17 @@ class DNSSyncService(basic.BasicService):
             domain.insert()
             return True
 
+        if (
+            domain.realm_id is None
+            and not domain.sync_only
+            and not domain.sync_to_ecosystem
+        ):
+            LOG.debug(
+                "DNS zone %s is authoritative locally; skipping realm DNS sync",
+                domain_name,
+            )
+            return False
+
         if not (
             domain.realm_id == realm_id
             and domain.sync_only

@@ -105,3 +105,46 @@ def test_initialization_migrates_the_legacy_realm_domain(service):
     legacy_domain.update.assert_called_once_with()
     soa.delete.assert_called_once_with(force=True)
     record.update.assert_called_once_with()
+
+
+def test_initialization_preserves_local_authoritative_zone(service):
+    domain = mock.Mock(
+        realm_id=None,
+        sync_only=False,
+        sync_to_ecosystem=False,
+    )
+    service._realm_domains = mock.Mock(return_value=[])
+    service._eco_get_realm = mock.Mock(
+        return_value={"realm_id": "a5f3957", "domain": "a5f3957.exordos.io"}
+    )
+    service._eco_sync_domain = mock.Mock()
+
+    with mock.patch.object(dns_sync.dns_models, "Domain") as domain_model:
+        domain_model.objects.get_one_or_none.return_value = domain
+
+        service._sync_all_domains(
+            "https://ecosystem.example.com", "realm-uuid", "realm-secret"
+        )
+
+    assert service._initialized is False
+    domain.update.assert_not_called()
+    domain_model.assert_not_called()
+    service._eco_sync_domain.assert_not_called()
+
+
+def test_initialization_rejects_conflicting_sync_zone(service):
+    service._realm_domains = mock.Mock(return_value=[])
+    service._eco_get_realm = mock.Mock(
+        return_value={"realm_id": "a5f3957", "domain": "a5f3957.exordos.io"}
+    )
+    domain = mock.Mock(realm_id=None, sync_only=False, sync_to_ecosystem=True)
+
+    with mock.patch.object(dns_sync.dns_models, "Domain") as domain_model:
+        domain_model.objects.get_one_or_none.return_value = domain
+
+        with pytest.raises(ValueError, match="Local DNS domain conflicts"):
+            service._ensure_realm_domain(
+                "https://ecosystem.example.com", "realm-uuid", mock.sentinel.auth
+            )
+
+    domain.update.assert_not_called()
