@@ -16,10 +16,13 @@
 
 """Storage policy/topology snapshots sent to the core agent."""
 
+from urllib.parse import urlparse
+
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool
 from restalchemy.dm import filters
 
+from exordos_core.boot_api.dm.models import LOCAL_GC_HOST
 from exordos_core.storage import constants as sc
 from exordos_core.storage.dm import models
 
@@ -40,6 +43,9 @@ def agent_driver_spec(cluster):
     )
     spec = cluster.driver_spec.dump_to_simple_view()
     spec["managed"] = True
+    endpoint = urlparse(spec["endpoint"])
+    if endpoint.scheme == "mds":
+        spec["witness_endpoint"] = f"ost://{LOCAL_GC_HOST}:{endpoint.port}"
     spec["nodes"] = {
         str(node.uuid): {
             "endpoint": node.driver_spec.endpoint,
