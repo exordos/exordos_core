@@ -48,7 +48,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
                     jsonb_build_object('endpoint',n.driver_spec->>'endpoint',
                     'weight',(n.driver_spec->>'weight')::bigint,
                     'failure_domain_path',n.driver_spec->>'failure_domain_path'))
-                    FROM storage_nodes n WHERE n.cluster=c.uuid),'{}'::jsonb),
+                    FROM storage_nodes n WHERE n.cluster=c.uuid
+                    AND (n.agent IS NULL OR n.status='ACTIVE')),'{}'::jsonb),
                 'pools',COALESCE((SELECT jsonb_object_agg(p.uuid::text,
                     p.driver_spec || jsonb_build_object('name',p.name,'tier',p.tier,'ephemeral',p.ephemeral))
                     FROM storage_pools p WHERE p.cluster=c.uuid),'{}'::jsonb))

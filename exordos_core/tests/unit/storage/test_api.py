@@ -189,11 +189,12 @@ def test_node_endpoint_update_preserves_explicit_bind_address():
         controllers.StorageNodesController
     )
     previous = SimpleNamespace(
+        agent=sys_uuid.uuid4(),
         driver_spec=SimpleNamespace(
             endpoint="ost://host:7777",
             bind_address="127.0.0.1:7777",
             location="file:///data/ost",
-        )
+        ),
     )
     with (
         patch.object(controller, "get", return_value=previous),
@@ -268,3 +269,32 @@ def test_member_permissions_use_their_own_policy(controller_type, policy):
     call = controller._enforcer.enforce.call_args
     assert str(call.args[0]) == f"storage.{policy}.update"
     assert call.kwargs == {"do_raise": True}
+
+
+@pytest.mark.parametrize("scheme", ["mds", "ost"])
+@pytest.mark.parametrize("userinfo", [":secret@", "@", "user@", "user:secret@"])
+def test_endpoint_rejects_all_userinfo(scheme, userinfo):
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        controllers._validate_endpoint(f"{scheme}://{userinfo}host:7777", scheme)
+
+
+@pytest.mark.parametrize("agent", [None, sys_uuid.uuid4()])
+def test_endpoint_update_only_reconciles_managed_nodes(agent):
+    controller = controllers.StorageNodesController.__new__(
+        controllers.StorageNodesController
+    )
+    previous = SimpleNamespace(
+        agent=agent,
+        driver_spec=SimpleNamespace(
+            endpoint="ost://old:7777", bind_address="old:7777", location="file:///data"
+        ),
+    )
+    with (
+        patch.object(controller, "get", return_value=previous),
+        patch.object(controllers.ClusterMemberController, "update") as update,
+    ):
+        controller.update(sys_uuid.uuid4(), driver_spec={"endpoint": "ost://new:7777"})
+    if agent is None:
+        assert "status" not in update.call_args.kwargs
+    else:
+        assert update.call_args.kwargs["status"] == "IN_PROGRESS"

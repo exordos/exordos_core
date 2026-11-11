@@ -18,6 +18,7 @@ import time
 import typing as tp
 import uuid
 
+from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.drivers import storage_capacity
 from restalchemy.dm import filters as dm_filters
@@ -80,10 +81,18 @@ def collect_storage_pool_candidates(
                 )
                 if owners and all(c.uuid != owners[0].uuid for c in clusters):
                     clusters.append(owners[0])
+    resources = []
+    if clusters:
+        for model in (ua_models.TargetResource, ua_models.Resource):
+            resources.extend(
+                model.objects.get_all(filters={"kind": dm_filters.EQ("pool_volume")})
+            )
     for cluster in clusters:
         if cluster.storage_pools:
             info = cluster.capacity_info
-            if require_fresh and not capacity_is_fresh(cluster):
+            if require_fresh and (
+                cluster.status != "ACTIVE" or not capacity_is_fresh(cluster)
+            ):
                 continue
             volumes = compute_models.MachineVolume.objects.get_all(
                 filters={
@@ -93,7 +102,17 @@ def collect_storage_pool_candidates(
                 }
             )
             promised = {str(v.uuid): v.size << 30 for v in volumes}
-            promised.update((staged or {}).get(str(cluster.uuid), {}))
+            pool_ids = {str(p.uuid) for p in cluster.storage_pools}
+            # A deleted SQL volume may still have a desired or actual allocation.
+            # Keep its reservation until reconciliation removes those resources.
+            for resource in resources:
+                if resource.value.get("storage_pool") in pool_ids:
+                    key = str(resource.uuid)
+                    promised[key] = max(
+                        promised.get(key, 0), resource.value["size"] << 30
+                    )
+            for key, size in (staged or {}).get(str(cluster.uuid), {}).items():
+                promised[key] = max(promised.get(key, 0), size)
             observed = info.get("objects", {})
             pending = [
                 max(0, size - observed.get(uuid, 0))

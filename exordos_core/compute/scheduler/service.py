@@ -349,7 +349,10 @@ class SchedulerService(basic.BasicService):
             if (
                 need_size
                 and owner_cluster is not None
-                and not storage_select.capacity_is_fresh(owner_cluster)
+                and (
+                    owner_cluster.status != "ACTIVE"
+                    or not storage_select.capacity_is_fresh(owner_cluster)
+                )
             ):
                 continue
 

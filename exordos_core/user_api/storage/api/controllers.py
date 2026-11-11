@@ -51,7 +51,8 @@ def _validate_endpoint(endpoint, scheme):
             or parsed.path not in ("", "/")
             or parsed.query
             or parsed.fragment
-            or parsed.username
+            or parsed.username is not None
+            or parsed.password is not None
             or any(c.isspace() for c in endpoint)
         ):
             raise ValueError()
@@ -401,9 +402,9 @@ class StorageNodesController(ClusterMemberController):
                         "bind_address"
                     ] or _default_bind_address(endpoint)
             kwargs["driver_spec"] = spec
-            previous = self.get(uuid=uuid).driver_spec
-            if any(
-                field in spec and spec[field] != getattr(previous, field)
+            previous = self.get(uuid=uuid)
+            if previous.agent is not None and any(
+                field in spec and spec[field] != getattr(previous.driver_spec, field)
                 for field in ("endpoint", "bind_address", "location")
             ):
                 kwargs["status"] = "IN_PROGRESS"

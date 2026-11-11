@@ -116,6 +116,13 @@ def no_storage_clusters(monkeypatch):
     override this explicitly.
     """
     monkeypatch.setattr(storage_select, "_active_clusters", lambda: [])
+    for model in (
+        storage_select.ua_models.TargetResource,
+        storage_select.ua_models.Resource,
+    ):
+        monkeypatch.setattr(
+            model, "objects", MagicMock(get_all=MagicMock(return_value=[]))
+        )
     monkeypatch.setattr(
         models.MachineVolume, "objects", MagicMock(get_all=MagicMock(return_value=[]))
     )
@@ -627,4 +634,78 @@ def test_assigned_pool_growth_requires_fresh_capacity(monkeypatch):
             [], "COLD", False, 0, assigned_name=str(selected.uuid)
         )[1]
         is cluster
+    )
+
+
+@pytest.mark.parametrize("status", ["IN_PROGRESS", "MAINTENANCE", "DISABLED"])
+def test_fresh_inactive_assigned_cluster_cannot_grow(monkeypatch, status):
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=50)
+    cluster.status = status
+    selected = cluster.storage_pools[0]
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    assert (
+        storage_select.select_storage_pool_with_clusters(
+            [], "COLD", False, 1, assigned_name=str(selected.uuid)
+        )
+        is None
+    )
+    assert (
+        storage_select.select_storage_pool_with_clusters(
+            [], "COLD", False, 0, assigned_name=str(selected.uuid)
+        )[1]
+        is cluster
+    )
+
+
+@pytest.mark.parametrize(
+    "resource_model",
+    [storage_select.ua_models.TargetResource, storage_select.ua_models.Resource],
+)
+def test_orphaned_volume_keeps_capacity_reserved(monkeypatch, resource_model):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=10)
+    selected = cluster.storage_pools[0]
+    volume_uuid = sys_uuid.uuid4()
+    resource = SimpleNamespace(
+        uuid=volume_uuid, value={"storage_pool": str(selected.uuid), "size": 8}
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    monkeypatch.setattr(
+        resource_model, "objects", MagicMock(get_all=MagicMock(return_value=[resource]))
+    )
+    assert (
+        storage_select.select_storage_pool_with_clusters([], "COLD", False, 3) is None
+    )
+    # SQL, desired, actual and staged entries describe the same allocation.
+    monkeypatch.setattr(
+        models.MachineVolume,
+        "objects",
+        MagicMock(
+            get_all=MagicMock(return_value=[SimpleNamespace(uuid=volume_uuid, size=8)])
+        ),
+    )
+    other = (
+        storage_select.ua_models.Resource
+        if resource_model is storage_select.ua_models.TargetResource
+        else storage_select.ua_models.TargetResource
+    )
+    monkeypatch.setattr(
+        other, "objects", MagicMock(get_all=MagicMock(return_value=[resource]))
+    )
+    assert (
+        storage_select.select_storage_pool_with_clusters(
+            [],
+            "COLD",
+            False,
+            2,
+            staged={str(cluster.uuid): {str(volume_uuid): 8 << 30}},
+        )
+        is not None
+    )
+    # Once inventory includes the object, do not debit it again.
+    cluster.capacity_info["objects"][str(volume_uuid)] = 8 << 30
+    assert (
+        storage_select.select_storage_pool_with_clusters([], "COLD", False, 3)
+        is not None
     )

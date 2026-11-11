@@ -159,7 +159,13 @@ class DiskShrinkNotSupportedError(ra_e.ValidationErrorException):
     message = "Shrinking disks is unsupported"
 
 
+class InvalidDiskSizeError(ra_e.ValidationErrorException):
+    message = "Disk size must be a positive integer"
+
+
 def validate_volume_growth(old_size, new_size):
+    if isinstance(new_size, bool) or not isinstance(new_size, int) or new_size < 1:
+        raise InvalidDiskSizeError()
     if new_size < old_size:
         raise DiskShrinkNotSupportedError()
 
