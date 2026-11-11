@@ -283,9 +283,6 @@ class KeycloakUserSource(AbstractUserSource):
     )
 
     def process_secret(self, user, secret):
-        if user.check_secret(secret):
-            return
-
         client = keycloak.KeycloakClient(
             endpoint=self.endpoint,
             timeout=self.timeout,
@@ -299,9 +296,6 @@ class KeycloakUserSource(AbstractUserSource):
             password=secret,
         ):
             raise iam_e.CredentialsAreInvalidError()
-
-        user.secret = secret
-        user.update()
 
 
 class IamUserCustomProps(ra_types_dynamic.AbstractKindModel):
