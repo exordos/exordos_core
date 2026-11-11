@@ -31,7 +31,7 @@ dependencies = [
     "Jinja2>=3.1.5,<4.0.0",  # BSD License (BSD-3-Clause)
     "izulu>=0.50.0,<1.0.0",  # MIT License
     "gcl_iam>=1.4.1,<2.0.0",  # Apache-2.0
-    "gcl_sdk[libvirt] @ git+https://github.com/exordos/gcl_sdk.git@a998f2af1c2ab629717a231d2b4f1c66448be9ad",  # Apache-2.0
+    "gcl_sdk[libvirt] @ git+https://github.com/exordos/gcl_sdk.git@15f272426f6f0b92f586a13ad48cdcaab7c62cd1",  # Apache-2.0
     "gcl_certbot_plugin>=0.0.12,<1.0.0",  # Apache-2.0
     "pyotp>=2.9.0,<3.0.0",  # MIT License
     "pyyaml>=6.0.0,<7.0.0",  # MIT
