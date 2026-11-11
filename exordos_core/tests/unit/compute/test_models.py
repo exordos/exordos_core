@@ -173,3 +173,36 @@ def test_standalone_disk_grow_and_shrink():
     with pytest.raises(models.DiskShrinkNotSupportedError):
         volume.update_dm({"size": 11})
     assert volume.size == 12
+
+
+@pytest.mark.parametrize("size", [None, "12", 12.5, True, False, [], {}, 0, -1])
+def test_invalid_resize_is_validation_error_without_mutation(size):
+    volume = models.Volume(project_id=sys_uuid.uuid4(), size=10)
+    with pytest.raises(models.InvalidDiskSizeError):
+        volume.update_dm({"size": size})
+    assert volume.size == 10
+
+
+@pytest.mark.parametrize("model", [models.Node, models.NodeSet])
+@pytest.mark.parametrize("size", [None, "12", 12.5, True, [], {}])
+def test_invalid_nested_resize_does_not_change_other_fields(model, size):
+    disk = {"image": "https://example.com/root.raw", "size": 10}
+    node = model.restore_from_simple_view(
+        name="original",
+        project_id=sys_uuid.uuid4(),
+        cores=1,
+        ram=512,
+        disk_spec={"kind": "disks", "disks": [disk]},
+    )
+    with pytest.raises(models.InvalidDiskSizeError):
+        node.update_dm(
+            {
+                "name": "changed",
+                "disk_spec": {
+                    "kind": "disks",
+                    "disks": [{**disk, "size": size}],
+                },
+            }
+        )
+    assert node.name == "original"
+    assert node.disk_spec.disks[0]["size"] == 10

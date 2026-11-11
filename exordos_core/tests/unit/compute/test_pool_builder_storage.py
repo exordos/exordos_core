@@ -78,6 +78,8 @@ def no_storage_clusters(monkeypatch):
     from exordos_core.storage.scheduler import select
 
     monkeypatch.setattr(select, "_active_clusters", lambda: [])
+    for model in (select.ua_models.TargetResource, select.ua_models.Resource):
+        monkeypatch.setattr(model, "objects", Mock(get_all=Mock(return_value=[])))
 
 
 @pytest.mark.parametrize("actual_size,target_size,available", [(0, 5, 9), (4, 8, 5)])
@@ -103,6 +105,7 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(
         ),
     )
     cluster = SimpleNamespace(
+        status="ACTIVE",
         uuid=uuid.uuid4(),
         storage_pools=[storage_pool],
         capacity_info={

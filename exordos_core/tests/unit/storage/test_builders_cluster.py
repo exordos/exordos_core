@@ -96,7 +96,7 @@ def test_ost_deletion_waits_for_current_mds_topology(
         kind="storage_node", uuid="ost", value={"cluster": str(sys_uuid.uuid4())}
     )
     actual = SimpleNamespace(
-        hash="actual", value={"driver_spec": {"nodes": actual_nodes}}
+        status="ACTIVE", hash="actual", value={"driver_spec": {"nodes": actual_nodes}}
     )
     target = SimpleNamespace(
         hash="actual" if same_hash else "pending",
@@ -207,3 +207,33 @@ def test_cluster_status_compares_enriched_agent_snapshot():
         }
         service.actualize_outdated_instance(current, actual)
         assert current.status == "IN_PROGRESS"
+
+
+@pytest.mark.parametrize(
+    "status,allowed",
+    [("ACTIVE", True), ("ERROR", False), ("IN_PROGRESS", False), ("DISABLED", False)],
+)
+def test_ost_deletion_requires_successful_mds_report(status, allowed):
+    service = cluster_builder.StorageClusterBuilderService.__new__(
+        cluster_builder.StorageClusterBuilderService
+    )
+    resource = SimpleNamespace(
+        kind="storage_node", uuid="ost", value={"cluster": "mds"}
+    )
+    actual = SimpleNamespace(
+        status=status, hash="same", value={"driver_spec": {"nodes": {}}}
+    )
+    target = SimpleNamespace(hash="same", value=actual.value)
+    with (
+        patch.object(
+            cluster_builder.ua_models.Resource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[actual])),
+        ),
+        patch.object(
+            cluster_builder.ua_models.TargetResource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[target])),
+        ),
+    ):
+        assert service.can_delete_instance_resource(resource) is allowed
