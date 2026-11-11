@@ -413,8 +413,8 @@ def test_storage_schema_upgrade_and_downgrade_preserve_local_volumes(database):
             "SELECT agent,builder,status FROM storage_nodes"
         ).fetchone() == (None, None, "NEW")
         assert connection.execute(
-            "SELECT capacity_info,storage_pools FROM storage_clusters"
-        ).fetchone() == ({}, [])
+            "SELECT capacity_info,storage_pools,nodes,size FROM storage_clusters"
+        ).fetchone() == ({}, [], 0, 10)
         step.downgrade(connection)
         assert connection.execute(
             "SELECT storage_pool FROM compute_machine_volumes WHERE uuid=%s",
@@ -724,6 +724,7 @@ def test_ready_ost_membership_survives_a_capacity_report(database):
         service._actualize_outdated_instance(current, target, actual)
         assert current.status == "ACTIVE"
 
+
 def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_database):
     import gcl_sdk.migrations as sdk_migrations
     from restalchemy.storage.sql import migrations
@@ -755,7 +756,7 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
         cluster.insert()
         with models.StorageCluster._get_engine().session_manager() as session:
             with pytest.raises(ValueError, match="Delete managed OST clusters"):
-                migration("0018-managed-ost-nodes-ade173.py").migration_step.downgrade(
+                migration("0014-rawstor-storage-0b42fe.py").migration_step.downgrade(
                     session
                 )
         managed.reconcile(cluster)
@@ -778,7 +779,9 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
         managed.reconcile(cluster)
         osts = models.StorageNode.objects.get_all()
         assert len(osts) == 2
-        assert all(ost.driver_spec.location == f"lvm://rawstor-{ost.uuid}" for ost in osts)
+        assert all(
+            ost.driver_spec.location == f"lvm://rawstor-{ost.uuid}" for ost in osts
+        )
         assert not state.finish_cluster_deletion(cluster)
         assert len(compute.Node.objects.get_all()) == 2
         for ost in osts:
