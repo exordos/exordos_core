@@ -21,6 +21,7 @@ import typing as tp
 from urllib.parse import urljoin
 
 from packaging import version as packaging_version
+from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -116,7 +117,7 @@ class NginxDriverSpec(AbstractDriverSpec):
 
     @property
     def inventory_path(self) -> str:
-        base_url = self.url if self.url.endswith("/") else f"{self.url}/"
+        base_url = ra_utils.lastslash(self.url)
         return urljoin(base_url, self.INVENTORY_FILE)
 
 
@@ -137,7 +138,7 @@ class RealmDriverSpec(AbstractDriverSpec):
 
     @property
     def inventory_path(self) -> str:
-        base_url = self.url if self.url.endswith("/") else f"{self.url}/"
+        base_url = ra_utils.lastslash(self.url)
         return urljoin(base_url, self.INVENTORY_FILE)
 
 

@@ -25,6 +25,7 @@ from restalchemy.api import actions
 from restalchemy.api import constants as ra_c
 from restalchemy.api import controllers
 from restalchemy.api import field_permissions as field_p
+from restalchemy.api import packers
 from restalchemy.api import resources
 from restalchemy.dm import filters as dm_filters
 
@@ -61,12 +62,25 @@ class RepoProxyController(controllers.RoutesListController):
     __TARGET_PATH__ = "/v1/repo/"
 
 
+class RepositoryPacker(packers.JSONPacker):
+    def pack_resource(self, obj):
+        result = super().pack_resource(obj)
+        if isinstance(obj, models.Repository) and result.get("driver_spec"):
+            spec = result["driver_spec"].copy()
+            for field in obj.driver_spec.SENSITIVE_FIELDS:
+                if spec.get(field) is not None:
+                    spec[field] = "***"
+            result["driver_spec"] = spec
+        return result
+
+
 class RepositoryController(
     iam_controllers.PolicyBasedController,
     controllers.BaseResourceControllerPaginated,
 ):
     __policy_service_name__ = "repo"
     __policy_name__ = "repository"
+    __packer__ = RepositoryPacker
 
     __resource__ = resources.ResourceByRAModel(
         models.Repository,
@@ -106,8 +120,6 @@ class RepositoryController(
         repository = controllers.BaseResourceControllerPaginated.get(
             self, uuid=uuid, **kwargs
         )
-        if repository.driver_spec is not None:
-            repository.driver_spec.sanitize_in_place()
         return repository
 
     def filter(self, filters, order_by=None):
@@ -127,9 +139,6 @@ class RepositoryController(
         repositories = controllers.BaseResourceControllerPaginated.filter(
             self, filters, order_by=order_by
         )
-        for repository in repositories:
-            if repository.driver_spec is not None:
-                repository.driver_spec.sanitize_in_place()
         return repositories
 
     def _authorize_write(self, resource: models.Repository):
