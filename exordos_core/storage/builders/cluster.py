@@ -117,6 +117,7 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
         return (
             bool(actual)
             and bool(target)
+            and actual[0].status == "ACTIVE"
             and actual[0].hash == target[0].hash
             and str(resource.uuid)
             not in target[0].value["driver_spec"].get("nodes", {})

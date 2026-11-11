@@ -440,10 +440,36 @@ def test_migration_preserves_legacy_ost_and_pool(database):
             "SELECT uuid,(driver_spec->>'mirrors')::integer FROM storage_pools"
         ).fetchone() == (pool_uuid, 1)
         config_step = migration("0017-storage-cluster-config-6ab127.py").migration_step
+        # Downgrades must not publish managed nodes before provisioning succeeds.
+        included = {str(cluster_uuid)}
+        for status in ("ACTIVE", "NEW", "IN_PROGRESS", "ERROR"):
+            node_uuid = uuid.uuid4()
+            connection.execute(
+                "INSERT INTO storage_nodes (uuid,cluster,name,agent,status,driver_spec) "
+                "VALUES (%s,%s,%s,%s,%s,%s::jsonb)",
+                (
+                    node_uuid,
+                    cluster_uuid,
+                    status,
+                    uuid.uuid4(),
+                    status,
+                    json.dumps(
+                        {
+                            "kind": "rawstor",
+                            "endpoint": f"ost://managed-{status.lower()}:7777",
+                            "weight": 100,
+                            "failure_domain_path": str(node_uuid),
+                        }
+                    ),
+                ),
+            )
+            if status == "ACTIVE":
+                included.add(str(node_uuid))
         config_step.downgrade(connection)
         restored = connection.execute(
             "SELECT driver_spec FROM storage_clusters"
         ).fetchone()[0]
+        assert set(restored["nodes"]) == included
         assert restored["nodes"][str(cluster_uuid)]["endpoint"] == "ost://host:7777"
         assert restored["pools"][str(pool_uuid)]["name"] == "default"
         assert restored["pools"][str(pool_uuid)]["mirrors"] == 1
@@ -571,6 +597,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
             kind="storage_cluster",
             res_uuid=mds_target.res_uuid,
             hash=mds_target.hash,
+            status="ACTIVE",
             value=mds_target.value,
         )
         mds_actual.insert()
