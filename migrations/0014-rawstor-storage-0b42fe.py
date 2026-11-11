@@ -22,11 +22,11 @@ POOL_STATUS_CHECK = "('" + "', '".join(POOL_STATUSES) + "')"
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0012-iam-pkce-3e8a1472.py"]
+        self._depends = ["0013-realm-scoped-dns-5bd99b.py"]
 
     @property
     def migration_id(self):
-        return "3d8a1c4e-6b2f-4a1d-9c3e-1f7a2b5d0e6c"
+        return "0b42fe70-dc81-4d01-9804-b4899cf18781"
 
     @property
     def is_manual(self):
@@ -41,6 +41,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 description character varying(255) NOT NULL,
                 driver_spec jsonb NOT NULL,
                 status character varying(32) NOT NULL,
+                capacity_info jsonb NOT NULL DEFAULT '{{}}'::jsonb,
                 storage_pools jsonb[] DEFAULT '{{}}'::jsonb[],
                 builder uuid,
                 agent uuid,
@@ -55,8 +56,43 @@ class MigrationStep(migrations.AbstractMigrationStep):
             """
         )
 
+        session.execute("""
+            CREATE TABLE storage_nodes (
+                uuid uuid PRIMARY KEY, name varchar(255) NOT NULL,
+                description varchar(255) NOT NULL DEFAULT '',
+                cluster uuid NOT NULL REFERENCES storage_clusters(uuid),
+                driver_spec jsonb NOT NULL,
+                agent uuid,
+                builder uuid,
+                status varchar(32) NOT NULL DEFAULT 'NEW',
+                created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(cluster, name)
+            );
+            CREATE TABLE storage_pools (
+                uuid uuid PRIMARY KEY, name varchar(255) NOT NULL,
+                description varchar(255) NOT NULL DEFAULT '',
+                cluster uuid NOT NULL REFERENCES storage_clusters(uuid),
+                tier varchar(16) NOT NULL CHECK (tier IN ('COLD','WARM','HOT')),
+                ephemeral boolean NOT NULL,
+                driver_spec jsonb NOT NULL,
+                created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(cluster, name)
+            );
+            CREATE UNIQUE INDEX storage_nodes_endpoint_unique ON storage_nodes ((driver_spec->>'endpoint'));
+            CREATE UNIQUE INDEX storage_clusters_name_unique ON storage_clusters(name);
+        """)
+
+        # Rebuild existing volume resources with the Rawstor-capable payload.
+        session.execute(
+            "UPDATE compute_machine_volumes SET updated_at=CURRENT_TIMESTAMP"
+        )
+
     def downgrade(self, session):
-        session.execute("DROP TABLE public.storage_clusters;")
+        session.execute(
+            "DROP TABLE storage_pools; DROP TABLE storage_nodes; DROP TABLE storage_clusters;"
+        )
 
 
 migration_step = MigrationStep()
