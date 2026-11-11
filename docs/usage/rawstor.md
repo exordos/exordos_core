@@ -97,9 +97,10 @@ sharing a pool also share its free space and cannot be counted independently.
 `--location` defaults to `file:///var/lib/rawstor/ost/UUID`. Each OST must have a
 dedicated backing filesystem; sharing one between OSTs would count its free
 space more than once. Multiple OSTs on one host need separate backing filesystems
-and bind ports. `--bind` defaults to the IP address and port of the advertised endpoint.
-Hostname endpoints require an explicit `--bind` IP. Listening on every
-interface requires an explicit `--bind 0.0.0.0:PORT` or `--bind [::]:PORT`.
+and bind ports. `--bind` defaults to the host and port of the advertised endpoint.
+Rawstor resolves DNS names to IPv4 addresses, including listen addresses.
+Use an explicit local `--bind` when the advertised address is not local.
+Listening on every interface requires an explicit `--bind 0.0.0.0:PORT`.
 When adding on the same host without `--endpoint`, CLI detects the host address
 and chooses an unused managed bind port starting at 7777. For a remote host,
 provide `--endpoint`. The advertised endpoint may differ from the bind address.
@@ -192,8 +193,8 @@ The guest must expand its partitions and filesystem separately.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.c99dace`, from
-[Actions run 42694624442](https://github.com/rawstor/librawstor/actions/runs/42694624442).
+`99.0.0+0.62c4ceb`, from
+[Actions run 43012990263](https://github.com/rawstor/librawstor/actions/runs/43012990263).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its

@@ -239,6 +239,7 @@ def test_removed_cluster_port_remains_reserved_until_resources_disappear():
     "endpoint,expected",
     [
         ("ost://10.0.0.1:7777", "10.0.0.1:7777"),
+        ("ost://ost.example:7777", "ost.example:7777"),
         ("ost://[::1]:7777", "[::1]:7777"),
     ],
 )
@@ -246,9 +247,7 @@ def test_default_bind_uses_advertised_ip(endpoint, expected):
     assert controllers._default_bind_address(urlparse(endpoint)) == expected
 
 
-@pytest.mark.parametrize(
-    "endpoint", ["ost://host:7777", "ost://0.0.0.0:7777", "ost://[::]:7777"]
-)
+@pytest.mark.parametrize("endpoint", ["ost://0.0.0.0:7777", "ost://[::]:7777"])
 def test_non_specific_endpoint_requires_explicit_bind(endpoint):
     with pytest.raises(controllers.InvalidRawstorEndpoint):
         controllers._default_bind_address(urlparse(endpoint))

@@ -76,9 +76,7 @@ def _default_bind_address(endpoint):
     try:
         address = ipaddress.ip_address(endpoint.hostname)
     except ValueError:
-        raise InvalidRawstorEndpoint(
-            msg="An explicit bind_address is required for a hostname endpoint"
-        ) from None
+        return f"{endpoint.hostname}:{endpoint.port}"
     if address.is_unspecified:
         raise InvalidRawstorEndpoint(
             msg="An explicit bind_address is required for a wildcard endpoint"
