@@ -144,6 +144,10 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
         initial_target = models.Cluster.restore_from_simple_view(
             **cluster.dump_to_simple_view()
         ).to_ua_resource()
+        assert (
+            initial_target.value["driver_spec"]["witness_endpoint"]
+            == "ost://core.local.genesis-core.tech:7776"
+        )
         assert len(initial_target.value["driver_spec"]["pools"]) == 2
         assert initial_target.value["driver_spec"]["nodes"] == {}
         assert state.agent_driver_spec(cluster).nodes == {}
