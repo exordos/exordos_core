@@ -126,4 +126,6 @@ All source files must include Apache 2.0 license header:
   before building the site. Never commit them; to look at one, run the
   command that writes it.
 - Run `make mdlint` for Markdown linting
-- Keep `README.md` synchronized with new features
+- If the project has dedicated documentation, update it instead of `README.md`.
+- README changes are reserved for very rare cases and require explicit prior
+  user approval.

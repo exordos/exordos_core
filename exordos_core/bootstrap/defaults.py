@@ -34,6 +34,7 @@ from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.compute.node_set.dm import models as node_set_models
 from exordos_core.secret import utils as secret_utils
+from exordos_core.user_api.dns.dm import models as dns_models
 from exordos_core.user_api.iam.dm import models as iam_models
 from exordos_core.vs.dm import models as vs_models
 
@@ -608,6 +609,12 @@ def set_realm_uuid_var(spec: dict[str, tp.Any]) -> bool:
 
 
 def set_realm_domain_var(spec: dict[str, tp.Any]) -> bool:
+    # Get realm domain from spec
+    realm_domain_value = spec.get("realm_domain", "")
+    if not realm_domain_value:
+        LOG.warning("No realm domain found in spec")
+        return True
+
     val_uuid = sys_uuid.UUID("a6c149dc-9cfe-49c0-a0f0-d04e156b564e")
     existing_value = vs_models.Value.objects.get_one_or_none(
         filters={"uuid": dm_filters.EQ(val_uuid)}
@@ -622,12 +629,6 @@ def set_realm_domain_var(spec: dict[str, tp.Any]) -> bool:
     )
     if not realm_domain_var:
         return False
-
-    # Get realm domain from spec
-    realm_domain_value = spec.get("realm_domain", "")
-    if not realm_domain_value:
-        LOG.warning("No realm domain found in spec")
-        return True
 
     realm_domain_val = vs_models.Value(
         uuid=val_uuid,
@@ -668,6 +669,50 @@ def set_realm_secret_var(spec: dict[str, tp.Any]) -> bool:
         project_id=c.EM_HIDDEN_PROJECT_ID,
     )
     realm_secret_val.insert()
+    return True
+
+
+def ensure_realm_dns_domain(spec: dict[str, tp.Any]) -> bool:
+    realm_id = spec.get("realm_id")
+    realm_domain = spec.get("realm_domain")
+    if realm_id is None and realm_domain is None:
+        return True
+    if not realm_id or not realm_domain:
+        raise RuntimeError("realm_id and realm_domain must be provided together")
+
+    realm_id = str(realm_id).lower()
+    realm_domain = str(realm_domain).lower().rstrip(".")
+    prefix = f"{realm_id}."
+    if not realm_domain.startswith(prefix):
+        raise RuntimeError("realm_domain does not match realm_id")
+
+    domain_name = realm_domain.removeprefix(prefix)
+    if not domain_name:
+        raise RuntimeError("realm_domain has no base DNS zone")
+
+    domain = dns_models.Domain.objects.get_one_or_none(
+        filters={"name": dm_filters.EQ(domain_name)}
+    )
+    if domain is not None:
+        if not (
+            domain.realm_id == realm_id
+            and domain.sync_only
+            and domain.sync_to_ecosystem
+        ):
+            raise RuntimeError(
+                f"DNS domain {domain_name} already exists with another scope"
+            )
+        return True
+
+    dns_models.Domain(
+        uuid=sys_uuid.UUID("b8617d7e-7ad0-4bd3-9cf4-4ee2b7a886b8"),
+        name=domain_name,
+        realm_id=realm_id,
+        sync_only=True,
+        sync_to_ecosystem=True,
+        project_id=c.ZERO_UUID,
+    ).insert()
+    LOG.info("Created sync-only realm DNS domain %s", domain_name)
     return True
 
 

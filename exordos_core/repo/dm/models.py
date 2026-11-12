@@ -30,6 +30,7 @@ from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import exceptions as common_exc
 from exordos_core.common import utils
 from exordos_core.repo import constants as rc
@@ -176,7 +177,7 @@ class Repository(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     """Repository model for managing external repositories.
@@ -406,7 +407,7 @@ class RepoElement(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
     models.ModelWithTags,
 ):
@@ -731,7 +732,7 @@ class RepoElement(
 class RepoArtifact(
     models.ModelWithUUID,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     """Repository Artifact model for individual files within elements.

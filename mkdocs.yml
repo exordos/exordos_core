@@ -50,6 +50,7 @@ plugins:
             Licensing: Лицензирование
             Local Deployment: Локальное развёртывание
             Admin Guide: Руководство администратора
+            Notification Email: Почтовые уведомления
             Support: Поддержка
             Security: Безопасность
             Troubleshooting: Устранение неполадок
@@ -71,6 +72,7 @@ plugins:
             Example commands: Примеры команд
             IAM: IAM
             Permissions: Права доступа
+            Authorization Code: Вход по коду авторизации
             Network: Сеть
             LBaaS API: LBaaS API
             Secrets: Секреты
@@ -143,6 +145,7 @@ nav:
     - Licensing: usage/licensing.md
     - Local Deployment: usage/local_deployment.md
     - Admin Guide: usage/admin-guide.md
+    - Notification Email: usage/notification-email.md
     - Support: usage/support-lifecycle.md
     - Security: usage/security.md
     - MCP Server: usage/mcp.md
@@ -167,6 +170,8 @@ nav:
     - Example commands: em/cli.md
   - IAM:
     - Permissions: iam/permissions_overview.md
+    - Authorization Code: iam/authorization_code.md
+    - PKCE: iam/pkce.md
   - Network:
     - LBaaS API: network/load_balancer.md
   - Secrets:
