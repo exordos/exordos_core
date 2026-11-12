@@ -20,6 +20,7 @@ from restalchemy.api.middlewares import errors as errors_mw
 from restalchemy.common import exceptions as ra_e
 
 from exordos_core.common import exceptions as common_exc
+from exordos_core.user_api.iam import exceptions as iam_exc
 
 
 class ErrorsHandlerMiddleware(middlewares.ErrorsHandlerMiddleware):
@@ -36,6 +37,15 @@ class ErrorsHandlerMiddleware(middlewares.ErrorsHandlerMiddleware):
     )
 
     def _construct_error_response(self, req, e):
+        if isinstance(e, iam_exc.KeycloakRequiredAction):
+            return req.ResponseClass(
+                status=http_client.BAD_REQUEST,
+                json={
+                    "error": "external_action_required",
+                    "error_description": str(e),
+                    "redirect_url": e.redirect_url,
+                },
+            )
         if isinstance(e, self.forbidden_exc):
             return req.ResponseClass(
                 status=http_client.FORBIDDEN, json=errors_mw.exception2dict(e)

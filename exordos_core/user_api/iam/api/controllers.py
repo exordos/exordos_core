@@ -243,6 +243,8 @@ class UserController(
         self.validate(new_password)
         is_me = models.User.me() == resource
         if is_me or self.enforce(c.PERMISSION_USER_WRITE_ALL):
+            if resource.user_source.KIND != models.IamUserSource.KIND:
+                raise iam_e.ExternalPasswordChangeForbidden()
             resource.change_secret_safe(
                 old_secret=old_password,
                 new_secret=new_password,
