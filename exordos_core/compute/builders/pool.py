@@ -443,6 +443,38 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # TODO(akremenetsky): Support more statuses
         machine.status = ua_pool.MachineStatus.IN_PROGRESS.value
 
+    def _are_derivatives_actual(
+        self,
+        new_derivatives: tp.Collection[ua_models.TargetResourceKindAwareMixin],
+        derivative_pairs: tp.Collection[
+            tp.Tuple[
+                ua_models.TargetResourceKindAwareMixin,
+                tp.Optional[ua_models.TargetResourceKindAwareMixin],
+            ]
+        ],
+    ) -> bool:
+        """Check the derivatives are unchanged and reached by the agents."""
+        current = {
+            target.get_resource_kind(): (target, actual)
+            for target, actual in derivative_pairs
+        }
+        if len(current) != len(new_derivatives):
+            return False
+
+        for new in new_derivatives:
+            target, actual = current.get(new.get_resource_kind(), (None, None))
+            if target is None or actual is None:
+                return False
+
+            new_hash = new.to_ua_resource().hash
+            if (
+                new_hash != target.to_ua_resource().hash
+                or new_hash != actual.to_ua_resource().hash
+            ):
+                return False
+
+        return True
+
     def _pre_delete_machine_resource(self, resource: ua_models.TargetResource) -> None:
         """The hook is performed before deleting machine resource."""
         # Clear all resources placed on the node
@@ -688,9 +720,21 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             elif isinstance(pair[0], pool_models.GuestMachine):
                 machine_guest_pair = pair
 
-        return self._actualize_machine_derivatives_on_create_update(
+        new_derivatives = self._actualize_machine_derivatives_on_create_update(
             instance, machine_pool_pair, machine_guest_pair
         )
+
+        # The update may not affect the derivatives, for instance, only
+        # the description is changed. Nothing is sent to the agents then,
+        # so no outdated event comes to actualize the machine status set to
+        # `IN_PROGRESS` on update. Take the status from the actual
+        # derivatives right away.
+        if self._are_derivatives_actual(new_derivatives, derivative_pairs):
+            self._actualize_machine_status(
+                instance, machine_pool_pair[1], machine_guest_pair[1]
+            )
+
+        return new_derivatives
 
     @functools.singledispatchmethod
     def can_update_instance_resource(
