@@ -470,6 +470,19 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
     machine_pools = compute_models.MachinePool.objects.get_all()
 
     for hypervisor in stand.get("hypervisors", []):
+        hypervisor = hypervisor.copy()
+        pool_fields = {
+            field: hypervisor.pop(field)
+            for field in (
+                "name",
+                "description",
+                "avail_cores",
+                "avail_ram",
+                "cores_ratio",
+                "ram_ratio",
+            )
+            if field in hypervisor
+        }
         hypervisor["iface_mtu"] = 1500
         # The agent encryption key isn't part of the driver spec, it's the
         # symmetric key already written to the local agent's disk by the
@@ -491,6 +504,7 @@ def apply_startup_db(spec: dict[str, tp.Any]) -> None:
             "name": "hypervisor",
             "machine_type": "VM",
             "driver_spec": hypervisor,
+            **{k: v for k, v in pool_fields.items() if v is not None},
         }
         pool = compute_models.MachinePool.restore_from_simple_view(**pool_data)
 
