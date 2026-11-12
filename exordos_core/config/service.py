@@ -27,6 +27,7 @@ from restalchemy.dm import filters as dm_filters
 from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.common import constants as c
+from exordos_core.common.dm import targets
 from exordos_core.compute.dm import models as node_models
 from exordos_core.config import constants as cc
 from exordos_core.config.dm import models
@@ -37,6 +38,52 @@ DEF_OUTDATE_MIN_PERIOD = datetime.timedelta(minutes=10)
 
 
 class ConfigServiceBuilder(basic.BasicService):
+    def _actualize_node_set_configs(self):
+        configs = targets.changed_node_set_targets(
+            models.Config, cc.CONFIG_KIND, cc.RENDER_KIND
+        )
+        for config in configs:
+            try:
+                with sql_utils.savepoint():
+                    renders = ua_models.TargetResource.objects.get_all(
+                        filters={
+                            "master": dm_filters.EQ(config.uuid),
+                            "kind": dm_filters.EQ(cc.RENDER_KIND),
+                        }
+                    )
+                    desired = set(config.target_nodes())
+                    assigned = {r.agent for r in renders}
+                    for render in renders:
+                        if render.agent not in desired:
+                            render.delete()
+                    for node in desired - assigned:
+                        render = config.render(node)
+                        render.agent = node
+                        render.insert()
+                    config.status = (
+                        cc.ConfigStatus.IN_PROGRESS.value
+                        if desired - assigned
+                        or any(
+                            r.agent in desired and r.status != cc.ConfigStatus.ACTIVE
+                            for r in renders
+                        )
+                        else cc.ConfigStatus.ACTIVE.value
+                    )
+                    config.update()
+                    resource = ua_models.TargetResource.objects.get_one(
+                        filters={
+                            "uuid": dm_filters.EQ(config.uuid),
+                            "kind": dm_filters.EQ(cc.CONFIG_KIND),
+                        }
+                    )
+                    resource.status = config.status
+                    resource.tracked_at = config.updated_at
+                    resource.update()
+            except Exception:
+                LOG.exception(
+                    "Error updating node set target for config %s", config.uuid
+                )
+
     def _get_new_configs(
         self,
         limit: int = c.DEFAULT_SQL_LIMIT,
@@ -335,6 +382,11 @@ class ConfigServiceBuilder(basic.BasicService):
                 self._actualize_changed_configs()
             except Exception:
                 LOG.exception("Error actualizing changed configs")
+
+            try:
+                self._actualize_node_set_configs()
+            except Exception:
+                LOG.exception("Error actualizing node set configs")
 
             try:
                 self._actualize_outdated_configs()
