@@ -298,3 +298,13 @@ def test_endpoint_update_only_reconciles_managed_nodes(agent):
         assert "status" not in update.call_args.kwargs
     else:
         assert update.call_args.kwargs["status"] == "IN_PROGRESS"
+
+
+@pytest.mark.parametrize("kind", [None, "", "unknown", [], {}])
+@pytest.mark.parametrize("has_cluster", [False, True])
+def test_invalid_cluster_kind_is_validation_error(kind, has_cluster):
+    spec = {"endpoint": "mds://other:7778/"}
+    if kind is not None:
+        spec["kind"] = kind
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        _validate(spec, [_cluster(_spec())] if has_cluster else [])

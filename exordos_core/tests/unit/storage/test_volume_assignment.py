@@ -44,7 +44,7 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
 
     pool.name = "renamed"
     pool.driver_spec.mirrors = 3
-    pool.driver_spec.chunk_size = 2 << 30
+    pool.driver_spec.chunk_size = 512 << 20
     pool.driver_spec.failure_domain = "rack"
     cluster.driver_spec.endpoint = "mds://other-core:7778/"
     second = volume.to_ua_resource()
@@ -53,7 +53,7 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
     assert second.value["storage_policy"] == {
         "pool_uuid": str(pool.uuid),
         "mirrors": 3,
-        "chunk_size": 2 << 30,
+        "chunk_size": 512 << 20,
         "failure_domain": "rack",
     }
     assert first.hash != second.hash
