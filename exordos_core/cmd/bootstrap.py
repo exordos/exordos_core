@@ -345,7 +345,13 @@ def _sync_config_to_data_path(content: str, data_path: str) -> None:
     """
     try:
         os.makedirs(os.path.dirname(data_path), exist_ok=True)
-        with open(data_path, "w", encoding="utf-8") as f:
+        with open(
+            data_path,
+            "w",
+            encoding="utf-8",
+            opener=lambda path, flags: os.open(path, flags, 0o600),
+        ) as f:
+            os.fchmod(f.fileno(), 0o600)
             f.write(content)
         LOG.info("Synced config to %s", data_path)
     except OSError as e:
@@ -444,6 +450,60 @@ def _migrate_ua_secret_driver(content: str) -> str:
     return content
 
 
+def _migrate_ua_render_driver(content: str) -> str:
+    """Append the render driver to the existing INI list without losing settings."""
+    lines = content.splitlines(keepends=True)
+    start = next(
+        (i + 1 for i, line in enumerate(lines) if line.strip() == "[universal_agent]"),
+        None,
+    )
+    if start is None:
+        return content
+    end = next(
+        (i for i in range(start, len(lines)) if lines[i].lstrip().startswith("[")),
+        len(lines),
+    )
+    option = next(
+        (
+            i
+            for i in range(start, end)
+            if lines[i].partition("=")[0].strip() == "caps_drivers"
+        ),
+        None,
+    )
+    if option is None:
+        LOG.warning("Could not find caps_drivers in [universal_agent]")
+        return content
+    option_indent = len(lines[option]) - len(lines[option].lstrip())
+    continuation_indent = lines[option][:option_indent] + "    "
+    last = option
+    values = []
+    for i in range(option, end):
+        line = lines[i]
+        if (
+            i > option
+            and line.strip()
+            and not line.lstrip().startswith(("#", ";"))
+            and len(line) - len(line.lstrip()) <= option_indent
+        ):
+            break
+        value = line.partition("=")[2] if i == option else line
+        value = re.split(r"\s*[#;]", value, maxsplit=1)[0].strip()
+        if value:
+            values.append(value)
+            last = i
+    if "RenderAgentDriver" in {value.strip() for value in "\n".join(values).split(",")}:
+        return content
+    if values:
+        parts = re.split(r"(\s+[#;].*)", lines[last].rstrip("\r\n"), maxsplit=1)
+        parts[0] = parts[0].rstrip().rstrip(",") + ","
+        lines[last] = "".join(parts) + "\n"
+    elif not lines[last].endswith("\n"):
+        lines[last] += "\n"
+    lines.insert(last + 1, continuation_indent + "RenderAgentDriver\n")
+    return "".join(lines)
+
+
 def _ensure_ua_config_current() -> None:
     """Bring the universal agent config up to date with this image.
 
@@ -461,6 +521,7 @@ def _ensure_ua_config_current() -> None:
        caps_drivers and rename the [UserCapabilityDriver] section,
        appending the IAM users/clients endpoints required by the
        secret driver.
+    4. Ensure RenderAgentDriver is present so managed configs can be delivered.
 
     On changes the result is synced back to the persisted copy and the
     agent services (started before ec-bootstrap runs, thus holding the
@@ -506,6 +567,7 @@ def _ensure_ua_config_current() -> None:
             )
 
     new_content = _migrate_ua_secret_driver(new_content)
+    new_content = _migrate_ua_render_driver(new_content)
 
     if new_content == content:
         LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
