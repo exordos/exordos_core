@@ -293,6 +293,7 @@ def init_secrets(
     )
     default_user.salt = admin_salt
     default_user.secret_hash = admin_secret_hash
+    default_user.email_verified = True
     default_user.save()
 
     return None
