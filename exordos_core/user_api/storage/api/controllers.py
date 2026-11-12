@@ -196,6 +196,10 @@ class StorageClustersController(
         driver_spec = kwargs["driver_spec"]
         if not isinstance(driver_spec, dict):
             driver_spec = driver_spec.dump_to_simple_view()
+        if driver_spec.get("kind") != ua_pool.RawstorStorageClusterDriverSpec.KIND:
+            raise InvalidRawstorEndpoint(
+                msg="A supported cluster driver kind is required"
+            )
         unknown = set(driver_spec) - {"kind", "endpoint"}
         if unknown:
             raise InvalidRawstorEndpoint(
