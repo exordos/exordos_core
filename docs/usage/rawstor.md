@@ -193,8 +193,8 @@ The guest must expand its partitions and filesystem separately.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.62c4ceb`, from
-[Actions run 43012990263](https://github.com/rawstor/librawstor/actions/runs/43012990263).
+`99.0.0+0.41a2714`, from
+[Actions run 43517230510](https://github.com/rawstor/librawstor/actions/runs/43517230510).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
@@ -254,3 +254,24 @@ uv pip install --python .venv/bin/python exordos/images/rawstor/rawstor-*.whl
 Use `uv sync --inexact` for later synchronizations to retain the separately
 installed binding; otherwise install the wheel again after synchronization.
 The core image's installation script performs the binding installation itself.
+
+## Project tenants and upgrade compatibility
+
+Rawstor tenant UUIDs match Exordos `project_id`. Before creating the first disk
+of a project in an MDS, the hypervisor registers that tenant idempotently.
+Object and vhost locations carry it as URI user information, for example
+`mds://PROJECT_UUID@core:7776/OBJECT_UUID`. Discovery restores the project from
+the saved location. The nil project UUID cannot be used: Rawstor reserves it
+for unfiltered listings, not ownership.
+
+Cluster and OST capacity queries remain unfiltered, covering every project in
+the shared physical budget. A tenant is not automatically removed when a disk
+is deleted: Rawstor tenant removal also deletes that tenant's objects and
+versions. Tenant labels do not currently enforce authentication or access
+control; Exordos permissions remain responsible for authorization.
+
+Build 43517230510 requires a protocol handshake and tenant-aware wire frames
+and metadata. Upgrade librawstor, Python bindings, MDS, OST and vhost together.
+An MDS database or chunk metadata written before tenants is incompatible;
+Rawstor provides no migration. Recreate a disposable development cluster for
+this build. Updating packages does not convert or delete existing storage.

@@ -314,14 +314,26 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
 
         with patch.dict(
             "sys.modules",
-            rawstor=MagicMock(Location=MagicMock(side_effect=[[], [object()]])),
+            rawstor=MagicMock(
+                Location=MagicMock(
+                    side_effect=[
+                        MagicMock(objects=MagicMock(return_value=[])),
+                        MagicMock(objects=MagicMock(return_value=[object()])),
+                    ]
+                )
+            ),
         ):
             with pytest.raises(exceptions.ConflictRecords):
                 cluster_api.delete(cluster.uuid)
         assert len(models.StorageNode.objects.get_all()) == 2
         assert cluster_api.get(uuid=cluster.uuid).status != "DELETING"
         with patch.dict(
-            "sys.modules", rawstor=MagicMock(Location=MagicMock(return_value=[]))
+            "sys.modules",
+            rawstor=MagicMock(
+                Location=MagicMock(
+                    return_value=MagicMock(objects=MagicMock(return_value=[]))
+                )
+            ),
         ):
             cluster_api.delete(cluster.uuid)
         assert models.StorageNode.objects.get_all() == []
@@ -531,7 +543,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
         mds_actual.insert()
         # The API removes desired membership, while the OST stays alive.
         with patch("rawstor.Location") as location:
-            location.return_value.__iter__.return_value = iter([])
+            location.return_value.objects.return_value = iter([])
             node_api.delete(node.uuid)
         cluster = cluster_api.get(uuid=cluster.uuid)
         removed = models.Cluster.restore_from_simple_view(

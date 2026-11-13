@@ -539,7 +539,10 @@ class StorageNodesController(ClusterMemberController):
                 return
         import rawstor
 
-        if next(iter(rawstor.Location(member.driver_spec.endpoint)), None) is not None:
+        if (
+            next(iter(rawstor.Location(member.driver_spec.endpoint).objects()), None)
+            is not None
+        ):
             raise storage_exc.ConflictRecords(
                 model="StorageNode", msg="OST is not empty"
             )
