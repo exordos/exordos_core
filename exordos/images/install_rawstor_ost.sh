@@ -39,7 +39,7 @@ else
     curl -fsSLo "$PACKAGES/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" \
         "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl"
 fi
-sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y \
     "$PACKAGES/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
     "$PACKAGES/rawstor-ost_${RAWSTOR_VERSION}_amd64.deb"
 # OST instances are configured and started by the storage agent.
@@ -48,7 +48,19 @@ sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
 if [[ -d /opt/gcl_sdk ]]; then
     sudo "$AGENT_PYTHON" -m pip install /opt/gcl_sdk
 else
-    SDK_SOURCE=$(python3 -c 'import tomllib; s=tomllib.load(open("/opt/exordos_core/pyproject.toml", "rb"))["tool"]["uv"]["sources"]["gcl-sdk"]; print("gcl-sdk @ git+" + s["git"] + "@" + s["rev"])')
+    SDK_SOURCE=$(python3 - <<'PYTHON'
+import tomllib
+from pathlib import Path
+project = tomllib.loads(Path("/opt/exordos_core/pyproject.toml").read_text())["project"]
+for dependency in project["dependencies"]:
+    name, _, source = dependency.partition("@")
+    if name.split("[", 1)[0].strip().replace("_", "-") == "gcl-sdk":
+        print("gcl-sdk @ " + source.strip())
+        break
+else:
+    raise RuntimeError("Pinned SDK dependency not found")
+PYTHON
+)
     sudo "$AGENT_PYTHON" -m pip install "$SDK_SOURCE"
 fi
 sudo "$AGENT_PYTHON" -m pip install --force-reinstall --no-deps "$PACKAGES"/rawstor-*.whl
