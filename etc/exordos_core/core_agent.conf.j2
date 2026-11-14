@@ -11,6 +11,9 @@ uuid5_name = core_agent
 target_fields_path = /var/lib/exordos/exordos_core/core_agent/target_fields.json
 
 [models]
+em_core_storage_clusters = exordos_core.storage.dm.models:StorageCluster
+em_core_storage_nodes = exordos_core.storage.dm.models:StorageNode
+em_core_storage_pools = exordos_core.storage.dm.models:StoragePool
 em_core_em_services = exordos_core.elements.dm.models:Service
 em_core_compute_nodes = exordos_core.compute.dm.models:Node
 em_core_compute_sets = exordos_core.compute.dm.models:NodeSet

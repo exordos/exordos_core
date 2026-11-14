@@ -238,13 +238,15 @@ def test_upgrades_core_agent_config(tmp_path):
     assert (
         "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142" in content
     )
-    assert (
-        "em_core_vs_profiles = exordos_core.vs.dm.models:Profile\n"
-        "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
-        "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
-        "em_core_iam_tokens = exordos_core.user_api.iam.dm.models:ManagedToken\n"
-        "\n[filters]\n" in content
-    )
+    for kind, model in (
+        ("clusters", "StorageCluster"),
+        ("nodes", "StorageNode"),
+        ("pools", "StoragePool"),
+    ):
+        assert (
+            f"em_core_storage_{kind} = exordos_core.storage.dm.models:{model}"
+            in content
+        )
     assert (
         "[resource_transformer:em_core_secret_secrets]\n"
         "ignore_null_attributes = True\n"
@@ -345,3 +347,16 @@ def test_ensure_section_appends_missing_section():
 
 def test_ensure_section_skips_missing_section_with_only_removals():
     assert bootstrap._ensure_section("[a]\n", "b", {"key": None}) == "[a]\n"
+
+
+def test_storage_driver_registration_ignores_existing_section():
+    from exordos_core.cmd import bootstrap
+
+    content = "[universal_agent]\ncaps_drivers = BorderAgentCapabilityDriver\n\n[StorageClusterAgentDriver]\nmeta_file = /tmp/meta\n"
+    result = bootstrap._ensure_ua_driver(content, "StorageClusterAgentDriver")
+    import configparser
+
+    parser = configparser.ConfigParser()
+    parser.read_string(result)
+    assert "StorageClusterAgentDriver" in parser.get("universal_agent", "caps_drivers")
+    assert bootstrap._ensure_ua_driver(result, "StorageClusterAgentDriver") == result

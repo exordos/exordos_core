@@ -45,6 +45,9 @@ def test_em_rejects_policy_change_before_saving_target(prefix, model):
         with pytest.raises(compute.ImmutableDiskPolicyError):
             resource.update_dm({"value": {"disk_spec": {**spec, "ephemeral": False}}})
         assert resource.value["disk_spec"] == spec
+        with pytest.raises(compute.DiskShrinkNotSupportedError):
+            resource.update_dm({"value": {"disk_spec": {**spec, "size": 9}}})
+        assert resource.value["disk_spec"] == spec
         resource.update_dm({"value": {"disk_spec": {**spec, "size": 12}}})
         assert resource.value["disk_spec"]["size"] == 12
 

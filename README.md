@@ -45,6 +45,10 @@ curl -fsSL https://repo.exordos.com/install.sh | sudo sh
 
 Then follow the instructions in the terminal, or refer to the [documentation](https://exordos.github.io/exordos_core/) for a full setup guide.
 
+## Rawstor storage
+
+See [Rawstor storage](docs/usage/rawstor.md) for setup and operation.
+
 # 💡 Contributing
 
 Contributing to the project is highly appreciated! However, some rules should be followed for successful inclusion of new changes in the project:

@@ -15,6 +15,7 @@
 #    under the License.
 from __future__ import annotations
 
+import configparser
 import grp
 import ipaddress
 import json
@@ -388,7 +389,8 @@ capabilities =
     certificate,
     paas_lb_agent,
     repo_proxy_installed_element,
-    border_agent
+    border_agent,
+    storage_cluster
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
 _UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
@@ -442,6 +444,27 @@ def _migrate_ua_secret_driver(content: str) -> str:
             )
 
     return content
+
+
+def _ensure_ua_driver(content: str, driver: str) -> str:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(content)
+    drivers = [
+        name.strip()
+        for name in parser.get("universal_agent", "caps_drivers").split(",")
+        if name.strip()
+    ]
+    if driver in drivers:
+        return content
+    section = re.search(r"(?ms)^\[universal_agent\][ \t]*\n.*?(?=^\[|\Z)", content)
+    block = re.search(
+        r"(?m)^[ \t]*caps_drivers[ \t]*=[^\n]*(?:\n[ \t]+[^\n]*)*", section.group()
+    )
+    if block is None:
+        raise ValueError("Cannot update universal agent caps_drivers")
+    value = "caps_drivers =\n    " + ",\n    ".join([*drivers, driver])
+    start, end = section.start() + block.start(), section.start() + block.end()
+    return content[:start] + value + content[end:]
 
 
 def _ensure_ua_config_current() -> None:
@@ -505,6 +528,13 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
+    new_content = _ensure_ua_driver(new_content, "StorageClusterAgentDriver")
+    new_content = _ensure_section(
+        new_content,
+        "StorageClusterAgentDriver",
+        {"meta_file": "/var/lib/exordos/exordos_core/storage_agent_meta.json"},
+    )
+
     new_content = _migrate_ua_secret_driver(new_content)
 
     if new_content == content:
@@ -536,6 +566,9 @@ def _ensure_ua_config_current() -> None:
 # not be in its section.
 _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
+        "em_core_storage_pools": "exordos_core.storage.dm.models:StoragePool",
+        "em_core_storage_nodes": "exordos_core.storage.dm.models:StorageNode",
+        "em_core_storage_clusters": "exordos_core.storage.dm.models:StorageCluster",
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
         "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
