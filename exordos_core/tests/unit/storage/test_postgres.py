@@ -413,8 +413,8 @@ def test_storage_schema_upgrade_and_downgrade_preserve_local_volumes(database):
             "SELECT agent,builder,status FROM storage_nodes"
         ).fetchone() == (None, None, "NEW")
         assert connection.execute(
-            "SELECT capacity_info,storage_pools FROM storage_clusters"
-        ).fetchone() == ({}, [])
+            "SELECT capacity_info,storage_pools,nodes,size FROM storage_clusters"
+        ).fetchone() == ({}, [], 0, 10)
         step.downgrade(connection)
         assert connection.execute(
             "SELECT storage_pool FROM compute_machine_volumes WHERE uuid=%s",
@@ -723,3 +723,69 @@ def test_ready_ost_membership_survives_a_capacity_report(database):
         actual.update()
         service._actualize_outdated_instance(current, target, actual)
         assert current.status == "ACTIVE"
+
+
+def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_database):
+    import gcl_sdk.migrations as sdk_migrations
+    from restalchemy.storage.sql import migrations
+
+    from exordos_core.common import constants as cc
+    from exordos_core.storage import managed
+    from exordos_core.vs.dm import models as vs
+
+    sdk_engine = migrations.MigrationEngine(str(Path(sdk_migrations.__file__).parent))
+    sdk_engine.apply_migration(sdk_engine.get_latest_migration())
+    engine = migrations.MigrationEngine(str(ROOT / "migrations"))
+    engine.apply_migration(engine.get_latest_migration())
+    with contexts.Context().session_manager():
+        vs.Variable(
+            uuid=managed.IMAGE_VARIABLE,
+            project_id=cc.EM_PROJECT_ID,
+            name="rawstor_ost_image",
+            setter=vs.SelectorVariableSetter(),
+            value="urn:images:018ddff6-52cf-4cb9-ae73-889f47b02bb5",
+        ).insert()
+        cluster = models.StorageCluster(
+            name="managed",
+            nodes=2,
+            size=30,
+            driver_spec=sdk_pool.RawstorStorageClusterDriverSpec(
+                endpoint="mds://core:7776/"
+            ),
+        )
+        cluster.insert()
+        with models.StorageCluster._get_engine().session_manager() as session:
+            with pytest.raises(ValueError, match="Delete managed OST clusters"):
+                migration("0014-rawstor-storage-0b42fe.py").migration_step.downgrade(
+                    session
+                )
+        managed.reconcile(cluster)
+        nodes = compute.Node.objects.get_all()
+        assert len(nodes) == 2
+        assert len(compute.Volume.objects.get_all()) == 4
+        assert len(ua_models.NodeEncryptionKey.objects.get_all()) == 2
+        assert not models.StorageNode.objects.get_all()
+        for index, node in enumerate(nodes):
+            node.default_network = {"ipv4": f"10.100.0.{20 + index}"}
+            node.update()
+            ua_models.UniversalAgent(
+                uuid=node.uuid,
+                node=node.uuid,
+                name=node.name,
+                status="ACTIVE",
+                capabilities={"capabilities": ["guest_machine", "storage_node"]},
+            ).insert()
+        managed.reconcile(cluster)
+        managed.reconcile(cluster)
+        osts = models.StorageNode.objects.get_all()
+        assert len(osts) == 2
+        assert all(
+            ost.driver_spec.location == f"lvm://rawstor-{ost.uuid}" for ost in osts
+        )
+        assert not state.finish_cluster_deletion(cluster)
+        assert len(compute.Node.objects.get_all()) == 2
+        for ost in osts:
+            ost.delete()
+        assert state.finish_cluster_deletion(cluster)
+        assert not compute.Node.objects.get_all()
+        assert not compute.Volume.objects.get_all()

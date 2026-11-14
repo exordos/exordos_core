@@ -1,0 +1,9 @@
+[Unit]
+Description=Prepare the Rawstor OST %i data disk
+Requires=dev-vdb.device
+After=dev-vdb.device
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/exordos-prepare-ost %i
+RemainAfterExit=yes

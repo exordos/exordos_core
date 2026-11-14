@@ -41,6 +41,8 @@ class MigrationStep(migrations.AbstractMigrationStep):
                 description character varying(255) NOT NULL,
                 driver_spec jsonb NOT NULL,
                 status character varying(32) NOT NULL,
+                nodes integer NOT NULL DEFAULT 0 CHECK (nodes >= 0),
+                size integer NOT NULL DEFAULT 10 CHECK (size > 0),
                 capacity_info jsonb NOT NULL DEFAULT '{{}}'::jsonb,
                 storage_pools jsonb[] DEFAULT '{{}}'::jsonb[],
                 builder uuid,
@@ -90,6 +92,10 @@ class MigrationStep(migrations.AbstractMigrationStep):
         )
 
     def downgrade(self, session):
+        if session.execute(
+            "SELECT 1 FROM storage_clusters WHERE nodes > 0 LIMIT 1"
+        ).fetchone():
+            raise ValueError("Delete managed OST clusters before downgrading")
         session.execute(
             "DROP TABLE storage_pools; DROP TABLE storage_nodes; DROP TABLE storage_clusters;"
         )
