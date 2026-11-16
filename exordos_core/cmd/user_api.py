@@ -74,6 +74,16 @@ iam_cli_opts = [
         default=c.DEFAULT_HS256_JWKS_ENCRYPTION_KEY,
         help="Encryption key for HS256 JWKS secret (A256GCM, 32 bytes)",
     ),
+    cfg.StrOpt(
+        "public_base_url",
+        default=None,
+        help=(
+            "Public base URL of the user API as its clients see it, for example "
+            "https://iam.example.com. Overrides the URL derived from the "
+            "X-Forwarded-* headers, and with it the OIDC endpoints and the "
+            "issuer of issued tokens."
+        ),
+    ),
 ]
 
 

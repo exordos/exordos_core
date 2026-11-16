@@ -17,6 +17,12 @@ bind_host = 0.0.0.0
 bind_port = 11010
 workers = 1
 
+[iam]
+# Base URL the clients of the API see. Set it when the proxy in front of the
+# API does not send X-Forwarded-* headers: the OIDC endpoints and the issuer of
+# the issued tokens are built from it.
+public_base_url = https://iam.example.com
+
 [orch_api]
 bind_host = 0.0.0.0
 bind_port = 11011

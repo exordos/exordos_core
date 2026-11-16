@@ -29,6 +29,7 @@ from gcl_iam import algorithms
 from gcl_iam import exceptions as iam_e
 from gcl_iam import tokens
 from gcl_sdk.agents.universal.dm import models as ua_models
+from oslo_config import cfg
 import pyotp
 from restalchemy.common import contexts
 from restalchemy.dm import filters as ra_filters
@@ -50,6 +51,33 @@ from exordos_core.user_api.iam.clients import keycloak
 from exordos_core.user_api.iam.dm import types
 
 LOG = logging.getLogger(__name__)
+
+CONF = cfg.CONF
+
+
+def resolve_public_base_url(ctx):
+    """Base URL of the API as its clients see it.
+
+    The OIDC endpoints and the issuer of issued tokens are built from it. A
+    proxy that does not send X-Forwarded-* headers would publish them under the
+    URL of its own hop to the API, so [iam] public_base_url pins the value.
+    """
+    app_url = ctx.get_real_url_with_prefix()
+    configured = CONF.iam.public_base_url
+    if not configured:
+        return app_url
+    configured = configured.rstrip("/")
+    if (
+        urllib.parse.urlsplit(configured).scheme
+        != urllib.parse.urlsplit(app_url).scheme
+    ):
+        LOG.warning(
+            "IAM: configured public_base_url differs from the request URL: "
+            "configured=%s request=%s",
+            configured,
+            app_url,
+        )
+    return configured
 
 
 class KindModelSelectorType(ra_types_dynamic.KindModelSelectorType):
@@ -2041,13 +2069,11 @@ class Idp(
 
     @property
     def well_known_endpoint(self):
-        ctx = contexts.get_context()
-        app_url = ctx.get_real_url_with_prefix()
+        app_url = resolve_public_base_url(contexts.get_context())
         return f"{app_url}/v1/iam/idp/{self.uuid}/.well-known/openid-configuration"
 
     def get_wellknown_info(self):
-        ctx = contexts.get_context()
-        app_url = ctx.get_real_url_with_prefix()
+        app_url = resolve_public_base_url(contexts.get_context())
 
         return {
             "issuer": (f"{app_url}/v1/iam/clients/{self.iam_client.uuid}"),
@@ -2123,8 +2149,7 @@ class Idp(
                     "invalid_request", "PKCE requires a valid S256 code_challenge"
                 )
 
-        ctx = contexts.get_context()
-        app_url = ctx.get_real_url_with_prefix()
+        app_url = resolve_public_base_url(contexts.get_context())
 
         auth_info = IdpAuthorizationInfo(
             idp=self,
@@ -2212,8 +2237,7 @@ class IdpAuthorizationInfo(
     )
 
     def confirm(self):
-        ctx = contexts.get_context()
-        app_url = ctx.get_real_url_with_prefix()
+        app_url = resolve_public_base_url(contexts.get_context())
 
         if self.idp.nonce_required and not self.nonce:
             raise iam_exceptions.InvalidNonce(nonce=self.nonce)
