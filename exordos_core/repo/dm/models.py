@@ -646,6 +646,14 @@ class RepoElement(
                 if dependent.name == self.name:
                     continue
                 if not dependent.manifest:
+                    bindings = RepoElementDepsBinding.objects.get_all(
+                        filters={
+                            "element": ra_filters.EQ(dependent.uuid),
+                            "depends_on": ra_filters.EQ(self.uuid),
+                        }
+                    )
+                    if not bindings:
+                        continue
                     dependent.repository.actualize_element(dependent)
                 constraint = dependent.dependencies.get(self.name)
                 if constraint is not None and not matches_version_constraint(

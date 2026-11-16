@@ -281,3 +281,43 @@ class TestUpgradeHandover:
                 models.RepoElement.upgrade(installed, target=str(target.uuid))
         installed.update.assert_not_called()
         target.update.assert_not_called()
+
+    @pytest.mark.parametrize("known_consumer", [False, True])
+    def test_upgrade_only_fetches_missing_manifest_for_known_consumer(
+        self, known_consumer
+    ):
+        installed, target = self._make_pair()
+        dependent = mock.MagicMock(spec=models.RepoElement)
+        dependent.uuid = sys_uuid.uuid4()
+        dependent.name = "consumer"
+        dependent.version = "1.0.0"
+        dependent.manifest = {}
+        dependent.dependencies = {}
+        dependent.repository = mock.Mock(spec=models.Repository)
+
+        def actualize(element):
+            if not known_consumer:
+                raise RuntimeError("Version pruned from repository")
+            element.manifest = {"requirements": {"empty": {"from_version": "3.0.0"}}}
+            element.dependencies = {"empty": {">=": "3.0.0"}}
+
+        dependent.repository.actualize_element.side_effect = actualize
+        with (
+            mock.patch.object(models.RepoElement, "objects") as objects,
+            mock.patch.object(models.RepoElementDepsBinding, "objects") as bindings,
+        ):
+            objects.get_one.return_value = target
+            objects.get_all.return_value = [installed, dependent]
+            bindings.get_all.return_value = [mock.Mock()] if known_consumer else []
+            if known_consumer:
+                with pytest.raises(common_exc.ValidateException, match="consumer"):
+                    models.RepoElement.upgrade(installed, target=str(target.uuid))
+                dependent.repository.actualize_element.assert_called_once_with(dependent)
+                installed.update.assert_not_called()
+                target.update.assert_not_called()
+            else:
+                assert (
+                    models.RepoElement.upgrade(installed, target=str(target.uuid))
+                    is target
+                )
+                dependent.repository.actualize_element.assert_not_called()
