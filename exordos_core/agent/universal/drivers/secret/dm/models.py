@@ -147,3 +147,20 @@ class Certificate(AbstractSecret, orm.SQLStorableMixin):
         if value.get("method", {}).get("kind") != "manual":
             value["overcome_threshold"] = self.is_under_threshold()
         return value
+
+
+class SPIFFEAuthority(models.ModelWithUUID, orm.SQLStorableMixin):
+    """Issuer-only material; never exported as a target resource or secret value."""
+
+    __tablename__ = "storage_spiffe_authorities"
+
+    project_id = properties.property(types.UUID(), required=True)
+    trust_domain = properties.property(
+        types.String(min_length=1, max_length=255), required=True
+    )
+    key = properties.property(
+        types.String(min_length=1, max_length=10240), required=True
+    )
+    cert = properties.property(
+        types.String(min_length=1, max_length=10240), required=True
+    )
