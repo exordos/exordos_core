@@ -19,16 +19,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-Exordos Core можно использовать в собственной инфраструктуре или в облаке Exordos.
+Exordos можно использовать в собственной инфраструктуре или в облаке Exordos.
 
 ## Собственная инфраструктура
 
-Exordos Core распространяется по открытой лицензии [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Вы можете бесплатно использовать, развёртывать и модифицировать платформу на собственном оборудовании или в собственном облачном контуре при соблюдении условий лицензии.
+Exordos распространяется по открытой лицензии [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Вы можете бесплатно использовать, развёртывать и модифицировать платформу на собственном оборудовании или в собственном облачном контуре при соблюдении условий лицензии.
 
 ## Облако Exordos
 
-Exordos Core также доступен в облаке Exordos. Условия использования и стоимость облачных сервисов приведены на странице [тарифов Exordos](https://exordos.com/pricing).
+Exordos также доступен в облаке Exordos. Условия использования и стоимость облачных сервисов приведены на странице [тарифов Exordos](https://exordos.com/pricing).
 
 ## Дополнительная информация
 
-Исходный код Exordos Core и текст лицензии доступны в [репозитории проекта](https://gitverse.ru/exordos/exordos_core).
+Исходный код Exordos и текст лицензии доступны в [репозитории проекта](https://gitverse.ru/exordos/exordos_core).

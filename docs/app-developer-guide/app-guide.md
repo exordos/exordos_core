@@ -3,13 +3,13 @@ icon: lucide/package-open
 title: Application Developer Guide
 ---
 
-This guide walks you through everything you need to build, publish, and deploy **elements** — the name Exordos Core gives to applications — on the platform.
+This guide walks you through everything you need to build, publish, and deploy **elements** — the name Exordos gives to applications — on the platform.
 
 ## Quick Start
 
 ### 1. Initialize your element
 
-Set up an existing project as a Exordos Core element. The `exordos init` command launches an interactive wizard that generates all required configuration files — including manifests, and a `exordos/exordos.yaml` file that describes the build, publish, and deploy procedures.
+Set up an existing project as an Exordos element. The `exordos init` command launches an interactive wizard that generates all required configuration files — including manifests, and a `exordos/exordos.yaml` file that describes the build, publish, and deploy procedures.
 
 ```bash
 exordos init
@@ -23,7 +23,7 @@ After the wizard completes, your project will contain necessary configuration fi
 
 ### 2. Build your element
 
-Compile and package your element along with all its artifacts. Exordos Core uses the build configuration defined in `exordos.yaml` to produce a distributable artifact.
+Compile and package your element along with all its artifacts. Exordos uses the build configuration defined in `exordos.yaml` to produce a distributable artifact.
 
 ```bash
 exordos build
@@ -51,7 +51,7 @@ The element is versioned and pushed to the configured repository based on the me
 
 ### 4. Deploy your element
 
-Install and run your element on a Exordos Core platform installation.
+Install and run your element on an Exordos platform installation.
 
 ```bash
 exordos elements install <element-name>
@@ -67,7 +67,7 @@ The platform resolves dependencies, installs the target element, and starts it i
 
 Let's walk through platformizing a real FastAPI project from `https://github.com/infraguys/todo_application`.
 
-This is a simple ToDo List API with PostgreSQL persistence. The goal here is not to explore the business logic, but to demonstrate how to take an existing application and platformize it using Exordos Core.
+This is a simple ToDo List API with PostgreSQL persistence. The goal here is not to explore the business logic, but to demonstrate how to take an existing application and platformize it using Exordos.
 
 ### Prerequisites
 
@@ -128,7 +128,7 @@ exordos init \
 
 After executing this command, a summary will be displayed with the results of the initialization, showing the main configuration files. Study them to understand what was created.
 
-The project is ready to be built and pushed as a Exordos Core element.
+The project is ready to be built and pushed as an Exordos element.
 
 ### Build the element
 
@@ -161,5 +161,5 @@ The ToDo API is now available at the configured endpoint.
 Once you're comfortable with the basics, explore the more in-depth topics below.
 
 - [Writing a manifest from scratch](../em/manifest.md) — understand the full manifest specification and author one by hand without relying on the `exordos init` wizard.
-- [Setting up a private platform installation](../usage/local_deployment.md) — spin up your own Exordos Core instance to develop and test your elements end-to-end without connecting to a remote environment.
+- [Setting up a private platform installation](../usage/local_deployment.md) — spin up your own Exordos instance to develop and test your elements end-to-end without connecting to a remote environment.
 - [Public Exordos installation](https://exordos.com) — use the hosted Exordos platform without managing your own infrastructure.

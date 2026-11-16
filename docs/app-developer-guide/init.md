@@ -4,7 +4,7 @@ title: exordos init
 
 ## Overview
 
-`exordos init` **platformizes** an existing project — it prepares everything the Exordos Core platform needs to build, publish, and deploy it as an element.
+`exordos init` **platformizes** an existing project — it prepares everything the Exordos platform needs to build, publish, and deploy it as an element.
 
 Running the command performs the following steps:
 

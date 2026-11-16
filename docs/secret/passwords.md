@@ -96,7 +96,7 @@ long_auto_hex_password:
 
 ## Methods / Generation Strategies
 
-The Exordos Core supports the following methods to generate or provide passwords:
+The Exordos supports the following methods to generate or provide passwords:
 
 ### AUTO_HEX
 

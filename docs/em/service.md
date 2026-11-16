@@ -278,7 +278,7 @@ The generated systemd service file follows this template:
 
 ```ini
 [Unit]
-Description=Exordos Core: dynamic service {name}
+Description=Exordos: dynamic service {name}
 After=network.target
 
 [Service]

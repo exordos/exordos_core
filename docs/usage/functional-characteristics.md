@@ -19,7 +19,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-Exordos Core is an open-source software platform (NoOps) for automating the deployment, management, and operation of IT infrastructure and enterprise software. The platform is designed for use in local, private, public, and hybrid environments.
+Exordos is an open-source software platform (NoOps) for automating the deployment, management, and operation of IT infrastructure and enterprise software. The platform is designed for use in local, private, public, and hybrid environments.
 
 ## 1. Purpose and scope
 

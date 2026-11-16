@@ -278,7 +278,7 @@ graph TD
 
 ```ini
 [Unit]
-Description=Exordos Core: dynamic service {name}
+Description=Exordos: dynamic service {name}
 After=network.target
 
 [Service]
