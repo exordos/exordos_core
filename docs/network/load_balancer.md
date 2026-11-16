@@ -107,6 +107,10 @@ Routing rules that define how traffic is handled:
       and refuses redirects; use the final archive
       URL. Header changes trigger a fresh download. Public downloads without headers
       keep the existing behavior. Upgrade the LB agent's `gcl_sdk` before using this field.
+      Its `url` accepts an archive URL or `urn:artifacts:<uuid>` (for example,
+      `url: "{{ artifacts.web }}"` for a named element artifact). Core resolves
+      the URN before sending the configuration to the LB agent, using the
+      highest-priority repository when several repositories contain it.
 - Modifiers (headers, rewrite rules)
     - `headers` - modify headers
         - `auto_header`:
