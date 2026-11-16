@@ -3,7 +3,7 @@ icon: lucide/wrench
 title: Troubleshooting
 ---
 
-This page collects common issues when developing and deploying elements on Exordos Core, and how to diagnose them.
+This page collects common issues when developing and deploying elements on Exordos, and how to diagnose them.
 
 ## A resource is stuck in `IN_PROGRESS`
 

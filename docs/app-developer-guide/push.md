@@ -22,7 +22,7 @@ Key options:
 | `-f, --force` | Force push even if the element already exists |
 | `-l, --latest` | Also push the element as the `latest` version (for stable versions) |
 
-You can push elements to the [public Exordos Core repository](../usage/public-installation.md). Or you can deploy a [private Exordos Core installation](../usage/private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](../usage/local-laptop-installation.md).
+You can push elements to the [public Exordos repository](../usage/public-installation.md). Or you can deploy a [private Exordos installation](../usage/private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](../usage/local-laptop-installation.md).
 
 ---
 

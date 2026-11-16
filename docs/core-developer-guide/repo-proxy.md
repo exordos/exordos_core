@@ -4,7 +4,7 @@ title: Repo Proxy
 ---
 
 Repo Proxy is the subsystem that brings external element repositories into
-Exordos Core. It discovers elements from remote sources, stores them locally,
+Exordos. It discovers elements from remote sources, stores them locally,
 resolves dependencies between elements, and bridges installed repo elements to
 the Elements Management (EM) layer so they can be deployed on compute nodes.
 

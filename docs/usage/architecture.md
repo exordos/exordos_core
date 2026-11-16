@@ -1,7 +1,7 @@
 ---
 icon: lucide/layers
 ---
-# Exordos Core Architecture
+# Exordos Architecture
 
 <!--
 Copyright 2026 Genesis Corporation JSC
@@ -21,7 +21,7 @@ limitations under the License.
 
 ## 1. General architecture description
 
-Exordos Core is a software platform for automating the deployment, management, and operation of IT infrastructure and enterprise software. The platform is built on the principle of declarative management with continuous reconciliation of the desired state (reconciliation loop).
+Exordos is a software platform for automating the deployment, management, and operation of IT infrastructure and enterprise software. The platform is built on the principle of declarative management with continuous reconciliation of the desired state (reconciliation loop).
 
 The architecture consists of four layers:
 
@@ -167,7 +167,7 @@ graph TB
 
 ## 5. Reconciliation loop
 
-The reconciliation loop is the core architectural mechanism of Exordos Core. All system components operate in a continuous verification mode:
+The reconciliation loop is the core architectural mechanism of Exordos. All system components operate in a continuous verification mode:
 
 ```mermaid
 flowchart LR
@@ -186,7 +186,7 @@ flowchart LR
 
 ## 6. Deployment options
 
-Exordos Core is used in local, private, public, and hybrid environments:
+Exordos is used in local, private, public, and hybrid environments:
 
 - **Local environment** — a single-host installation where the host machine acts as the hypervisor; intended for development and testing.
 - **Private environment** — an isolated environment on customer-owned hardware or in an isolated cloud VPC, including air-gapped deployments; used when regulatory and compliance requirements apply.

@@ -4,7 +4,7 @@ title: exordos elements install & exordos deploy
 
 ## Overview
 
-There are two ways to install a built element into an Exordos Core realm:
+There are two ways to install a built element into an Exordos realm:
 
 - `exordos elements install` — installs an element from a repository or a local manifest file. Use this when the element is already built and pushed, or when installing from a manifest path.
 - `exordos deploy` — builds, pushes (optional), and installs in one step. Use this to deploy a locally built element without a separate `exordos push`.
@@ -13,7 +13,7 @@ There are two ways to install a built element into an Exordos Core realm:
 
 ## exordos elements install
 
-`exordos elements install` **installs** an element to an Exordos Core platform realm with necessary dependencies.
+`exordos elements install` **installs** an element to an Exordos platform realm with necessary dependencies.
 
 ```bash
 exordos elements install [OPTIONS] [UUID_OR_NAME_OR_PATH]
@@ -30,7 +30,7 @@ Key options:
 
 If no argument is given, the command interactively lists elements available in the repository and asks you to pick one.
 
-You can install elements on a [public Exordos Core installation](../usage/public-installation.md). Or you can deploy a [private Exordos Core installation](../usage/private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](../usage/local-laptop-installation.md).
+You can install elements on a [public Exordos installation](../usage/public-installation.md). Or you can deploy a [private Exordos installation](../usage/private-installation.md) on your own hardware. For development and testing, you can use [local laptop installation](../usage/local-laptop-installation.md).
 
 ### Install from Repository
 
@@ -124,7 +124,7 @@ exordos deploy --element my-app
 
 ### Target Realm
 
-Both commands deploy to the Exordos Core realm currently configured in your environment. Ensure you have:
+Both commands deploy to the Exordos realm currently configured in your environment. Ensure you have:
 
 - Valid credentials for the target realm
 - Network connectivity to the realm's API endpoint
@@ -142,7 +142,7 @@ Both commands deploy to the Exordos Core realm currently configured in your envi
 
 After a successful installation:
 
-- Verify the element status in the Exordos Core CLI
+- Verify the element status in the Exordos CLI
 - [Customize the manifest](../em/manifest.md) to tailor the element configuration to your needs
 - [Update the element](../usage/admin-guide.md) when a new version is available
 

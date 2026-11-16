@@ -1,7 +1,7 @@
 ---
 icon: lucide/map
 ---
-# Exordos Core Overview
+# Exordos Overview
 
 <!--
 Copyright 2026 Genesis Corporation JSC
@@ -19,9 +19,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-Exordos Core is an open-source NoOps platform for automating the deployment, management, and operation of IT infrastructure and enterprise software. The platform can be used in local, private, public, and hybrid environments.
+Exordos is an open-source NoOps platform for automating the deployment, management, and operation of IT infrastructure and enterprise software. The platform can be used in local, private, public, and hybrid environments.
 
-Exordos Core moves infrastructure management beyond the classic DevOps approach. Instead of disconnected tools that require constant manual coordination, it unifies infrastructure, access policies, and service lifecycle in one control plane. This reduces operational overhead, prevents configuration drift, and lets teams work at the level of intent rather than individual low-level operations.
+Exordos moves infrastructure management beyond the classic DevOps approach. Instead of disconnected tools that require constant manual coordination, it unifies infrastructure, access policies, and service lifecycle in one control plane. This reduces operational overhead, prevents configuration drift, and lets teams work at the level of intent rather than individual low-level operations.
 
 ## Core principles
 
@@ -31,7 +31,7 @@ A manifest describes resources, their parameters, dependencies, configuration, a
 
 ### Reconciliation loop
 
-Exordos Core continuously compares the actual state of managed resources with the state declared in the manifest. When it detects a difference, the platform performs the actions necessary to restore the desired state.
+Exordos continuously compares the actual state of managed resources with the state declared in the manifest. When it detects a difference, the platform performs the actions necessary to restore the desired state.
 
 ### Image-based provisioning
 
@@ -73,7 +73,7 @@ The platform provides additional resource types; the following are its core reso
 
 ## Functional capabilities
 
-Exordos Core provides:
+Exordos provides:
 
 - creation, configuration, and deletion of virtual machines and physical servers;
 - Node Set creation for workload scaling;
