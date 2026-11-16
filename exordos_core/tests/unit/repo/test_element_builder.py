@@ -64,36 +64,36 @@ class FakeElement:
 
 class TestParseVersion:
     def test_release_version(self):
-        result = builder_element._parse_version("1.2.3")
+        result = models._parse_version("1.2.3")
         assert result == (1, 2, 3, True, "")
 
     def test_dev_version(self):
-        result = builder_element._parse_version("0.1.12-dev")
+        result = models._parse_version("0.1.12-dev")
         assert result == (0, 1, 12, False, "dev")
 
     def test_dev_version_with_build(self):
-        result = builder_element._parse_version("1.0.0-rc1+build.123")
+        result = models._parse_version("1.0.0-rc1+build.123")
         assert result == (1, 0, 0, False, "rc1+build.123")
 
     def test_zero_version(self):
-        result = builder_element._parse_version("0.0.0")
+        result = models._parse_version("0.0.0")
         assert result == (0, 0, 0, True, "")
 
     def test_large_version(self):
-        result = builder_element._parse_version("99.99.99")
+        result = models._parse_version("99.99.99")
         assert result == (99, 99, 99, True, "")
 
     def test_invalid_version_missing_patch(self):
         with pytest.raises(ValueError, match="Invalid version format"):
-            builder_element._parse_version("1.2")
+            models._parse_version("1.2")
 
     def test_invalid_version_non_numeric(self):
         with pytest.raises(ValueError, match="Invalid version format"):
-            builder_element._parse_version("a.b.c")
+            models._parse_version("a.b.c")
 
     def test_invalid_version_empty(self):
         with pytest.raises(ValueError, match="Invalid version format"):
-            builder_element._parse_version("")
+            models._parse_version("")
 
 
 # ---------------------------------------------------------------------------
@@ -103,19 +103,19 @@ class TestParseVersion:
 
 class TestVersionKey:
     def test_release_version(self):
-        assert builder_element._version_key("1.2.3") == (1, 2, 3, True, "")
+        assert models._version_key("1.2.3") == (1, 2, 3, True, "")
 
     def test_dev_version(self):
-        assert builder_element._version_key("1.2.3-dev") == (1, 2, 3, False, "dev")
+        assert models._version_key("1.2.3-dev") == (1, 2, 3, False, "dev")
 
     def test_ordering_release_greater_than_dev(self):
-        release = builder_element._version_key("1.0.0")
-        dev = builder_element._version_key("1.0.0-dev")
+        release = models._version_key("1.0.0")
+        dev = models._version_key("1.0.0-dev")
         assert release > dev
 
     def test_ordering_higher_major(self):
-        v2 = builder_element._version_key("2.0.0")
-        v1 = builder_element._version_key("1.0.0")
+        v2 = models._version_key("2.0.0")
+        v1 = models._version_key("1.0.0")
         assert v2 > v1
 
 
@@ -127,29 +127,29 @@ class TestVersionKey:
 class TestVersionSortKey:
     def test_release_sorts_before_dev(self):
         """Release versions should sort before dev versions (lower key = higher priority)."""
-        release_key = builder_element._version_sort_key("1.0.0")
-        dev_key = builder_element._version_sort_key("1.0.0-dev")
+        release_key = models._version_sort_key("1.0.0")
+        dev_key = models._version_sort_key("1.0.0-dev")
         assert release_key < dev_key
 
     def test_higher_version_sorts_before_lower(self):
-        v2_key = builder_element._version_sort_key("2.0.0")
-        v1_key = builder_element._version_sort_key("1.0.0")
+        v2_key = models._version_sort_key("2.0.0")
+        v1_key = models._version_sort_key("1.0.0")
         assert v2_key < v1_key
 
     def test_same_base_release_and_dev(self):
         keys = sorted(
             [
-                builder_element._version_sort_key("1.0.0-dev"),
-                builder_element._version_sort_key("1.0.0"),
-                builder_element._version_sort_key("0.9.0"),
+                models._version_sort_key("1.0.0-dev"),
+                models._version_sort_key("1.0.0"),
+                models._version_sort_key("0.9.0"),
             ]
         )
         # Release versions sort before dev versions. Among releases,
         # higher versions sort first.
         # Expected order: 1.0.0 (release) < 0.9.0 (release) < 1.0.0-dev
-        assert keys[0] == builder_element._version_sort_key("1.0.0")
-        assert keys[1] == builder_element._version_sort_key("0.9.0")
-        assert keys[2] == builder_element._version_sort_key("1.0.0-dev")
+        assert keys[0] == models._version_sort_key("1.0.0")
+        assert keys[1] == models._version_sort_key("0.9.0")
+        assert keys[2] == models._version_sort_key("1.0.0-dev")
 
 
 # ---------------------------------------------------------------------------
@@ -162,13 +162,13 @@ class TestIsInstallationInProgress:
         element = FakeElement(
             installation_state=models.RepoElementInstallationState.INSTALLED.value,
         )
-        assert builder_element._is_installation_in_progress(element) is True
+        assert models._is_installation_in_progress(element) is True
 
     def test_uninstalled(self):
         element = FakeElement(
             installation_state=models.RepoElementInstallationState.UNINSTALLED.value,
         )
-        assert builder_element._is_installation_in_progress(element) is False
+        assert models._is_installation_in_progress(element) is False
 
 
 # ---------------------------------------------------------------------------
@@ -179,152 +179,101 @@ class TestIsInstallationInProgress:
 class TestMatchesVersionConstraint:
     def test_eq_match(self):
         element = FakeElement(version="1.2.3")
-        assert (
-            builder_element._matches_version_constraint(element, {"==": "1.2.3"})
-            is True
-        )
+        assert models.matches_version_constraint(element, {"==": "1.2.3"}) is True
 
     def test_eq_no_match(self):
         element = FakeElement(version="1.2.3")
-        assert (
-            builder_element._matches_version_constraint(element, {"==": "1.2.4"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {"==": "1.2.4"}) is False
 
     def test_gt_match(self):
         element = FakeElement(version="2.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {">": "1.0.0"}) is True
-        )
+        assert models.matches_version_constraint(element, {">": "1.0.0"}) is True
 
     def test_gt_no_match_equal(self):
         element = FakeElement(version="1.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {">": "1.0.0"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {">": "1.0.0"}) is False
 
     def test_ge_match_equal(self):
         element = FakeElement(version="1.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {">=": "1.0.0"})
-            is True
-        )
+        assert models.matches_version_constraint(element, {">=": "1.0.0"}) is True
 
     def test_ge_match_greater(self):
         element = FakeElement(version="2.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {">=": "1.0.0"})
-            is True
-        )
+        assert models.matches_version_constraint(element, {">=": "1.0.0"}) is True
 
     def test_ge_no_match(self):
         element = FakeElement(version="0.9.0")
-        assert (
-            builder_element._matches_version_constraint(element, {">=": "1.0.0"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {">=": "1.0.0"}) is False
 
     def test_lt_match(self):
         element = FakeElement(version="0.9.0")
-        assert (
-            builder_element._matches_version_constraint(element, {"<": "1.0.0"}) is True
-        )
+        assert models.matches_version_constraint(element, {"<": "1.0.0"}) is True
 
     def test_lt_no_match_equal(self):
         element = FakeElement(version="1.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {"<": "1.0.0"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {"<": "1.0.0"}) is False
 
     def test_le_match_equal(self):
         element = FakeElement(version="1.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {"<=": "1.0.0"})
-            is True
-        )
+        assert models.matches_version_constraint(element, {"<=": "1.0.0"}) is True
 
     def test_le_match_lower(self):
         element = FakeElement(version="0.9.0")
-        assert (
-            builder_element._matches_version_constraint(element, {"<=": "1.0.0"})
-            is True
-        )
+        assert models.matches_version_constraint(element, {"<=": "1.0.0"}) is True
 
     def test_le_no_match(self):
         element = FakeElement(version="2.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {"<=": "1.0.0"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {"<=": "1.0.0"}) is False
 
     def test_release_vs_dev_constraint(self):
         """Release 1.0.0 should satisfy >= 1.0.0-dev."""
         element = FakeElement(version="1.0.0")
-        assert (
-            builder_element._matches_version_constraint(element, {">=": "1.0.0-dev"})
-            is True
-        )
+        assert models.matches_version_constraint(element, {">=": "1.0.0-dev"}) is True
 
     def test_dev_does_not_satisfy_release_constraint(self):
         """Dev 1.0.0-dev should NOT satisfy == 1.0.0."""
         element = FakeElement(version="1.0.0-dev")
-        assert (
-            builder_element._matches_version_constraint(element, {"==": "1.0.0"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {"==": "1.0.0"}) is False
 
     def test_unsupported_operator_raises(self):
         element = FakeElement(version="1.0.0")
         with pytest.raises(repo_exceptions.DependencyConstraintFormatError):
-            builder_element._matches_version_constraint(element, {"!=": "1.0.0"})
+            models.matches_version_constraint(element, {"!=": "1.0.0"})
 
     def test_multiple_unsupported_operators_raises(self):
         element = FakeElement(version="1.0.0")
         with pytest.raises(repo_exceptions.DependencyConstraintFormatError):
-            builder_element._matches_version_constraint(
-                element, {"!=": "1.0.0", "~=": "1.0.0"}
-            )
+            models.matches_version_constraint(element, {"!=": "1.0.0", "~=": "1.0.0"})
 
     def test_eq_takes_precedence_over_other_operators(self):
         """== is checked first and short-circuits."""
         element = FakeElement(version="1.0.0")
         assert (
-            builder_element._matches_version_constraint(
-                element, {"==": "1.0.0", ">": "2.0.0"}
-            )
+            models.matches_version_constraint(element, {"==": "1.0.0", ">": "2.0.0"})
             is True
         )
 
     def test_combined_gt_and_lt(self):
         element = FakeElement(version="1.5.0")
         assert (
-            builder_element._matches_version_constraint(
-                element, {">": "1.0.0", "<": "2.0.0"}
-            )
+            models.matches_version_constraint(element, {">": "1.0.0", "<": "2.0.0"})
             is True
         )
 
     def test_combined_gt_and_lt_no_match(self):
         element = FakeElement(version="3.0.0")
         assert (
-            builder_element._matches_version_constraint(
-                element, {">": "1.0.0", "<": "2.0.0"}
-            )
+            models.matches_version_constraint(element, {">": "1.0.0", "<": "2.0.0"})
             is False
         )
 
     def test_invalid_version_returns_false(self):
         element = FakeElement(version="invalid")
-        assert (
-            builder_element._matches_version_constraint(element, {">": "1.0.0"})
-            is False
-        )
+        assert models.matches_version_constraint(element, {">": "1.0.0"}) is False
 
 
 # ---------------------------------------------------------------------------
-# _element_sort_key
+# element_sort_key
 # ---------------------------------------------------------------------------
 
 
@@ -336,16 +285,12 @@ class TestElementSortKey:
         uninstalled = FakeElement(
             installation_state=models.RepoElementInstallationState.UNINSTALLED.value,
         )
-        assert builder_element._element_sort_key(
-            installed
-        ) < builder_element._element_sort_key(uninstalled)
+        assert models.element_sort_key(installed) < models.element_sort_key(uninstalled)
 
     def test_higher_priority_sorts_first(self):
         high = FakeElement(repository=FakeRepo(priority=100))
         low = FakeElement(repository=FakeRepo(priority=1))
-        assert builder_element._element_sort_key(
-            high
-        ) < builder_element._element_sort_key(low)
+        assert models.element_sort_key(high) < models.element_sort_key(low)
 
     def test_release_sorts_before_dev_same_priority(self):
         release = FakeElement(
@@ -356,16 +301,12 @@ class TestElementSortKey:
             version="1.0.0-dev",
             repository=FakeRepo(priority=8192),
         )
-        assert builder_element._element_sort_key(
-            release
-        ) < builder_element._element_sort_key(dev)
+        assert models.element_sort_key(release) < models.element_sort_key(dev)
 
     def test_higher_version_sorts_first(self):
         v2 = FakeElement(version="2.0.0")
         v1 = FakeElement(version="1.0.0")
-        assert builder_element._element_sort_key(
-            v2
-        ) < builder_element._element_sort_key(v1)
+        assert models.element_sort_key(v2) < models.element_sort_key(v1)
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +456,7 @@ class TestCreateInstanceHooks:
             installation_state=models.RepoElementInstallationState.INSTALLED.value,
             element=None,
         )
-        monkeypatch.setattr(self._service, "_collect_dependencies", lambda i: [i])
+        monkeypatch.setattr(models, "collect_dependencies", lambda i: [i])
 
         assert self._service.can_create_instance_resource(element) is True
 
@@ -531,7 +472,7 @@ class TestCreateInstanceHooks:
                 element=instance.name,
             )
 
-        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+        monkeypatch.setattr(models, "collect_dependencies", _raise)
 
         assert self._service.can_create_instance_resource(element) is False
         assert element.status == models.RepoElementStatus.ERROR.value
@@ -548,7 +489,7 @@ class TestCreateInstanceHooks:
                 constraint={"~=": "1.0.0"},
             )
 
-        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+        monkeypatch.setattr(models, "collect_dependencies", _raise)
 
         assert self._service.can_create_instance_resource(element) is False
         assert element.status == models.RepoElementStatus.ERROR.value
@@ -586,7 +527,7 @@ class TestCreateInstanceHooks:
         def _raise(instance):
             raise error
 
-        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+        monkeypatch.setattr(models, "collect_dependencies", _raise)
 
         assert self._service.can_create_instance_resource(element) is False
         assert element.status == models.RepoElementStatus.ERROR.value
@@ -618,7 +559,7 @@ class TestCreateInstanceHooks:
                 element=instance.name,
             )
 
-        monkeypatch.setattr(self._service, "_collect_dependencies", _raise)
+        monkeypatch.setattr(models, "collect_dependencies", _raise)
 
         assert self._service.can_create_instance_resource(element) is False
         assert element.status == models.RepoElementStatus.ERROR.value
