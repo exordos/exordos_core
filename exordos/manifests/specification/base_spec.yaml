@@ -12,6 +12,10 @@ properties:
     maxLength: 255
   description:
     type: string
+  tags:
+    type: array
+    items:
+      type: string
   schema_version:
     type: integer
     enum:

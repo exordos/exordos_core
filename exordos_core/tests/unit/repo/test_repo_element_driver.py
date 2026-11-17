@@ -46,6 +46,7 @@ class TestMakeInstalledManifest:
         em_manifest.imports = {}
         em_manifest.requirements = {}
         em_manifest.resources = {}
+        em_manifest.tags = []
         return em_manifest
 
     def _make_em_element(self, name="core", version="1.0.0"):
@@ -153,6 +154,7 @@ class TestMakeInstalledManifest:
         """Should include non-empty optional fields in the manifest."""
         client = self._make_client()
         em_manifest = self._make_em_manifest()
+        em_manifest.tags = ["env:prod"]
         em_manifest.exports = {"exp1": {}}
         em_manifest.imports = {"imp1": {}}
         em_manifest.requirements = {"dep": {"from_version": "1.0.0"}}
@@ -162,6 +164,7 @@ class TestMakeInstalledManifest:
 
         result = client._make_installed_manifest(em_manifest, em_element.uuid)
 
+        assert result.manifest["tags"] == ["env:prod"]
         assert result.manifest["exports"] == {"exp1": {}}
         assert result.manifest["imports"] == {"imp1": {}}
         assert result.manifest["requirements"] == {"dep": {"from_version": "1.0.0"}}
@@ -185,6 +188,7 @@ class TestMakeEmManifest:
             "exports": {"exp1": {}},
             "imports": {"imp1": {}},
             "openapi_spec": None,
+            "tags": ["env:prod"],
         }
         return re_builder.InstalledManifest(
             uuid=sys_uuid.uuid4(),
@@ -213,6 +217,7 @@ class TestMakeEmManifest:
         assert result.resources == {"res1": {}}
         assert result.exports == {"exp1": {}}
         assert result.imports == {"imp1": {}}
+        assert result.tags == ["env:prod"]
         assert result.openapi_spec is None
 
     def test_defaults_for_missing_fields(self):
@@ -233,6 +238,7 @@ class TestMakeEmManifest:
         assert result.resources == {}
         assert result.exports == {}
         assert result.imports == {}
+        assert result.tags == []
         assert result.openapi_spec is None
 
 

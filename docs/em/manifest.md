@@ -112,6 +112,7 @@ The manifest begins with metadata fields:
 ```yaml
 name: "core"
 description: "Exordos Core element"
+tags: ["platform", "env:prod"]
 schema_version: 1
 version: "1.0.0"
 api_version: "v1"
@@ -121,6 +122,7 @@ api_version: "v1"
 |---|---|---|
 | `name` | string | Name of the element. Must be unique within a realm. |
 | `description` | string | Human-readable description, up to 65,536 characters. |
+| `tags` | array of strings | Optional, defaults to `[]`. Copied to the element on install; replaces its tags on upgrade. |
 | `schema_version` | integer | Manifest schema version. Currently `1`. |
 | `version` | string | Element version. |
 | `api_version` | string | API version the manifest targets. Currently `v1`. |
