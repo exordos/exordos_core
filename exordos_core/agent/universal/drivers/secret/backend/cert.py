@@ -254,9 +254,18 @@ class CertBotBackendClient(base.AbstractBackendClient):
                 resource, pkey_pem, csr_pem, fullchain_pem, expiration_at
             )
 
-            cert.delete()
-            driver_cert.save()
-            return driver_cert.to_resource_value()
+            # Keep the previous pair in storage if replacement persistence fails.
+            for field in (
+                "pkey",
+                "csr",
+                "fullchain",
+                "expiration_at",
+                "meta",
+                "status",
+            ):
+                setattr(cert, field, getattr(driver_cert, field))
+            cert.update()
+            return cert.to_resource_value()
 
         # Should the cert be renewed?
         if not cert.is_under_threshold():

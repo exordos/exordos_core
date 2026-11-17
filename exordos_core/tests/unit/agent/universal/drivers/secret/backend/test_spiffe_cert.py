@@ -199,7 +199,6 @@ def test_reject_foreign_or_expiring_authority():
     "change",
     [
         {"domains": ["example.org"]},
-        {"expiration_threshold": 30},
         {"key": "forbidden"},
         {"method": {"kind": "spiffe", "spiffe_id": "spiffe://example.org/"}},
     ],
@@ -247,9 +246,10 @@ def test_backend_renews_only_near_expiry_and_does_not_revoke_ca(issuer):
     ):
         client = backend.CertBotBackendClient(MagicMock(), "a@example.org", "/unused")
         objects.get_one.return_value = stored
-        unchanged = client.update(target)
-        assert unchanged["key"] == stored.pkey
         original_key = stored.pkey
+        unchanged = client.update(target)
+        assert unchanged["key"] == original_key
+        assert stored.pkey == original_key
         stored.expiration_at = datetime.datetime.now(
             datetime.timezone.utc
         ) + datetime.timedelta(days=2)
@@ -364,3 +364,113 @@ def test_rejects_invalid_lifetime(days):
     ca = spiffe.create_authority("example.org")
     with pytest.raises(ValueError):
         spiffe.issue_certificate(ca.key, ca.cert, IDENTITY, days)
+
+
+@pytest.mark.parametrize("days", [1, 2, 7, 14, 15, 30, 365])
+def test_short_lifetimes_validate_and_renew_before_expiration(issuer, days):
+    target = resource(
+        method={"kind": "spiffe", "spiffe_id": IDENTITY, "validity_days": days}
+    )
+    CertificatesController._validate_certificate(target.value)
+    instance = secrets.Certificate(
+        uuid=target.uuid,
+        project_id=uuid.UUID(target.value["project_id"]),
+        name="short-lived",
+        email="admin@example.org",
+        domains=[],
+        method=secrets.SPIFFECertificateMethod(spiffe_id=IDENTITY, validity_days=days),
+    )
+    instance.validate()
+    stored = backend.CertBotBackendClient._spiffe_certificate(target)
+    assert not stored.is_under_threshold()
+    window = min(14, days / 2)
+    stored.expiration_at = datetime.datetime.now(
+        datetime.timezone.utc
+    ) + datetime.timedelta(days=window + 0.1)
+    assert not stored.is_under_threshold()
+    stored.expiration_at = datetime.datetime.now(
+        datetime.timezone.utc
+    ) + datetime.timedelta(days=window - 0.1)
+    assert stored.is_under_threshold()
+
+
+def test_boolean_lifetime_is_rejected_at_model_and_api_boundary():
+    with pytest.raises(ValueError, match="boolean"):
+        secrets.SPIFFECertificateMethod(spiffe_id=IDENTITY, validity_days=True)
+    with pytest.raises(exceptions.ValidateException):
+        CertificatesController._validate_certificate(
+            resource(
+                method={"kind": "spiffe", "spiffe_id": IDENTITY, "validity_days": True},
+                expiration_threshold=0,
+            ).value
+        )
+
+
+def test_spiffe_to_dns_requires_domains_at_api_and_model_boundaries():
+    current = secrets.Certificate(
+        uuid=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        name="test",
+        domains=[],
+        email="admin@example.org",
+        method=secrets.SPIFFECertificateMethod(spiffe_id=IDENTITY),
+    )
+    with pytest.raises(exceptions.ValidateException, match="at least one domain"):
+        CertificatesController._validate_certificate(
+            {"method": {"kind": "dns_core"}}, current
+        )
+    CertificatesController._validate_certificate(
+        {"method": {"kind": "dns_core"}, "domains": ["example.org"]}, current
+    )
+    with pytest.raises(ValueError, match="at least one domain"):
+        secrets.Certificate(
+            uuid=current.uuid,
+            project_id=current.project_id,
+            name="test",
+            domains=[],
+            email="admin@example.org",
+            method=secrets.DNSCoreCertificateMethod(),
+        )
+
+
+@pytest.mark.parametrize("persist_fails", [False, True])
+def test_spiffe_to_dns_replaces_row_without_deleting_old_certificate(
+    issuer, persist_fails
+):
+    target = resource()
+    stored = backend.CertBotBackendClient._spiffe_certificate(target)
+    ca = spiffe.create_authority("example.org")
+    replacement = spiffe.issue_certificate(ca.key, ca.cert, IDENTITY, 30)
+    changed = resource(
+        uuid=str(target.uuid),
+        project_id=target.value["project_id"],
+        method={"kind": "dns_core"},
+        domains=["example.org"],
+    )
+    with (
+        patch.object(backend.acme, "get_or_create_client_private_key"),
+        patch.object(backend.CertBotBackendClient, "_get_or_create_acme_client"),
+        patch.object(
+            backend.acme,
+            "create_cert",
+            return_value=(replacement.key, replacement.csr, replacement.cert),
+        ),
+        patch.object(storage.Certificate, "objects") as objects,
+        patch.object(
+            storage.Certificate,
+            "update",
+            side_effect=RuntimeError("persist failed") if persist_fails else None,
+        ) as update,
+        patch.object(storage.Certificate, "delete") as delete,
+        patch.object(storage.Certificate, "save") as save,
+    ):
+        objects.get_one.return_value = stored
+        client = backend.CertBotBackendClient(MagicMock(), "a@example.org", "/unused")
+        if persist_fails:
+            with pytest.raises(RuntimeError, match="persist failed"):
+                client.update(changed)
+        else:
+            assert client.update(changed)["cert"] == replacement.cert
+        update.assert_called_once()
+        delete.assert_not_called()
+        save.assert_not_called()
