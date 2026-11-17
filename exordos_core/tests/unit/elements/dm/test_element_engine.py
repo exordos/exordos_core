@@ -828,6 +828,66 @@ class TestManifestUpgrade:
         assert element.status == Status.IN_PROGRESS.value
 
 
+class TestManifestApplyResources:
+    def test_reuses_element_when_updating_and_removing_resources(self, monkeypatch):
+        from restalchemy.storage.sql import orm
+
+        from exordos_core.elements.dm import models as em_models
+
+        element = Element(name="app", version="1.0.0")
+        prefix = "$app.test.resources"
+        original = [
+            Resource(
+                element=element,
+                name=name,
+                resource_link_prefix=prefix,
+                value={"content": "old"},
+            )
+            for name in ("kept", "removed")
+        ]
+        rows = [dict(resource) for resource in original]
+        for row in rows:
+            row["element"] = str(element.uuid)
+        manifest = Manifest(
+            name="app",
+            version="1.0.1",
+            resources={prefix: {"kept": {"content": "new"}}},
+        )
+        db_engine = mock.MagicMock()
+        monkeypatch.setattr(
+            em_models.engines.engine_factory, "get_engine", lambda: db_engine
+        )
+        table = mock.MagicMock()
+        table.select.return_value.rows = rows
+        monkeypatch.setattr(em_models._EngineResource, "get_table", lambda: table)
+        monkeypatch.setattr(
+            orm.ObjectCollection,
+            "get_all",
+            lambda *args, **kwargs: pytest.fail("Unexpected prefetched resource query"),
+        )
+        resolver = mock.Mock(full_link_original=prefix)
+        monkeypatch.setattr(em_models, "LinkResolver", lambda **kwargs: resolver)
+        monkeypatch.setattr(Resource, "validate_value_update", lambda *args: None)
+        saved, deleted = [], []
+        monkeypatch.setattr(Resource, "save", lambda resource: saved.append(resource))
+        monkeypatch.setattr(
+            Resource, "delete", lambda resource: deleted.append(resource)
+        )
+        engine = mock.Mock()
+        monkeypatch.setattr(em_models, "element_engine", engine)
+
+        manifest.apply_resources(element)
+
+        assert [resource.uuid for resource in saved] == [original[0].uuid]
+        assert saved[0].value == {"content": "new"}
+        assert [resource.uuid for resource in deleted] == [original[1].uuid]
+        assert all(type(resource) is Resource for resource in saved + deleted)
+        assert all(resource.element is element for resource in saved + deleted)
+        engine.delete_resource.assert_called_once_with(deleted[0])
+        filters = table.select.call_args.kwargs["filters"]
+        assert filters["element"].value == element.uuid
+
+
 class TestElementEngineLoadElements:
     """Tests for ElementEngine.load_elements()."""
 
