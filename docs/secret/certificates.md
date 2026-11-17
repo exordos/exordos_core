@@ -114,7 +114,9 @@ removes its stored copy without revoking it. Imported PEM fields are accepted on
 The generic `spiffe` method issues X.509-SVIDs for service-to-service mutual
 TLS, independently of any storage or other application. It uses an internal
 CA, requires no public DNS challenge, and renews certificates through the
-existing certificate reconciliation loop.
+existing certificate reconciliation loop. Upgrade all certificate issuer
+replicas before creating SPIFFE resources; mixed-version issuers are not
+supported, and older replicas cannot parse the new certificate method.
 
 ```json
 {
@@ -145,7 +147,11 @@ exactly one URI SAN, critical when the subject is empty, critical key usage,
 [X.509-SVID specification](https://github.com/spiffe/spiffe/blob/main/standards/X509-SVID.md).
 
 One CA is persisted for each `(project_id, trust_domain)` pair in the
-issuer-only `storage_spiffe_authorities` table. Different projects get different
+issuer-only `storage_spiffe_authorities` table. Each project can persist at most
+32 authorities, independently of its leaf certificate quota. The database
+serializes concurrent inserts for a project so racing domain changes cannot
+exceed that limit. Authorities are not automatically deleted when a leaf
+changes domain or is removed. Different projects get different
 roots even if they use the same trust-domain name. Do not combine their roots
 into one bundle when they must remain isolated. The project owner controls
 identity paths within its own authority. Cross-project infrastructure identities
@@ -159,8 +165,10 @@ must use the same database. The migration creates the issuer table; no separate
 SPIFFE daemon, SPIRE server or Workload API is introduced.
 
 `validity_days` defaults to 30 and accepts 1 through 365. The existing renewal
-threshold defaults to 14 days and must be shorter than the lifetime. Renewal
-creates a fresh key and serial while retaining the SPIFFE ID and CA. Changes
+threshold defaults to 14 days. For SPIFFE, the effective renewal window is
+the smaller of that threshold and half the requested lifetime, so a one-day
+certificate renews during its last 12 hours without exposing the hidden
+legacy threshold through the API. Renewal creates a fresh key and serial while retaining the SPIFFE ID and CA. Changes
 to identity, project or lifetime reissue immediately; ordinary metadata updates
 keep the current key. Consumers must apply the new pair together and reload
 their TLS context when a renewed resource is delivered.
@@ -175,3 +183,8 @@ roots and is separate from automatic leaf renewal.
 Application-specific authorization extensions and Rawstor integration belong
 to separate profiles layered on this issuer; the generic method does not grant
 application permissions or accept arbitrary caller-supplied extensions.
+
+The SPIFFE migration refuses to downgrade while signing authorities exist.
+This prevents rollback and subsequent upgrade from silently replacing already
+distributed trust roots. Downgrade is permitted only after an operator has
+explicitly removed the authority records; deleting leaf resources does not do so.
