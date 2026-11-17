@@ -193,8 +193,8 @@ The guest must expand its partitions and filesystem separately.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.41a2714`, from
-[Actions run 43517230510](https://github.com/rawstor/librawstor/actions/runs/43517230510).
+`99.0.0+0.19267e6`, from
+[Actions run 44049992498](https://github.com/rawstor/librawstor/actions/runs/44049992498).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
@@ -267,11 +267,23 @@ for unfiltered listings, not ownership.
 Cluster and OST capacity queries remain unfiltered, covering every project in
 the shared physical budget. A tenant is not automatically removed when a disk
 is deleted: Rawstor tenant removal also deletes that tenant's objects and
-versions. Tenant labels do not currently enforce authentication or access
-control; Exordos permissions remain responsible for authorization.
+versions. This integration runs Rawstor in explicit insecure mode; tenant UUIDs are
+ownership metadata, and access control remains in Exordos.
 
-Build 43517230510 requires a protocol handshake and tenant-aware wire frames
+Build 44049992498 requires a protocol handshake and tenant-aware wire frames
 and metadata. Upgrade librawstor, Python bindings, MDS, OST and vhost together.
 An MDS database or chunk metadata written before tenants is incompatible;
 Rawstor provides no migration. Recreate a disposable development cluster for
 this build. Updating packages does not convert or delete existing storage.
+
+## Transport mode
+
+The integration currently starts MDS, OST and vhost with explicit
+`EXTRA_ARGS="--insecure"`. Connections are plaintext and peers are not
+authenticated. TLS and SPIFFE issuance are maintained in a separate branch
+layered on the storage integration.
+
+Build 44049992498 exposes service command-line arguments, but its Python
+bindings do not yet expose insecure initialization. Agent-side operation
+requires a subsequent build with that public API; the service flag alone
+does not configure the bindings.
