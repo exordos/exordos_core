@@ -213,6 +213,8 @@ class SPIFFECertificateMethod(AbstractCertificateMethod):
     def validate(self):
         super().validate()
         spiffe.trust_domain(self.spiffe_id)
+        if type(self.validity_days) is not int:
+            raise ValueError("SPIFFE validity_days must be an integer, not a boolean")
 
 
 class Certificate(
@@ -299,10 +301,8 @@ class Certificate(
             spiffe.trust_domain(self.method.spiffe_id)
             if self.domains:
                 raise ValueError("SPIFFE certificates use spiffe_id, not DNS domains")
-            if self.expiration_threshold >= self.method.validity_days:
-                raise ValueError(
-                    "SPIFFE expiration_threshold must be shorter than validity_days"
-                )
+        elif self.method.KIND == "dns_core" and not self.domains:
+            raise ValueError("DNS certificates require at least one domain")
 
     def get_resource_target_fields(self) -> tp.Set[str]:
         """Return the collection of target fields.

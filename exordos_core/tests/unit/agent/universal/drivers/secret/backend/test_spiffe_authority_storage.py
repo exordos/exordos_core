@@ -10,6 +10,7 @@ from unittest.mock import patch
 import uuid
 
 from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from gcl_sdk.agents.universal.dm import models
 import psycopg
 from psycopg import sql
@@ -41,23 +42,16 @@ def test_authority_survives_restart_and_concurrent_first_issuance():
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
 
-    class Session:
-        def __init__(self, connection):
-            self.connection = connection
-
-        def execute(self, query, params):
-            return self.connection.execute(query, params)
-
     try:
         with psycopg.connect(dsn) as connection:
-            migration.migration_step.upgrade(Session(connection))
+            migration.migration_step.upgrade(connection)
         engines.engine_factory.configure_factory(db_url=dsn)
         project = uuid.uuid4()
 
-        def issue():
+        def issue(owner=project):
             value = {
                 "uuid": str(uuid.uuid4()),
-                "project_id": str(project),
+                "project_id": str(owner),
                 "name": "test",
                 "method": {
                     "kind": "spiffe",
@@ -102,9 +96,71 @@ def test_authority_survives_restart_and_concurrent_first_issuance():
         retry_chain = x509.load_pem_x509_certificates(retried.fullchain.encode())
         assert first_chain[1] == retry_chain[1]
         retry_chain[0].verify_directly_issued_by(first_chain[1])
-        engines.engine_factory.destroy_engine()
+        # Fill all but one project slot, then race two different domains.
         with psycopg.connect(dsn) as connection:
-            migration.migration_step.downgrade(Session(connection))
+            for index in range(30):
+                connection.execute(
+                    "INSERT INTO storage_spiffe_authorities VALUES (%s, %s, %s, %s, %s)",
+                    (
+                        uuid.uuid4(),
+                        project,
+                        f"reserved-{index}.example",
+                        "test-key",
+                        "test-cert",
+                    ),
+                )
+
+        insert_barrier = threading.Barrier(2)
+
+        def insert_domain(index):
+            try:
+                with psycopg.connect(dsn) as connection:
+                    insert_barrier.wait(timeout=10)
+                    connection.execute(
+                        "INSERT INTO storage_spiffe_authorities VALUES (%s, %s, %s, %s, %s)",
+                        (
+                            uuid.uuid4(),
+                            project,
+                            f"racing-{index}.example",
+                            "test-key",
+                            "test-cert",
+                        ),
+                    )
+                return True
+            except psycopg.errors.CheckViolation as exc:
+                assert "SPIFFE authority limit (32)" in str(exc)
+                return False
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            assert sorted(executor.map(insert_domain, range(2))) == [False, True]
+        with psycopg.connect(dsn) as connection:
+            assert (
+                connection.execute(
+                    "SELECT count(*) FROM storage_spiffe_authorities"
+                ).fetchone()[0]
+                == 32
+            )
+        # Existing authorities can still issue at the limit; other projects
+        # have independent budgets.
+        issue()
+        issue(uuid.uuid4())
+        engines.engine_factory.destroy_engine()
+        # Refuse rollback rather than destroy a distributed trust root.
+        with pytest.raises(
+            psycopg.errors.RaiseException, match="signing authorities still exist"
+        ):
+            with psycopg.connect(dsn) as connection:
+                migration.migration_step.downgrade(connection)
+        with psycopg.connect(dsn) as connection:
+            assert (
+                connection.execute(
+                    "SELECT cert FROM storage_spiffe_authorities WHERE project_id=%s AND trust_domain=%s",
+                    (project, "test.example"),
+                ).fetchone()[0]
+                == first_chain[1].public_bytes(serialization.Encoding.PEM).decode()
+            )
+            connection.execute("DELETE FROM storage_spiffe_authorities")
+            migration.migration_step.downgrade(connection)
             assert (
                 connection.execute(
                     "SELECT to_regclass('storage_spiffe_authorities')"
