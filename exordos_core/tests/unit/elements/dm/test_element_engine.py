@@ -789,6 +789,60 @@ class TestElementIncorrectStatusesView:
         assert args[1] == (view.actual_status, view.uuid)
 
 
+class TestManifestTags:
+    @pytest.mark.parametrize("tags", [[], ["env:prod", "platform"]])
+    @pytest.mark.parametrize("operation", ["install", "upgrade"])
+    def test_copies_tags(self, monkeypatch, tags, operation):
+        from restalchemy.storage.sql import orm
+
+        manifest = Manifest(name="test-element", version="2.0.0", tags=tags)
+        old_element = Element(name=manifest.name, version="1.0.0", tags=["old"])
+        monkeypatch.setattr(
+            orm.ObjectCollection,
+            "get_one_or_none",
+            lambda *args, **kwargs: old_element if operation == "upgrade" else None,
+        )
+        monkeypatch.setattr(element_engine, "load_from_database", lambda: None)
+        monkeypatch.setattr(element_engine, "add_element", lambda element: None)
+        monkeypatch.setattr(Element, "save", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            Manifest, "apply_element", lambda self, element: (self, element)
+        )
+
+        _, element = getattr(manifest, operation)()
+
+        assert element.tags == tags
+        assert element.tags is not manifest.tags
+        assert element.dump_to_simple_view()["tags"] == tags
+        assert manifest.dump_to_simple_view()["tags"] == tags
+
+    @pytest.mark.parametrize(
+        "tags,valid", [([], True), (["prod"], True), ([1], False), ("prod", False)]
+    )
+    def test_manifest_schema_tags(self, tags, valid):
+        from exordos_core.elements.dm import utils
+
+        data = {
+            "name": "test-element",
+            "description": "Test",
+            "schema_version": 1,
+            "version": "1.0.0",
+            "api_version": "v1",
+            "resources": {},
+            "tags": tags,
+        }
+        schema = utils.load_base_manifest_schema()
+        if valid:
+            utils.validate_manifest(data, schema)
+        else:
+            with pytest.raises(exceptions.OpenApiValidateException):
+                utils.validate_manifest(data, schema)
+
+    @pytest.mark.parametrize("model", [Manifest, Element])
+    def test_tags_default_to_empty(self, model):
+        assert model(name="test-element", version="1.0.0").tags == []
+
+
 class TestManifestUpgrade:
     def test_upgrade_sets_element_status_to_in_progress(self, monkeypatch):
         manifest = Manifest(

@@ -107,6 +107,7 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
             name=installed.name,
             version=installed.version,
             description=installed.manifest.get("description", ""),
+            tags=installed.manifest.get("tags", []),
             project_id=installed.project_id,
             schema_version=DEFAULT_SCHEMA_VERSION,
             api_version=DEFAULT_API_VERSION,
