@@ -6,7 +6,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0013-realm-scoped-dns-5bd99b.py"]
+        self._depends = ["0014-rawstor-storage-0b42fe.py"]
 
     @property
     def migration_id(self):

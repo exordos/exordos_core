@@ -35,7 +35,7 @@ def test_authority_survives_restart_and_concurrent_first_issuance():
     dsn = admin_dsn.rsplit("/", 1)[0] + "/" + name
     path = (
         Path(__file__).resolve().parents[8]
-        / "migrations/0014-spiffe-authorities-2f5766.py"
+        / "migrations/0015-spiffe-authorities-2f5766.py"
     )
     spec = importlib.util.spec_from_file_location("spiffe_migration", path)
     migration = importlib.util.module_from_spec(spec)
