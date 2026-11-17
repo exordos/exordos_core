@@ -35,13 +35,18 @@ class ElementManagerBuilder(basic.BasicService):
         self._element_engine = models.element_engine
         self._first_step = True
 
-    def _actualize_target_resources(self):
+    def _actualize_target_resources(self, session):
         # Delete outdated resources that do not have a corresponding EM
-        for info in models.OutdatedResources.objects.get_all(
-            filters={"em_resource": dm_filters.Is(None)},
-        ):
-            info.target_resource.delete()
-            LOG.info(" Resource %s has been deleted", info.target_resource)
+        resources = [
+            info.target_resource
+            for info in models.OutdatedResources.objects.get_all(
+                filters={"em_resource": dm_filters.Is(None)},
+                session=session,
+            )
+        ]
+        session.batch_delete(resources)
+        for resource in resources:
+            LOG.info(" Resource %s has been deleted", resource)
 
         for resource in self._element_engine.get_resources():
             resource.actualize()
@@ -76,6 +81,6 @@ class ElementManagerBuilder(basic.BasicService):
             if self._first_step:
                 self._element_engine.load_from_database()
                 self._first_step = True  # Disable optimization
-            self._actualize_target_resources()
+            self._actualize_target_resources(session)
             self._actualize_statuses(session)
             LOG.debug("Starting iteration")
