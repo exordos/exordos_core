@@ -22,6 +22,7 @@ from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
 
 from exordos_core.elements.services import builders
+from exordos_core.elements.dm import models as em_models
 
 
 class TestElementManagerBuilder:
@@ -64,3 +65,53 @@ class TestElementManagerBuilder:
                 filters={"uuid": dm_filters.EQ(resource_uuid)},
             ):
                 resource.delete()
+
+    def test_delete_element_cleans_resources_and_matching_targets(self):
+        element = em_models.Element(name="test_delete_element", version="1.0.0")
+        element.insert()
+        resources = [
+            em_models.Resource(
+                element=element,
+                name=f"resource_{number}",
+                resource_link_prefix="$test_delete_element.test.resources",
+                value={},
+            )
+            for number in range(3)
+        ]
+        targets = []
+        em_models.element_engine.add_element(element)
+        try:
+            for resource in resources:
+                resource.insert()
+                for kind in (resource.kind, "test_other_kind"):
+                    target = ua_models.TargetResource(
+                        uuid=resource.uuid, kind=kind, value={}
+                    )
+                    target.insert()
+                    targets.append(target)
+
+            with contexts.Context().session_manager() as session:
+                element.delete(session=session)
+
+            assert em_models.Element.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(element.uuid)}
+            ) is None
+            assert not em_models.Resource.objects.get_all(
+                filters={"element": dm_filters.EQ(element.uuid)}
+            )
+            remaining = ua_models.TargetResource.objects.get_all(
+                filters={"uuid": dm_filters.In([r.uuid for r in resources])}
+            )
+            assert len(remaining) == len(resources)
+            assert all(target.kind == "test_other_kind" for target in remaining)
+        finally:
+            for target in targets:
+                if ua_models.TargetResource.objects.get_one_or_none(
+                    filters={"res_uuid": dm_filters.EQ(target.res_uuid)}
+                ):
+                    target.delete()
+            if em_models.Element.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(element.uuid)}
+            ):
+                element.delete()
+            em_models.element_engine.remove_element(element)

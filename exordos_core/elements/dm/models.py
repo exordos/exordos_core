@@ -481,10 +481,16 @@ class Element(
         self._requirements = []
 
     def delete(self, session=None):
-        for resource in Resource.objects.get_all(
-            filters={"element": ra_filters.EQ(self)}
-        ):
-            resource.delete(session=session)
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager(session=session) as session:
+            result = _EngineResource.get_table().select(
+                engine=engine,
+                filters={"element": ra_filters.EQ(self.uuid)},
+                session=session,
+            )
+            for row in result.rows:
+                row["element"] = self
+                Resource.restore_row(row).delete(session=session)
         super().delete(session=session)
 
     @property
