@@ -1,11 +1,15 @@
 # Rawstor TLS integration
 
 
-Build 43960821414 requires mutual TLS by default. The artifact update alone
-is not a complete deployment upgrade: Exordos does not yet issue or distribute
-Rawstor credentials. Existing services without TLS configuration will refuse
-to start. Do not upgrade a running cluster before provisioning credentials
-for every daemon and client. Production services must not use `--insecure`.
+Rawstor defaults to mutual TLS. The base integration deliberately selects
+insecure transport so storage integration can merge before certificates.
+This branch adds the generic SPIFFE issuer; application authorization and
+runtime certificate delivery still need to be connected before enabling TLS.
+
+When enabling TLS, remove `EXTRA_ARGS="--insecure"` from service configuration
+and replace the bindings' `rawstor.initialize(insecure=True)` with TLS
+initialization before the first `Target` or `Location` import. Credentials
+must be provisioned first; mixing insecure mode and TLS settings is rejected.
 
 Configure `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY`
 and `RAWSTOR_TLS_CA` for MDS, OST, vhost and the agent process using bindings.
