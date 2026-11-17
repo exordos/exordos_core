@@ -789,7 +789,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=2e7d9b46526395e8d26e0843d0e60a6a42c3cbdc" },
+    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=a695284615604acef38dcc743e7fe320180a1459" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -892,8 +892,8 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.7.8.dev64+g2e7d9b465"
-source = { git = "https://github.com/exordos/gcl_sdk.git?rev=2e7d9b46526395e8d26e0843d0e60a6a42c3cbdc#2e7d9b46526395e8d26e0843d0e60a6a42c3cbdc" }
+version = "3.7.8.dev65+ga69528461"
+source = { git = "https://github.com/exordos/gcl_sdk.git?rev=a695284615604acef38dcc743e7fe320180a1459#a695284615604acef38dcc743e7fe320180a1459" }
 dependencies = [
     { name = "bjoern" },
     { name = "cryptography" },

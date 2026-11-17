@@ -539,6 +539,8 @@ class StorageNodesController(ClusterMemberController):
                 return
         import rawstor
 
+        rawstor.initialize(insecure=True)
+
         if (
             next(iter(rawstor.Location(member.driver_spec.endpoint).objects()), None)
             is not None
