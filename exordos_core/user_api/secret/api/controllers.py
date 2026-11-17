@@ -184,20 +184,18 @@ class CertificatesController(iam_controllers.PolicyBasedController):
                 )
                 spec.validate()
                 domains = kwargs.get("domains", current.domains if current else [])
-                threshold = kwargs.get(
-                    "expiration_threshold",
-                    current.expiration_threshold if current else 14,
-                )
                 if domains:
                     raise ValueError(
                         "SPIFFE certificates use spiffe_id, not DNS domains"
                     )
-                if threshold >= spec.validity_days:
-                    raise ValueError(
-                        "SPIFFE expiration_threshold must be shorter than validity_days"
-                    )
             except (ValueError, TypeError) as exc:
                 raise common_exceptions.ValidateException(err=str(exc)) from exc
+        if kind == "dns_core" and not kwargs.get(
+            "domains", current.domains if current else []
+        ):
+            raise common_exceptions.ValidateException(
+                err="DNS certificates require at least one domain"
+            )
         if kind != "manual":
             if "key" in kwargs or "cert" in kwargs:
                 raise common_exceptions.ValidateException(

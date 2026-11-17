@@ -256,6 +256,10 @@ class TestCertBotBackendClient:
             "status": "ACTIVE",
         }
         mock_from_cert_resource.return_value = driver_cert_mock
+        cert_mock.to_resource_value.return_value = {
+            "key": "new_val",
+            "status": "ACTIVE",
+        }
 
         result = self.client.update(resource)
 
@@ -267,9 +271,10 @@ class TestCertBotBackendClient:
             resource.value["domains"],
         )
         mock_x509_load.assert_called_once()
-        # Old cert should be deleted and new one saved
-        cert_mock.delete.assert_called_once()
-        driver_cert_mock.save.assert_called_once()
+        # Replacement updates the existing row without deleting the previous pair
+        cert_mock.delete.assert_not_called()
+        driver_cert_mock.save.assert_not_called()
+        cert_mock.update.assert_called_once()
 
     def test_update_domains_changed_create_cert_failure(
         self,
