@@ -193,8 +193,8 @@ The guest must expand its partitions and filesystem separately.
 ## Rawstor version
 
 The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.6c915fe`, from
-[Actions run 44059493520](https://github.com/rawstor/librawstor/actions/runs/44059493520).
+`99.0.0+0.eee4365`, from
+[Actions run 44297955553](https://github.com/rawstor/librawstor/actions/runs/44297955553).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
@@ -255,24 +255,24 @@ Use `uv sync --inexact` for later synchronizations to retain the separately
 installed binding; otherwise install the wheel again after synchronization.
 The core image's installation script performs the binding installation itself.
 
-## Project tenants and upgrade compatibility
+## Project accounts and upgrade compatibility
 
-Rawstor tenant UUIDs match Exordos `project_id`. Before creating the first disk
-of a project in an MDS, the hypervisor registers that tenant idempotently.
+Rawstor account UUIDs match Exordos `project_id`. Before creating the first disk
+of a project in an MDS, the hypervisor registers that account idempotently.
 Object and vhost locations carry it as URI user information, for example
 `mds://PROJECT_UUID@core:7776/OBJECT_UUID`. Discovery restores the project from
 the saved location. The nil project UUID cannot be used: Rawstor reserves it
 for unfiltered listings, not ownership.
 
 Cluster and OST capacity queries remain unfiltered, covering every project in
-the shared physical budget. A tenant is not automatically removed when a disk
-is deleted: Rawstor tenant removal also deletes that tenant's objects and
-versions. This integration runs Rawstor in explicit insecure mode; tenant UUIDs are
+the shared physical budget. A account is not automatically removed when a disk
+is deleted: Rawstor account removal also deletes that account's objects and
+versions. This integration runs Rawstor in explicit insecure mode; account UUIDs are
 ownership metadata, and access control remains in Exordos.
 
-Build 44059493520 requires a protocol handshake and tenant-aware wire frames
+Build 44297955553 requires a protocol handshake and account-aware wire frames
 and metadata. Upgrade librawstor, Python bindings, MDS, OST and vhost together.
-An MDS database or chunk metadata written before tenants is incompatible;
+An MDS database or chunk metadata written before accounts is incompatible;
 Rawstor provides no migration. Recreate a disposable development cluster for
 this build. Updating packages does not convert or delete existing storage.
 
@@ -286,3 +286,8 @@ layered on the storage integration.
 Agents and the API explicitly call `rawstor.initialize(insecure=True)` before
 loading native `Target` or `Location` types. This matches the service transport
 mode; setting any `RAWSTOR_TLS_*` options in insecure mode is rejected.
+
+Build 44297955553 also renames the MDS SQLite schema from
+`tenants`/`tenant_id` to `accounts`/`account_id`. Existing databases with the
+old names are not migrated by this build. A package update does not convert
+that metadata or delete existing storage.
