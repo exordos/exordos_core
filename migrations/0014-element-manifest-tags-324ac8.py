@@ -30,7 +30,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
         return False
 
     def upgrade(self, session):
-        for table in ("em_manifests", "em_elements"):
+        for table in ("em_manifests", "em_elements", "repo_repositories"):
             session.execute(
                 f"ALTER TABLE public.{table} "
                 "ADD COLUMN tags TEXT[] NOT NULL DEFAULT '{}'"
@@ -40,7 +40,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             )
 
     def downgrade(self, session):
-        for table in ("em_elements", "em_manifests"):
+        for table in ("repo_repositories", "em_elements", "em_manifests"):
             session.execute(f"DROP INDEX public.idx_{table}_tags")
             session.execute(f"ALTER TABLE public.{table} DROP COLUMN tags")
 
