@@ -120,7 +120,6 @@ sudo mkdir -p /etc/nginx/ssl
 sudo chown www-data:www-data /etc/nginx/ssl
 sudo mkdir -p /etc/nginx/exordos/
 
-# The LB driver renders a rejecting default_server for every port it listens on
 sudo rm -f /etc/nginx/sites-enabled/default
 
 cat <<EOF | sudo tee -a /etc/nginx/nginx.conf
