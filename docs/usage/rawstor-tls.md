@@ -1,6 +1,5 @@
 # Rawstor TLS integration
 
-
 Rawstor defaults to mutual TLS. The base integration deliberately selects
 insecure transport so storage integration can merge before certificates.
 This branch adds the generic SPIFFE issuer; application authorization and
@@ -27,10 +26,10 @@ Rawstor authorization extensions and runtime delivery still need integration;
 - MDS certificates use `spiffe://TRUST_DOMAIN/mds/MDS_UUID`. That UUID must
   equal the MDS witness UUID in topology, currently derived from the cluster
   UUID with UUIDv5 and the name `mds-witness`.
-- The control-plane agent uses a provider admin certificate for tenant
+- The control-plane agent uses a provider admin certificate for account
   registration, inventories and structural operations. This identity does
   not authorize ordinary data writes.
-- Each vhost uses `spiffe://TRUST_DOMAIN/tenant/PROJECT_UUID/client/NAME`.
+- Each vhost uses `spiffe://TRUST_DOMAIN/account/PROJECT_UUID/client/NAME`.
   Issue role `none` with permissions scoped to its volume UUID: mask `3`
   grants read/write. Automatic repair that allocates replacement members
   also requires manage permission (mask `7`), which permits managing that
