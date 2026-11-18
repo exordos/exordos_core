@@ -236,6 +236,13 @@ class NodeBuilderService(sdk_builder.UniversalBuilderService):
         # Update machine
         self._update_machine(target_node, actual_node, need_update_machine)
 
+        # An unchanged machine emits no tracked event to restore node status.
+        machine = models.Machine.objects.get_one_or_none(
+            filters={"uuid": dm_filters.EQ(target_node.uuid)}
+        )
+        if machine is not None:
+            target_node.status = machine.status
+
     def actualize_instance_with_outdated_tracked(
         self,
         instance: Node,
