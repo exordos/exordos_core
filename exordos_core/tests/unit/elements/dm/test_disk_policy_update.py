@@ -53,12 +53,14 @@ def test_em_rejects_policy_change_before_saving_target(prefix, model):
             version="1.0.0",
             resources={prefix: {"vm": {"disk_spec": {**spec, "ephemeral": False}}}},
         )
+        engine = mock.MagicMock()
+        table = mock.Mock()
+        table.select.return_value.rows = [dict(resource)]
         with (
             mock.patch.object(
-                em.Resource,
-                "objects",
-                mock.Mock(get_all=mock.Mock(return_value=[resource])),
+                em.engines.engine_factory, "get_engine", return_value=engine
             ),
+            mock.patch.object(em._EngineResource, "get_table", return_value=table),
             mock.patch.object(
                 em, "LinkResolver", return_value=mock.Mock(full_link_original=prefix)
             ),
