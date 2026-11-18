@@ -20,9 +20,10 @@ import uuid
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage.sql import engines
 
-from exordos_core.elements.services import builders
 from exordos_core.elements.dm import models as em_models
+from exordos_core.elements.services import builders
 
 
 class TestElementManagerBuilder:
@@ -65,6 +66,36 @@ class TestElementManagerBuilder:
                 filters={"uuid": dm_filters.EQ(resource_uuid)},
             ):
                 resource.delete()
+
+    def test_delete_element_without_session_commits_before_manifest_delete(
+        self, user_api
+    ):
+        manifest = em_models.Manifest(name="test_delete_commit", version="1.0.0")
+        manifest.insert()
+        element = em_models.Element(
+            name=manifest.name, version=manifest.version, manifest=manifest
+        )
+        element.insert()
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            # A separate transaction must see the deletion and acquire the
+            # manifest's foreign-key locks without waiting on a leaked session.
+            session.execute("SET LOCAL lock_timeout = '1s'")
+            element.delete()
+            manifest.delete(session=session)
+
+        assert (
+            em_models.Element.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(element.uuid)}
+            )
+            is None
+        )
+        assert (
+            em_models.Manifest.objects.get_one_or_none(
+                filters={"uuid": dm_filters.EQ(manifest.uuid)}
+            )
+            is None
+        )
 
     def test_delete_element_cleans_resources_and_matching_targets(self):
         element = em_models.Element(name="test_delete_element", version="1.0.0")

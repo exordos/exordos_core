@@ -499,7 +499,7 @@ class Element(
             for row in result.rows:
                 row["element"] = self
                 Resource.restore_row(row).delete(session=session)
-        super().delete(session=session)
+            super().delete(session=session)
 
     @property
     def original(self):
