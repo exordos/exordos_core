@@ -42,6 +42,7 @@ Table: `repo_repositories`
 | `uuid` | UUID PK | Unique identifier |
 | `name` | String(255) | Repository name (unique per project) |
 | `description` | Text | Free-form description |
+| `tags` | String[] | Tags, default `[]`; writable through the User API |
 | `project_id` | UUID | Owning project |
 | `status` | Enum | `NEW`, `ACTIVE`, `IN_PROGRESS`, `DISABLED`, `ERROR` |
 | `priority` | Integer (0–16384) | Higher = preferred for dependency resolution. Default: 8192 |
@@ -76,6 +77,7 @@ Table: `repo_elements`
 | `name` | String(255) | Element name |
 | `version` | String(255) | Semantic version string |
 | `description` | Text | Free-form description |
+| `tags` | String[] | Tags, default `[]`; writable through the User API |
 | `project_id` | UUID | Owning project |
 | `repository` | FK → Repository | Parent repository |
 | `status` | Enum | `NEW`, `AVAILABLE`, `ACTIVE`, `IN_PROGRESS`, `ERROR` |
