@@ -43,6 +43,7 @@ PostgreSQL через ORM restalchemy.
 | `uuid` | UUID PK | Уникальный идентификатор |
 | `name` | String(255) | Имя репозитория (уникально в рамках проекта) |
 | `description` | Text | Произвольное описание |
+| `tags` | String[] | Теги, по умолчанию `[]`; доступны для изменения через User API |
 | `project_id` | UUID | Проект-владелец |
 | `status` | Enum | `NEW`, `ACTIVE`, `IN_PROGRESS`, `DISABLED`, `ERROR` |
 | `priority` | Integer (0–16384) | Выше = предпочтительнее при разрешении зависимостей. По умолчанию: 8192 |
@@ -78,6 +79,7 @@ PostgreSQL через ORM restalchemy.
 | `name` | String(255) | Имя элемента |
 | `version` | String(255) | Семантическая версия |
 | `description` | Text | Произвольное описание |
+| `tags` | String[] | Теги, по умолчанию `[]`; доступны для изменения через User API |
 | `project_id` | UUID | Проект-владелец |
 | `repository` | FK → Repository | Родительский репозиторий |
 | `status` | Enum | `NEW`, `AVAILABLE`, `ACTIVE`, `IN_PROGRESS`, `ERROR` |
