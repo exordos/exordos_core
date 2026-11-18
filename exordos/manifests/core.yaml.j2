@@ -1198,7 +1198,7 @@ resources:
         kind: "disks"
         disks:
           - size: $core.vs.variables.$core_root_disk_size:value
-            image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/core/{{ version }}/images/exordos-core.raw.zst"
+            image: "{{ images.exordos_core_raw_zst }}"
           - size: $core.vs.variables.$core_data_disk_size:value
             label: data
 
