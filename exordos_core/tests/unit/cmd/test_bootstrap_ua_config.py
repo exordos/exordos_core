@@ -243,6 +243,7 @@ def test_upgrades_core_agent_config(tmp_path):
         "em_core_iam_idp = exordos_core.user_api.iam.dm.models:Idp\n"
         "em_core_secret_secrets = exordos_core.secret.dm.models:Secret\n"
         "em_core_iam_tokens = exordos_core.user_api.iam.dm.models:ManagedToken\n"
+        "em_core_security_rules = exordos_core.user_api.security.dm.models:Rule\n"
         "\n[filters]\n" in content
     )
     assert (

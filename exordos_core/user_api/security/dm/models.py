@@ -26,6 +26,7 @@ from firebase_admin import app_check
 from firebase_admin import credentials
 from firebase_admin import exceptions as firebase_exceptions
 from gcl_iam import exceptions as gcl_iam_exceptions
+from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.dm import models as ra_models
 from restalchemy.dm import properties
 from restalchemy.dm import types as ra_types
@@ -302,7 +303,7 @@ class Rule(
     ra_models.ModelWithNameDesc,
     ra_models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
-    ra_models.SimpleViewMixin,
+    ua_models.TargetResourceMixin,
     audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "security_rules"
