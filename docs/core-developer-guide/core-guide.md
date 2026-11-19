@@ -79,6 +79,8 @@ and so on). See [Troubleshooting](../usage/troubleshooting.md) for the symptoms 
 - `$core.vs.variables` — the Variable Store, used for platform-wide defaults
 - `$core.config.configs` — files delivered to a node; requires `project_id` and `body.kind`, see
   [Troubleshooting](../usage/troubleshooting.md)
+- `$core.security.rules` — security rules reconciled by the Core agent. Set `project_id` to the
+  request's project, or omit it for requests without a project.
 
 ## Resource audit
 
