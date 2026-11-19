@@ -663,18 +663,6 @@ resources:
       name: "vs.variable.update"
       description: "Update value store variables"
 
-  $core.security.rules:
-    iam_client_send_reset_password_code:
-      name: "Allow IAM client reset password code"
-      description: "Grant permission to invoke the IAM client reset password code action"
-      condition:
-        kind: uri_regex
-        uri_regex: "^/v1/iam/clients/[0-9a-fA-F-]+/actions/send_reset_password_code/invoke$"
-        method: POST
-      action:
-        kind: grant_permission
-        permission: "iam.iam_client.send_reset_password_code"
-
   $core.iam.rolebinding:
     admin_role:
       uuid: "0e03425e-c46c-49c8-94f4-688a078d3178"
