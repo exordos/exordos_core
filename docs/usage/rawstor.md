@@ -219,8 +219,8 @@ CLI options remain unchanged; commands construct the nested API configuration.
 The pinned build requires a strict majority for writable mirrors. With two
 data copies and no witness, both copies must remain available for writes.
 Exordos includes the MDS as a metadata-only witness in the topology, advertised
-as `ost://core.local.genesis-core.tech:PORT`. Its server failure domain is the
-Core node UUID, independent of its IP address or hostname. Rawstor
+using the MDS bind IP address and port. Its server failure domain remains the
+Core node UUID. Rawstor
 places a witness for even mirror counts, allowing a two-copy mirror to retain
 a majority when one data node is unavailable.
 
