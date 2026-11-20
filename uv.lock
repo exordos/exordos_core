@@ -789,7 +789,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.7,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.8.1,<4.0.0" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -892,7 +892,7 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.7.7"
+version = "3.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -907,9 +907,9 @@ dependencies = [
     { name = "restalchemy" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/c0/c06a5248f8bf92cd3ab95f1805a2c5ab503694e753b238fe0c6cf8fd2879/gcl_sdk-3.7.7.tar.gz", hash = "sha256:a2410d1acb69822ef89f18cf2b2d0279458fd9308431cb12500d045b24812a14", size = 416290, upload-time = "2026-11-06T11:17:58.215Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/49/2f3ad4f98ac9f3064389b6fde6f0e0c1f3012c1345a646baca8e6a18df4e/gcl_sdk-3.8.1.tar.gz", hash = "sha256:f28c5e4ffe19239b0ebbd1b2aecb20f53ed8926f55579bf75fd52519ff7b2499", size = 462015, upload-time = "2026-11-20T16:22:48Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/32/09965dde2c9a1b203c5fa29d56a7daa276fc8acdf24e5e3eec9deb83c5f0/gcl_sdk-3.7.7-py3-none-any.whl", hash = "sha256:34f90eb2b8eb7183b8c228553cc77ad58fc5d7bade5b1ce762e4c7357b9ee1fb", size = 373121, upload-time = "2026-11-06T11:17:56.724Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/f4/7c07c4b94bdc2653b6ab06ac8d7fac58505687e4c055d578b77ace58d3a6/gcl_sdk-3.8.1-py3-none-any.whl", hash = "sha256:dbdc8d5901a37990d8dafe8f4cff3e8d6412fc3ca1ecbf7de193fe0aa126a655", size = 429920, upload-time = "2026-11-20T16:22:46.367Z" },
 ]
 
 [package.optional-dependencies]

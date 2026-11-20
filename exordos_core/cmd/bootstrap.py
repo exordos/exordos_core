@@ -15,6 +15,7 @@
 #    under the License.
 from __future__ import annotations
 
+import configparser
 import grp
 import ipaddress
 import json
@@ -38,6 +39,7 @@ from exordos_core.bootstrap import defaults as bootstrap_defaults
 from exordos_core.common import config
 from exordos_core.common import constants as c
 from exordos_core.common import exceptions as common_exc
+from exordos_core.common import features
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
@@ -387,7 +389,8 @@ capabilities =
     certificate,
     paas_lb_agent,
     repo_proxy_installed_element,
-    border_agent
+    border_agent,
+    storage_cluster
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
 _UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
@@ -443,6 +446,30 @@ def _migrate_ua_secret_driver(content: str) -> str:
     return content
 
 
+def _ensure_ua_driver(content: str, driver: str, enabled: bool = True) -> str:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(content)
+    drivers = [
+        name.strip()
+        for name in parser.get("universal_agent", "caps_drivers").split(",")
+        if name.strip()
+    ]
+    if (driver in drivers) == enabled:
+        return content
+    drivers = [name for name in drivers if name != driver]
+    if enabled:
+        drivers.append(driver)
+    section = re.search(r"(?ms)^\[universal_agent\][ \t]*\n.*?(?=^\[|\Z)", content)
+    block = re.search(
+        r"(?m)^[ \t]*caps_drivers[ \t]*=[^\n]*(?:\n[ \t]+[^\n]*)*", section.group()
+    )
+    if block is None:
+        raise ValueError("Cannot update universal agent caps_drivers")
+    value = "caps_drivers =\n    " + ",\n    ".join(drivers)
+    start, end = section.start() + block.start(), section.start() + block.end()
+    return content[:start] + value + content[end:]
+
+
 def _ensure_ua_config_current() -> None:
     """Bring the universal agent config up to date with this image.
 
@@ -474,7 +501,11 @@ def _ensure_ua_config_current() -> None:
 
     new_content = re.sub(
         r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
-        _UA_SCHEDULER_SECTION,
+        _UA_SCHEDULER_SECTION
+        if features.rawstor_enabled()
+        else _UA_SCHEDULER_SECTION.replace(
+            "    border_agent,\n    storage_cluster", "    border_agent"
+        ),
         content,
         count=1,
         flags=re.DOTALL | re.MULTILINE,
@@ -503,6 +534,21 @@ def _ensure_ua_config_current() -> None:
                 "Could not insert OpaqueSecretCapabilityDriver into caps_drivers in %s",
                 UA_CONFIG_PATH,
             )
+
+    if features.rawstor_enabled():
+        new_content = _ensure_ua_driver(new_content, "StorageClusterAgentDriver")
+        new_content = _ensure_section(
+            new_content,
+            "StorageClusterAgentDriver",
+            {"meta_file": "/var/lib/exordos/exordos_core/storage_agent_meta.json"},
+        )
+    else:
+        new_content = _ensure_ua_driver(
+            new_content, "StorageClusterAgentDriver", enabled=False
+        )
+        new_content = re.sub(
+            r"(?ms)^\[StorageClusterAgentDriver\]\n.*?(?=^\[|\Z)", "", new_content
+        )
 
     new_content = _migrate_ua_secret_driver(new_content)
 
@@ -535,6 +581,9 @@ def _ensure_ua_config_current() -> None:
 # not be in its section.
 _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
+        "em_core_storage_pools": "exordos_core.storage.dm.models:StoragePool",
+        "em_core_storage_nodes": "exordos_core.storage.dm.models:StorageNode",
+        "em_core_storage_clusters": "exordos_core.storage.dm.models:StorageCluster",
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
         "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
@@ -624,6 +673,11 @@ def _ensure_core_agent_config_current() -> None:
 
     new_content = content
     for section, items in _CORE_AGENT_SECTIONS.items():
+        if section == "models" and not features.rawstor_enabled():
+            items = {
+                key: None if key.startswith("em_core_storage_") else value
+                for key, value in items.items()
+            }
         new_content = _ensure_section(new_content, section, items)
 
     if new_content == content:
