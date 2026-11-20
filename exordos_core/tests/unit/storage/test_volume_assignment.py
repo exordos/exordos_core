@@ -6,6 +6,7 @@ import uuid
 
 from gcl_sdk.agents.universal.drivers import pool as sdk_pool
 from gcl_sdk.agents.universal.drivers import rawstor_specs
+import pytest
 
 from exordos_core.compute.pool.dm import models as compute
 from exordos_core.storage.dm import models as storage
@@ -55,6 +56,10 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
         "failure_domain": "rack",
     }
     assert first.hash != second.hash
+
+    monkeypatch.setattr(compute.features, "rawstor_enabled", lambda: False)
+    with pytest.raises(ValueError, match="Rawstor integration is disabled"):
+        volume.to_ua_resource()
 
 
 def test_local_volume_does_not_resolve_cluster(monkeypatch):

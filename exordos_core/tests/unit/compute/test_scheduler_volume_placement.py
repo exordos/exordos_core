@@ -29,6 +29,9 @@ from exordos_core.storage.dm import models as storage_models
 from exordos_core.storage.scheduler import select as storage_select
 
 
+pytestmark = pytest.mark.usefixtures("enable_rawstor")
+
+
 def _storage_pool(name, tier, ephemeral, capacity_usable, capacity_provisioned=0):
     return ua_pool.ThinStoragePool(
         name=name,

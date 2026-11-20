@@ -2,6 +2,9 @@
 verbose = True
 debug = True
 
+[features]
+rawstor = false
+
 [db]
 connection_url = postgresql://{{ GC_PG_USER }}:{{ GC_PG_PASS }}@127.0.0.1:5432/{{ GC_PG_DB }}
 connection_pool_size = 2

@@ -15,6 +15,9 @@
 #    under the License.
 
 from restalchemy.api import routes
+from restalchemy.common import exceptions
+
+from exordos_core.common import features
 
 from exordos_core.user_api.api import controllers
 from exordos_core.user_api.compute.api import routes as compute_routes
@@ -60,3 +63,9 @@ class ApiEndpointRoute(routes.Route):
     ua = routes.route(ua_routes.UaRoute)
     vs = routes.route(vs_routers.VSRoute)
     repo = routes.route(repo_routes.RepoRoute)
+
+    @classmethod
+    def get_route(cls, name):
+        if name == "storage" and not features.rawstor_enabled():
+            raise exceptions.IncorrectRouteAttribute(route=cls, attr=name)
+        return super().get_route(name)

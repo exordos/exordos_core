@@ -1,5 +1,35 @@
 # Rawstor storage
 
+## Enable the experimental integration
+
+Rawstor is disabled by default in Core. To build a development image with it enabled:
+
+```bash
+RAWSTOR_ENABLED=true exordos build -f -i ~/.ssh/id_ed25519.pub
+```
+
+The build sets the default in the image's Core configuration template. Existing
+installations retain their persisted configuration when upgrading. To enable
+Rawstor there, set the following in `/etc/exordos_core/exordos_core.conf`:
+
+```ini
+[features]
+rawstor = true
+```
+
+Run `ec-bootstrap --config-file /etc/exordos_core/exordos_core.conf` as root to
+synchronize agent capabilities, then restart `ec-user-api` and `ec-gservice`.
+Bootstrap keeps the agent configuration copies on the data disk in sync. Persist
+the Core configuration change in `/var/lib/exordos/data/etc/exordos_core/exordos_core.conf`
+as well so it survives reboot.
+
+With the flag disabled, storage API routes and their OpenAPI descriptions are
+hidden, storage builders and schedulers do not start, storage EM models and the
+MDS agent capability are not registered, and Rawstor pools are excluded from
+compute scheduling. Local qcow2 pools remain available. Disabling the flag does
+not delete existing storage or stop already running VMs; it suspends management
+of that storage. Drain Rawstor workloads before disabling it on an existing stand.
+
 ## Create a cluster
 
 ```bash
