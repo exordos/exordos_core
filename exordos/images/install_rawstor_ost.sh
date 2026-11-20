@@ -20,7 +20,7 @@ set -euo pipefail
 
 CORE_PATH=/opt/exordos_core
 AGENT_PYTHON=/opt/universal_agent/.venv/bin/python
-RAWSTOR_VERSION=${RAWSTOR_VERSION:-99.0.0}
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.0}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 PACKAGES="$CORE_PATH/exordos/images/rawstor"
 export DEBIAN_FRONTEND=noninteractive
@@ -28,7 +28,7 @@ sudo apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     lvm2 git python3-dev build-essential libjemalloc2
 
-if [[ "$RAWSTOR_VERSION" == 99.0.0 ]]; then
+if [[ "$RAWSTOR_VERSION" == 0.3.0 ]]; then
     (cd "$PACKAGES" && sha256sum --check SHA256SUMS)
 else
     PACKAGES=$(mktemp -d)
