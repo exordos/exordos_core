@@ -22,23 +22,14 @@ CORE_PATH=/opt/exordos_core
 AGENT_PYTHON=/opt/universal_agent/.venv/bin/python
 RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.0}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
-PACKAGES="$CORE_PATH/exordos/images/rawstor"
+PACKAGES=$(mktemp -d)
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     lvm2 git python3-dev build-essential libjemalloc2
 
-if [[ "$RAWSTOR_VERSION" == 0.3.0 ]]; then
-    (cd "$PACKAGES" && sha256sum --check SHA256SUMS)
-else
-    PACKAGES=$(mktemp -d)
-    for package in librawstor rawstor-ost; do
-        curl -fsSLo "$PACKAGES/${package}_${RAWSTOR_VERSION}_amd64.deb" \
-            "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/${package}_${RAWSTOR_VERSION}_amd64.deb"
-    done
-    curl -fsSLo "$PACKAGES/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" \
-        "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl"
-fi
+RAWSTOR_VERSION="$RAWSTOR_VERSION" RAWSTOR_WHEEL_VERSION="$RAWSTOR_WHEEL_VERSION" \
+    bash "$CORE_PATH/exordos/images/download_rawstor.sh" "$PACKAGES" librawstor rawstor-ost
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install --reinstall -y \
     "$PACKAGES/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
     "$PACKAGES/rawstor-ost_${RAWSTOR_VERSION}_amd64.deb"
