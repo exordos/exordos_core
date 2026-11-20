@@ -442,6 +442,8 @@ class RepoElement(
 
     __tablename__ = "repo_elements"
 
+    description = properties.property(ra_types.String(max_length=16384), default="")
+
     repository = relationships.relationship(
         Repository,
         prefetch=True,
