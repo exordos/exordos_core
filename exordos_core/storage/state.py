@@ -56,7 +56,7 @@ def agent_driver_spec(cluster):
             },
             **{
                 field: getattr(policy.driver_spec, field)
-                for field in ("mirrors", "chunk_size", "failure_domain")
+                for field in ("mirrors", "failure_domain")
             },
         }
         for policy in policies
