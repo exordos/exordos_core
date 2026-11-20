@@ -315,8 +315,3 @@ layered on the storage integration.
 Agents and the API explicitly call `rawstor.initialize(insecure=True)` before
 loading native `Target` or `Location` types. This matches the service transport
 mode; setting any `RAWSTOR_TLS_*` options in insecure mode is rejected.
-
-Build 44297955553 also renames the MDS SQLite schema from
-`tenants`/`tenant_id` to `accounts`/`account_id`. Existing databases with the
-old names are not migrated by this build. A package update does not convert
-that metadata or delete existing storage.
