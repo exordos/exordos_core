@@ -21,6 +21,7 @@ import uuid as sys_uuid
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.paas.services import builder
 
+from exordos_core.common.dm import targets
 from exordos_core.elements import constants as cc
 from exordos_core.elements.dm import res_models
 
@@ -41,6 +42,17 @@ class ServiceNodeBuilder(CommonBuilder):
         instance_model: tp.Type[res_models.Service] = res_models.Service,
     ):
         super().__init__(instance_model)
+
+    def _get_updated_instances(self):
+        instances = {i.uuid: i for i in super()._get_updated_instances()}
+        for instance in targets.changed_node_set_targets(
+            self._instance_model,
+            self._instance_model.get_resource_kind(),
+            "service_agent_node",
+            "instance.service_type->>'kind' IN ('monopoly', 'monopoly_oneshot')",
+        ):
+            instances[instance.uuid] = instance
+        return tuple(instances.values())
 
     def create_paas_objects(
         self, instance: res_models.Service
@@ -88,9 +100,10 @@ class ServiceNodeBuilder(CommonBuilder):
                 # For monopoly services we need only one node scheduled
                 break
 
-        if paas_collection.paas_objects and all(
-            (p.actual and p.actual.status == "ACTIVE")
-            for p in paas_collection.paas_objects
+        actuals = {p.target.uuid: p.actual for p in paas_collection.paas_objects}
+        if all(
+            actuals.get(r.uuid) and actuals[r.uuid].status == "ACTIVE"
+            for r in actual_resources
         ):
             instance.status = cc.ServiceStatus.ACTIVE.value
         else:
