@@ -57,6 +57,9 @@ def test_resize_charges_only_the_pinned_pool(size):
         assert volume.status == "ERROR"
 
 
+pytestmark = pytest.mark.usefixtures("enable_rawstor")
+
+
 def test_resize_rejects_duplicate_pool_names():
     service = builder.PoolBuilderService(uuid.uuid4(), Mock())
     pools = [

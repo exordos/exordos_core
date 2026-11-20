@@ -26,6 +26,13 @@ GC_ART_DIR="$GC_PATH/artifacts"
 VENV_PATH="$GC_PATH/.venv"
 BOOTSTRAP_PATH="/var/lib/exordos/bootstrap/scripts"
 
+# Opt in explicitly for development images; release images keep Rawstor disabled.
+case "${RAWSTOR_ENABLED:-false}" in
+    true) sed -i 's/^rawstor = false$/rawstor = true/' "$GC_PATH/etc/exordos_core/exordos_core.conf.j2" ;;
+    false) ;;
+    *) echo "RAWSTOR_ENABLED must be true or false" >&2; exit 1 ;;
+esac
+
 PG_VERSION="18"
 GC_PG_USER="exordos_core"
 GC_PG_PASS="exordos_core"

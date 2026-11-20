@@ -27,6 +27,7 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_network
 
+from exordos_core.common import features
 from exordos_core.compute.dm import models
 
 
@@ -160,6 +161,8 @@ class MachineVolume(
             )
             storage_pool = matches[0] if matches else None
         if pool_uuid is not None and storage_pool is not None:
+            if not features.rawstor_enabled():
+                raise ValueError("Rawstor integration is disabled")
             cluster = storage_models.StorageCluster.objects.get_one(
                 filters={"uuid": dm_filters.EQ(storage_pool.cluster)}
             )

@@ -23,6 +23,7 @@ from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from gcl_sdk.agents.universal.drivers import storage_capacity
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common import features
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.storage.dm import models as storage_models
 
@@ -60,8 +61,11 @@ def collect_storage_pool_candidates(
     pools are equal candidates - neither is preferred over the other,
     per the operator's choice recorded in the storages feature plan.
     """
-    candidates: tp.List[PoolCandidate] = [(p, None) for p in local_pools]
-    if not allow_remote:
+    enabled = features.rawstor_enabled()
+    candidates: tp.List[PoolCandidate] = [
+        (p, None) for p in local_pools if enabled or p.pool_type != "rawstor"
+    ]
+    if not enabled or not allow_remote:
         return candidates
     clusters = list(_active_clusters())
     if assigned_name and not any(

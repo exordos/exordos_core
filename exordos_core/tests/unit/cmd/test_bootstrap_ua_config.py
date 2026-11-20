@@ -14,10 +14,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import pytest
+
 import pathlib
 from unittest import mock
 
 from exordos_core.cmd import bootstrap
+
+pytestmark = pytest.mark.usefixtures("enable_rawstor")
+
 
 # A universal agent config persisted by a pre-border core image.
 _OLD_UA_CONFIG = """\
@@ -310,7 +315,8 @@ def test_noop_on_unfiltered_secret_core_agent_config(tmp_path):
     run.assert_not_called()
 
 
-def test_noop_on_template_core_agent_config(tmp_path):
+def test_noop_on_template_core_agent_config(tmp_path, monkeypatch):
+    monkeypatch.setattr(bootstrap.features, "rawstor_enabled", lambda: False)
     template = pathlib.Path(__file__).parents[4] / "etc/exordos_core/core_agent.conf.j2"
     etc_path = tmp_path / "core_agent.conf"
     etc_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
@@ -360,3 +366,25 @@ def test_storage_driver_registration_ignores_existing_section():
     parser.read_string(result)
     assert "StorageClusterAgentDriver" in parser.get("universal_agent", "caps_drivers")
     assert bootstrap._ensure_ua_driver(result, "StorageClusterAgentDriver") == result
+
+
+@pytest.mark.parametrize("enabled", [True, False, True])
+def test_rawstor_config_can_be_enabled_and_disabled(tmp_path, monkeypatch, enabled):
+    ua = tmp_path / "exordos_universal_agent.conf"
+    core = tmp_path / "core_agent.conf"
+    ua.write_text(_OLD_UA_CONFIG)
+    core.write_text(_OLD_CORE_AGENT_CONFIG)
+    # Start with the opposite state to cover removal as well as registration.
+    monkeypatch.setattr(bootstrap.features, "rawstor_enabled", lambda: not enabled)
+    _run_ua(tmp_path)
+    _run_core_agent(tmp_path)
+    monkeypatch.setattr(bootstrap.features, "rawstor_enabled", lambda: enabled)
+    _run_ua(tmp_path)
+    _run_core_agent(tmp_path)
+    assert ("StorageClusterAgentDriver" in ua.read_text()) == enabled
+    assert ("storage_cluster" in ua.read_text()) == enabled
+    assert ("em_core_storage_" in core.read_text()) == enabled
+    _, _, ua_restart = _run_ua(tmp_path)
+    _, _, core_restart = _run_core_agent(tmp_path)
+    ua_restart.assert_not_called()
+    core_restart.assert_not_called()
