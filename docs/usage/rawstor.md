@@ -224,7 +224,8 @@ The guest must expand its partitions and filesystem separately.
 
 The default Debian packages and Python binding are version `0.3.0`, from
 [Rawstor v0.3.0](https://github.com/rawstor/librawstor/releases/tag/v0.3.0).
-Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
+Core downloads release packages during image provisioning and checks their
+pinned SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same release. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
 binding version differs. `nodes init --version VERSION` overrides the
@@ -269,15 +270,17 @@ Symlink components and system directories are rejected before ownership changes.
 
 ## Run Core from a source checkout
 
-Rawstor's Python binding is bundled for the image build and is not installed by
-an ordinary `uv sync`. For a source installation on Linux x86-64, install the
-matching native packages and then the bundled binding:
+Rawstor's Python binding is not installed by an ordinary `uv sync`. For a source
+installation on Linux x86-64, download the matching native packages and binding
+from GitHub, then install them:
 
 ```bash
-sudo apt-get install ./exordos/images/rawstor/librawstor_0.3.0_amd64.deb \
-  ./exordos/images/rawstor/rawstor-mds_0.3.0_amd64.deb
+rawstor_packages=$(mktemp -d)
+bash exordos/images/download_rawstor.sh "$rawstor_packages" librawstor rawstor-mds
+sudo apt-get install "$rawstor_packages/librawstor_0.3.0_amd64.deb" \
+  "$rawstor_packages/rawstor-mds_0.3.0_amd64.deb"
 uv sync
-uv pip install --python .venv/bin/python exordos/images/rawstor/rawstor-*.whl
+uv pip install --python .venv/bin/python "$rawstor_packages"/rawstor-*.whl
 ```
 
 Use `uv sync --inexact` for later synchronizations to retain the separately
