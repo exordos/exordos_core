@@ -68,6 +68,8 @@ class InstalledManifest(
         "resources",
     )
 
+    description = properties.property(ra_types.String(max_length=65536), default="")
+
     version = properties.property(
         ra_types.String(min_length=5, max_length=64), required=True
     )

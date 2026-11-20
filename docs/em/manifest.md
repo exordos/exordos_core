@@ -120,7 +120,7 @@ api_version: "v1"
 | Field | Type | Description |
 |---|---|---|
 | `name` | string | Name of the element. Must be unique within a realm. |
-| `description` | string | Human-readable description, up to 16,384 characters. |
+| `description` | string | Human-readable description, up to 65,536 characters. |
 | `schema_version` | integer | Manifest schema version. Currently `1`. |
 | `version` | string | Element version. |
 | `api_version` | string | API version the manifest targets. Currently `v1`. |

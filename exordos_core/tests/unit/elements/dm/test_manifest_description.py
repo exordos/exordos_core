@@ -18,10 +18,11 @@ import pytest
 from restalchemy.common import exceptions
 
 from exordos_core.elements.dm.models import Element, Manifest
+from exordos_core.repo.builders.element import InstalledManifest
 from exordos_core.repo.dm.models import DatabaseDriverSpec, RepoElement, Repository
 
 
-@pytest.mark.parametrize("model", [Manifest, Element, RepoElement])
+@pytest.mark.parametrize("model", [Manifest, Element, RepoElement, InstalledManifest])
 def test_description_length(model):
     project_id = uuid.uuid4()
     kwargs = {"name": "example", "version": "1.0.0", "project_id": project_id}
@@ -30,7 +31,7 @@ def test_description_length(model):
             name="example", project_id=project_id, driver_spec=DatabaseDriverSpec()
         )
 
-    description = "т" * 16384
+    description = "т" * 65536
     assert model(**kwargs, description=description).description == description
     with pytest.raises(exceptions.TypeError):
         model(**kwargs, description=description + "т")

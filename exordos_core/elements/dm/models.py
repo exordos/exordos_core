@@ -118,7 +118,7 @@ class Manifest(
 ):
     __tablename__ = "em_manifests"
 
-    description = properties.property(ra_types.String(max_length=16384), default="")
+    description = properties.property(ra_types.String(max_length=65536), default="")
 
     STATUS = AlwaysActiveStatus
 
@@ -439,7 +439,7 @@ class Element(
     audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "em_elements"
-    description = properties.property(ra_types.String(max_length=16384), default="")
+    description = properties.property(ra_types.String(max_length=65536), default="")
     __custom_properties__ = {
         "link": ra_types.String(),
     }
