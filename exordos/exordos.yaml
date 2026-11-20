@@ -71,6 +71,7 @@ build:
         envs:
           - ALLOW_USER_PASSWD
           - FREQUENT_LOG_VACUUM
+          - RAWSTOR_ENABLED
           - RAWSTOR_VERSION
           - RAWSTOR_WHEEL_VERSION
     - manifest: manifests/core_api_https.yaml.j2

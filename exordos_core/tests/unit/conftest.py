@@ -32,3 +32,13 @@ def empty_ipam() -> ipam.Ipam:
         project_id=c.ZERO_UUID,
     )
     return ipam.Ipam({subnet: []})
+
+
+@pytest.fixture
+def enable_rawstor():
+    from oslo_config import cfg
+    from exordos_core.common import features  # noqa: F401
+
+    cfg.CONF.set_override("rawstor", True, group="features")
+    yield
+    cfg.CONF.clear_override("rawstor", group="features")

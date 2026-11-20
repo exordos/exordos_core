@@ -14,3 +14,8 @@ def initialize_rawstor_transport():
             raise
         return
     rawstor.initialize(insecure=True)
+
+
+@pytest.fixture(autouse=True)
+def rawstor_feature(enable_rawstor):
+    pass
