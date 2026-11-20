@@ -16,12 +16,13 @@
 
 import logging
 import typing as tp
+import uuid
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.asymmetric import ed448
+from cryptography.hazmat.primitives.asymmetric import ed25519
 from gcl_certbot_plugin import acme
 from gcl_certbot_plugin import clients as dns_clients
 from gcl_certbot_plugin.acme import acme_lib_client
@@ -32,6 +33,7 @@ from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_exc
 
 from exordos_core.agent.universal.drivers.secret.dm import models as driver_dm
+from exordos_core.common import spiffe
 from exordos_core.secret import constants as sc
 from exordos_core.secret.dm import models as secret_dm
 
@@ -105,6 +107,39 @@ class CertBotBackendClient(base.AbstractBackendClient):
             certificate.not_valid_after_utc,
         )
 
+    @staticmethod
+    def _spiffe_certificate(resource: models.Resource) -> driver_dm.Certificate:
+        value = resource.value
+        method = value["method"]
+        domain = spiffe.trust_domain(method["spiffe_id"])
+        project = uuid.UUID(str(value["project_id"]))
+        authority_id = uuid.uuid5(project, f"spiffe://{domain}")
+        try:
+            authority = driver_dm.SPIFFEAuthority.objects.get_one(
+                filters={"uuid": dm_filters.EQ(authority_id)}
+            )
+        except ra_exc.RecordNotFound:
+            issued = spiffe.create_authority(domain)
+            authority = driver_dm.SPIFFEAuthority(
+                uuid=authority_id,
+                project_id=project,
+                trust_domain=domain,
+                key=issued.key.decode(),
+                cert=issued.cert,
+            )
+            # INSERT, not an upsert: concurrent issuers must never replace a CA.
+            # A conflicting transaction rolls back and reconciliation retries.
+            authority.insert()
+        issued = spiffe.issue_certificate(
+            authority.key.encode(),
+            authority.cert,
+            method["spiffe_id"],
+            method.get("validity_days", 30),
+        )
+        return driver_dm.Certificate.from_cert_resource(
+            resource, issued.key, issued.csr, issued.cert, issued.expiration_at
+        )
+
     def create(self, resource: models.Resource) -> tp.Dict[str, tp.Any]:
         """Creates the resource. Returns the created resource."""
         try:
@@ -114,8 +149,13 @@ class CertBotBackendClient(base.AbstractBackendClient):
         else:
             raise exceptions.ResourceAlreadyExists(resource=resource)
 
-        if resource.value.get("method", {}).get("kind") == "manual":
-            driver_cert = self._manual_certificate(resource)
+        kind = resource.value.get("method", {}).get("kind")
+        if kind in ("manual", "spiffe"):
+            driver_cert = (
+                self._manual_certificate(resource)
+                if kind == "manual"
+                else self._spiffe_certificate(resource)
+            )
             driver_cert.save()
             return driver_cert.to_resource_value()
 
@@ -149,6 +189,29 @@ class CertBotBackendClient(base.AbstractBackendClient):
         except ra_exc.RecordNotFound:
             raise exceptions.ResourceNotFound(resource=resource)
 
+        if resource.value.get("method", {}).get("kind") == "spiffe":
+            value = resource.value
+            if (
+                cert.meta.get("method") != value["method"]
+                or str(cert.meta.get("project_id")) != str(value["project_id"])
+                or cert.is_under_threshold()
+            ):
+                issued = self._spiffe_certificate(resource)
+                for field in (
+                    "pkey",
+                    "csr",
+                    "fullchain",
+                    "expiration_at",
+                    "meta",
+                    "status",
+                ):
+                    setattr(cert, field, getattr(issued, field))
+            else:
+                cert.meta = value.copy()
+                cert.meta["status"] = sc.SecretStatus.ACTIVE.value
+            cert.update()
+            return cert.to_resource_value()
+
         if resource.value.get("method", {}).get("kind") == "manual":
             driver_cert = self._manual_certificate(resource)
             # Update the existing row atomically so a failed write keeps the old pair.
@@ -168,7 +231,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
         # We use create_cert (not renew_cert) because the domain set is
         # fundamentally different – the old key/CSR may not cover the
         # new domains.
-        if cert.meta.get("method", {}).get("kind") == "manual" or set(
+        if cert.meta.get("method", {}).get("kind") in ("manual", "spiffe") or set(
             cert["meta"]["domains"]
         ) != set(resource.value["domains"]):
             LOG.info(
@@ -191,9 +254,18 @@ class CertBotBackendClient(base.AbstractBackendClient):
                 resource, pkey_pem, csr_pem, fullchain_pem, expiration_at
             )
 
-            cert.delete()
-            driver_cert.save()
-            return driver_cert.to_resource_value()
+            # Keep the previous pair in storage if replacement persistence fails.
+            for field in (
+                "pkey",
+                "csr",
+                "fullchain",
+                "expiration_at",
+                "meta",
+                "status",
+            ):
+                setattr(cert, field, getattr(driver_cert, field))
+            cert.update()
+            return cert.to_resource_value()
 
         # Should the cert be renewed?
         if not cert.is_under_threshold():
@@ -244,6 +316,6 @@ class CertBotBackendClient(base.AbstractBackendClient):
                 "uuid": dm_filters.EQ(resource.uuid),
             }
         )
-        if cert.meta.get("method", {}).get("kind") != "manual":
+        if cert.meta.get("method", {}).get("kind") not in ("manual", "spiffe"):
             acme.revoke_cert(self._get_or_create_acme_client(), cert.fullchain)
         cert.delete()

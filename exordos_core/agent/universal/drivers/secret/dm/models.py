@@ -133,6 +133,17 @@ class Certificate(AbstractSecret, orm.SQLStorableMixin):
             return True
         else:
             delta = self.expiration_at - datetime.datetime.now(tz=datetime.timezone.utc)
+            if self.meta.get("method", {}).get("kind") == "spiffe":
+                # Short-lived SVIDs renew before expiry without changing the hidden
+                # legacy threshold used by DNS certificates.
+                window = min(
+                    datetime.timedelta(days=self.meta["expiration_threshold"]),
+                    datetime.timedelta(
+                        days=self.meta["method"].get("validity_days", 30)
+                    )
+                    / 2,
+                )
+                return delta < window
             return delta.days < self.meta["expiration_threshold"]
 
     def to_resource_value(self) -> tp.Dict[str, tp.Any]:
@@ -147,3 +158,20 @@ class Certificate(AbstractSecret, orm.SQLStorableMixin):
         if value.get("method", {}).get("kind") != "manual":
             value["overcome_threshold"] = self.is_under_threshold()
         return value
+
+
+class SPIFFEAuthority(models.ModelWithUUID, orm.SQLStorableMixin):
+    """Issuer-only material; never exported as a target resource or secret value."""
+
+    __tablename__ = "storage_spiffe_authorities"
+
+    project_id = properties.property(types.UUID(), required=True)
+    trust_domain = properties.property(
+        types.String(min_length=1, max_length=255), required=True
+    )
+    key = properties.property(
+        types.String(min_length=1, max_length=10240), required=True
+    )
+    cert = properties.property(
+        types.String(min_length=1, max_length=10240), required=True
+    )
