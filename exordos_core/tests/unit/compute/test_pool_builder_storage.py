@@ -101,7 +101,7 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(
         tier="COLD",
         ephemeral=False,
         driver_spec=rawstor_specs.RawstorPoolDriverSpec(
-            mirrors=2, chunk_size=1 << 30, failure_domain="server"
+            mirrors=2, failure_domain="server"
         ),
     )
     cluster = SimpleNamespace(

@@ -21,10 +21,10 @@ the old single-OST configuration and is no longer a cluster API field.
 
 Each new cluster has two policies sharing the same OST capacity:
 
-| Pool | Tier | Ephemeral | Mirrors | Failure domain | Chunk size |
-| --- | --- | --- | --- | --- | --- |
-| persistent | COLD | false | 2 | server | 1 GiB |
-| ephemeral | COLD | true | 1 | server | 1 GiB |
+| Pool | Tier | Ephemeral | Mirrors | Failure domain |
+| --- | --- | --- | --- | --- |
+| persistent | COLD | false | 2 | server |
+| ephemeral | COLD | true | 1 | server |
 
 A persistent disk needs at least two distinct servers. A cluster with one
 server can schedule ephemeral disks only. Local qcow2 pools and new disk
@@ -125,12 +125,12 @@ exordos storages clusters show storage1
 exordos storages nodes list --cluster storage1
 exordos storages nodes update OST_UUID --weight 200
 exordos storages pools list --cluster storage1
-exordos storages pools update POOL_UUID --mirrors 2 --failure-domain rack \
-  --chunk-size 64MiB
+exordos storages pools update POOL_UUID --mirrors 2 --failure-domain rack
 ```
 
-Mirrors, failure domain, chunk size, tier and ephemeral belong to the pool.
-A policy cannot change while disks or pending resources reference the pool. Chunk sizes must be powers of two, up to 1 GiB.
+Mirrors, failure domain, tier and ephemeral belong to the pool.
+A policy cannot change while disks or pending resources reference the pool.
+The chunk size is fixed internally at 1 GiB.
 MDS endpoints cannot change after registration. Cluster deletion automatically
 removes its empty nodes and pools; deletion is blocked while the cluster has managed
 or pending disks, or the OST contains unmanaged objects. Pool removal is
@@ -207,7 +207,7 @@ Storage pools keep `cluster`, `name`, `tier` and `ephemeral` as common fields.
 Rawstor settings are nested in `driver_spec`:
 
 ```json
-{"kind": "rawstor", "mirrors": 2, "chunk_size": 1073741824, "failure_domain": "server"}
+{"kind": "rawstor", "mirrors": 2, "failure_domain": "server"}
 ```
 
 Storage nodes keep their identity, cluster, agent and status as common fields.

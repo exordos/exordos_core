@@ -254,7 +254,6 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
                 driver_spec=rawstor_specs.RawstorPoolDriverSpec(
                     mirrors=p.driver_spec.mirrors,
                     failure_domain=p.driver_spec.failure_domain,
-                    chunk_size=p.driver_spec.chunk_size,
                 ),
                 capacity_usable=100,
             )
@@ -650,7 +649,6 @@ def test_default_names_and_partial_cluster_spec(database):
             driver_spec={
                 "kind": "rawstor",
                 "mirrors": 2,
-                "chunk_size": 1073741824,
                 "failure_domain": "server",
             },
         )
