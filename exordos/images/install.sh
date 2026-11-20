@@ -58,22 +58,12 @@ sudo apt install \
 #sudo apt update
 #sudo apt install postgresql-"$PG_VERSION" -y
 
-# Keep Rawstor servers and bindings on the same release.
-# Use the bundled, checksummed packages for the pinned version.
+# Download matching native packages and bindings from the GitHub release.
 RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.0}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
-RAWSTOR_ART_DIR="$GC_PATH/exordos/images/rawstor"
-if [[ "$RAWSTOR_VERSION" != "0.3.0" ]]; then
-    RAWSTOR_ART_DIR=$(mktemp -d)
-    for package in librawstor rawstor-mds; do
-        curl -fsSLo "$RAWSTOR_ART_DIR/${package}_${RAWSTOR_VERSION}_amd64.deb" \
-            "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/${package}_${RAWSTOR_VERSION}_amd64.deb"
-    done
-    curl -fsSLo "$RAWSTOR_ART_DIR/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" \
-        "https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}/rawstor-${RAWSTOR_WHEEL_VERSION}-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl"
-else
-    (cd "$RAWSTOR_ART_DIR" && sha256sum -c SHA256SUMS)
-fi
+RAWSTOR_ART_DIR=$(mktemp -d)
+RAWSTOR_VERSION="$RAWSTOR_VERSION" RAWSTOR_WHEEL_VERSION="$RAWSTOR_WHEEL_VERSION" \
+    bash "$GC_PATH/exordos/images/download_rawstor.sh" "$RAWSTOR_ART_DIR" librawstor rawstor-mds
 sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
     "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
 # The package does not start MDS automatically. The agent configures
