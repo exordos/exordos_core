@@ -145,7 +145,7 @@ class StorageClustersController(
                     driver_spec=ua_pool.rawstor_specs.RawstorPoolDriverSpec(
                         **{
                             k: policy[k]
-                            for k in ("mirrors", "chunk_size", "failure_domain")
+                            for k in ("mirrors", "failure_domain")
                         }
                     ),
                 ).insert()
@@ -582,7 +582,6 @@ class StoragePoolsController(ClusterMemberController):
                 "tier": "WARM",
                 "ephemeral": True,
                 "mirrors": 2,
-                "chunk_size": 1 << 30,
                 "failure_domain": "server",
             }.items()
         }

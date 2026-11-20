@@ -167,7 +167,6 @@ class MachineVolume(
             policy = {
                 "pool_uuid": str(storage_pool.uuid),
                 "mirrors": storage_pool.driver_spec.mirrors,
-                "chunk_size": storage_pool.driver_spec.chunk_size,
                 "failure_domain": storage_pool.driver_spec.failure_domain,
             }
         for data in (value, target):
