@@ -192,11 +192,10 @@ The guest must expand its partitions and filesystem separately.
 
 ## Rawstor version
 
-The default Debian version is `99.0.0`, with Python binding
-`99.0.0+0.eee4365`, from
-[Actions run 44297955553](https://github.com/rawstor/librawstor/actions/runs/44297955553).
+The default Debian packages and Python binding are version `0.3.0`, from
+[Rawstor v0.3.0](https://github.com/rawstor/librawstor/releases/tag/v0.3.0).
 Core bundles its packages and SHA256 checksums. CLI downloads OST, vhost,
-librawstor and bindings from the same run. Set `RAWSTOR_VERSION` for a release,
+librawstor and bindings from the same release. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
 binding version differs. `nodes init --version VERSION` overrides the
 release used for OST and binding installation. Build core with `LOCAL_GENESIS_SDK_PATH`
@@ -245,8 +244,8 @@ an ordinary `uv sync`. For a source installation on Linux x86-64, install the
 matching native packages and then the bundled binding:
 
 ```bash
-sudo apt-get install ./exordos/images/rawstor/librawstor_99.0.0_amd64.deb \
-  ./exordos/images/rawstor/rawstor-mds_99.0.0_amd64.deb
+sudo apt-get install ./exordos/images/rawstor/librawstor_0.3.0_amd64.deb \
+  ./exordos/images/rawstor/rawstor-mds_0.3.0_amd64.deb
 uv sync
 uv pip install --python .venv/bin/python exordos/images/rawstor/rawstor-*.whl
 ```

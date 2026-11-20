@@ -51,12 +51,12 @@ sudo apt install \
 #sudo apt update
 #sudo apt install postgresql-"$PG_VERSION" -y
 
-# Keep rawstor servers and bindings on the same build. The pinned CI
-# artifacts are bundled so the image remains buildable after CI expiry.
-RAWSTOR_VERSION=${RAWSTOR_VERSION:-99.0.0}
+# Keep Rawstor servers and bindings on the same release.
+# Use the bundled, checksummed packages for the pinned version.
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.0}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 RAWSTOR_ART_DIR="$GC_PATH/exordos/images/rawstor"
-if [[ "$RAWSTOR_VERSION" != "99.0.0" ]]; then
+if [[ "$RAWSTOR_VERSION" != "0.3.0" ]]; then
     RAWSTOR_ART_DIR=$(mktemp -d)
     for package in librawstor rawstor-mds; do
         curl -fsSLo "$RAWSTOR_ART_DIR/${package}_${RAWSTOR_VERSION}_amd64.deb" \
