@@ -14,8 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import pathlib
 from unittest import mock
 import uuid as sys_uuid
+
+import jinja2
+import yaml
 
 import pytest
 
@@ -23,6 +27,31 @@ from exordos_core.common import constants as c
 from exordos_core.repo.agents.universal.drivers import repo_element as driver
 from exordos_core.repo.builders import element as re_builder
 from exordos_core.repo.dm import models as repo_models
+
+
+def test_core_https_description_fits_repository_catalog():
+    project_id = sys_uuid.uuid4()
+    source = (
+        pathlib.Path(__file__).resolve().parents[4]
+        / "exordos/manifests/core_api_https.yaml.j2"
+    )
+    manifest = yaml.safe_load(
+        jinja2.Template(source.read_text()).render(version="0.5.0")
+    )
+    repository = repo_models.Repository(
+        name="Manifest upload",
+        project_id=project_id,
+        driver_spec=repo_models.DatabaseDriverSpec(),
+    )
+    element = repo_models.RepoElement(
+        name=manifest["name"],
+        version=manifest["version"],
+        project_id=project_id,
+        repository=repository,
+        description=manifest["description"],
+        manifest=manifest,
+    )
+    assert element.description == manifest["description"]
 
 
 class TestMakeInstalledManifest:

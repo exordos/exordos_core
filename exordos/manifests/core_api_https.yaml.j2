@@ -3,12 +3,9 @@
 
 name: "core_api_https"
 description: >-
-  Serves the Core API over HTTPS. Set core_api_tls_crt to the PEM certificate
-  and core_api_tls_key to its matching PEM private key. The default
-  core_api_domain uses Core's internal DNS name. Set core_api_domain for a
-  different hostname covered by the certificate. For a CA-issued certificate,
-  set core_api_trust_pem to the issuing CA bundle. For a self-signed
-  certificate, the default trust bundle is the certificate itself.
+  HTTPS for /api/core/. Set core_api_tls_crt and core_api_tls_key to matching PEM.
+  Set core_api_domain to a name in the cert (default is internal).
+  Add a core_api_trust_pem value for the issuing CA. It defaults to the certificate.
 schema_version: 1
 version: "{{ version }}"
 api_version: "v1"
