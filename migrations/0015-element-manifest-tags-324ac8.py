@@ -19,7 +19,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0013-realm-scoped-dns-5bd99b.py"]
+        self._depends = ["0014-manifest-description-4e83cda1.py"]
 
     @property
     def migration_id(self):
