@@ -29,6 +29,10 @@ def test_upgrade_from_master_preserves_flat_entities(user_api, node_type, source
     driver = {"driver": "flat_bridge", "path": "/tmp/sdn-migration-flat"}
     with engines.engine_factory.get_engine().session_manager() as session:
         step.downgrade(session)
+        session.execute(
+            "SELECT target_power_state, power_state "
+            "FROM compute_nodes_without_ports WHERE FALSE"
+        )
         assert not session.execute(
             "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' "
             "AND table_name = 'compute_ports' AND column_name = 'owner_node'"

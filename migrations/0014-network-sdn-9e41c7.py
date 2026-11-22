@@ -104,7 +104,9 @@ CREATE VIEW public.compute_nodes_without_ports AS
     nodes.node_set,
     nodes.placement_policies,
     nodes.disk_spec,
-    nodes.hostname
+    nodes.hostname,
+    nodes.target_power_state,
+    nodes.power_state
    FROM (public.nodes
      LEFT JOIN public.compute_ports ports ON ((nodes.uuid = ports.node)))
   WHERE (ports.uuid IS NULL)"""

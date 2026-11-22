@@ -1327,7 +1327,10 @@ class TestOvsEvpnE2E(_EvpnStand):
             mock.patch.object(dp_base, "PUBLISHED_FILE", "/tmp/e2e_published.json"),
             # The port starts the responder it needs, so it owns this too.
             mock.patch.object(dp_base, "NF_UNIT_PATH", "/tmp/e2e_nf.service"),
-            mock.patch.object(dp_sh, "run", return_value="1042\n"),
+            mock.patch.object(
+                dp_sh, "run",
+                side_effect=lambda cmd: "[]" if cmd[:2] == ["ip", "-json"] else "1042\n",
+            ),
         ):
             dp_port.dump_to_dp()
             with open("/tmp/e2e_vmconf/%s.json" % dp_port.uuid) as fl:

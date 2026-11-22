@@ -45,6 +45,7 @@ def test_machine_target_does_not_contain_port_metadata():
         image=None,
         machine_type="VM",
         boot="hd0",
+        target_power_state="ON",
     )
     machine.name = "guest"
     machine.node.uuid, machine.pool.uuid = uuid.uuid4(), uuid.uuid4()

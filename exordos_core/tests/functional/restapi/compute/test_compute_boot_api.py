@@ -140,6 +140,8 @@ def boot_api(user_api, tmp_path) -> tp.Callable[..., str]:
         )
         processes.append((process, log))
         _wait_until_serving(port, process, log)
+        if options.get("proxy-bind-host"):
+            _wait_until_serving(int(options["proxy-bind-port"]), process, log)
         return "http://127.0.0.1:%s/v1/" % port
 
     yield start

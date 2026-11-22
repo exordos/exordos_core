@@ -18,6 +18,10 @@ def test_sdn_migrations_follow_master():
         "0007-repo-manual-refresh-a2b9da.py",
         "0008-backfill-volume-storage-pool-4a14df.py",
         "0009-add-managed-token-metadata-8c42f019.py",
+        "0010-node-power-state-8c74f270.py",
+        "0011-backfill-pool-machine-power-state-f1ad94.py",
+        "0012-iam-pkce-3e8a1472.py",
+        "0013-realm-scoped-dns-5bd99b.py",
         "0014-network-sdn-9e41c7.py",
     ]
     assert engine.get_latest_migration() == chain[-1]

@@ -22,12 +22,6 @@ from exordos_core.compute.dm import models as compute_models
 
 
 class Node(compute_models.Node):
-    def get_resource_target_fields(self) -> tp.Collection[str]:
-        fields = super().get_resource_target_fields()
-        if self.default_network is not None:
-            fields = fields | frozenset(("default_network",))
-        return fields
-
     @classmethod
     def get_resource_kind(cls) -> str:
         """Return the resource kind."""
@@ -39,7 +33,10 @@ class Node(compute_models.Node):
         The power state is managed per node by the power actions, so the
         set must not override it.
         """
-        return super().get_resource_target_fields() - {"target_power_state"}
+        fields = super().get_resource_target_fields() - {"target_power_state"}
+        if self.default_network is not None:
+            fields = fields | {"default_network"}
+        return fields
 
 
 class Volume(compute_models.Volume):
