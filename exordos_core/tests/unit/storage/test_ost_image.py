@@ -137,7 +137,7 @@ def test_build_configuration_contains_ost_provisioner_and_manifest_reference():
     )
     manifest = yaml.safe_load(
         template.render(
-            version="0.3.1",
+            version="0.3.2",
             images={
                 "exordos_core_raw_zst": "urn:images:core",
                 "rawstor_ost_raw_zst": "urn:images:ost",
