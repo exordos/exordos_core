@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from collections.abc import Mapping
 import random
 import typing as tp
 import uuid as sys_uuid
@@ -192,13 +193,9 @@ def validate_disk_policy_update(old_spec, new_spec):
         return value.get("disks", [])
 
     for disk in disks(new_spec):
-        if (
-            not isinstance(disk, dict)
-            or isinstance(disk.get("size"), bool)
-            or not isinstance(disk.get("size"), int)
-            or disk["size"] <= 0
-        ):
-            raise ra_e.ValidationErrorException()
+        if not isinstance(disk, Mapping):
+            raise InvalidDiskSizeError()
+        validate_volume_growth(0, disk.get("size"))
     for old, new in zip(disks(old_spec), disks(new_spec)):
         validate_volume_growth(old["size"], new["size"])
         if any(
