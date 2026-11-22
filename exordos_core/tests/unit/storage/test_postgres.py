@@ -752,7 +752,7 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
         cluster.insert()
         with models.StorageCluster._get_engine().session_manager() as session:
             with pytest.raises(ValueError, match="Delete managed OST clusters"):
-                migration("0014-rawstor-storage-0b42fe.py").migration_step.downgrade(
+                migration("0015-rawstor-storage-0b42fe.py").migration_step.downgrade(
                     session
                 )
         managed.reconcile(cluster)
