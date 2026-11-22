@@ -20,7 +20,7 @@ set -euo pipefail
 
 CORE_PATH=/opt/exordos_core
 AGENT_PYTHON=/opt/universal_agent/.venv/bin/python
-RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.0}
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.2}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 PACKAGES=$(mktemp -d)
 export DEBIAN_FRONTEND=noninteractive
