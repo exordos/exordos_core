@@ -21,9 +21,9 @@ def download(tmp_path):
     assets = tmp_path / "assets"
     assets.mkdir()
     names = [
-        "librawstor_0.3.1_amd64.deb",
-        "rawstor-mds_0.3.1_amd64.deb",
-        "rawstor-0.3.1-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl",
+        "librawstor_0.3.2_amd64.deb",
+        "rawstor-mds_0.3.2_amd64.deb",
+        "rawstor-0.3.2-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl",
     ]
     for name in names:
         (assets / name).write_bytes(("verified " + name).encode())
@@ -52,8 +52,8 @@ exit 1
     def run(**overrides):
         env = {
             **os.environ,
-            "RAWSTOR_VERSION": "0.3.1",
-            "RAWSTOR_WHEEL_VERSION": "0.3.1",
+            "RAWSTOR_VERSION": "0.3.2",
+            "RAWSTOR_WHEEL_VERSION": "0.3.2",
             "TEST_ASSETS": str(assets),
             "PATH": str(binary) + ":" + os.environ["PATH"],
             **overrides,
@@ -83,7 +83,7 @@ def test_pinned_assets_are_verified(download):
 
 def test_corrupt_native_package_is_rejected_even_with_wheel_override(download):
     run, assets = download
-    (assets / "librawstor_0.3.1_amd64.deb").write_bytes(b"corrupted")
+    (assets / "librawstor_0.3.2_amd64.deb").write_bytes(b"corrupted")
     result = run(RAWSTOR_WHEEL_VERSION="different")
     assert result.returncode != 0
     assert "FAILED" in result.stdout
