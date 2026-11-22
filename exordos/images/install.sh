@@ -59,7 +59,7 @@ sudo apt install \
 #sudo apt install postgresql-"$PG_VERSION" -y
 
 # Download matching native packages and bindings from the GitHub release.
-RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.0}
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.1}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 RAWSTOR_ART_DIR=$(mktemp -d)
 RAWSTOR_VERSION="$RAWSTOR_VERSION" RAWSTOR_WHEEL_VERSION="$RAWSTOR_WHEEL_VERSION" \
