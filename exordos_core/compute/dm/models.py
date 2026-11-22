@@ -191,6 +191,14 @@ def validate_disk_policy_update(old_spec, new_spec):
             return [value]
         return value.get("disks", [])
 
+    for disk in disks(new_spec):
+        if (
+            not isinstance(disk, dict)
+            or isinstance(disk.get("size"), bool)
+            or not isinstance(disk.get("size"), int)
+            or disk["size"] <= 0
+        ):
+            raise ra_e.ValidationErrorException()
     for old, new in zip(disks(old_spec), disks(new_spec)):
         validate_volume_growth(old["size"], new["size"])
         if any(

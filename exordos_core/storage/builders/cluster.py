@@ -76,8 +76,19 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
                 getattr(current_instance, field) == getattr(actual_instance, field)
                 for field in current_instance.get_resource_target_fields()
             )
+            topology_only = (
+                current_instance.status == "ACTIVE"
+                and actual_instance.status == "ACTIVE"
+                and current_instance.agent == actual_instance.agent
+                and current_instance.cluster == actual_instance.cluster
+                and all(
+                    getattr(current_instance.driver_spec, field)
+                    == getattr(actual_instance.driver_spec, field)
+                    for field in ("endpoint", "bind_address", "location")
+                )
+            )
             current_instance.status = (
-                actual_instance.status if matches else "IN_PROGRESS"
+                actual_instance.status if matches or topology_only else "IN_PROGRESS"
             )
             current_instance.update()
             cluster = storage_models.StorageCluster.objects.get_one(

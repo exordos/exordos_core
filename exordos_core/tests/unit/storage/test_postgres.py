@@ -718,3 +718,23 @@ def test_ready_ost_membership_survives_a_capacity_report(database):
         actual.update()
         service._actualize_outdated_instance(current, target, actual)
         assert current.status == "ACTIVE"
+
+
+def test_cluster_error_status_roundtrips(database):
+    with contexts.Context().session_manager():
+        cluster = models.StorageCluster(
+            name="failed",
+            driver_spec=sdk_pool.RawstorStorageClusterDriverSpec(
+                endpoint="mds://core:7776/"
+            ),
+        )
+        cluster.insert()
+        cluster.status = "ERROR"
+        cluster.update()
+    with contexts.Context().session_manager():
+        assert (
+            models.StorageCluster.objects.get_one(
+                filters={"uuid": dm_filters.EQ(cluster.uuid)}
+            ).status
+            == "ERROR"
+        )

@@ -73,3 +73,15 @@ def test_em_rejects_policy_change_before_saving_target(prefix, model):
                 manifest.apply_resources(resource.element)
             save.assert_not_called()
             assert resource.value["disk_spec"]["size"] == 12
+
+
+@pytest.mark.parametrize("size", [None, 0, -1, True, "10"])
+def test_missing_or_invalid_updated_disk_size_is_a_validation_error(size):
+    from restalchemy.common import exceptions
+
+    old = {"kind": "root_disk", "size": 10}
+    new = {"kind": "root_disk"}
+    if size is not None:
+        new["size"] = size
+    with pytest.raises(exceptions.ValidationErrorException):
+        compute.validate_disk_policy_update(old, new)

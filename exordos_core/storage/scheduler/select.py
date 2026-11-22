@@ -44,13 +44,14 @@ def _active_clusters() -> tp.List[storage_models.StorageCluster]:
 
 
 def capacity_is_fresh(cluster):
-    return time.time() - cluster.capacity_info.get("reported_at", 0) <= 60
+    return 0 <= time.time() - cluster.capacity_info.get("reported_at", 0) <= 60
 
 
 def collect_storage_pool_candidates(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     staged=None,
     exclude_volume=None,
+    admission_size=0,
     assigned_name=None,
     allow_remote=True,
     require_fresh=True,
@@ -119,9 +120,13 @@ def collect_storage_pool_candidates(
                 promised[key] = max(promised.get(key, 0), size)
             observed = info.get("objects", {})
             pending = [
-                max(0, size - observed.get(uuid, 0))
+                max(
+                    0,
+                    size
+                    - observed.get(uuid, 0)
+                    - (admission_size if uuid == str(exclude_volume) else 0),
+                )
                 for uuid, size in promised.items()
-                if uuid != str(exclude_volume)
             ]
             for pool in cluster.storage_pools:
                 policy = {
@@ -159,12 +164,18 @@ def select_storage_pool_with_clusters(
         local_pools,
         staged,
         exclude_volume=exclude_volume,
+        admission_size=size << 30,
         assigned_name=assigned_name,
         allow_remote=allow_remote,
         require_fresh=size > 0,
     )
 
     if assigned_name is not None:
+        local = [(p, c) for p, c in candidates if c is None and p.name == assigned_name]
+        if local:
+            return (
+                local[0] if len(local) == 1 and local[0][0].has_capacity(size) else None
+            )
         assigned = [
             (p, c)
             for p, c in candidates
@@ -180,7 +191,8 @@ def select_storage_pool_with_clusters(
     eligible = [
         (pool, owner)
         for pool, owner in candidates
-        if pool.ephemeral == ephemeral
+        if (owner is None or str(pool.uuid) not in local_names)
+        and pool.ephemeral == ephemeral
         and pool.has_capacity(size)
         and (owner is not None or local_names.count(pool.name) == 1)
     ]
@@ -197,18 +209,31 @@ def find_storage_pool_by_name_with_clusters(
     Raises `ValueError` if the name is ambiguous - accounting capacity
     against the wrong physical pool would be worse than failing loudly.
     """
-    matches = [
-        (pool, owner)
-        for pool, owner in collect_storage_pool_candidates(
-            local_pools, assigned_name=name, require_fresh=False
-        )
-        if (str(pool.uuid) if owner else pool.name) == name
-    ]
-
-    if not matches:
-        return None
-
-    if len(matches) > 1:
+    local = [(p, None) for p in local_pools if p.name == name]
+    if len(local) > 1:
         raise ValueError(f"Storage pool name {name!r} is not unique")
-
-    return matches[0]
+    if local:
+        return local[0]
+    if not features.rawstor_enabled():
+        return None
+    try:
+        pool_uuid = uuid.UUID(name)
+    except ValueError:
+        return None
+    clusters = list(_active_clusters())
+    matches = [(p, c) for c in clusters for p in c.storage_pools if str(p.uuid) == name]
+    if matches:
+        return matches[0] if len(matches) == 1 else None
+    registrations = storage_models.StoragePool.objects.get_all(
+        filters={"uuid": dm_filters.EQ(pool_uuid)}
+    )
+    if not registrations:
+        return None
+    owners = storage_models.StorageCluster.objects.get_all(
+        filters={"uuid": dm_filters.EQ(registrations[0].cluster)}
+    )
+    if not owners:
+        return None
+    cluster = owners[0]
+    matches = [p for p in cluster.storage_pools if str(p.uuid) == name]
+    return (matches[0], cluster) if len(matches) == 1 else None

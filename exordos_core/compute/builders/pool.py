@@ -572,7 +572,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         """Check if the volume can be created."""
 
         # Check pool has enough space
-        if not self._has_enough_space_in_pool(volume.pool, volume):
+        selected = self._select_storage_pool(volume.pool, volume, volume.size)
+        if selected is None:
             LOG.warning("Pool %s has not enough space", volume.pool)
 
             # Seems the scheduler missed the pool. Try to reschedule
@@ -585,9 +586,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool, cluster = self._select_storage_pool(
-            volume.pool, volume, volume.size
-        )
+        storage_pool, cluster = selected
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
@@ -609,9 +608,10 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         actual_volume = pool_models.MachineVolume.from_ua_resource(resource)
 
         # Check pool has enough space
-        if not self._has_enough_space_in_pool(
-            volume.pool, target_volume, actual_volume
-        ):
+        selected = self._select_storage_pool(
+            volume.pool, target_volume, target_volume.size - actual_volume.size
+        )
+        if selected is None:
             LOG.warning("Pool %s has not enough space", volume.pool)
 
             # FIXME(akremenetsky): It's more safer do nothing and set the
@@ -622,9 +622,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool, cluster = self._select_storage_pool(
-            volume.pool, target_volume, target_volume.size - actual_volume.size
-        )
+        storage_pool, cluster = selected
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?

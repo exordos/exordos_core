@@ -25,8 +25,8 @@ from restalchemy.dm import models as ra_models
 from restalchemy.dm import properties
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
-from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit
 from exordos_core.compute.pool.dm import models as pool_models
 from exordos_core.storage import constants as sc
 
@@ -35,7 +35,7 @@ class StorageCluster(
     ra_models.ModelWithUUID,
     ra_models.ModelWithNameDesc,
     ra_models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit.AuditLogSQLStorableMixin,
     ra_models.SimpleViewMixin,
 ):
     """A storage cluster - a dissagregated storage backend disks can be
@@ -62,7 +62,8 @@ class StorageCluster(
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
     status = properties.property(
         types.Enum(
-            [s.value for s in ua_pool.MachinePoolStatus] + [sc.CLUSTER_DELETING]
+            [s.value for s in ua_pool.MachinePoolStatus]
+            + [sc.CLUSTER_DELETING, "ERROR"]
         ),
         default=ua_pool.MachinePoolStatus.DISABLED.value,
     )
@@ -133,7 +134,7 @@ class StorageNode(
     ra_models.ModelWithUUID,
     ra_models.ModelWithNameDesc,
     ra_models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit.AuditLogSQLStorableMixin,
     ra_models.SimpleViewMixin,
 ):
     """An OST endpoint belonging to exactly one storage cluster."""
@@ -181,7 +182,7 @@ class StoragePool(
     ra_models.ModelWithUUID,
     ra_models.ModelWithNameDesc,
     ra_models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit.AuditLogSQLStorableMixin,
     ra_models.SimpleViewMixin,
 ):
     """A disk creation policy sharing the cluster's physical OST capacity."""

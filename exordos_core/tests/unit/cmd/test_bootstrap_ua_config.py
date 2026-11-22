@@ -14,10 +14,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import pytest
-
 import pathlib
 from unittest import mock
+
+import pytest
 
 from exordos_core.cmd import bootstrap
 
@@ -243,15 +243,7 @@ def test_upgrades_core_agent_config(tmp_path):
     assert (
         "em_core_iam_idp = project_id:12345678-c625-4fee-81d5-f691897b8142" in content
     )
-    for kind, model in (
-        ("clusters", "StorageCluster"),
-        ("nodes", "StorageNode"),
-        ("pools", "StoragePool"),
-    ):
-        assert (
-            f"em_core_storage_{kind} = exordos_core.storage.dm.models:{model}"
-            in content
-        )
+    assert "em_core_storage_" not in content
     assert (
         "[resource_transformer:em_core_secret_secrets]\n"
         "ignore_null_attributes = True\n"
@@ -383,8 +375,31 @@ def test_rawstor_config_can_be_enabled_and_disabled(tmp_path, monkeypatch, enabl
     _run_core_agent(tmp_path)
     assert ("StorageClusterAgentDriver" in ua.read_text()) == enabled
     assert ("storage_cluster" in ua.read_text()) == enabled
-    assert ("em_core_storage_" in core.read_text()) == enabled
+    assert "em_core_storage_" not in core.read_text()
     _, _, ua_restart = _run_ua(tmp_path)
     _, _, core_restart = _run_core_agent(tmp_path)
     ua_restart.assert_not_called()
     core_restart.assert_not_called()
+
+
+@pytest.mark.parametrize("kind", ["ua", "core"])
+def test_failed_restart_is_retried_without_config_change(tmp_path, kind):
+    path = tmp_path / (
+        "exordos_universal_agent.conf" if kind == "ua" else "core_agent.conf"
+    )
+    path.write_text(_OLD_UA_CONFIG if kind == "ua" else _OLD_CORE_AGENT_CONFIG)
+    run_config = _run_ua if kind == "ua" else _run_core_agent
+    # The helper catches the restart failure but leaves a durable retry marker.
+    with mock.patch.object(
+        bootstrap.subprocess, "run", side_effect=OSError("restart failed")
+    ):
+        marker = str(path) + ".restart-pending"
+        bootstrap._restart_config_services(str(path), ["test-agent"])
+    assert pathlib.Path(marker).exists()
+    run_config(tmp_path)
+    assert not pathlib.Path(marker).exists()
+    # A failed restart on an otherwise current config must still be retried.
+    pathlib.Path(marker).touch()
+    _, _, restart = run_config(tmp_path)
+    restart.assert_called_once()
+    assert not pathlib.Path(marker).exists()
