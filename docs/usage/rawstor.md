@@ -222,8 +222,8 @@ The guest must expand its partitions and filesystem separately.
 
 ## Rawstor version
 
-The default Debian packages and Python binding are version `0.3.0`, from
-[Rawstor v0.3.0](https://github.com/rawstor/librawstor/releases/tag/v0.3.0).
+The default Debian packages and Python binding are version `0.3.1`, from
+[Rawstor v0.3.1](https://github.com/rawstor/librawstor/releases/tag/v0.3.1).
 Core downloads release packages during image provisioning and checks their
 pinned SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same release. Set `RAWSTOR_VERSION` for a release,
@@ -277,8 +277,8 @@ from GitHub, then install them:
 ```bash
 rawstor_packages=$(mktemp -d)
 bash exordos/images/download_rawstor.sh "$rawstor_packages" librawstor rawstor-mds
-sudo apt-get install "$rawstor_packages/librawstor_0.3.0_amd64.deb" \
-  "$rawstor_packages/rawstor-mds_0.3.0_amd64.deb"
+sudo apt-get install "$rawstor_packages/librawstor_0.3.1_amd64.deb" \
+  "$rawstor_packages/rawstor-mds_0.3.1_amd64.deb"
 uv sync
 uv pip install --python .venv/bin/python "$rawstor_packages"/rawstor-*.whl
 ```
