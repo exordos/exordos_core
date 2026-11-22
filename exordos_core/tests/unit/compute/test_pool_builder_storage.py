@@ -165,3 +165,24 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(
             )
         # New placements must still account for this volume's reservation.
         assert select.select_storage_pool_with_clusters([], "COLD", False, 5) is None
+
+
+@pytest.mark.parametrize("resizing", [False, True])
+def test_admission_uses_one_capacity_snapshot(resizing):
+    service = builder.PoolBuilderService(uuid.uuid4(), Mock())
+    pool = ua_pool.ThinStoragePool(pool_type="dir", name="local", capacity_usable=10)
+    volume = SimpleNamespace(pool=Mock(), size=2, storage_pool="local")
+    with patch.object(
+        service, "_select_storage_pool", side_effect=[(pool, None), None]
+    ) as select:
+        if resizing:
+            with patch.object(
+                models.MachineVolume,
+                "from_ua_resource",
+                return_value=SimpleNamespace(size=1),
+            ):
+                assert service._can_update_volume(volume, Mock())
+        else:
+            assert service._can_create_volume(volume)
+    select.assert_called_once()
+    assert pool.capacity_provisioned == (1 if resizing else 2)

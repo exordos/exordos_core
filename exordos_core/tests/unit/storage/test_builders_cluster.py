@@ -237,3 +237,39 @@ def test_ost_deletion_requires_successful_mds_report(status, allowed):
         ),
     ):
         assert service.can_delete_instance_resource(resource) is allowed
+
+
+def test_topology_only_update_keeps_active_ost_admitted():
+    identifier, cluster, agent = sys_uuid.uuid4(), sys_uuid.uuid4(), sys_uuid.uuid4()
+
+    def node(weight):
+        return models.Node(
+            uuid=identifier,
+            name="ost",
+            cluster=cluster,
+            agent=agent,
+            status="ACTIVE",
+            driver_spec=ua_pool.rawstor_specs.RawstorNodeDriverSpec(
+                endpoint="ost://host:7777",
+                bind_address="host:7777",
+                location="file:///data/ost",
+                weight=weight,
+                failure_domain_path="rack/host",
+            ),
+        )
+
+    current, actual = node(200), node(100)
+    service = cluster_builder.StorageClusterBuilderService.__new__(
+        cluster_builder.StorageClusterBuilderService
+    )
+    with (
+        patch.object(current, "update"),
+        patch.object(
+            models.StorageCluster,
+            "objects",
+            MagicMock(get_one=MagicMock(return_value=MagicMock())),
+        ),
+        patch.object(cluster_builder.state, "sync_cluster"),
+    ):
+        service.actualize_outdated_instance(current, actual)
+    assert current.status == "ACTIVE"

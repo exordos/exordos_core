@@ -24,11 +24,13 @@ the Core configuration change in `/var/lib/exordos/data/etc/exordos_core/exordos
 as well so it survives reboot.
 
 With the flag disabled, storage API routes and their OpenAPI descriptions are
-hidden, storage builders and schedulers do not start, storage EM models and the
-MDS agent capability are not registered, and Rawstor pools are excluded from
+hidden, storage builders and schedulers do not start, the MDS agent capability is not registered, and Rawstor pools are excluded from
 compute scheduling. Local qcow2 pools remain available. Disabling the flag does
 not delete existing storage or stop already running VMs; it suspends management
 of that storage. Drain Rawstor workloads before disabling it on an existing stand.
+
+Storage resources are managed through the storage API. Direct storage EM kinds
+are not published until that path enforces the same lifecycle and deletion guards.
 
 ## Create a cluster
 
@@ -270,21 +272,24 @@ Symlink components and system directories are rejected before ownership changes.
 
 ## Run Core from a source checkout
 
-Rawstor's Python binding is not installed by an ordinary `uv sync`. For a source
-installation on Linux x86-64, download the matching native packages and binding
-from GitHub, then install them:
+For a source installation on Linux x86-64, install the matching native packages
+and enable the pinned `rawstor` Python extra:
 
 ```bash
 rawstor_packages=$(mktemp -d)
 bash exordos/images/download_rawstor.sh "$rawstor_packages" librawstor rawstor-mds
 sudo apt-get install "$rawstor_packages/librawstor_0.3.1_amd64.deb" \
   "$rawstor_packages/rawstor-mds_0.3.1_amd64.deb"
-uv sync
-uv pip install --python .venv/bin/python "$rawstor_packages"/rawstor-*.whl
+uv sync --extra rawstor
 ```
 
-Use `uv sync --inexact` for later synchronizations to retain the separately
-installed binding; otherwise install the wheel again after synchronization.
+Use `uv sync --extra rawstor` for subsequent synchronizations as well. The
+optional binding is pinned to its GitHub release; native libraries still need
+to be installed through the OS package manager. Rawstor images currently require
+amd64; Core images with the integration disabled also support arm64.
+
+Every downloaded asset must have a committed digest in `SHA256SUMS`. Version
+overrides without a trusted digest are rejected before installation.
 The core image's installation script performs the binding installation itself.
 
 ## Project accounts and upgrade compatibility

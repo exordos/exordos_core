@@ -28,6 +28,18 @@ from exordos_core.storage.dm import models
 from exordos_core.user_api.storage.api import controllers
 
 
+@pytest.fixture(autouse=True)
+def empty_host_inventory(monkeypatch):
+    monkeypatch.setattr(
+        controllers.ua_models.UniversalAgent,
+        "objects",
+        MagicMock(get_all=MagicMock(return_value=[])),
+    )
+    monkeypatch.setattr(
+        models.StorageNode, "objects", MagicMock(get_all=MagicMock(return_value=[]))
+    )
+
+
 def _spec(port=7776, core="core"):
     return {
         "kind": "rawstor",
@@ -308,3 +320,159 @@ def test_invalid_cluster_kind_is_validation_error(kind, has_cluster):
         spec["kind"] = kind
     with pytest.raises(controllers.InvalidRawstorEndpoint):
         _validate(spec, [_cluster(_spec())] if has_cluster else [])
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "mds://0.0.0.0:7776",
+        "mds://[::]:7776",
+        "ost://0.0.0.0:7777",
+        "ost://[2001:db8::1]:7777",
+    ],
+)
+def test_advertised_endpoint_rejects_wildcards_and_unsupported_ipv6(endpoint):
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        controllers._validate_endpoint(endpoint, urlparse(endpoint).scheme)
+
+
+def test_endpoint_dns_identity_is_canonical():
+    first = "ost://OST.EXAMPLE.:7777"
+    second = "ost://ost.example:7777"
+    assert controllers._endpoint_identity(first) == controllers._endpoint_identity(
+        second
+    )
+    assert controllers._canonical_endpoint(urlparse(first)) == second
+
+
+@pytest.mark.parametrize("value", [None, [], "rawstor", 42, True])
+def test_driver_spec_outer_type_is_validated(value):
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        _validate(value, [])
+
+
+@pytest.mark.parametrize("data", [{}, {"cluster": None}, {"cluster": "invalid"}])
+def test_missing_or_invalid_cluster_is_validated(data):
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        controllers._cluster_uuid(data)
+
+
+def test_missing_node_endpoint_is_validated_before_model_access():
+    api = controllers.StorageNodesController.__new__(controllers.StorageNodesController)
+    with pytest.raises(controllers.InvalidRawstorEndpoint):
+        api.create(cluster=sys_uuid.uuid4(), driver_spec={"kind": "rawstor"})
+
+
+def test_cluster_uuid_remains_reserved_when_port_changes():
+    identifier = sys_uuid.uuid4()
+    api = controllers.StorageClustersController.__new__(
+        controllers.StorageClustersController
+    )
+    resource = SimpleNamespace(uuid=identifier, value={"driver_spec": _spec()})
+    with (
+        patch.object(
+            models.StorageCluster,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        patch.object(
+            controllers.ua_models.TargetResource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[resource])),
+        ),
+        patch.object(
+            controllers.ua_models.Resource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        pytest.raises(storage_exc.ConflictRecords, match="UUID"),
+    ):
+        api._validate_driver_spec_uniqueness(
+            {"uuid": identifier, "driver_spec": _spec(7778)}
+        )
+
+
+def test_core_hosted_mds_and_ost_reserve_each_others_ports(monkeypatch):
+    host = sys_uuid.uuid4()
+    agent = SimpleNamespace(
+        uuid=sys_uuid.uuid4(),
+        node=host,
+        list_capabilities=["storage_cluster", "storage_node"],
+    )
+    monkeypatch.setattr(
+        controllers.ua_models.UniversalAgent,
+        "objects",
+        MagicMock(get_all=MagicMock(return_value=[agent])),
+    )
+    monkeypatch.setattr(
+        models.StorageCluster,
+        "objects",
+        MagicMock(get_all=MagicMock(return_value=[_cluster(_spec())])),
+    )
+    for model in (controllers.ua_models.TargetResource, controllers.ua_models.Resource):
+        monkeypatch.setattr(
+            model, "objects", MagicMock(get_all=MagicMock(return_value=[]))
+        )
+    with pytest.raises(storage_exc.ConflictRecords, match="MDS"):
+        controllers._check_core_ost_port(agent, "0.0.0.0:7776")
+    node = models.StorageNode(
+        name="ost",
+        cluster=sys_uuid.uuid4(),
+        agent=agent.uuid,
+        driver_spec=pool.rawstor_specs.RawstorNodeDriverSpec(
+            endpoint="ost://core:7777",
+            bind_address="0.0.0.0:7777",
+            failure_domain_path="host",
+        ),
+    )
+    monkeypatch.setattr(
+        models.StorageNode, "objects", MagicMock(get_all=MagicMock(return_value=[node]))
+    )
+    with pytest.raises(storage_exc.ConflictRecords, match="OST"):
+        controllers._check_core_mds_port(7777)
+
+
+def test_missing_previous_agent_does_not_release_backing_resources(monkeypatch):
+    host, identifier = sys_uuid.uuid4(), sys_uuid.uuid4()
+    agent = SimpleNamespace(
+        uuid=identifier, node=host, list_capabilities=["storage_node"]
+    )
+    previous = models.StorageNode(
+        name="old",
+        cluster=sys_uuid.uuid4(),
+        agent=sys_uuid.uuid4(),
+        driver_spec=pool.rawstor_specs.RawstorNodeDriverSpec(
+            endpoint="ost://old:7777",
+            location="file:///data/old",
+            bind_address="0.0.0.0:7777",
+            failure_domain_path="host",
+        ),
+    )
+    monkeypatch.setattr(
+        controllers.ua_models.UniversalAgent,
+        "objects",
+        MagicMock(
+            get_one=MagicMock(return_value=agent), get_all=MagicMock(return_value=[])
+        ),
+    )
+    monkeypatch.setattr(
+        models.StorageNode,
+        "objects",
+        MagicMock(get_all=MagicMock(return_value=[previous])),
+    )
+    api = controllers.StorageNodesController.__new__(controllers.StorageNodesController)
+    with pytest.raises(storage_exc.ConflictRecords, match="unresolved agent"):
+        api.validate_member(
+            {
+                "name": "replacement",
+                "agent": identifier,
+                "driver_spec": {
+                    "kind": "rawstor",
+                    "endpoint": "ost://new:7777",
+                    "location": "file:///data/new",
+                    "bind_address": "0.0.0.0:7777",
+                    "failure_domain_path": "host",
+                },
+            },
+            SimpleNamespace(uuid=sys_uuid.uuid4()),
+        )

@@ -28,7 +28,6 @@ from exordos_core.compute.scheduler.driver import base
 from exordos_core.storage.dm import models as storage_models
 from exordos_core.storage.scheduler import select as storage_select
 
-
 pytestmark = pytest.mark.usefixtures("enable_rawstor")
 
 
@@ -378,7 +377,40 @@ def test_idle_machine_selection_skips_pool_without_requested_disk_policy(
     assert scheduler._schedule_on_existing_machines([unsuitable, suitable]) == []
     machines[0].machine.save.assert_not_called()
     machines[1].machine.save.assert_called_once()
-    assert suitable.pool.storage_pools[0].capacity_provisioned == 0
+    assert suitable.pool.storage_pools[0].capacity_provisioned == 10
+
+
+def test_idle_machine_is_not_assigned_when_reservation_fails(scheduler, monkeypatch):
+    from types import SimpleNamespace
+    from unittest import mock
+
+    pool = _machine_pool_bundle([_storage_pool("local", "WARM", True, 10)], [])
+    machine = base.MachineBundle(
+        SimpleNamespace(
+            uuid=sys_uuid.uuid4(),
+            pool=pool.pool.uuid,
+            machine_type="VM",
+            save=mock.Mock(),
+        ),
+        [],
+    )
+    node = base.NodeBundle(
+        SimpleNamespace(
+            uuid=sys_uuid.uuid4(),
+            node_type=ua_pool.NodeType.VM,
+            target_power_state=ua_pool.PowerState.ON.value,
+            save=mock.Mock(),
+        ),
+        [],
+    )
+    monkeypatch.setattr(scheduler, "_get_unscheduled_nodes", lambda: [node])
+    monkeypatch.setattr(scheduler, "_get_idle_machines", lambda: [machine])
+    check = mock.Mock(side_effect=[True, False])
+    monkeypatch.setattr(scheduler, "_machine_has_disk_capacity", check)
+    assert scheduler._schedule_on_existing_machines([pool]) == []
+    node.node.save.assert_not_called()
+    machine.machine.save.assert_not_called()
+    assert check.call_args.kwargs["reserve"] is True
 
 
 def test_idle_machine_preflight_checks_total_disk_capacity_without_allocating(
@@ -712,3 +744,82 @@ def test_orphaned_volume_keeps_capacity_reserved(monkeypatch, resource_model):
         storage_select.select_storage_pool_with_clusters([], "COLD", False, 3)
         is not None
     )
+
+
+def test_future_capacity_report_is_not_fresh(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(storage_select.time, "time", lambda: 1000)
+    assert not storage_select.capacity_is_fresh(
+        SimpleNamespace(capacity_info={"reported_at": 1001})
+    )
+
+
+def test_local_pool_lookup_does_not_scan_remote_ledger(monkeypatch):
+    local = _storage_pool("local", "WARM", True, 10)
+    query = MagicMock(
+        side_effect=AssertionError("must not query clusters for a local name")
+    )
+    monkeypatch.setattr(storage_select, "_active_clusters", query)
+    assert storage_select.find_storage_pool_by_name_with_clusters([local], "local") == (
+        local,
+        None,
+    )
+    query.assert_not_called()
+
+
+def test_resize_retains_unobserved_old_bytes(monkeypatch):
+    from types import SimpleNamespace
+
+    cluster = _storage_cluster("shared", "COLD", False, capacity_usable=10)
+    selected = cluster.storage_pools[0]
+    identifier = sys_uuid.uuid4()
+    monkeypatch.setattr(storage_select, "_active_clusters", lambda: [cluster])
+    monkeypatch.setattr(
+        models.MachineVolume,
+        "objects",
+        MagicMock(
+            get_all=MagicMock(
+                return_value=[
+                    SimpleNamespace(uuid=identifier, size=8),
+                    SimpleNamespace(uuid=sys_uuid.uuid4(), size=4),
+                ]
+            )
+        ),
+    )
+    for model in (
+        storage_select.ua_models.TargetResource,
+        storage_select.ua_models.Resource,
+    ):
+        monkeypatch.setattr(
+            model, "objects", MagicMock(get_all=MagicMock(return_value=[]))
+        )
+    assert (
+        storage_select.select_storage_pool_with_clusters(
+            [],
+            "COLD",
+            False,
+            2,
+            assigned_name=str(selected.uuid),
+            exclude_volume=identifier,
+        )
+        is None
+    )
+
+
+def test_idle_reservation_preserves_local_budget(scheduler):
+    from types import SimpleNamespace
+
+    pool = _machine_pool_bundle([_storage_pool("local", "WARM", True, 10)], [])
+    machine = base.MachineBundle(SimpleNamespace(pool=pool.pool.uuid), [])
+    first = _requested_volume(None, 6, "WARM", True)
+    second = _requested_volume(None, 6, "WARM", True)
+    assert scheduler._machine_has_disk_capacity(
+        base.NodeBundle(None, [first]), machine, {pool.pool.uuid: pool}, reserve=True
+    )
+    assert pool.pool.storage_pools[0].capacity_provisioned == 6
+    assert str(first.uuid) in scheduler._idle_volume_allocations
+    assert not scheduler._machine_has_disk_capacity(
+        base.NodeBundle(None, [second]), machine, {pool.pool.uuid: pool}, reserve=True
+    )
+    assert pool.pool.storage_pools[0].capacity_provisioned == 6

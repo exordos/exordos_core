@@ -61,11 +61,17 @@ sudo apt install \
 # Download matching native packages and bindings from the GitHub release.
 RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.1}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
-RAWSTOR_ART_DIR=$(mktemp -d)
-RAWSTOR_VERSION="$RAWSTOR_VERSION" RAWSTOR_WHEEL_VERSION="$RAWSTOR_WHEEL_VERSION" \
-    bash "$GC_PATH/exordos/images/download_rawstor.sh" "$RAWSTOR_ART_DIR" librawstor rawstor-mds
-sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
-    "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
+RAWSTOR_ART_DIR=""
+if [[ "$(dpkg --print-architecture)" == amd64 ]]; then
+    RAWSTOR_ART_DIR=$(mktemp -d)
+    RAWSTOR_VERSION="$RAWSTOR_VERSION" RAWSTOR_WHEEL_VERSION="$RAWSTOR_WHEEL_VERSION" \
+        bash "$GC_PATH/exordos/images/download_rawstor.sh" "$RAWSTOR_ART_DIR" librawstor rawstor-mds
+    sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
+        "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
+elif [[ "${RAWSTOR_ENABLED:-false}" == true ]]; then
+    echo "Rawstor development images currently require amd64" >&2
+    exit 1
+fi
 # The package does not start MDS automatically. The agent configures
 # cluster instances using the packaged rawstor-mds@.service template.
 
@@ -233,7 +239,9 @@ trap - EXIT
 
 cd "$GC_PATH"
 uv sync
-uv pip install "$RAWSTOR_ART_DIR"/*.whl
+if [[ -n "$RAWSTOR_ART_DIR" ]]; then
+    uv pip install "$RAWSTOR_ART_DIR"/*.whl
+fi
 source "$GC_PATH"/.venv/bin/activate
 
 sudo chown -R ubuntu:ubuntu "$GC_PATH"

@@ -82,3 +82,30 @@ def test_missing_uuid_pool_falls_back_to_local_volume(monkeypatch):
         project_id=uuid.uuid4(), name="v", size=10, storage_pool=str(uuid.uuid4())
     )
     assert volume.to_ua_resource().value["storage_location"] is None
+
+
+def test_uuid_named_local_pool_wins_over_remote_registration(monkeypatch):
+    identifier = uuid.uuid4()
+    owner = compute.Pool(
+        driver_spec=sdk_pool.ExordosLocalHyperDriverSpec(
+            connection_uri="test:///default", node=uuid.uuid4()
+        ),
+        storage_pools=[sdk_pool.ThinStoragePool(name=str(identifier), pool_type="dir")],
+    )
+    monkeypatch.setattr(
+        storage.StoragePool,
+        "objects",
+        MagicMock(
+            get_all=MagicMock(
+                side_effect=AssertionError("must not resolve a local pool as remote")
+            )
+        ),
+    )
+    volume = compute.MachineVolume(
+        project_id=uuid.uuid4(),
+        name="local",
+        size=1,
+        pool=owner,
+        storage_pool=str(identifier),
+    )
+    assert volume.to_ua_resource().value["storage_location"] is None
