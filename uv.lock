@@ -810,7 +810,7 @@ requires-dist = [
     { name = "pytest-timer", marker = "extra == 'test'", specifier = ">=1.0.0,<2.0.0" },
     { name = "pytest-xdist", extras = ["psutil"], marker = "extra == 'test'", specifier = ">=3.6.1,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0,<7.0.0" },
-    { name = "rawstor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rawstor'", url = "https://github.com/rawstor/librawstor/releases/download/v0.3.1/rawstor-0.3.1-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" },
+    { name = "rawstor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rawstor'", url = "https://github.com/rawstor/librawstor/releases/download/v0.3.2/rawstor-0.3.2-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" },
     { name = "restalchemy", specifier = ">=16.1.5,<17.0.0" },
     { name = "ruamel-yaml", marker = "extra == 'docs'", specifier = "==0.19.1" },
     { name = "ruamel-yaml", marker = "extra == 'test'", specifier = "==0.19.1" },
@@ -2638,10 +2638,10 @@ wheels = [
 
 [[package]]
 name = "rawstor"
-version = "0.3.1"
-source = { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.1/rawstor-0.3.1-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" }
+version = "0.3.2"
+source = { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.2/rawstor-0.3.2-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.1/rawstor-0.3.1-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:1cbb48d336e13a641b204bd7b8d2cf4f165c6d38ee44d85941da8f22a6660bf7" },
+    { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.2/rawstor-0.3.2-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:baf98e6e076b85c490a2dd39d4e03f4ceffafcaa61a2257fc8df9835837d7add" },
 ]
 
 [[package]]
