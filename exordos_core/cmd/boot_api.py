@@ -74,11 +74,7 @@ api_cli_opts = [
         default="core.local.genesis-core.tech",
         help="GC host",
     ),
-    cfg.StrOpt(
-        "gc_boot_api",
-        default="http://core.local.genesis-core.tech:11013",
-        help="GC boot API",
-    ),
+    config.BOOT_API_ENDPOINT_OPT,
     cfg.StrOpt(
         "kernel",
         default=None,

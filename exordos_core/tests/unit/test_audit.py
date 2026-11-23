@@ -85,6 +85,31 @@ def test_audit_event_shares_resource_transaction(action):
     assert (write.call_args.kwargs["snapshot"] is None) == (action == "delete")
 
 
+def test_node_audit_omits_create_only_fields():
+    from gcl_sdk.infra.dm.models import RootDiskSpec
+
+    from exordos_core.user_api.compute.dm import models
+
+    node = models.Node(
+        project_id=uuid.uuid4(),
+        name="node",
+        cores=1,
+        ram=512,
+        disk_spec=RootDiskSpec(image="ubuntu"),
+        ports=[uuid.uuid4()],
+        bootstrap={
+            "description": "bootstrap",
+            "path": "/etc/provider",
+            "content": "private-sentinel",
+            "command": "true",
+        },
+    )
+    snapshot = node.dump_to_audit_snapshot()
+    assert snapshot["name"] == "node"
+    assert "ports" not in snapshot
+    assert "bootstrap" not in snapshot
+
+
 def test_secret_snapshots_contain_metadata_only():
     secret = secrets.Secret(
         name="test",

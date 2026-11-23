@@ -10,6 +10,7 @@ import uuid
 from bazooka import exceptions
 import pytest
 from restalchemy.dm import filters
+from restalchemy.storage import exceptions as storage_exceptions
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import config
@@ -241,6 +242,32 @@ def test_primary_port_network_override_only_requires_node_creation(
     assert node_ports(client, node)[0]["network"] == private["uuid"]
     with pytest.raises(exceptions.ForbiddenError):
         create(creator, ("network", "ports"), network=private["uuid"])
+
+
+def test_nodeset_requires_security_group_permission_when_activating_hw_template(
+    client, user_api_client, auth_test1_user
+):
+    editor = user_api_client(
+        auth_test1_user,
+        permissions=["compute.node_set.create", "compute.node_set.read", "compute.node_set.update"],
+    )
+    body = {
+        "node_type": "HW",
+        "replicas": 1,
+        "cores": 1,
+        "ram": 1024,
+        "disk_spec": {"kind": "root_disk", "image": "ubuntu_24.04"},
+    }
+    template = {"security_groups": [str(uuid.uuid4())]}
+    with pytest.raises(exceptions.ForbiddenError):
+        create(editor, ("compute", "sets"), default_network=template, **body)
+
+    dormant = create(client, ("compute", "sets"), default_network=template, **body)
+    path = resource(editor, "compute", "sets", dormant["uuid"])
+    assert editor.put(path, json={"name": "still-dormant"}).json()["node_type"] == "HW"
+    with pytest.raises(exceptions.ForbiddenError):
+        editor.put(path, json={"node_type": "VM"})
+    assert client.put(path, json={"node_type": "VM"}).json()["node_type"] == "VM"
 
 
 def test_automatic_fip_still_requires_address_creation(
@@ -1156,6 +1183,30 @@ def test_interfaces_is_rejected_on_create_and_update(client, kind, value):
         )
 
 
+@pytest.mark.parametrize("has_replica", [False, True])
+def test_nodeset_rejects_missing_network_template(client, has_replica):
+    body = create(
+        client,
+        ("compute", "sets"),
+        replicas=1,
+        cores=1,
+        ram=1024,
+        disk_spec={"kind": "root_disk", "image": "ubuntu_24.04"},
+        default_network={},
+    )
+    stored = node_set_models.NodeSet.objects.get_one(
+        filters={"uuid": filters.EQ(body["uuid"])}
+    )
+    if has_replica:
+        replica = stored.gen_nodes(project_id=nc.NODE_SET_PROJECT)[0]
+        replica.insert()
+    stored.default_network = {"network": str(uuid.uuid4())}
+    with pytest.raises(storage_exceptions.RecordNotFound):
+        stored.update()
+    result = client.get(resource(client, "compute", "sets", body["uuid"])).json()
+    assert result["default_network"] == {}
+
+
 def test_nodeset_replica_template_round_trips_without_changing_its_port(
     client, tmp_path
 ):
@@ -1207,7 +1258,15 @@ def test_nodeset_replica_template_round_trips_without_changing_its_port(
     assert saved.properties.get_value("default_network") == template
     assert "default_network" not in saved.to_ua_resource().value
 
-    nodeset.default_network = {"network": str(uuid.uuid4()), "auto_floating_ip": False}
+    alternate = create(
+        client, ("network", "networks"), project_id=body["project_id"],
+        driver_spec={"driver": "ovs_evpn"},
+    )
+    create(
+        client, ("network", "subnets"), project_id=body["project_id"],
+        network=alternate["uuid"], cidr="10.44.0.0/24",
+    )
+    nodeset.default_network = {"network": alternate["uuid"], "auto_floating_ip": False}
     nodeset.update()
     target = nodeset.gen_nodes(
         project_id=nc.NODE_SET_PROJECT, node_uuids=[replica.uuid]
