@@ -101,6 +101,9 @@ def database(empty_database):
             "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
         migration("0015-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
+        migration("0016-managed-ost-compute-68ba8e2d.py").migration_step.upgrade(
+            connection
+        )
     return uri
 
 
@@ -745,6 +748,8 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
             name="managed",
             nodes=2,
             size=30,
+            cpu=4,
+            ram=4096,
             driver_spec=sdk_pool.RawstorStorageClusterDriverSpec(
                 endpoint="mds://core:7776/"
             ),
@@ -758,6 +763,7 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
         managed.reconcile(cluster)
         nodes = compute.Node.objects.get_all()
         assert len(nodes) == 2
+        assert all(node.cores == 4 and node.ram == 4096 for node in nodes)
         assert len(compute.Volume.objects.get_all()) == 4
         assert len(ua_models.NodeEncryptionKey.objects.get_all()) == 2
         assert not models.StorageNode.objects.get_all()
@@ -1024,3 +1030,42 @@ def test_object_jobs_wait_for_hypervisor_detach_acknowledgement(database):
         assert not ua_models.TargetResource.objects.get_all(
             filters={"uuid": disk.uuid, "kind": "storage_volume"}
         )
+
+
+def test_managed_compute_schema_upgrades_existing_clusters(database):
+    identifier = uuid.uuid4()
+    step = migration("0016-managed-ost-compute-68ba8e2d.py").migration_step
+    with psycopg.connect(database) as connection:
+        step.downgrade(connection)
+        connection.execute(
+            "INSERT INTO storage_clusters (uuid,name,description,driver_spec,status) "
+            "VALUES (%s,'existing','',%s::jsonb,'DISABLED')",
+            (
+                identifier,
+                json.dumps({"kind": "rawstor", "endpoint": "mds://core:7776/"}),
+            ),
+        )
+        step.upgrade(connection)
+        assert connection.execute(
+            "SELECT cpu, ram FROM storage_clusters WHERE uuid=%s", (identifier,)
+        ).fetchone() == (2, 2048)
+    with contexts.Context().session_manager():
+        existing = models.StorageCluster.objects.get_one(
+            filters={"uuid": dm_filters.EQ(identifier)}
+        )
+        assert (existing.cpu, existing.ram) == (2, 2048)
+        custom = models.StorageCluster(
+            name="custom",
+            nodes=2,
+            cpu=4,
+            ram=4096,
+            driver_spec=sdk_pool.RawstorStorageClusterDriverSpec(
+                endpoint="mds://core:7777/"
+            ),
+        )
+        custom.insert()
+    with contexts.Context().session_manager():
+        stored = models.StorageCluster.objects.get_one(
+            filters={"uuid": dm_filters.EQ(custom.uuid)}
+        )
+        assert (stored.cpu, stored.ram) == (4, 4096)

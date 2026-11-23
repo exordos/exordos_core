@@ -74,8 +74,8 @@ def reconcile(cluster):
                 project_id=cc.EM_PROJECT_ID,
                 name=f"{prefix}-ost-{index + 1}",
                 hostname=f"rawstor-ost-{node_id.hex[:12]}",
-                cores=2,
-                ram=2048,
+                cores=cluster.cpu,
+                ram=cluster.ram,
                 disk_spec=disk_spec(variable.value, cluster.size),
             )
             node.insert()

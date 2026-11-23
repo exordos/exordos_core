@@ -38,6 +38,15 @@ are not published until that path enforces the same lifecycle and deletion guard
 exordos storages clusters add --type rawstor --name storage1 --host 10.100.0.2
 ```
 
+To provision OST VMs automatically, pass `--nodes`; `--cpu` and `--ram` set
+vCPUs and RAM in MiB per OST VM (defaults: 2 vCPUs and 2048 MiB):
+
+```bash
+exordos storages clusters add --type rawstor --name storage1 --nodes 2 --cpu 2 --ram 4096
+```
+
+These settings apply when creating the cluster; existing OST VMs are not resized.
+
 The core agent starts a separate `rawstor-mds@UUID.service` with its own
 persistent SQLite index and topology. The agent uses the package's template
 and writes `/etc/rawstor/mds/UUID.conf` and `UUID.topology`; new databases live
