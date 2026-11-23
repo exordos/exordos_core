@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 import bazooka
 from requests import auth as requests_auth
+from restalchemy.common import utils as ra_utils
 import yaml
 
 import exordos_core.repo.dm.models as repo_models
@@ -29,9 +30,11 @@ _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
 class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
+    KIND = "nginx"
+
     def __init__(self, repository: repo_models.Repository) -> None:
         super().__init__(repository)
-        if repository.driver_spec.KIND != "nginx":
+        if repository.driver_spec.KIND != self.KIND:
             raise ValueError(
                 f"Unsupported driver spec kind: {repository.driver_spec.KIND!r}"
             )
@@ -39,11 +42,15 @@ class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
         spec = repository.driver_spec
         self._validate_url(spec.url)
 
-        auth = None
-        if spec.username is not None:
-            auth = requests_auth.HTTPBasicAuth(spec.username, spec.password)
+        auth = self._get_auth(spec)
         self._client = bazooka.Client(default_timeout=30, auth=auth)
         self._spec = spec
+
+    @staticmethod
+    def _get_auth(spec):
+        if spec.username is not None:
+            return requests_auth.HTTPBasicAuth(spec.username, spec.password)
+        return None
 
     @staticmethod
     def _validate_url(url: str) -> None:
@@ -63,7 +70,7 @@ class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
     @property
     def repo_uri(self) -> str:
         """Return the URI of the repository."""
-        return self._spec.url
+        return ra_utils.lastslash(self._spec.url)
 
     def artifact_uri(
         self, element_name: str, element_version: str, category: str, artifact_name: str
@@ -73,7 +80,7 @@ class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
         Builds the full URL using the category and artifact name:
         ``{url}/{name}/{version}/{category}/{artifact_name}``.
         """
-        element_base_url = urljoin(self._spec.url, f"{element_name}/{element_version}/")
+        element_base_url = urljoin(self.repo_uri, f"{element_name}/{element_version}/")
         return urljoin(element_base_url, f"{category}/{artifact_name}")
 
     def get_inventory(self) -> dict:
@@ -84,7 +91,7 @@ class NginxProxyRepoDriver(base.AbstractProxyRepoDriver):
         self, name: str, version: str = "latest"
     ) -> tuple[repo_models.RepoElement, tp.Collection[repo_models.RepoArtifact]]:
         """Get repository element by name and version."""
-        element_base_url = urljoin(self._spec.url, f"{name}/{version}/")
+        element_base_url = urljoin(self.repo_uri, f"{name}/{version}/")
         manifest_response = self._client.get(
             urljoin(element_base_url, f"manifests/{name}.yaml")
         )

@@ -1,0 +1,84 @@
+# Copyright 2026 Genesis Corporation.
+# Licensed under the Apache License, Version 2.0 (the "License");
+
+name: "core_audit"
+description: "Optional Audit delivery for Core"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  audit:
+    from_version: "0.0.0"
+  core:
+    from_version: "0.0.0"
+
+imports:
+  core_project:
+    element: "$core"
+    kind: "resource"
+    link: "$core.iam.projects.$admin"
+  audit_events_create:
+    element: "$audit"
+    kind: "resource"
+    link: "$core.iam.permissions.$events_create"
+  var_iam_default_client_uuid:
+    element: "$core"
+    kind: "resource"
+    link: "$core.vs.variables.$iam_default_client_uuid"
+
+resources:
+
+  $core.iam.users:
+    core_audit_user:
+      username: core_audit
+      email: "noreply+core-audit@exordos.com"
+      type: service
+      password: "unused-by-a-service-account"
+
+  $core.iam.roles:
+    core_audit:
+      name: core_audit
+      description: "Core audit event delivery"
+
+  $core.iam.permissionbinding:
+    core_audit_events_create_binding:
+      role: $core.iam.roles.$core_audit:uuid
+      permission: $core_audit.imports.$audit_events_create:uuid
+      project_id: $core_audit.imports.$core_project:uuid
+
+  $core.iam.rolebinding:
+    core_audit_role_binding:
+      role: $core.iam.roles.$core_audit:uuid
+      user: $core.iam.users.$core_audit_user:uuid
+      project: $core_audit.imports.$core_project:uuid
+
+  $core.iam.tokens:
+    core_audit_token:
+      user: $core.iam.users.$core_audit_user:uuid
+      iam_client: $core_audit.imports.$var_iam_default_client_uuid:value
+      issuer: f"http://core.local.genesis-core.tech/api/core/v1/iam/clients/{$core_audit.imports.$var_iam_default_client_uuid:value}"
+      scope: f"project:{$core_audit.imports.$core_project:uuid}"
+      auto_renew: true
+      expiration_delta: 604800
+
+  $core.config.configs:
+    core_audit_config:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/exordos_core/exordos_core.d/audit.conf
+      mode: "0600"
+      target:
+        kind: node_set
+        node_set: "70c88222-b4d9-46c3-9340-aa5bfaaa4b94"
+      on_change:
+        kind: shell
+        command: systemctl try-restart ec-user-api
+      body:
+        kind: text
+        content: |
+          f"
+          [audit_delivery]
+          enabled = true
+          endpoint = {{ audit_endpoint | default('http://audit.local.genesis-core.tech:8080/') }}
+          auth_token = {$core.iam.tokens.$core_audit_token:access_token}
+          "

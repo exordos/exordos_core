@@ -19,14 +19,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-This page describes how users receive help while operating Exordos Core, obtain updates, and contribute to product development.
+This page describes how users receive help while operating Exordos, obtain updates, and contribute to product development.
 
 ## Contact Channels
 
 - [GitHub Issues](https://github.com/exordos/exordos_core/issues) for defect reports, improvement suggestions, and feature requests.
 - [support@exordos.com](mailto:support@exordos.com) for installation, configuration, and platform operation consultations, as well as requests that must not disclose information in a public issue.
 
-When submitting a request, provide the Exordos Core version, operating system, command executed, complete error text, and the steps that reproduce the problem. Do not provide passwords, private keys, tokens, or other secrets.
+When submitting a request, provide the Exordos version, operating system, command executed, complete error text, and the steps that reproduce the problem. Do not provide passwords, private keys, tokens, or other secrets.
 
 ## Technical Support
 
@@ -43,7 +43,7 @@ Request handling follows these steps:
 
 For known issues, see [Troubleshooting](troubleshooting.md). It includes checks for resource, Node, and hypervisor states, as well as steps for common configuration and bootstrap script errors.
 
-If the issue is not documented, create a GitHub Issue or send an email request. After a defect is confirmed, a fix is prepared in the project source code and included in a subsequent Exordos Core version.
+If the issue is not documented, create a GitHub Issue or send an email request. After a defect is confirmed, a fix is prepared in the project source code and included in a subsequent Exordos version.
 
 ### Defect lifecycle
 
@@ -59,7 +59,7 @@ A defect goes through the following stages from discovery to resolution:
 
 ## Development process
 
-Exordos Core is developed on GitHub using a feature-branch workflow:
+Exordos is developed on GitHub using a feature-branch workflow:
 
 1. **Branch** — changes are made on a branch cut from `master` (for example `feat/<topic>` or `docs/<topic>`).
 2. **CI** — every push triggers automated checks: `ruff` lint, unit and functional tests on Python 3.10, 3.12, and 3.14 against PostgreSQL, and a full platform build with functional verification on a real hypervisor.
@@ -82,7 +82,7 @@ The release history with change descriptions is available on the [releases page]
 
 ## Updates and Fixes
 
-New versions can contain defect fixes, security improvements, and new capabilities. Available versions are published in the [Exordos Core releases](https://github.com/exordos/exordos_core/releases).
+New versions can contain defect fixes, security improvements, and new capabilities. Available versions are published in the [Exordos releases](https://github.com/exordos/exordos_core/releases).
 
 Before updating:
 

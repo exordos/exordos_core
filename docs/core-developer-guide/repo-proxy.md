@@ -4,7 +4,7 @@ title: Repo Proxy
 ---
 
 Repo Proxy is the subsystem that brings external element repositories into
-Exordos Core. It discovers elements from remote sources, stores them locally,
+Exordos. It discovers elements from remote sources, stores them locally,
 resolves dependencies between elements, and bridges installed repo elements to
 the Elements Management (EM) layer so they can be deployed on compute nodes.
 
@@ -47,7 +47,7 @@ Table: `repo_repositories`
 | `priority` | Integer (0–16384) | Higher = preferred for dependency resolution. Default: 8192 |
 | `refresh_rate` | Integer (seconds) | How often to re-fetch inventory. 0 = periodic refresh disabled. Default: 3600 |
 | `sync_mode` | Enum | `copy` — download full element data immediately; `lazy` — download only name/version, fetch manifest on demand |
-| `driver_spec` | KindModel (JSONB) | Driver configuration. One of `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec`, `DatabaseDriverSpec` |
+| `driver_spec` | KindModel (JSONB) | Driver configuration. One of `RealmDriverSpec`, `NginxDriverSpec`, `BootstrapDriverSpec`, `DummyMigrationDriverSpec`, `DatabaseDriverSpec` |
 | `next_refresh` | DateTime | When the next periodic refresh should occur |
 | `refresh_requested` | Boolean | Core-only flag for a one-shot explicit refresh; excluded from UA resources |
 
@@ -143,6 +143,16 @@ whether any `depends_on` record references the element being removed.
 Driver specs are discriminated unions (kind models) stored in the
 `driver_spec` JSONB column. Each spec has a `KIND` string that determines which
 driver class handles it.
+
+### RealmDriverSpec (`kind: "realm"`)
+
+Reads an element repository served by another realm using Bearer authentication.
+Set `url` to the full element repository URL, for example
+`https://realm.example/repo/<project_id>/exordos-elements/`, and `access_token`
+to a token with repository read permission for that project. The token is
+redacted in API responses. Replace it when it expires; this driver does not
+refresh tokens. Inventory, manifests and element inventories use the token.
+Artifact URIs remain ordinary URLs and require authentication by the downloader.
 
 ### NginxDriverSpec (`kind: "nginx"`)
 
@@ -298,7 +308,7 @@ The service determines what action to take based on the combination of
 
 #### Dependency resolution
 
-`_collect_dependencies(instance)` performs a recursive depth-first traversal of
+`repo.dm.models.collect_dependencies(instance)` performs a recursive depth-first traversal of
 the element's dependency graph:
 
 1. If the element's manifest is empty (lazy mode), actualizes it first.
@@ -307,9 +317,9 @@ the element's dependency graph:
 3. Checks if any installed element violates the version constraint
    (`DependencyConstraintError`).
 4. Filters candidates that satisfy the constraint
-   (`_matches_version_constraint`).
+   (`repo.dm.models.matches_version_constraint`).
 5. If no candidates match, raises `DependencyNotFoundError`.
-6. Selects the best candidate using `_element_sort_key` — preferring installed
+6. Selects the best candidate using `element_sort_key` — preferring installed
    elements, higher repository priority, release versions, and higher version
    numbers.
 7. Recurses into the selected dependency.
@@ -594,6 +604,11 @@ graph TB
   table exists solely to prevent uninstallation of elements that other installed
   elements depend on. It stores transitive dependencies, so even indirect
   dependents block uninstallation.
+- **Upgrade validation**: Before changing installation state, the upgrade action
+  resolves the target's full dependency closure and checks that installed
+  consumers accept the target version. Dependency resolution uses the target
+  version in place of the version being upgraded. Incompatible or missing
+  dependencies reject the action without switching the installed version.
 - **Upgrade ordering**: During upgrade, the old `InstalledManifest` is kept
   alive until the new one is confirmed installed with a linked EM Element. This
   prevents a gap where the element is temporarily absent from EM.

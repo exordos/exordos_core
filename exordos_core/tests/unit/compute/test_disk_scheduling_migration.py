@@ -412,3 +412,59 @@ def test_downgrade_refuses_to_discard_multiple_local_pools():
                 }
             }
         )
+
+
+@pytest.mark.parametrize("kind", ["libvirt", "exordos_local_hyper"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_bootstrap_restores_hypervisor_entity_fields(kind, explicit):
+    from unittest import mock
+
+    from exordos_core.bootstrap import defaults
+
+    fields = {
+        "name": "compute-host",
+        "description": "Bootstrap host",
+        "avail_cores": 12,
+        "avail_ram": 32768,
+        "cores_ratio": 4.0,
+        "ram_ratio": 1.5,
+    }
+    host = {
+        "kind": kind,
+        "connection_uri": "test:///default",
+        "storage_pool": "default",
+        "node": str(uuid.uuid4()) if kind == "exordos_local_hyper" else None,
+        **(fields if explicit else {key: None for key in fields}),
+    }
+    original = host.copy()
+    captured = []
+    with (
+        mock.patch.object(defaults, "apply_flat_network"),
+        mock.patch.object(
+            defaults.compute_models.MachinePool,
+            "objects",
+            mock.Mock(get_all=mock.Mock(return_value=[])),
+        ),
+        mock.patch.object(
+            defaults.compute_models.MachinePool,
+            "insert",
+            new=lambda self: captured.append(self),
+        ),
+        mock.patch.object(defaults.ua_models.NodeEncryptionKey, "get_or_create"),
+    ):
+        defaults.apply_startup_db({"stand": {"hypervisors": [host]}})
+
+    assert host == original
+    assert len(captured) == 1
+    pool = captured[0]
+    expected = fields if explicit else {
+        "name": "hypervisor",
+        "description": "",
+        "avail_cores": 0,
+        "avail_ram": 0,
+        "cores_ratio": 1.0,
+        "ram_ratio": 1.0,
+    }
+    for key, value in expected.items():
+        assert getattr(pool, key) == value
+    assert not (fields.keys() & pool.driver_spec.dump_to_simple_view().keys())

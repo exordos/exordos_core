@@ -31,7 +31,7 @@ dependencies = [
     "Jinja2>=3.1.5,<4.0.0",  # BSD License (BSD-3-Clause)
     "izulu>=0.50.0,<1.0.0",  # MIT License
     "gcl_iam>=1.4.1,<2.0.0",  # Apache-2.0
-    "gcl_sdk[libvirt]>=3.7.6,<4.0.0",  # Apache-2.0
+    "gcl_sdk[libvirt]>=3.7.7,<4.0.0",  # Apache-2.0
     "gcl_certbot_plugin>=0.0.12,<1.0.0",  # Apache-2.0
     "pyotp>=2.9.0,<3.0.0",  # MIT License
     "pyyaml>=6.0.0,<7.0.0",  # MIT
@@ -172,6 +172,7 @@ DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
 
 [project.entry-points."exordos.repo_proxy.drivers"]
+RealmProxyRepoDriver = "exordos_core.repo.drivers.realm:RealmProxyRepoDriver"
 NginxProxyRepoDriver = "exordos_core.repo.drivers.nginx:NginxProxyRepoDriver"
 BootstrapProxyRepoDriver = "exordos_core.repo.drivers.bootstrap:BootstrapProxyRepoDriver"
 DummyMigrationRepoDriver = "exordos_core.repo.drivers.dummy_migration:DummyMigrationRepoDriver"

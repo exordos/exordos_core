@@ -3,7 +3,7 @@ icon: lucide/settings
 ---
 # Admin Guide
 
-This guide is for administrators of a local Exordos Core installation. It covers host preparation, platform deployment, access configuration, and basic operating tasks.
+This guide is for administrators of a local Exordos installation. It covers host preparation, platform deployment, access configuration, and basic operating tasks.
 
 ## Scope
 
@@ -76,7 +76,7 @@ exordos compute hypervisors init --help
 
 ## Deploy the platform
 
-Bootstrap Exordos Core:
+Bootstrap Exordos:
 
 ```bash
 exordos bootstrap -i <version-or-image> -f -m core --ssh-public-key /path/to/public/key

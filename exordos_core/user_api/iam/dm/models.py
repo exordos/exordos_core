@@ -26,6 +26,7 @@ import urllib.parse
 import uuid as sys_uuid
 
 from gcl_iam import algorithms
+from gcl_iam import enforcers
 from gcl_iam import exceptions as iam_e
 from gcl_iam import tokens
 from gcl_sdk.agents.universal.dm import models as ua_models
@@ -39,6 +40,7 @@ from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic as ra_types_dynamic
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c
 from exordos_core.common import utils as u
 from exordos_core.events import payloads as event_payloads
@@ -343,7 +345,7 @@ class User(
     ModelWithSecret,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_users"
 
@@ -625,7 +627,7 @@ class Role(
     models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_roles"
 
@@ -653,7 +655,7 @@ class Permission(
     models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_permissions"
 
@@ -662,7 +664,7 @@ class PermissionBinding(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_binding_permissions"
 
@@ -688,6 +690,7 @@ class Organization(
     models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
+    audit_models.AuditLogSQLStorableMixin,
     orm.SQLStorableWithJSONFieldsMixin,
 ):
     __tablename__ = "iam_organizations"
@@ -751,7 +754,7 @@ class Organization(
 class OrganizationMember(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
 ):
     __tablename__ = "iam_organization_members"
@@ -777,7 +780,7 @@ class Project(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_projects"
 
@@ -880,7 +883,7 @@ class RoleBinding(
     models.ModelWithTimestamp,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_binding_roles"
 
@@ -1070,7 +1073,7 @@ class IamClient(
     ModelWithSecret,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_clients"
 
@@ -1211,20 +1214,13 @@ class IamClient(
         """
         Check if user has service token creation permission
         """
-        # Get the service token creation permission
-        perm_uuid = Permission.objects.get_one(
-            filters={"name": ra_filters.EQ("iam.service_token.create")}
-        ).uuid
-
-        # Check if any of user's roles has the service token creation permission
-        return bool(
-            PermissionBinding.objects.get_all(
-                filters={
-                    "role": ra_filters.In([rb.role for rb in user_role_bindings]),
-                    "permission": ra_filters.EQ(perm_uuid),
-                }
-            )
+        permission_bindings = PermissionBinding.objects.get_all(
+            filters={"role": ra_filters.In([rb.role for rb in user_role_bindings])}
         )
+        enforcer = enforcers.Enforcer(
+            [binding.permission.name for binding in permission_bindings]
+        )
+        return bool(enforcer.enforce_raw("iam.service_token.create"))
 
     def _handle_service_account_token_request(
         self,
@@ -1248,12 +1244,15 @@ class IamClient(
         except ValueError:
             raise iam_exceptions.CanNotCreateServiceToken()
 
-        # Check if user has any role binding to the project
+        # Include global roles and roles scoped to the requested project.
         user_role_bindings = RoleBinding.objects.get_all(
-            filters={
-                "user": ra_filters.EQ(authenticated_user.uuid),
-                "project": ra_filters.EQ(project_uuid),
-            }
+            filters=ra_filters.AND(
+                {"user": ra_filters.EQ(authenticated_user.uuid)},
+                ra_filters.OR(
+                    {"project": ra_filters.EQ(project_uuid)},
+                    {"project": ra_filters.Is(None)},
+                ),
+            )
         )
 
         if not user_role_bindings:
@@ -1586,7 +1585,8 @@ class IamClient(
 class Token(
     models.ModelWithUUID,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    models.SimpleViewMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_tokens"
 
@@ -1995,7 +1995,7 @@ class Idp(
     models.ModelWithTags,
     ModelWithAlwaysActiveStatus,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "iam_idp"
 

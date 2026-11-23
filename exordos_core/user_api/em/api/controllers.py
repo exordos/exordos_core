@@ -156,7 +156,10 @@ class ElementResourceController(
         super().__init__(*args, **kwargs)
 
 
-class ResourceAllController(iam_controllers.PolicyBasedController):
+class ResourceAllController(
+    iam_controllers.PolicyBasedController,
+    controllers.BaseResourceControllerPaginated,
+):
     """Controller for /v1/resources/ endpoint"""
 
     __resource__ = resources.ResourceByModelWithCustomProps(

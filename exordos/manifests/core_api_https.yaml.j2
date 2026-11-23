@@ -1,0 +1,140 @@
+# Copyright 2026 Genesis Corporation.
+# Licensed under the Apache License, Version 2.0.
+
+name: "core_api_https"
+description: >-
+  Serves the Core API over HTTPS. Set core_api_tls_crt to the PEM certificate
+  and core_api_tls_key to its matching PEM private key. The default
+  core_api_domain uses Core's internal DNS name. Set core_api_domain for a
+  different hostname covered by the certificate. For a CA-issued certificate,
+  set core_api_trust_pem to the issuing CA bundle. For a self-signed
+  certificate, the default trust bundle is the certificate itself.
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.3.6"
+
+imports:
+  core_lb:
+    element: "$core"
+    kind: "resource"
+    link: "$core.network.lb.$core_lb"
+  local_domain:
+    element: "$core"
+    kind: "resource"
+    link: "$core.dns.domains.$local_domain"
+
+resources:
+  $core.vs.variables:
+    core_api_tls_crt:
+      name: "core_api_tls_crt"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    core_api_tls_key:
+      name: "core_api_tls_key"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    core_api_trust_pem:
+      name: "core_api_trust_pem"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+    core_api_domain:
+      name: "core_api_domain"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      setter:
+        kind: selector
+        selector_strategy: latest
+
+  $core.vs.values:
+    core_api_domain:
+      name: "Core API domain"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      variable: $core.vs.variables.$core_api_domain:uuid
+      # Reuse the "core" A record owned by the base Core element.
+      value: f"core.{$core_api_https.imports.$local_domain:name}"
+
+    core_api_trust_pem:
+      name: "Core API default trust bundle"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      variable: $core.vs.variables.$core_api_trust_pem:uuid
+      read_only: true
+      # A self-signed listener uses its public certificate as the trust anchor.
+      value: $core.vs.variables.$core_api_tls_crt:value
+
+  $core.secret.certificates:
+    core_api_certificate:
+      name: "Core API certificate"
+      email: "{{ core_api_certificate_email | default('infra@exordos.com') }}"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      method:
+        kind: manual
+      domains:
+        - $core.vs.variables.$core_api_domain:value
+      cert: $core.vs.variables.$core_api_tls_crt:value
+      key: $core.vs.variables.$core_api_tls_key:value
+
+  $core_api_https.imports.$core_lb.backend_pools:
+    core_api_http:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core_api_https.imports.$core_lb:uuid
+      endpoints:
+        - kind: host
+          host: 127.0.0.1
+          port: 80
+          weight: 1
+
+  $core_api_https.imports.$core_lb.vhosts:
+    core_api_https:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core_api_https.imports.$core_lb:uuid
+      # Keep unspecified names on the Core image's blocking default server.
+      domains:
+        - $core.vs.variables.$core_api_domain:value
+      protocol: https
+      port: 443
+      cert:
+        kind: raw
+        crt: $core.secret.certificates.$core_api_certificate:cert
+        key: $core.secret.certificates.$core_api_certificate:key
+
+  # Imported children are registered under their canonical Core paths.
+  $core.network.lb.$core_lb.vhosts.$core_api_https.routes:
+    core_api_route:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      parent: $core.network.lb.$core_lb.vhosts.$core_api_https:uuid
+      condition:
+        kind: prefix
+        value: /api/core/
+        allowed_ips:
+          - 0.0.0.0/0
+        actions:
+          - kind: backend
+            pool: $core.network.lb.$core_lb.backend_pools.$core_api_http:uuid
+            protocol:
+              kind: http
+        modifiers:
+          - kind: auto_header
+            headers:
+              - X-Forwarded-For
+              - X-Forwarded-Proto
+              - X-Forwarded-Port
+          # Select the base HTTP vhost, preserving its IAM routes and rewrites.
+          - kind: set_header
+            name: Host
+            value: f"core.{$core_api_https.imports.$local_domain:name}"
+          - kind: set_header
+            name: X-Forwarded-Host
+            value: $core.vs.variables.$core_api_domain:value
+
+exports:
+  core_api_trust_pem:
+    link: "$core.vs.variables.$core_api_trust_pem"

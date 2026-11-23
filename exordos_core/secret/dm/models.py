@@ -30,6 +30,7 @@ from restalchemy.dm import types_dynamic
 from restalchemy.dm import types_network
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c
 from exordos_core.common.dm import models as cm
 from exordos_core.common.dm import targets as ct
@@ -72,7 +73,7 @@ class Secret(
     AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
     """An opaque secret whose value the platform does not interpret."""
@@ -125,7 +126,7 @@ class Password(
     AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
     __tablename__ = "secret_passwords"
@@ -202,6 +203,7 @@ class Certificate(
     AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
+    audit_models.AuditLogSQLStorableMixin,
     orm.SQLStorableWithJSONFieldsMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
@@ -326,7 +328,7 @@ class RSAKey(
     AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
     __tablename__ = "secret_rsa_keys"
@@ -404,7 +406,7 @@ class SSHKey(
     AbstractSecret,
     ra_models.ModelWithTags,
     QuotaModelMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):
     __tablename__ = "secret_ssh_keys"

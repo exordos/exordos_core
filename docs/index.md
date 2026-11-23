@@ -1,9 +1,9 @@
 ---
 icon: lucide/book-open
-title: Exordos Core
+title: Exordos
 ---
 
-Welcome to Exordos Core!
+Welcome to Exordos!
 
 **Exordos** is an open-source NoOps platform for managing infrastructure at every level, along with the ecosystem built on top of it.
 
@@ -23,7 +23,7 @@ curl -fsSL https://repo.exordos.com/install.sh | sh
 
 ## Application Developer Guide
 
-Everything you need to develop and deploy applications on the Exordos Core platform. In platform terminology, applications are called **elements**. The guide covers all stages of the element lifecycle:
+Everything you need to develop and deploy applications on the Exordos platform. In platform terminology, applications are called **elements**. The guide covers all stages of the element lifecycle:
 
 - **Writing a manifest** — defining the element structure, its dependencies and configuration.
 - **Building** — packaging the element and its artifacts.

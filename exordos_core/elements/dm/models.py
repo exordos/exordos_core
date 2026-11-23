@@ -34,6 +34,7 @@ from restalchemy.dm import types_dynamic as ra_types_dyn
 from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import exceptions
 from exordos_core.common import utils as cm_utils
 from exordos_core.common.dm import models as cm
@@ -112,10 +113,12 @@ class Manifest(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.DumpToSimpleViewMixin,
 ):
     __tablename__ = "em_manifests"
+
+    description = properties.property(ra_types.String(max_length=65536), default="")
 
     STATUS = AlwaysActiveStatus
 
@@ -306,12 +309,20 @@ class Manifest(
             exp.delete()
 
     def apply_resources(self, element: "Element"):
-        existing_resources = {
-            (i.resource_link_prefix, i.name): i
-            for i in Resource.objects.get_all(
-                filters={"element": ra_filters.EQ(element.uuid)}
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            result = _EngineResource.get_table().select(
+                engine=engine,
+                filters={"element": ra_filters.EQ(element.uuid)},
+                session=session,
             )
-        }
+            existing_resources = {}
+            for row in result.rows:
+                row["element"] = element
+                resource = Resource.restore_row(row)
+                existing_resources[(resource.resource_link_prefix, resource.name)] = (
+                    resource
+                )
 
         for resource_link_prefix, resources in self.resources.items():
             link_resolver = LinkResolver(
@@ -424,9 +435,11 @@ class Element(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.CustomPropertiesMixin,
-    orm.SQLStorableMixin,
+    models.SimpleViewMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "em_elements"
+    description = properties.property(ra_types.String(max_length=65536), default="")
     __custom_properties__ = {
         "link": ra_types.String(),
     }
@@ -479,11 +492,17 @@ class Element(
         self._requirements = []
 
     def delete(self, session=None):
-        for resource in Resource.objects.get_all(
-            filters={"element": ra_filters.EQ(self)}
-        ):
-            resource.delete(session=session)
-        super().delete(session=session)
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager(session=session) as session:
+            result = _EngineResource.get_table().select(
+                engine=engine,
+                filters={"element": ra_filters.EQ(self.uuid)},
+                session=session,
+            )
+            for row in result.rows:
+                row["element"] = self
+                Resource.restore_row(row).delete(session=session)
+            super().delete(session=session)
 
     @property
     def original(self):
@@ -1375,7 +1394,7 @@ class ServiceTarget(srv_models.ServiceTarget):
 class Service(
     cm.ModelWithFullAsset,
     models.ModelWithTags,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
     ua_models.TargetResourceSQLStorableMixin,
 ):

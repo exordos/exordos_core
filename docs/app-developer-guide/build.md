@@ -95,7 +95,7 @@ exordos build --manifest-var commit_hash=$(git rev-parse --short HEAD) .
 
 ## Build Process
 
-The build process creates **VM disk images** that run on the Exordos Core platform. Packer starts a virtual machine from a base OS image, copies all resolved dependencies into it, and executes the provisioning script specified in `exordos.yaml`. This script is typically a Bash script that installs packages, configures services, and prepares the image. Once provisioning completes, the VM shuts down and the resulting disk image is packaged for deployment. This process is configured through the `elements` section in `exordos.yaml` where you define the base profile, provisioning script, output format, and any build overrides.
+The build process creates **VM disk images** that run on the Exordos platform. Packer starts a virtual machine from a base OS image, copies all resolved dependencies into it, and executes the provisioning script specified in `exordos.yaml`. This script is typically a Bash script that installs packages, configures services, and prepares the image. Once provisioning completes, the VM shuts down and the resulting disk image is packaged for deployment. This process is configured through the `elements` section in `exordos.yaml` where you define the base profile, provisioning script, output format, and any build overrides.
 
 ---
 

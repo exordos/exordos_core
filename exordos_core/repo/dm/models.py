@@ -17,10 +17,12 @@
 import datetime
 import enum
 import logging
+import re
 import typing as tp
 from urllib.parse import urljoin
 
 from packaging import version as packaging_version
+from restalchemy.common import utils as ra_utils
 from restalchemy.dm import filters as ra_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -29,9 +31,11 @@ from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic
 from restalchemy.storage.sql import orm
 
+from exordos_core.common import audit as audit_models
 from exordos_core.common import exceptions as common_exc
 from exordos_core.common import utils
 from exordos_core.repo import constants as rc
+from exordos_core.repo import exceptions as repo_exceptions
 
 LOG = logging.getLogger(__name__)
 
@@ -116,7 +120,28 @@ class NginxDriverSpec(AbstractDriverSpec):
 
     @property
     def inventory_path(self) -> str:
-        base_url = self.url if self.url.endswith("/") else f"{self.url}/"
+        base_url = ra_utils.lastslash(self.url)
+        return urljoin(base_url, self.INVENTORY_FILE)
+
+
+class RealmDriverSpec(AbstractDriverSpec):
+    KIND = "realm"
+    INVENTORY_FILE = "inventory.json"
+
+    SENSITIVE_FIELDS = frozenset({"access_token"})
+
+    url = properties.property(
+        ra_types.String(max_length=2048),
+        required=True,
+    )
+    access_token = properties.property(
+        ra_types.String(),
+        required=True,
+    )
+
+    @property
+    def inventory_path(self) -> str:
+        base_url = ra_utils.lastslash(self.url)
         return urljoin(base_url, self.INVENTORY_FILE)
 
 
@@ -154,7 +179,7 @@ class Repository(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     """Repository model for managing external repositories.
@@ -197,6 +222,7 @@ class Repository(
     driver_spec = properties.property(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(NginxDriverSpec),
+            types_dynamic.KindModelType(RealmDriverSpec),
             types_dynamic.KindModelType(BootstrapDriverSpec),
             types_dynamic.KindModelType(DummyMigrationDriverSpec),
             types_dynamic.KindModelType(DatabaseDriverSpec),
@@ -383,7 +409,7 @@ class RepoElement(
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
     models.ModelWithTags,
 ):
@@ -415,6 +441,8 @@ class RepoElement(
     """
 
     __tablename__ = "repo_elements"
+
+    description = properties.property(ra_types.String(max_length=65536), default="")
 
     repository = relationships.relationship(
         Repository,
@@ -589,7 +617,7 @@ class RepoElement(
 
         Raises:
             ValidateException: If this element is not installed or the target
-                element is not uninstalled
+                element is not uninstalled, or dependencies are incompatible
         """
         if self.element is None:
             raise common_exc.ValidateException(
@@ -607,6 +635,43 @@ class RepoElement(
             != RepoElementInstallationState.UNINSTALLED
         ):
             raise common_exc.ValidateException(err="Target element must be uninstalled")
+        try:
+            collect_dependencies(target_element, replacement=target_element)
+            installed_elements = RepoElement.objects.get_all(
+                filters={
+                    "installation_state": ra_filters.EQ(
+                        RepoElementInstallationState.INSTALLED.value
+                    ),
+                }
+            )
+            for dependent in installed_elements:
+                if dependent.name == self.name:
+                    continue
+                if not dependent.manifest:
+                    bindings = RepoElementDepsBinding.objects.get_all(
+                        filters={
+                            "element": ra_filters.EQ(dependent.uuid),
+                            "depends_on": ra_filters.EQ(self.uuid),
+                        }
+                    )
+                    if not bindings:
+                        continue
+                    dependent.repository.actualize_element(dependent)
+                constraint = dependent.dependencies.get(self.name)
+                if constraint is not None and not matches_version_constraint(
+                    target_element, constraint, name=self.name
+                ):
+                    raise common_exc.ValidateException(
+                        err=f"Cannot upgrade {self.name} to {target_element.version}: "
+                        f"{dependent.name}:{dependent.version} requires {constraint}"
+                    )
+        except (
+            repo_exceptions.DependencyConstraintError,
+            repo_exceptions.DependencyConstraintFormatError,
+            repo_exceptions.DependencyNotFoundError,
+        ) as exc:
+            raise common_exc.ValidateException(err=str(exc)) from exc
+
         runtime_element = self.element
         self.installation_state = RepoElementInstallationState.UNINSTALLED.value
         self.update()
@@ -708,7 +773,7 @@ class RepoElement(
 class RepoArtifact(
     models.ModelWithUUID,
     models.ModelWithProject,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     models.SimpleViewMixin,
 ):
     """Repository Artifact model for individual files within elements.
@@ -770,3 +835,179 @@ class RepoElementDepsBinding(
         prefetch=True,
         required=True,
     )
+
+
+_VERSION_RE = re.compile(
+    r"^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)(?:-(?P<suffix>.+))?$"
+)
+
+
+def _parse_version(version: str) -> tuple[int, int, int, bool, str]:
+    match = _VERSION_RE.match(version)
+    if not match:
+        raise ValueError(f"Invalid version format: {version}")
+    major = int(match.group("major"))
+    minor = int(match.group("minor"))
+    patch = int(match.group("patch"))
+    suffix = match.group("suffix") or ""
+    is_release = match.group("suffix") is None
+    return (major, minor, patch, is_release, suffix)
+
+
+def _version_key(version: str) -> tuple[int, int, int, bool, str]:
+    return _parse_version(version)
+
+
+def _version_sort_key(version: str) -> tuple[bool, int, int, int, str]:
+    major, minor, patch, is_release, suffix = _parse_version(version)
+    return (not is_release, -major, -minor, -patch, suffix)
+
+
+def _is_installation_in_progress(element: RepoElement) -> bool:
+    return element.installation_state == RepoElementInstallationState.INSTALLED
+
+
+def matches_version_constraint(
+    element: RepoElement,
+    constraint: dict,
+    name: tp.Optional[str] = None,
+) -> bool:
+    """Check whether element version satisfies the dependency constraint.
+
+    Supported operators: ==, >, >=, <, <=.
+    Release versions are considered greater than development versions
+    with the same major.minor.patch base.
+    """
+    unsupported = set(constraint) - {
+        "==",
+        ">",
+        ">=",
+        "<",
+        "<=",
+    }
+    if unsupported:
+        raise repo_exceptions.DependencyConstraintFormatError(
+            name=name or element.name,
+            constraint=constraint,
+        )
+    version = element.version
+    if "==" in constraint:
+        return version == constraint["=="]
+    try:
+        version_key = _version_key(version)
+    except ValueError:
+        LOG.warning("Invalid version format: %s", version)
+        return False
+    if ">" in constraint and version_key <= _version_key(constraint[">"]):
+        return False
+    if ">=" in constraint and version_key < _version_key(constraint[">="]):
+        return False
+    if "<" in constraint and version_key >= _version_key(constraint["<"]):
+        return False
+    if "<=" in constraint and version_key > _version_key(constraint["<="]):
+        return False
+    return True
+
+
+def element_sort_key(element: RepoElement) -> tuple[bool, int, tuple]:
+    """Return sort key for dependency selection.
+
+    Preferred order:
+    1. Elements already installed or being installed.
+    2. Higher repository priority.
+    3. Release versions over development versions.
+    4. Higher version number.
+    """
+    return (
+        not _is_installation_in_progress(element),
+        -element.repository.priority,
+        _version_sort_key(element.version),
+    )
+
+
+def collect_dependencies(
+    instance: RepoElement,
+    visited: set[tuple[str, str]] | None = None,
+    replacement: RepoElement | None = None,
+) -> list[RepoElement]:
+    """Collect full dependency closure for the element.
+
+    Returns a list of all elements required to install the given element,
+    including the requested element itself at the end of the list.
+    Installed and in-progress elements are included in the result.
+    """
+    visited = visited or set()
+    key = (instance.name, instance.version)
+    if key in visited:
+        LOG.debug(
+            "Circular dependency detected for %s:%s",
+            instance.name,
+            instance.version,
+        )
+        return []
+    visited.add(key)
+
+    # When the element is discovered in lazy mode, only its name and
+    # version are available. All other artifacts (manifest, specification,
+    # inventory, dependencies) must be downloaded before installation can
+    # proceed.
+    if not instance.manifest:
+        LOG.info("Actualizing element %s:%s", instance.name, instance.version)
+        instance.repository.actualize_element(instance)
+
+    result: list[RepoElement] = []
+    for dep_name, constraint in instance.dependencies.items():
+        dep_elements = RepoElement.objects.get_all(
+            filters={
+                "name": ra_filters.EQ(dep_name),
+            }
+        )
+
+        if replacement is not None and dep_name == replacement.name:
+            dep_elements = [replacement]
+
+        # Check if any installed/in-progress element does not satisfy the
+        # version constraint. This is a conflict that must be resolved.
+        installed_not_matching_candidates = [
+            c
+            for c in dep_elements
+            if _is_installation_in_progress(c)
+            and not matches_version_constraint(c, constraint, name=dep_name)
+        ]
+        if installed_not_matching_candidates:
+            raise repo_exceptions.DependencyConstraintError(
+                name=dep_name,
+                version=installed_not_matching_candidates[0].version,
+                constraint=constraint,
+            )
+
+        # All elements that match the constraint
+        candidates = [
+            c
+            for c in dep_elements
+            if matches_version_constraint(c, constraint, name=dep_name)
+        ]
+
+        # If no candidates match the constraint, raise an error
+        if not candidates:
+            LOG.debug(
+                "No candidates found for dependency %s with constraint %s for element %s",
+                dep_name,
+                constraint,
+                instance.name,
+            )
+            raise repo_exceptions.DependencyNotFoundError(
+                name=dep_name,
+                element=instance.name,
+            )
+
+        selected = sorted(candidates, key=element_sort_key)[0]
+        LOG.info(
+            "Selected dependency %s:%s for element %s",
+            selected.name,
+            selected.version,
+            instance.name,
+        )
+        result.extend(collect_dependencies(selected, visited, replacement))
+    result.append(instance)
+    return result

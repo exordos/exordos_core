@@ -29,12 +29,13 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_dynamic
 from restalchemy.storage.sql import engines
-from restalchemy.storage.sql import orm
+
+from exordos_core.common import audit as audit_models
 
 
 class Profile(
     infra_models.Profile,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
     __tablename__ = "vs_profiles"
 
@@ -227,7 +228,7 @@ class SelectorVariableSetter(infra_models.SelectorVariableSetter):
         raise infra_exc.VariableCannotFindValue(variable=variable.uuid)
 
 
-class AnySimpleTypeValueFieldSQLMixin(orm.SQLStorableMixin):
+class AnySimpleTypeValueFieldSQLMixin(audit_models.AuditLogSQLStorableMixin):
     def insert(self, session=None) -> None:
         # The `value` field is JSONB in the database
         # so we need to serialize it
