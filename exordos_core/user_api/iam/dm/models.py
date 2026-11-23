@@ -877,6 +877,16 @@ class PermissionFastView(
         required=False,
     )
 
+    @staticmethod
+    def scope_filters(user: User, project: Project | None) -> ra_filters.AND:
+        """Include global roles and roles bound to the token's project."""
+        project_filter: dict | ra_filters.OR = {"project": ra_filters.Is(None)}
+        if project is not None:
+            project_filter = ra_filters.OR(
+                project_filter, {"project": ra_filters.EQ(project)}
+            )
+        return ra_filters.AND({"user": ra_filters.EQ(user)}, project_filter)
+
 
 class RoleBinding(
     models.ModelWithUUID,
@@ -1788,11 +1798,10 @@ class Token(
             limit=1,
         ):
             for _ in PermissionFastView.objects.get_all(
-                filters={
-                    "user": ra_filters.EQ(self.user),
-                    "project": ra_filters.Is(self.project),
-                    "permission": ra_filters.EQ(permission),
-                },
+                filters=ra_filters.AND(
+                    PermissionFastView.scope_filters(self.user, self.project),
+                    {"permission": ra_filters.EQ(permission)},
+                ),
                 limit=1,
             ):
                 return True
@@ -1882,10 +1891,7 @@ class Token(
         user = User.me(token_info=token_info)
 
         values = PermissionFastView.objects.get_all(
-            filters={
-                "user": ra_filters.EQ(user),
-                "project": ra_filters.Is(self.project),
-            }
+            filters=PermissionFastView.scope_filters(user, self.project)
         )
 
         otp_verified = False

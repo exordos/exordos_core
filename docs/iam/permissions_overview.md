@@ -242,8 +242,15 @@ When issuing a token, IAM determines the project from `scope`:
 * `project:default` — token is bound to the user's default project
 * if no `project:...` segment is present in `scope`, the token is issued **without project** (`project = null`)
 
-During introspection, IAM returns permissions only in the context of the token's project.
-In other words, the effective permission set depends on which project the token is issued for.
+During introspection, IAM combines permissions from the user's global role bindings
+(`project = null`) and bindings for the token's project. Bindings for other projects
+and other users are excluded. For example, a global `newcomer` binding continues
+to grant its permissions when the user selects a project where they have `owner`.
+
+This rule also applies to global administrator and service-account roles: their
+permissions remain available in project-scoped sessions. Use project-scoped role
+bindings when permissions must be limited to one project. Token permission checks
+and checks when issuing or changing tokens use the same effective permission set.
 
 Important:
 getting a token **without project** does not automatically grant access to all projects.
