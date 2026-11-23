@@ -18,6 +18,8 @@ from types import SimpleNamespace
 from unittest import mock
 import uuid
 
+import pytest
+
 from gcl_sdk.agents.universal.drivers import pool
 from restalchemy.api import constants as ra_c
 
@@ -26,12 +28,14 @@ from exordos_core.storage.dm import models
 from exordos_core.user_api.storage.api import controllers
 
 
-def cluster(nodes=2, size=20):
+def cluster(nodes=2, size=20, cpu=2, ram=2048):
     return models.StorageCluster(
         uuid=uuid.uuid4(),
         name="storage",
         nodes=nodes,
         size=size,
+        cpu=cpu,
+        ram=ram,
         driver_spec=pool.RawstorStorageClusterDriverSpec(endpoint="mds://core:7776/"),
     )
 
@@ -42,8 +46,9 @@ def test_zero_nodes_does_not_create_anything():
     objects.get_one_or_none.assert_not_called()
 
 
-def test_managed_vms_wait_for_storage_agent_and_reconcile_idempotently():
-    target = cluster()
+@pytest.mark.parametrize("cpu,ram", [(2, 2048), (4, 4096)])
+def test_managed_vms_wait_for_storage_agent_and_reconcile_idempotently(cpu, ram):
+    target = cluster(cpu=cpu, ram=ram)
     vms, osts, agents = {}, {}, []
 
     def find(items, **kwargs):
@@ -92,6 +97,8 @@ def test_managed_vms_wait_for_storage_agent_and_reconcile_idempotently():
         managed.reconcile(target)
         assert len(vms) == 2 and not osts
         for index, node in enumerate(vms.values()):
+            assert node.cores == cpu
+            assert node.ram == ram
             disks = node.disk_spec.disks
             assert disks[0]["image"] == "urn:images:ost"
             assert disks[0]["size"] == 10
@@ -142,3 +149,13 @@ def test_managed_size_and_count_are_create_only_in_openapi():
     assert schema["properties"]["size"]["default"] == 10
     assert not schema["properties"]["nodes"].get("readOnly")
     assert not schema["properties"]["size"].get("readOnly")
+
+
+@pytest.mark.parametrize("field,default", [("cpu", 2), ("ram", 2048)])
+def test_managed_compute_fields_are_create_only(field, default):
+    resource = controllers.StorageClustersController.__resource__
+    create = resource.generate_schema_object(ra_c.CREATE, "3.0.3")
+    assert create["properties"][field]["default"] == default
+    assert not create["properties"][field].get("readOnly")
+    update = resource.generate_schema_object(ra_c.UPDATE, "3.0.3")
+    assert update["properties"][field]["readOnly"]

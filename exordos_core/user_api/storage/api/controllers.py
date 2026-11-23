@@ -121,7 +121,7 @@ class StorageClusterResource(resources.ResourceByRAModel):
     def generate_schema_object(self, method, openapi_version):
         schema = super().generate_schema_object(method, openapi_version)
         if method == ra_c.CREATE:
-            for field in ("nodes", "size"):
+            for field in ("nodes", "size", "cpu", "ram"):
                 schema["properties"][field].pop("readOnly", None)
         return schema
 
