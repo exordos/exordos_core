@@ -35,9 +35,10 @@ During an in-place Core upgrade, bootstrap also adds a missing `RenderAgentDrive
 to older persisted universal-agent configurations. It preserves the existing
 drivers and deployment settings, synchronizes the persisted copy, and restarts
 the agent and scheduler when the configuration changes. Updating the image
-template alone cannot repair an older saved configuration. If managed email
-configs remain pending after an upgrade, verify the agent advertises the render
-capability before enabling mail delivery.
+template alone cannot repair an older saved configuration. If Notification
+returns HTTP 401 after a token renewal, check whether the token config is still
+`IN_PROGRESS` and whether the agent advertises the `render` capability. The
+sender continues to use the old token until the agent applies the new file.
 
 These paths are relative to `/etc/exordos_core`. Both `ec-user-api` and
 `ec-gservice` load the configuration directory through `--config-dir`.
