@@ -45,6 +45,9 @@ DEFAULT_SQL_LIMIT = 100
 WORK_DIR = "/var/lib/exordos"
 DATA_DIR = os.path.join(WORK_DIR, "data")
 NODE_UUID_PATH = os.path.join(WORK_DIR, "node-id")
+UA_CONFIG_TEMPLATE_PATH = (
+    "/opt/exordos_core/etc/exordos_universal_agent/exordos_universal_agent.conf.j2"
+)
 
 DEFAULT_USER_API_HOST = "127.0.0.1"
 DEFAULT_USER_API_PORT = 80
