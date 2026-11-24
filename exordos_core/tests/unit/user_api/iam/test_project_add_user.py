@@ -25,7 +25,9 @@ from exordos_core.user_api.iam.api import controllers
 from exordos_core.user_api.iam.dm import models
 
 
-@pytest.mark.parametrize("user", ["invitee", "Invitee@example.com", str(uuid.uuid4())])
+@pytest.mark.parametrize(
+    "user", ["invitee", "Invitee@example.com", "79cb0699-037b-4f62-9fc9-bcd739c04466"]
+)
 @pytest.mark.parametrize("membership_role", [None, "MEMBER", "OWNER"])
 @pytest.mark.parametrize("existing_binding", [False, True])
 def test_project_invitation_ensures_organization_membership(
