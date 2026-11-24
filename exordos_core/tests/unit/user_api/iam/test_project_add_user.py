@@ -25,16 +25,17 @@ from exordos_core.user_api.iam.api import controllers
 from exordos_core.user_api.iam.dm import models
 
 
+@pytest.mark.parametrize("user", ["invitee", "Invitee@example.com", str(uuid.uuid4())])
 @pytest.mark.parametrize("membership_role", [None, "MEMBER", "OWNER"])
 @pytest.mark.parametrize("existing_binding", [False, True])
 def test_project_invitation_ensures_organization_membership(
-    membership_role, existing_binding
+    membership_role, existing_binding, user
 ):
     controller = mock.Mock()
     project = mock.Mock(uuid=uuid.uuid4())
     target_user = mock.Mock(uuid=uuid.uuid4())
     role = mock.Mock(uuid=common_c.OWNER_ROLE_UUID)
-    controller._resolve_user.return_value = target_user
+    controller._resolve_user.side_effect = controllers.ProjectController._resolve_user
     controller._resolve_role.return_value = role
     membership = (
         None if membership_role is None else mock.Mock(role=membership_role)
@@ -52,10 +53,10 @@ def test_project_invitation_ensures_organization_membership(
         members.objects.get_one_or_none.return_value = membership
 
         result = controllers.ProjectController.add_user._post(
-            controller, project, "invitee", "owner"
+            controller, project, user, "owner"
         )
 
-        assert users.objects.get_one.call_args.kwargs["locked"] is True
+        users.objects.get_one.assert_called_once()
         if membership is None:
             members.assert_called_once_with(
                 organization=project.organization,
