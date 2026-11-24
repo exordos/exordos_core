@@ -26,7 +26,7 @@ GC_ART_DIR="$GC_PATH/artifacts"
 VENV_PATH="$GC_PATH/.venv"
 BOOTSTRAP_PATH="/var/lib/exordos/bootstrap/scripts"
 
-# Opt in explicitly for development images; release images keep Rawstor disabled.
+# Opt in explicitly for development images; release images keep RawStor disabled.
 case "${RAWSTOR_ENABLED:-false}" in
     true) sed -i 's/^rawstor = false$/rawstor = true/' "$GC_PATH/etc/exordos_core/exordos_core.conf.j2" ;;
     false) ;;
@@ -69,7 +69,7 @@ if [[ "$(dpkg --print-architecture)" == amd64 ]]; then
     sudo apt-get install --reinstall -y "$RAWSTOR_ART_DIR/librawstor_${RAWSTOR_VERSION}_amd64.deb" \
         "$RAWSTOR_ART_DIR/rawstor-mds_${RAWSTOR_VERSION}_amd64.deb"
 elif [[ "${RAWSTOR_ENABLED:-false}" == true ]]; then
-    echo "Rawstor development images currently require amd64" >&2
+    echo "RawStor development images currently require amd64" >&2
     exit 1
 fi
 # The package does not start MDS automatically. The agent configures
