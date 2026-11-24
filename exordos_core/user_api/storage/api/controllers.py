@@ -546,6 +546,8 @@ class StorageNodesController(ClusterMemberController):
         agent_uuid = data.get("agent")
         if agent_uuid is not None:
             try:
+                if not isinstance(agent_uuid, (str, sys_uuid.UUID)):
+                    raise ValueError()
                 agent_uuid = sys_uuid.UUID(str(agent_uuid))
             except (ValueError, TypeError, AttributeError):
                 raise InvalidRawstorEndpoint(msg="Agent must be a valid UUID")

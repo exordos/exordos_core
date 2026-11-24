@@ -52,7 +52,9 @@ def test_valid_hostname_or_ipv4_is_accepted(host):
     api._validate_endpoint(f"ost://{host}:7777/", "ost")
 
 
-@pytest.mark.parametrize("agent", ["not-a-uuid", [], {}, True, 123])
+@pytest.mark.parametrize(
+    "agent", ["not-a-uuid", [], {}, True, 123, 10000000000000000000000000000000]
+)
 def test_bad_agent_is_rejected_before_registration_lookup(agent):
     controller = api.StorageNodesController.__new__(api.StorageNodesController)
     data = {
