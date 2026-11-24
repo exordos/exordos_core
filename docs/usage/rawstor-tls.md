@@ -49,7 +49,8 @@ into an image. The public storage models do not expose these private agent
 snapshots.
 
 Agents validate the pair and issuer, then publish an immutable generation under
-`/etc/rawstor/tls/` through an atomic `current` symlink. Service private keys are
+`/etc/rawstor/tls/` through an atomic `current` symlink. Each generation uses
+Rawstor’s documented filenames: `cert.crt`, `cert.key` and `ca.crt`. Service private keys are
 `root:rawstor` mode `0640`, in directories with mode `0750`. Control-plane keys
 are root-only (`0600`, directories `0700`) and cannot be read by Rawstor services.
 Agent metadata containing the delivered credentials uses the existing owner-only
