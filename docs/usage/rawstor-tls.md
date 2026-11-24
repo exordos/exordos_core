@@ -60,8 +60,7 @@ Hypervisor control credentials are stored once per agent under
 `/etc/rawstor/tls/control-agent-AGENT_UUID/`. Each volume keeps only a `control`
 symlink in its `volume-VOLUME_UUID/` directory. Deleting a volume removes its
 service certificate and link, leaving the shared control identity available to
-other volumes. Old `control-volume-*` copies are removed as volume targets are
-reconciled. Renewal is shared, and an older volume target cannot roll back a
+other volumes. Renewal is shared, and an older volume target cannot roll back a
 newer control certificate. The control identity remains administrative; this
 layout does not reduce its Rawstor permissions.
 
