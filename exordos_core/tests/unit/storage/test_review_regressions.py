@@ -1,6 +1,7 @@
 #    Copyright 2026 Genesis Corporation.
 #    Licensed under the Apache License, Version 2.0 (the "License").
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -11,6 +12,14 @@ import pytest
 from restalchemy.storage import exceptions as storage_exc
 
 from exordos_core.user_api.storage.api import controllers as api
+
+
+@pytest.fixture(autouse=True)
+def rawstor_bindings(monkeypatch):
+    # These tests exercise API decisions, not the optional native bindings.
+    bindings = MagicMock()
+    monkeypatch.setitem(sys.modules, "rawstor", bindings)
+    return bindings
 
 
 @pytest.mark.parametrize(
