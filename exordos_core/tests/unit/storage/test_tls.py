@@ -197,3 +197,46 @@ def test_rawstor_issuer_rejects_non_admin_project_before_loading_ca():
     }
     with pytest.raises(ValueError, match="administrator project"):
         backend.CertBotBackendClient._spiffe_certificate(SimpleNamespace(value=value))
+
+
+def test_rawstor_profile_uses_generic_authority_and_renews_signed_permissions(tmp_path):
+    pki = pytest.importorskip("rawstor.pki")
+    from exordos_core.agent.universal.drivers.secret.backend import cert as backend
+    from exordos_core.agent.universal.drivers.secret.dm import models as storage
+
+    volume, account = uuid.uuid4(), uuid.uuid4()
+    identity = f"spiffe://rawstor.local/account/{account}/client/{volume}"
+    authority = spiffe.create_authority(rawstor_pki.TRUST_DOMAIN)
+    resource = SimpleNamespace(
+        uuid=uuid.uuid4(),
+        value={
+            "project_id": str(rawstor_pki.AUTHORITY_PROJECT),
+            "method": {
+                "kind": "rawstor",
+                "spiffe_id": identity,
+                "validity_days": 7,
+                "object_id": str(volume),
+            },
+            "expiration_threshold": 14,
+        },
+    )
+    with patch.object(
+        storage.SPIFFEAuthority,
+        "objects",
+        SimpleNamespace(
+            get_one=lambda **_: SimpleNamespace(
+                key=authority.key.decode(), cert=authority.cert
+            )
+        ),
+    ):
+        first = backend.CertBotBackendClient._spiffe_certificate(resource)
+        renewed = backend.CertBotBackendClient._spiffe_certificate(resource)
+    assert first.pkey != renewed.pkey
+    for cert in (first, renewed):
+        path = tmp_path / "leaf.pem"
+        path.write_text(cert.fullchain)
+        info = pki.show(path)
+        assert info.identity == identity
+        assert info.object_permissions == {str(volume): 7}
+        assert cert.fullchain.endswith(authority.cert)
+        assert not cert.is_under_threshold()
