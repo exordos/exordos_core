@@ -57,7 +57,7 @@ build-backend = "setuptools.build_meta"
 
 [project.optional-dependencies]
 rawstor = [
-    "rawstor @ https://github.com/rawstor/librawstor/releases/download/v0.3.3/rawstor-0.3.3-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",  # Apache-2.0
+    "rawstor @ https://github.com/rawstor/librawstor/releases/download/v0.3.4/rawstor-0.3.4-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",  # Apache-2.0
 ]
 
 dev = [

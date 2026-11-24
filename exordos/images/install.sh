@@ -59,7 +59,7 @@ sudo apt install \
 #sudo apt install postgresql-"$PG_VERSION" -y
 
 # Download matching native packages and bindings from the GitHub release.
-RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.3}
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.4}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 RAWSTOR_ART_DIR=""
 if [[ "$(dpkg --print-architecture)" == amd64 ]]; then
