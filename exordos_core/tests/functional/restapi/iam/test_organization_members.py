@@ -436,20 +436,3 @@ class TestOrganizationMembers(base.BaseIamResourceTest):
 
         # cleanup
         admin_client.delete_organization(org["uuid"])
-
-    def test_owner_cannot_delete_own_membership(
-        self, user_api_client, auth_user_admin
-    ):
-        client = user_api_client(auth_user_admin)
-        org = client.create_organization(name="KeepOwnOwnership")
-        try:
-            members = self._list_organization_members(client, org["uuid"])
-            owner = next(
-                member for member in members
-                if member["user"].endswith(str(auth_user_admin.uuid))
-            )
-            with pytest.raises(bazooka_exc.ForbiddenError):
-                self._delete_organization_member(client, org["uuid"], owner["uuid"])
-            assert self._list_organization_members(client, org["uuid"]) == members
-        finally:
-            client.delete_organization(org["uuid"])

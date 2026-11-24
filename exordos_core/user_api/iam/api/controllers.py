@@ -457,12 +457,6 @@ class OrganizationMemberController(
         if parent_resource.are_i_owner() or self.enforce(
             c.PERMISSION_ORGANIZATION_WRITE_ALL
         ):
-            member = self.get(parent_resource=parent_resource, uuid=uuid)
-            if (
-                member.user.uuid == models.User.me().uuid
-                and member.role == c.OrganizationRole.OWNER.value
-            ):
-                raise iam_e.CanNotUpdateOrganization(name=parent_resource.name)
             return super().delete(parent_resource, uuid)
         raise iam_e.CanNotUpdateOrganization(name=parent_resource.name)
 
