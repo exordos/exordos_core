@@ -56,6 +56,15 @@ are root-only (`0600`, directories `0700`) and cannot be read by Rawstor service
 Agent metadata containing the delivered credentials uses the existing owner-only
 storage permissions.
 
+Hypervisor control credentials are stored once per agent under
+`/etc/rawstor/tls/control-agent-AGENT_UUID/`. Each volume keeps only a `control`
+symlink in its `volume-VOLUME_UUID/` directory. Deleting a volume removes its
+service certificate and link, leaving the shared control identity available to
+other volumes. Old `control-volume-*` copies are removed as volume targets are
+reconciled. Renewal is shared, and an older volume target cannot roll back a
+newer control certificate. The control identity remains administrative; this
+layout does not reduce its Rawstor permissions.
+
 MDS and OST configurations and per-volume vhost systemd drop-ins set
 `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY` and
 `RAWSTOR_TLS_CA`. Renewals send `SIGUSR1` without restarting the service.
