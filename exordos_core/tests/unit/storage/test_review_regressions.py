@@ -1,6 +1,7 @@
 #    Copyright 2026 Genesis Corporation.
 #    Licensed under the Apache License, Version 2.0 (the "License").
 
+from contextlib import contextmanager
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -20,6 +21,21 @@ def rawstor_bindings(monkeypatch):
     bindings = MagicMock()
     monkeypatch.setitem(sys.modules, "rawstor", bindings)
     return bindings
+
+
+@pytest.fixture(autouse=True)
+def isolated_tls_transport(monkeypatch, rawstor_bindings):
+    from gcl_sdk.agents.universal.drivers import rawstor_tls
+    import rawstor
+
+    from exordos_core.storage import tls
+
+    @contextmanager
+    def client(_):
+        yield rawstor
+
+    monkeypatch.setattr(tls, "credential", lambda *args: {})
+    monkeypatch.setattr(rawstor_tls, "temporary_bindings", client)
 
 
 @pytest.mark.parametrize(
@@ -180,7 +196,9 @@ def test_missing_report_cannot_bypass_ost_emptiness_check(status, unreachable):
         else:
             location.return_value.objects.return_value = iter([object()])
         with pytest.raises(storage_exc.ConflictRecords):
-            api.StorageNodesController.validate_delete(member, SimpleNamespace())
+            api.StorageNodesController.validate_delete(
+                member, SimpleNamespace(agent=uuid.uuid4())
+            )
     location.return_value.objects.assert_called_once()
 
 
@@ -192,7 +210,9 @@ def test_empty_reachable_ost_can_be_deleted_without_old_report():
     )
     with patch.object(api, "_require_no_disks"), patch("rawstor.Location") as location:
         location.return_value.objects.return_value = iter(())
-        api.StorageNodesController.validate_delete(member, SimpleNamespace())
+        api.StorageNodesController.validate_delete(
+            member, SimpleNamespace(agent=uuid.uuid4())
+        )
 
 
 @pytest.mark.parametrize("source", ["sql", "target", "actual"])

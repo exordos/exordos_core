@@ -273,8 +273,9 @@ RawStor only bypasses it when `FORCE` is explicitly combined with `READONLY`.
 
 ### Deployment trust boundary
 
-RawStor listeners do not authenticate clients. Place MDS, OST and vhost traffic
-on a trusted storage network and restrict access with host/network firewall rules.
+Rawstor listeners authenticate peers with Core-issued SPIFFE certificates.
+Keep storage traffic on a trusted network and restrict access with host/network
+firewall rules.
 Storage configuration is an administrator operation: advertised endpoints are
 probed by the agent, so only trusted administrators should supply them.
 Managed file-backed OST directories must be direct children of
