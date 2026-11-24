@@ -51,6 +51,7 @@ plugins:
             Local Deployment: Локальное развёртывание
             Admin Guide: Руководство администратора
             Notification Email: Почтовые уведомления
+            Rawstor storage: Хранилище Rawstor
             Support: Поддержка
             Security: Безопасность
             Troubleshooting: Устранение неполадок

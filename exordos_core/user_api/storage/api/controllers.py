@@ -15,6 +15,7 @@
 #    under the License.
 
 import ipaddress
+import re
 from urllib.parse import urlparse
 import uuid as sys_uuid
 
@@ -66,9 +67,19 @@ def _endpoint_host(host):
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        normalized = host.lower().rstrip(".")
-        if not normalized or any(not part for part in normalized.split(".")):
-            raise InvalidRawstorEndpoint(msg="A valid DNS name is required")
+        normalized = host.lower().removesuffix(".")
+        labels = normalized.split(".")
+        if (
+            len(normalized) > 253
+            or any(
+                not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+                for label in labels
+            )
+            or all(re.fullmatch(r"(?:[0-9]+|0x[0-9a-f]+)", label) for label in labels)
+        ):
+            raise InvalidRawstorEndpoint(
+                msg="A valid DNS hostname or IPv4 address is required"
+            )
         return normalized
     if address.version != 4 or address.is_unspecified:
         raise InvalidRawstorEndpoint(
@@ -329,6 +340,26 @@ def _require_cluster_not_deleting(cluster):
         )
 
 
+def _references_remote_pool(value, pool_ids, local_pools):
+    name = str(value.get("storage_pool"))
+    if name not in pool_ids:
+        return False
+    if value.get("storage_location"):
+        return True
+    try:
+        owner = sys_uuid.UUID(str(value.get("pool")))
+    except (ValueError, TypeError, AttributeError):
+        # Missing placement cannot prove this is a local disk.
+        return True
+    if owner not in local_pools:
+        pools = compute_models.MachinePool.objects.get_all(
+            filters={"uuid": dm_filters.EQ(owner)}
+        )
+        local_pools[owner] = {p.name for pool in pools for p in pool.storage_pools}
+    # Match the same local-name precedence used when assigning a volume.
+    return name not in local_pools[owner]
+
+
 def _require_no_disks(cluster, pool_uuid=None):
     pool_ids = (
         [str(pool_uuid)]
@@ -343,14 +374,23 @@ def _require_no_disks(cluster, pool_uuid=None):
     volumes = compute_models.MachineVolume.objects.get_all(
         filters={"storage_pool": dm_filters.In(pool_ids)}
     )
+    local_pools = {}
+    has_volumes = any(
+        _references_remote_pool(
+            {"storage_pool": volume.storage_pool, "pool": volume.pool},
+            pool_ids,
+            local_pools,
+        )
+        for volume in volumes
+    )
     pending_resources = any(
-        str(resource.value.get("storage_pool")) in pool_ids
+        _references_remote_pool(resource.value, pool_ids, local_pools)
         for model in (ua_models.TargetResource, ua_models.Resource)
         for resource in model.objects.get_all(
             filters={"kind": dm_filters.EQ("pool_volume")}
         )
     )
-    if volumes or pending_resources:
+    if has_volumes or pending_resources:
         raise storage_exc.ConflictRecords(
             model="StorageCluster", msg="Storage still has allocated or pending disks"
         )
@@ -504,6 +544,11 @@ class StorageNodesController(ClusterMemberController):
         data = {**data, **data["driver_spec"]}
         _validate_endpoint(data["endpoint"], "ost")
         agent_uuid = data.get("agent")
+        if agent_uuid is not None:
+            try:
+                agent_uuid = sys_uuid.UUID(str(agent_uuid))
+            except (ValueError, TypeError, AttributeError):
+                raise InvalidRawstorEndpoint(msg="Agent must be a valid UUID")
         if agent_uuid is None and existing is None:
             raise InvalidRawstorEndpoint(msg="An OST agent is required")
         if existing and (
@@ -616,24 +661,22 @@ class StorageNodesController(ClusterMemberController):
     def validate_delete(member, cluster):
         # No new writes may race an OST removal. Also protect unmanaged objects.
         _require_no_disks(cluster)
-        if member.agent is not None and member.status != "ACTIVE":
-            actual = ua_models.Resource.objects.get_all(
-                filters={
-                    "uuid": dm_filters.EQ(member.uuid),
-                    "kind": dm_filters.EQ("storage_node"),
-                }
-            )
-            if not actual:
-                # A never-ready OST has not been admitted into the MDS topology.
-                return
         import rawstor
 
-        rawstor.initialize(insecure=True)
-
-        if (
-            next(iter(rawstor.Location(member.driver_spec.endpoint).objects()), None)
-            is not None
-        ):
+        try:
+            rawstor.initialize(insecure=True)
+            nonempty = (
+                next(
+                    iter(rawstor.Location(member.driver_spec.endpoint).objects()), None
+                )
+                is not None
+            )
+        except (OSError, RuntimeError) as error:
+            raise storage_exc.ConflictRecords(
+                model="StorageNode",
+                msg="Cannot confirm the OST is empty; restore its endpoint before deletion",
+            ) from error
+        if nonempty:
             raise storage_exc.ConflictRecords(
                 model="StorageNode", msg="OST is not empty"
             )
