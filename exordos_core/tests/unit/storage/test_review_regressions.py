@@ -211,9 +211,11 @@ def test_capacity_reserves_only_remote_or_uncertain_volumes(
         "pool": str(owner) if placement != "missing" else None,
         "size": 3,
     }
+    if placement == "remote" and source == "sql":
+        value["storage_backend"] = "rawstor"
     if placement == "remote" and source != "sql":
         value["storage_location"] = "mds://core:7776/"
-    local_names = [str(identifier)] if placement == "local" or source != "sql" else []
+    local_names = [str(identifier)] if placement != "missing" else []
     compute_pool = SimpleNamespace(
         storage_pools=[
             pool.ThinStoragePool(name=n, pool_type="dir") for n in local_names

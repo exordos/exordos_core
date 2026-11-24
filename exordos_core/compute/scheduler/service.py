@@ -25,6 +25,7 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
@@ -220,10 +221,10 @@ class SchedulerService(basic.BasicService):
         )
 
     def _find_storage_pool_by_name(
-        self, pool: base.MachinePoolBundle, name: str
+        self, pool: base.MachinePoolBundle, name: str, assigned_backend=None
     ) -> storage_select.PoolCandidate:
         result = storage_select.find_storage_pool_by_name_with_clusters(
-            pool.pool.storage_pools, name
+            pool.pool.storage_pools, name, assigned_backend=assigned_backend
         )
         if result is None:
             raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
@@ -256,6 +257,7 @@ class SchedulerService(basic.BasicService):
             tier=volume.tier,
             ephemeral=volume.ephemeral,
             storage_pool=str(storage_pool.uuid) if cluster else storage_pool.name,
+            storage_backend="rawstor" if cluster else "local",
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
@@ -270,7 +272,11 @@ class SchedulerService(basic.BasicService):
             return None
 
         try:
-            return self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
+            return self._find_storage_pool_by_name(
+                pool,
+                pool_volume.storage_pool,
+                assigned_backend=pool_volume.storage_backend,
+            )
         except ValueError:
             return None
 
@@ -343,7 +349,9 @@ class SchedulerService(basic.BasicService):
             # Already resolvable, or classification above would have
             # skipped this candidate.
             storage_pool, owner_cluster = self._find_storage_pool_by_name(
-                pool, pool_volume.storage_pool
+                pool,
+                pool_volume.storage_pool,
+                assigned_backend=pool_volume.storage_backend,
             )
 
             if (
@@ -584,26 +592,49 @@ class SchedulerService(basic.BasicService):
             index = accumulated_weights.index(max(accumulated_weights))
             machine_bundle = idle_machines[index]
 
-            if not self._machine_has_disk_capacity(
-                unscheduled_node, machine_bundle, pools, reserve=True
-            ):
-                continue
-
-            # TODO(akremenetsky): Map volumes to machine volumes
-            machine_bundle.machine.node = node.uuid
-            machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
-            machine_bundle.machine.target_power_state = node.target_power_state
-            node.status = nc.NodeStatus.SCHEDULED.value
+            pool = pools.get(machine_bundle.machine.pool)
+            reservations = copy.deepcopy(getattr(self, "_storage_reservations", {}))
+            allocations = dict(getattr(self, "_idle_volume_allocations", {}))
+            capacities = (
+                [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
+                if pool is not None
+                else []
+            )
+            idle_volumes = list(pool.volumes) if pool is not None else []
+            old_node_status = getattr(node, "status", None)
+            old_machine = {
+                field: getattr(machine_bundle.machine, field, None)
+                for field in ("node", "status", "target_power_state")
+            }
             try:
-                node.save()
-                machine_bundle.machine.save()
+                if not self._machine_has_disk_capacity(
+                    unscheduled_node, machine_bundle, pools, reserve=True
+                ):
+                    continue
+                machine_bundle.machine.node = node.uuid
+                machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
+                machine_bundle.machine.target_power_state = node.target_power_state
+                node.status = nc.NodeStatus.SCHEDULED.value
+                with sql_utils.savepoint(name="idle_machine_assignment"):
+                    node.save()
+                    machine_bundle.machine.save()
                 LOG.info(
                     "The node %s scheduled to %s machine",
                     node.uuid,
                     machine_bundle.machine.uuid,
                 )
             except Exception:
+                self._storage_reservations = reservations
+                self._idle_volume_allocations = allocations
+                for storage_pool, capacity in capacities:
+                    storage_pool.capacity_provisioned = capacity
+                if pool is not None:
+                    pool.volumes[:] = idle_volumes
+                node.status = old_node_status
+                for field, value in old_machine.items():
+                    setattr(machine_bundle.machine, field, value)
                 LOG.exception("Error scheduling node %s", node.uuid)
+                continue
 
             # Actualize idle machines
             if node.node_type == ua_pool.NodeType.HW.value:

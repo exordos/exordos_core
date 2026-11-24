@@ -64,7 +64,9 @@ requests default to WARM and ephemeral; use `--tier cold --no-ephemeral`
 for persistent rawstor disks.
 
 A cluster-backed machine volume stores the selected storage pool UUID in
-`storage_pool`. The MDS endpoint belongs to the cluster, and mirrors, chunk size
+`storage_pool`, together with a persisted `storage_backend` (`local` or
+`rawstor`). Local pool renames and newly reported UUID-shaped names do not
+change an established assignment. The MDS endpoint belongs to the cluster, and mirrors, chunk size
 and failure domain belong to the pool. Core resolves `storage_location` and
 `storage_policy` when building the volume resource for the hypervisor agent;
 these are execution parameters, not separate columns on the volume. Local qcow2

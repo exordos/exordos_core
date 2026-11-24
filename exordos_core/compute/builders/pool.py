@@ -525,7 +525,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         scheduled onto a pool only considers that one).
         """
         if (
-            volume.storage_pool
+            getattr(volume, "storage_backend", None) != "rawstor"
+            and volume.storage_pool
             and sum(sp.name == volume.storage_pool for sp in pool.storage_pools) > 1
         ):
             return None
@@ -537,6 +538,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.ephemeral,
             size,
             volume.storage_pool or None,
+            assigned_backend=getattr(volume, "storage_backend", None)
+            if volume.storage_pool
+            else None,
             # This check admits the volume itself; other reservations still count.
             exclude_volume=volume.uuid,
             allow_remote=isinstance(
@@ -591,6 +595,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(volume.size)
+        volume.storage_backend = "rawstor" if cluster else "local"
         if not volume.storage_pool:
             volume.storage_pool = (
                 str(storage_pool.uuid) if cluster else storage_pool.name
@@ -627,6 +632,7 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(target_volume.size - actual_volume.size)
+        volume.storage_backend = "rawstor" if cluster else "local"
         if not volume.storage_pool:
             volume.storage_pool = (
                 str(storage_pool.uuid) if cluster else storage_pool.name
