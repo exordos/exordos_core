@@ -1,48 +1,82 @@
 # Rawstor TLS integration
 
-Rawstor defaults to mutual TLS. The base integration deliberately selects
-insecure transport so storage integration can merge before certificates.
-This branch adds the generic SPIFFE issuer; application authorization and
-runtime certificate delivery still need to be connected before enabling TLS.
+This branch layers runtime mutual TLS on `feat/spiffe-certificates` and requires
+the matching `feat/rawstor-tls` SDK branch. Enable the existing Core
+`[features] rawstor = true` flag; no separate TLS opt-in is needed. Rawstor
+services and control operations fail closed while their certificates are pending.
+This branch does not start Rawstor with `--insecure`.
 
-When enabling TLS, remove `EXTRA_ARGS="--insecure"` from service configuration
-and replace the bindings' `rawstor.initialize(insecure=True)` with TLS
-initialization before the first `Target` or `Location` import. Credentials
-must be provisioned first; mixing insecure mode and TLS settings is rejected.
+## Issuance and authorization
 
-Configure `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY`
-and `RAWSTOR_TLS_CA` for MDS, OST, vhost and the agent process using bindings.
-Rawstor authenticates SPIFFE URI identities and signed Rawstor permissions;
-an ordinary ACME certificate for a DNS name is insufficient.
+The existing Secret Manager issues and renews X.509-SVIDs. A private `rawstor`
+certificate profile adds Rawstor's signed object permissions to the generic
+SPIFFE issuer. The public certificate API rejects this profile. Core creates
+its certificate resources under the administrator project, not under the
+workload's project, so a project owner cannot mint infrastructure identities.
+The CA remains in the issuer-only SPIFFE authority table. Its key is never
+included in an agent target or an image.
 
-The proposed issuer is an internal CA controlled by Core. Keep its private
-key out of images, hypervisors and storage nodes. Issue credentials at runtime
-and deliver private keys through the existing encrypted agent configuration.
-Core provides a generic `spiffe` certificate method for issuance and renewal.
-Rawstor authorization extensions and runtime delivery still need integration;
-`rawstor.pki` documents the required signed permission format.
+The installation trust domain is `rawstor.local`. Installations with the same
+trust domain still have independent CA keys; peers must trust their configured
+CA, not a root presented by a remote peer.
 
-- OST certificates use `spiffe://TRUST_DOMAIN/ost/STORAGE_NODE_UUID`.
-- MDS certificates use `spiffe://TRUST_DOMAIN/mds/MDS_UUID`. That UUID must
-  equal the MDS witness UUID in topology, currently derived from the cluster
-  UUID with UUIDv5 and the name `mds-witness`.
-- The control-plane agent uses a provider admin certificate for account
-  registration, inventories and structural operations. This identity does
-  not authorize ordinary data writes.
-- Each vhost uses `spiffe://TRUST_DOMAIN/account/PROJECT_UUID/client/NAME`.
-  Issue role `none` with permissions scoped to its volume UUID: mask `3`
-  grants read/write. Automatic repair that allocates replacement members
-  also requires manage permission (mask `7`), which permits managing that
-  object, including deletion. Choose this policy before enabling repair.
+| Consumer | SPIFFE path | Access |
+| --- | --- | --- |
+| OST | `/ost/STORAGE_NODE_UUID` | Storage member |
+| MDS | `/mds/WITNESS_UUID` | Metadata server and witness |
+| Agent control operations | `/admin/AGENT_UUID` | Provider control operations |
+| Per-volume vhost | `/account/PROJECT_UUID/client/VOLUME_UUID` | Only its own volume |
 
-Use a shared trust domain for the installation. A single process may serve
-several clusters; a process-wide `RAWSTOR_TLS_MDS_ID` pin cannot simply be
-set to one cluster's identity for every connection.
+The MDS identity UUID is `uuid5(cluster_uuid, "mds-witness")`, matching its
+witness topology entry. Exordos projects map to Rawstor accounts. A vhost has
+role `none` and a single object permission mask `7` (read, write and manage).
+Manage permission allows repair to allocate replacement members; it also permits
+managing or deleting that object. The certificate grants no access to other
+volumes in that account.
 
-For rotation, publish a versioned certificate/key pair atomically, then send
-`SIGUSR1` to MDS, OST and vhost to reload TLS. Vhost uses `SIGHUP` for resize,
-so TLS rotation should use `SIGUSR1`. Existing connections retain their TLS
-session; reconnect or bound connection lifetime to complete rotation. Renew
-before expiry and preserve identity and object permissions. Rotate CAs by
-first distributing a bundle trusting both CAs, replacing leaf certificates,
-and only then retiring the old CA after old sessions have drained.
+Leaves live for seven days. The existing SPIFFE renewal policy renews them during
+the last half of that lifetime, preserving identity, permissions and CA while
+creating a new key and serial. Builders publish the renewed leaf even when
+storage topology, disk size and attachments are unchanged. A certificate is no
+longer renewed once neither a desired nor an actual resource references it;
+removing a leaf does not revoke already issued certificates or delete its CA.
+
+## Delivery and reload
+
+Certificate/key pairs and the public CA travel in the existing encrypted
+universal-agent resource channel. They are generated at runtime, never baked
+into an image. The public storage models do not expose these private agent
+snapshots.
+
+Agents validate the pair and issuer, then publish an immutable generation under
+`/etc/rawstor/tls/` through an atomic `current` symlink. Service private keys are
+`root:rawstor` mode `0640`, in directories with mode `0750`. Control-plane keys
+are root-only (`0600`, directories `0700`) and cannot be read by Rawstor services.
+Agent metadata containing the delivered credentials uses the existing owner-only
+storage permissions.
+
+MDS and OST configurations and per-volume vhost systemd drop-ins set
+`RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY` and
+`RAWSTOR_TLS_CA`. Renewals send `SIGUSR1` without restarting the service.
+`SIGHUP` remains available for topology reload and disk resize. A failed signal
+is retried during reconciliation. Established TLS connections retain their
+session; the renewed leaf applies to new connections.
+
+Python bindings have one TLS context per process. Agent control operations run
+in short-lived child processes with the intended admin credentials, so each
+operation loads the current generation and cannot reuse another workload's
+context. No plaintext fallback or process-wide single-MDS identity pin is used.
+
+## Deployment
+
+Deploy the matching Core and SDK branches together. Upgrade all certificate
+issuer replicas before creating TLS resources. Existing insecure clusters
+must be migrated during maintenance: stop workloads and their old vhost units
+before switching the services and agents to TLS. An active vhost configured with
+`--insecure` is rejected instead of being silently restarted beneath a guest.
+For a new managed cluster, Core issues the credentials and its agents configure
+the services automatically. Manually managed OSTs also require credentials from
+the same installation authority before admission.
+
+This implements leaf renewal. CA rollover is separate: distribute trust in both
+roots, replace leaves, drain old sessions, and only then remove the old root.

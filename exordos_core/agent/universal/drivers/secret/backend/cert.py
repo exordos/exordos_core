@@ -33,6 +33,7 @@ from restalchemy.dm import filters as dm_filters
 from restalchemy.storage import exceptions as ra_exc
 
 from exordos_core.agent.universal.drivers.secret.dm import models as driver_dm
+from exordos_core.common import rawstor_pki
 from exordos_core.common import spiffe
 from exordos_core.secret import constants as sc
 from exordos_core.secret.dm import models as secret_dm
@@ -112,6 +113,13 @@ class CertBotBackendClient(base.AbstractBackendClient):
         value = resource.value
         method = value["method"]
         domain = spiffe.trust_domain(method["spiffe_id"])
+        extensions = ()
+        if method["kind"] == "rawstor":
+            if uuid.UUID(str(value["project_id"])) != rawstor_pki.AUTHORITY_PROJECT:
+                raise ValueError("Rawstor authority requires the administrator project")
+            extensions = rawstor_pki.permissions(
+                method["spiffe_id"], method.get("object_id")
+            )
         project = uuid.UUID(str(value["project_id"]))
         authority_id = uuid.uuid5(project, f"spiffe://{domain}")
         try:
@@ -135,6 +143,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
             authority.cert,
             method["spiffe_id"],
             method.get("validity_days", 30),
+            extensions=extensions,
         )
         return driver_dm.Certificate.from_cert_resource(
             resource, issued.key, issued.csr, issued.cert, issued.expiration_at
@@ -150,7 +159,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
             raise exceptions.ResourceAlreadyExists(resource=resource)
 
         kind = resource.value.get("method", {}).get("kind")
-        if kind in ("manual", "spiffe"):
+        if kind in ("manual", "spiffe", "rawstor"):
             driver_cert = (
                 self._manual_certificate(resource)
                 if kind == "manual"
@@ -189,7 +198,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
         except ra_exc.RecordNotFound:
             raise exceptions.ResourceNotFound(resource=resource)
 
-        if resource.value.get("method", {}).get("kind") == "spiffe":
+        if resource.value.get("method", {}).get("kind") in ("spiffe", "rawstor"):
             value = resource.value
             if (
                 cert.meta.get("method") != value["method"]
@@ -231,9 +240,11 @@ class CertBotBackendClient(base.AbstractBackendClient):
         # We use create_cert (not renew_cert) because the domain set is
         # fundamentally different – the old key/CSR may not cover the
         # new domains.
-        if cert.meta.get("method", {}).get("kind") in ("manual", "spiffe") or set(
-            cert["meta"]["domains"]
-        ) != set(resource.value["domains"]):
+        if cert.meta.get("method", {}).get("kind") in (
+            "manual",
+            "spiffe",
+            "rawstor",
+        ) or set(cert["meta"]["domains"]) != set(resource.value["domains"]):
             LOG.info(
                 "Certificate %s requires re-issuing: method %s -> %s, domains %s -> %s",
                 resource.uuid,
@@ -316,6 +327,10 @@ class CertBotBackendClient(base.AbstractBackendClient):
                 "uuid": dm_filters.EQ(resource.uuid),
             }
         )
-        if cert.meta.get("method", {}).get("kind") not in ("manual", "spiffe"):
+        if cert.meta.get("method", {}).get("kind") not in (
+            "manual",
+            "spiffe",
+            "rawstor",
+        ):
             acme.revoke_cert(self._get_or_create_acme_client(), cert.fullchain)
         cert.delete()

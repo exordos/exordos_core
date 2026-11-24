@@ -172,8 +172,19 @@ class MachineVolume(
                 "mirrors": storage_pool.driver_spec.mirrors,
                 "failure_domain": storage_pool.driver_spec.failure_domain,
             }
+        credentials = {}
+        if location:
+            from exordos_core.storage import tls
+
+            credentials = tls.bundle(
+                "volume", self.uuid, getattr(self.pool, "agent", None), self.project_id
+            )
         for data in (value, target):
-            data.update(storage_location=location, storage_policy=policy)
+            data.update(
+                storage_location=location,
+                storage_policy=policy,
+                rawstor_tls=credentials,
+            )
         return value, target
 
 

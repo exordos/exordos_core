@@ -656,25 +656,21 @@ class StorageNodesController(ClusterMemberController):
     def validate_delete(member, cluster):
         # No new writes may race an OST removal. Also protect unmanaged objects.
         _require_no_disks(cluster)
-        import rawstor
+        from gcl_sdk.agents.universal.drivers import rawstor_tls
 
+        from exordos_core.storage import tls
+
+        credentials = tls.credential("admin/" + str(cluster.agent))
         try:
-            rawstor.initialize(insecure=True)
-            nonempty = (
-                next(
-                    iter(rawstor.Location(member.driver_spec.endpoint).objects()), None
-                )
-                is not None
-            )
+            with rawstor_tls.temporary_bindings(credentials) as rawstor:
+                nonempty = next(iter(rawstor.Location(member.driver_spec.endpoint).objects()), None) is not None
         except (OSError, RuntimeError) as error:
             raise storage_exc.ConflictRecords(
-                model="StorageNode",
-                msg="Cannot confirm the OST is empty; restore its endpoint before deletion",
+                model="StorageNode", msg="Cannot confirm the OST is empty; restore its endpoint before deletion"
             ) from error
         if nonempty:
-            raise storage_exc.ConflictRecords(
-                model="StorageNode", msg="OST is not empty"
-            )
+            raise storage_exc.ConflictRecords(model="StorageNode", msg="OST is not empty")
+
 
 
 class StoragePoolsController(ClusterMemberController):

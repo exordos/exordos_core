@@ -179,11 +179,17 @@ does not silently rotate an expiring CA: issuance fails before a leaf could
 outlive it. CA rollover requires an explicit overlap of old and new trusted
 roots and is separate from automatic leaf renewal.
 
-Application-specific authorization extensions and Rawstor integration belong
-to separate profiles layered on this issuer; the generic method does not grant
+Application-specific authorization extensions use separate profiles layered
+on this issuer; the generic method does not grant
 application permissions or accept arbitrary caller-supplied extensions.
 
 The SPIFFE migration refuses to downgrade while signing authorities exist.
 This prevents rollback and subsequent upgrade from silently replacing already
 distributed trust roots. Downgrade is permitted only after an operator has
 explicitly removed the authority records; deleting leaf resources does not do so.
+
+The Rawstor integration uses an internal `rawstor` profile over this issuer.
+It is reserved for administrator-owned infrastructure resources and cannot be
+requested through the public certificate API. It adds the Rawstor authorization
+extension without exposing arbitrary certificate extensions to callers. See
+[Rawstor TLS integration](../usage/rawstor-tls.md) for delivery and renewal.

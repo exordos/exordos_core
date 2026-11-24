@@ -217,6 +217,19 @@ class SPIFFECertificateMethod(AbstractCertificateMethod):
             raise ValueError("SPIFFE validity_days must be an integer, not a boolean")
 
 
+class RawstorCertificateMethod(SPIFFECertificateMethod):
+    """Infrastructure-only profile; no caller-defined authorization extensions."""
+
+    KIND = "rawstor"
+    object_id = properties.property(types.AllowNone(types.UUID()), default=None)
+
+    def validate(self):
+        super().validate()
+        from exordos_core.common import rawstor_pki
+
+        rawstor_pki.permissions(self.spiffe_id, self.object_id)
+
+
 class Certificate(
     AbstractSecret,
     ra_models.ModelWithTags,
@@ -233,6 +246,7 @@ class Certificate(
             types_dynamic.KindModelType(DNSCoreCertificateMethod),
             types_dynamic.KindModelType(ManualCertificateMethod),
             types_dynamic.KindModelType(SPIFFECertificateMethod),
+            types_dynamic.KindModelType(RawstorCertificateMethod),
         ),
         required=True,
         default=DNSCoreCertificateMethod,
@@ -297,7 +311,11 @@ class Certificate(
         super().validate()
         if self.method.KIND == "manual":
             self.validate_manual_certificate(self.key, self.cert)
-        elif self.method.KIND == "spiffe":
+        elif self.method.KIND in ("spiffe", "rawstor"):
+            if self.method.KIND == "rawstor" and self.project_id.int != 0:
+                raise ValueError(
+                    "Rawstor identities belong to the administrator project"
+                )
             spiffe.trust_domain(self.method.spiffe_id)
             if self.domains:
                 raise ValueError("SPIFFE certificates use spiffe_id, not DNS domains")

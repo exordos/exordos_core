@@ -98,7 +98,12 @@ def create_authority(domain: str) -> IssuedCertificate:
 
 
 def issue_certificate(
-    authority_key: bytes, authority_cert: str, spiffe_id: str, validity_days: int
+    authority_key: bytes,
+    authority_cert: str,
+    spiffe_id: str,
+    validity_days: int,
+    *,
+    extensions: tuple = (),
 ) -> IssuedCertificate:
     """Issue a fresh key and SVID, retaining the supplied CA and workload identity.
 
@@ -141,7 +146,7 @@ def issue_certificate(
         .add_extension(san, critical=True)
         .sign(key, hashes.SHA256())
     )
-    cert = (
+    builder = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(ca.subject)
@@ -165,8 +170,10 @@ def issue_certificate(
             x509.AuthorityKeyIdentifier.from_issuer_public_key(ca.public_key()),
             critical=False,
         )
-        .sign(ca_key, hashes.SHA256())
     )
+    for extension in extensions:
+        builder = builder.add_extension(extension, critical=False)
+    cert = builder.sign(ca_key, hashes.SHA256())
     return IssuedCertificate(
         _key_pem(key),
         cert.public_bytes(serialization.Encoding.PEM).decode() + authority_cert,

@@ -39,6 +39,9 @@ def agent_driver_spec(cluster):
         filters={"cluster": filters.EQ(cluster.uuid)}
     )
     spec = cluster.driver_spec.dump_to_simple_view()
+    from exordos_core.storage import tls
+
+    spec["tls"] = tls.bundle("mds", cluster.uuid, cluster.agent)
     spec["nodes"] = {
         str(node.uuid): {
             "endpoint": node.driver_spec.endpoint,
