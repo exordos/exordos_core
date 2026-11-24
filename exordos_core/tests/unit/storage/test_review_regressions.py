@@ -184,3 +184,54 @@ def test_empty_reachable_ost_can_be_deleted_without_old_report():
     with patch.object(api, "_require_no_disks"), patch("rawstor.Location") as location:
         location.return_value.objects.return_value = iter(())
         api.StorageNodesController.validate_delete(member, SimpleNamespace())
+
+
+@pytest.mark.parametrize("source", ["sql", "target", "actual"])
+@pytest.mark.parametrize(
+    "placement,expected",
+    [("local", 0), ("remote", 3 << 30), ("missing", 3 << 30)],
+)
+def test_capacity_reserves_only_remote_or_uncertain_volumes(
+    source, placement, expected
+):
+    from exordos_core.storage.scheduler import select
+
+    identifier, owner, volume_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    value = {
+        "storage_pool": str(identifier),
+        "pool": str(owner) if placement != "missing" else None,
+        "size": 3,
+    }
+    if placement == "remote" and source != "sql":
+        value["storage_location"] = "mds://core:7776/"
+    local_names = [str(identifier)] if placement == "local" or source != "sql" else []
+    compute_pool = SimpleNamespace(
+        storage_pools=[
+            pool.ThinStoragePool(name=n, pool_type="dir") for n in local_names
+        ]
+    )
+    remote_pool = SimpleNamespace(
+        uuid=identifier,
+        driver_spec=SimpleNamespace(mirrors=1, failure_domain="ost"),
+    )
+    cluster = SimpleNamespace(
+        uuid=uuid.uuid4(), storage_pools=[remote_pool], capacity_info={}
+    )
+    resource = SimpleNamespace(uuid=volume_id, value=value)
+    volume = SimpleNamespace(uuid=volume_id, **value)
+    with (
+        patch.object(select, "_active_clusters", return_value=[cluster]),
+        patch.object(select.compute_models.MachinePool, "objects") as owners,
+        patch.object(select.compute_models.MachineVolume, "objects") as volumes,
+        patch.object(select.ua_models.TargetResource, "objects") as targets,
+        patch.object(select.ua_models.Resource, "objects") as actual,
+        patch.object(
+            select.storage_capacity, "available_by_policy", return_value=10 << 30
+        ) as capacity,
+    ):
+        owners.get_all.return_value = [compute_pool]
+        volumes.get_all.return_value = [volume] if source == "sql" else []
+        targets.get_all.return_value = [resource] if source == "target" else []
+        actual.get_all.return_value = [resource] if source == "actual" else []
+        select.collect_storage_pool_candidates([], require_fresh=False)
+    assert capacity.call_args.args[2] == ([expected] if expected else [])

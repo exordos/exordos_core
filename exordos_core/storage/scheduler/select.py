@@ -26,6 +26,7 @@ from restalchemy.dm import filters as dm_filters
 from exordos_core.common import features
 from exordos_core.compute.dm import models as compute_models
 from exordos_core.storage.dm import models as storage_models
+from exordos_core.storage.placement import references_remote_pool
 
 # A pool paired with the StorageCluster it belongs to, or None for a
 # hypervisor's own local pool.
@@ -92,6 +93,7 @@ def collect_storage_pool_candidates(
             resources.extend(
                 model.objects.get_all(filters={"kind": dm_filters.EQ("pool_volume")})
             )
+    local_pool_names = {}
     for cluster in clusters:
         if cluster.storage_pools:
             info = cluster.capacity_info
@@ -106,12 +108,20 @@ def collect_storage_pool_candidates(
                     )
                 }
             )
-            promised = {str(v.uuid): v.size << 30 for v in volumes}
             pool_ids = {str(p.uuid) for p in cluster.storage_pools}
+            promised = {
+                str(v.uuid): v.size << 30
+                for v in volumes
+                if references_remote_pool(
+                    {"storage_pool": v.storage_pool, "pool": v.pool},
+                    pool_ids,
+                    local_pool_names,
+                )
+            }
             # A deleted SQL volume may still have a desired or actual allocation.
             # Keep its reservation until reconciliation removes those resources.
             for resource in resources:
-                if resource.value.get("storage_pool") in pool_ids:
+                if references_remote_pool(resource.value, pool_ids, local_pool_names):
                     key = str(resource.uuid)
                     promised[key] = max(
                         promised.get(key, 0), resource.value["size"] << 30
