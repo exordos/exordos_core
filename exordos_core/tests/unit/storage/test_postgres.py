@@ -811,3 +811,85 @@ def test_idle_assignment_savepoint_rolls_back_partial_writes(database, monkeypat
         assert persisted == {str(nodes[1].node.uuid), str(machine.uuid)}
         assert nodes[0].node.status == "NEW"
         assert local.capacity_provisioned == 6
+
+
+@pytest.mark.parametrize("failed_save", ["node", "machine", "volume"])
+def test_new_vm_assignment_savepoint_rolls_back_partial_writes(
+    database, monkeypatch, failed_save
+):
+    from types import SimpleNamespace
+    from exordos_core.compute.scheduler import service
+    from exordos_core.compute.scheduler.driver import base
+
+    scheduler = service.SchedulerService([], [], [], [])
+    local = sdk_pool.ThinStoragePool(name="local", pool_type="dir", capacity_usable=10)
+    pool = base.MachinePoolBundle(
+        pool=compute.MachinePool(
+            name="pool",
+            storage_pools=[local],
+            avail_cores=8,
+            avail_ram=8192,
+            driver_spec=sdk_pool.ExordosLocalHyperDriverSpec(
+                connection_uri="test:///default", node=uuid.uuid4()
+            ),
+        ),
+        volumes=[],
+    )
+    monkeypatch.setattr(select, "_active_clusters", lambda: [])
+    with contexts.Context().session_manager() as session:
+        session.execute(
+            "CREATE TABLE new_vm_assignment_probe (kind text, uuid uuid, PRIMARY KEY(kind, uuid))"
+        )
+        fail = [True]
+        volume_writes = []
+
+        def save(kind, identifier):
+            session.execute(
+                "INSERT INTO new_vm_assignment_probe VALUES (%s, %s)",
+                (kind, str(identifier)),
+            )
+            if kind == "volume":
+                volume_writes.append(identifier)
+            if (
+                fail[0]
+                and kind == failed_save
+                and (kind != "volume" or len(volume_writes) == 2)
+            ):
+                raise RuntimeError("persistence failed")
+
+        node = SimpleNamespace(
+            uuid=uuid.uuid4(),
+            name="vm",
+            cores=1,
+            ram=1024,
+            project_id=uuid.uuid4(),
+            target_power_state="ON",
+            pool=None,
+        )
+        node.save = lambda: save("node", node.uuid)
+        monkeypatch.setattr(
+            compute.Machine, "save", lambda self: save("machine", self.uuid)
+        )
+        monkeypatch.setattr(
+            compute.MachineVolume, "save", lambda self: save("volume", self.uuid)
+        )
+        bundle = base.NodeBundle(
+            node,
+            [
+                compute.Volume(uuid=uuid.uuid4(), project_id=node.project_id, size=size)
+                for size in (6, 1)
+            ],
+        )
+
+        with pytest.raises(RuntimeError, match="persistence failed"):
+            scheduler._place_node_into_pool(bundle, pool)
+        assert session.execute("SELECT * FROM new_vm_assignment_probe").fetchall() == []
+        assert node.pool is None and local.capacity_provisioned == 0
+        assert pool.pool.avail_cores == 8 and pool.pool.avail_ram == 8192
+
+        fail[0] = False
+        scheduler._place_node_into_pool(bundle, pool)
+        with session.execute("SELECT * FROM new_vm_assignment_probe") as cursor:
+            assert len(cursor.fetchall()) == 4
+        assert local.capacity_provisioned == 7
+        assert pool.pool.avail_cores == 7 and pool.pool.avail_ram == 7168
