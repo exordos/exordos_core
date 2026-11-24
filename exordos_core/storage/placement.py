@@ -12,8 +12,10 @@ def references_remote_pool(value, pool_ids, local_pools):
     name = str(value.get("storage_pool"))
     if name not in pool_ids:
         return False
-    if value.get("storage_location"):
+    if value.get("storage_location") or value.get("storage_backend") == "rawstor":
         return True
+    if value.get("storage_backend") == "local":
+        return False
     try:
         owner = uuid.UUID(str(value.get("pool")))
     except (ValueError, TypeError, AttributeError):

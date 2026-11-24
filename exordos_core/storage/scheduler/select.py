@@ -113,7 +113,11 @@ def collect_storage_pool_candidates(
                 str(v.uuid): v.size << 30
                 for v in volumes
                 if references_remote_pool(
-                    {"storage_pool": v.storage_pool, "pool": v.pool},
+                    {
+                        "storage_pool": v.storage_pool,
+                        "pool": v.pool,
+                        "storage_backend": getattr(v, "storage_backend", None),
+                    },
                     pool_ids,
                     local_pool_names,
                 )
@@ -165,11 +169,16 @@ def select_storage_pool_with_clusters(
     staged=None,
     exclude_volume=None,
     allow_remote=True,
+    assigned_backend=None,
 ) -> tp.Optional[PoolCandidate]:
     """Like `ua_pool.select_storage_pool`, but drawing from local pools
     and active StorageClusters' pools together (see
     `collect_storage_pool_candidates`).
     """
+    if assigned_backend == "rawstor":
+        local_pools = []
+    elif assigned_backend == "local":
+        allow_remote = False
     candidates = collect_storage_pool_candidates(
         local_pools,
         staged,
@@ -213,18 +222,23 @@ def select_storage_pool_with_clusters(
 def find_storage_pool_by_name_with_clusters(
     local_pools: tp.Iterable[ua_pool.AbstractStoragePool],
     name: str,
+    assigned_backend=None,
 ) -> tp.Optional[PoolCandidate]:
     """Find a pool already assigned to a volume by name.
 
     Raises `ValueError` if the name is ambiguous - accounting capacity
     against the wrong physical pool would be worse than failing loudly.
     """
-    local = [(p, None) for p in local_pools if p.name == name]
+    local = [
+        (p, None)
+        for p in local_pools
+        if p.name == name and assigned_backend != "rawstor"
+    ]
     if len(local) > 1:
         raise ValueError(f"Storage pool name {name!r} is not unique")
     if local:
         return local[0]
-    if not features.rawstor_enabled():
+    if assigned_backend == "local" or not features.rawstor_enabled():
         return None
     try:
         pool_uuid = uuid.UUID(name)

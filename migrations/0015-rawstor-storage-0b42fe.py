@@ -91,6 +91,12 @@ class MigrationStep(migrations.AbstractMigrationStep):
             CREATE UNIQUE INDEX storage_clusters_name_unique ON storage_clusters(name);
         """)
 
+        session.execute(
+            "ALTER TABLE compute_machine_volumes ADD COLUMN storage_backend "
+            "varchar(16) NOT NULL DEFAULT 'local' "
+            "CHECK (storage_backend IN ('local', 'rawstor'))"
+        )
+
         # Rebuild existing volume resources with the Rawstor-capable payload.
         session.execute(
             "UPDATE compute_machine_volumes SET updated_at=CURRENT_TIMESTAMP"
@@ -98,6 +104,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
 
     def downgrade(self, session):
         session.execute(
+            "ALTER TABLE compute_machine_volumes DROP COLUMN storage_backend; "
             "DROP TABLE storage_pools; DROP TABLE storage_nodes; DROP TABLE storage_clusters;"
         )
 

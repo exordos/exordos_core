@@ -27,7 +27,7 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
     monkeypatch.setattr(
         storage.StoragePool,
         "objects",
-        MagicMock(get_all=MagicMock(return_value=[pool])),
+        MagicMock(get_one=MagicMock(return_value=pool)),
     )
     monkeypatch.setattr(
         storage.StorageCluster,
@@ -35,7 +35,11 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
         MagicMock(get_one=MagicMock(return_value=cluster)),
     )
     volume = compute.MachineVolume(
-        project_id=uuid.uuid4(), name="v", size=10, storage_pool=str(pool.uuid)
+        project_id=uuid.uuid4(),
+        name="v",
+        size=10,
+        storage_pool=str(pool.uuid),
+        storage_backend="rawstor",
     )
     first = volume.to_ua_resource()
     assert first.value["storage_location"] == "mds://core:7776/"
@@ -109,3 +113,69 @@ def test_uuid_named_local_pool_wins_over_remote_registration(monkeypatch):
         storage_pool=str(identifier),
     )
     assert volume.to_ua_resource().value["storage_location"] is None
+
+
+def test_remote_backend_survives_new_local_uuid_collision(monkeypatch):
+    cluster = storage.StorageCluster(
+        name="cluster",
+        driver_spec=sdk_pool.RawstorStorageClusterDriverSpec(
+            endpoint="mds://core:7776/"
+        ),
+    )
+    remote = storage.StoragePool(
+        name="remote",
+        cluster=cluster.uuid,
+        driver_spec=rawstor_specs.RawstorPoolDriverSpec(),
+    )
+    owner = compute.Pool(
+        driver_spec=sdk_pool.ExordosLocalHyperDriverSpec(
+            connection_uri="test:///default", node=uuid.uuid4()
+        )
+    )
+    monkeypatch.setattr(
+        storage.StoragePool,
+        "objects",
+        MagicMock(get_one=MagicMock(return_value=remote)),
+    )
+    monkeypatch.setattr(
+        storage.StorageCluster,
+        "objects",
+        MagicMock(get_one=MagicMock(return_value=cluster)),
+    )
+    volume = compute.MachineVolume(
+        name="disk",
+        project_id=uuid.uuid4(),
+        size=8,
+        pool=owner,
+        storage_pool=str(remote.uuid),
+        storage_backend="rawstor",
+    )
+    before = volume.to_ua_resource()
+    owner.storage_pools = [
+        sdk_pool.ThinStoragePool(name=str(remote.uuid), pool_type="dir")
+    ]
+    after = volume.to_ua_resource()
+    assert (
+        before.value["storage_location"]
+        == after.value["storage_location"]
+        == "mds://core:7776/"
+    )
+    assert before.value["storage_policy"] == after.value["storage_policy"]
+    assert volume.dump_to_simple_view()["storage_backend"] == "rawstor"
+
+
+def test_local_backend_remains_local_after_pool_disappears(monkeypatch):
+    identifier = str(uuid.uuid4())
+    objects = MagicMock(
+        side_effect=AssertionError("must not resolve a local volume as remote")
+    )
+    monkeypatch.setattr(storage.StoragePool, "objects", objects)
+    volume = compute.MachineVolume(
+        name="local",
+        project_id=uuid.uuid4(),
+        size=1,
+        storage_pool=identifier,
+        storage_backend="local",
+    )
+    assert volume.to_ua_resource().value["storage_location"] is None
+    objects.get_one.assert_not_called()

@@ -283,6 +283,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
                 name="v",
                 size=20,
                 storage_pool=str(persistent.uuid),
+                storage_backend="rawstor",
             )
             volume.insert()
             after = {
@@ -383,9 +384,9 @@ def test_storage_schema_upgrade_and_downgrade_preserve_local_volumes(database):
         )
         step.upgrade(connection)
         assert connection.execute(
-            "SELECT updated_at > '2000-01-01' FROM compute_machine_volumes WHERE uuid=%s",
+            "SELECT updated_at > '2000-01-01', storage_backend FROM compute_machine_volumes WHERE uuid=%s",
             (volume_uuid,),
-        ).fetchone() == (True,)
+        ).fetchone() == (True, "local")
         cluster_uuid = uuid.uuid4()
         connection.execute(
             "INSERT INTO storage_clusters (uuid,name,description,driver_spec,status) "
@@ -738,3 +739,75 @@ def test_cluster_error_status_roundtrips(database):
             ).status
             == "ERROR"
         )
+
+
+def test_idle_assignment_savepoint_rolls_back_partial_writes(database, monkeypatch):
+    from types import SimpleNamespace
+    from exordos_core.compute.scheduler import service
+    from exordos_core.compute.scheduler.driver import base
+
+    scheduler = service.SchedulerService([], [], [], [])
+    local = sdk_pool.ThinStoragePool(name="local", pool_type="dir", capacity_usable=10)
+    pool = base.MachinePoolBundle(
+        pool=compute.MachinePool(
+            name="pool",
+            storage_pools=[local],
+            driver_spec=sdk_pool.ExordosLocalHyperDriverSpec(
+                connection_uri="test:///default", node=uuid.uuid4()
+            ),
+        ),
+        volumes=[],
+    )
+    with contexts.Context().session_manager() as session:
+        session.execute("CREATE TABLE idle_assignment_probe (uuid uuid PRIMARY KEY)")
+        nodes = []
+        for _ in range(2):
+            identifier = uuid.uuid4()
+            node = SimpleNamespace(
+                uuid=identifier, node_type="VM", status="NEW", target_power_state="ON"
+            )
+            node.save = lambda identifier=identifier: session.execute(
+                "INSERT INTO idle_assignment_probe VALUES (%s)", (str(identifier),)
+            )
+            nodes.append(
+                base.NodeBundle(
+                    node,
+                    [
+                        compute.Volume(
+                            uuid=uuid.uuid4(),
+                            project_id=uuid.uuid4(),
+                            size=6,
+                        )
+                    ],
+                )
+            )
+        machine = SimpleNamespace(
+            uuid=uuid.uuid4(),
+            pool=pool.pool.uuid,
+            machine_type="VM",
+            node=None,
+            status="ACTIVE",
+            target_power_state="OFF",
+        )
+        attempts = []
+
+        def save_machine():
+            session.execute(
+                "INSERT INTO idle_assignment_probe VALUES (%s)", (str(machine.uuid),)
+            )
+            attempts.append(None)
+            if len(attempts) == 1:
+                raise RuntimeError("machine persistence failed")
+
+        machine.save = save_machine
+        monkeypatch.setattr(scheduler, "_get_unscheduled_nodes", lambda: nodes)
+        monkeypatch.setattr(
+            scheduler, "_get_idle_machines", lambda: [base.MachineBundle(machine, [])]
+        )
+        monkeypatch.setattr(select, "_active_clusters", lambda: [])
+        scheduler._schedule_on_existing_machines([pool])
+        with session.execute("SELECT uuid FROM idle_assignment_probe") as cursor:
+            persisted = {str(row["uuid"]) for row in cursor.fetchall()}
+        assert persisted == {str(nodes[1].node.uuid), str(machine.uuid)}
+        assert nodes[0].node.status == "NEW"
+        assert local.capacity_provisioned == 6

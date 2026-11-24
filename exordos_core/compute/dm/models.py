@@ -465,6 +465,10 @@ class MachineVolume(
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
     )
+    # Record the selected backend independently of mutable local pool names.
+    storage_backend = properties.property(
+        types.Enum(["local", "rawstor"]), default="local"
+    )
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,

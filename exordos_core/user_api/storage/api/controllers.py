@@ -360,7 +360,11 @@ def _require_no_disks(cluster, pool_uuid=None):
     local_pools = {}
     has_volumes = any(
         _references_remote_pool(
-            {"storage_pool": volume.storage_pool, "pool": volume.pool},
+            {
+                "storage_pool": volume.storage_pool,
+                "pool": volume.pool,
+                "storage_backend": getattr(volume, "storage_backend", None),
+            },
             pool_ids,
             local_pools,
         )
