@@ -137,6 +137,7 @@ When adding on the same host without `--endpoint`, CLI detects the host address
 and chooses an unused managed bind port starting at 7777. For a remote host,
 provide `--endpoint`. The advertised endpoint may differ from the bind address.
 Core rejects duplicate managed bind ports or backing directories on the same host.
+Advertised hostnames must use valid DNS labels; use ASCII Punycode for IDNs.
 
 The failure domain path runs from outermost to innermost:
 `dc/row/rack/server`. Shorter paths omit outer levels; omitted domains are shared.
@@ -171,7 +172,9 @@ its database and data. Node deletion first removes the OST from MDS topology;
 after the MDS agent successfully requests reload and reports the desired state,
 the host agent stops the OST and removes its config/drop-in. Reload is asynchronous;
 Exordos trusts the generated topology and does not parse journal messages.
-Backing directories and their data remain. A deleting cluster stays in `DELETING`
+Backing directories and their data remain. An absent agent report does not prove
+that an OST is empty. Deletion requires a reachable, empty OST and MDS topology
+acknowledgement; restore an unavailable endpoint before deleting its registration. A deleting cluster stays in `DELETING`
 until the agents acknowledge stopping every OST; then its MDS is stopped through
 reconciliation. New disks, nodes and pools cannot be added while it is deleting.
 The assigned agent and backing location are immutable;
@@ -229,8 +232,7 @@ The default Debian packages and Python binding are version `0.3.4`, from
 Core downloads release packages during image provisioning and checks their
 pinned SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same release. Set `RAWSTOR_VERSION` for a release,
-`RAWSTOR_ARTIFACT_RUN` for another CI run, and `RAWSTOR_WHEEL_VERSION` when its
-binding version differs. `nodes init --version VERSION` overrides the
+`RAWSTOR_WHEEL_VERSION` when its binding version differs. `nodes init --version VERSION` overrides the
 release used for OST and binding installation. Build core with `LOCAL_GENESIS_SDK_PATH`
 pointing to the matching `gcl_sdk` checkout on `feat/rawstor`.
 

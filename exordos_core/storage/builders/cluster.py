@@ -113,11 +113,6 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
     def can_delete_instance_resource(self, resource):
         if resource.kind != "storage_node":
             return super().can_delete_instance_resource(resource)
-        # A never-created OST does not need an MDS acknowledgement.
-        if not ua_models.Resource.objects.get_all(
-            filters={"uuid": resource.uuid, "kind": "storage_node"}
-        ):
-            return True
         # Keep the OST running until the MDS has acknowledged its removal.
         actual = ua_models.Resource.objects.get_all(
             filters={"uuid": resource.value["cluster"], "kind": "storage_cluster"}

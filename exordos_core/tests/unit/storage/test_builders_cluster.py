@@ -169,7 +169,7 @@ def test_cluster_stays_in_progress_until_agent_applies_current_spec():
     assert current.status == "IN_PROGRESS"
 
 
-def test_never_created_ost_can_be_deleted_without_mds():
+def test_missing_reports_do_not_authorize_ost_deletion():
     service = cluster_builder.StorageClusterBuilderService.__new__(
         cluster_builder.StorageClusterBuilderService
     )
@@ -178,12 +178,19 @@ def test_never_created_ost_can_be_deleted_without_mds():
         uuid=sys_uuid.uuid4(),
         value={"cluster": str(sys_uuid.uuid4())},
     )
-    with patch.object(
-        cluster_builder.ua_models.Resource,
-        "objects",
-        MagicMock(get_all=MagicMock(return_value=[])),
+    with (
+        patch.object(
+            cluster_builder.ua_models.Resource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
+        patch.object(
+            cluster_builder.ua_models.TargetResource,
+            "objects",
+            MagicMock(get_all=MagicMock(return_value=[])),
+        ),
     ):
-        assert service.can_delete_instance_resource(resource)
+        assert not service.can_delete_instance_resource(resource)
 
 
 def test_cluster_status_compares_enriched_agent_snapshot():
