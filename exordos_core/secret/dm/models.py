@@ -314,7 +314,7 @@ class Certificate(
         elif self.method.KIND in ("spiffe", "rawstor"):
             if self.method.KIND == "rawstor" and self.project_id.int != 0:
                 raise ValueError(
-                    "Rawstor identities belong to the administrator project"
+                    "RawStor identities belong to the administrator project"
                 )
             spiffe.trust_domain(self.method.spiffe_id)
             if self.domains:

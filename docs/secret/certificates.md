@@ -188,8 +188,8 @@ This prevents rollback and subsequent upgrade from silently replacing already
 distributed trust roots. Downgrade is permitted only after an operator has
 explicitly removed the authority records; deleting leaf resources does not do so.
 
-The Rawstor integration uses an internal `rawstor` profile over this issuer.
+The RawStor integration uses an internal `rawstor` profile over this issuer.
 It is reserved for administrator-owned infrastructure resources and cannot be
-requested through the public certificate API. It adds the Rawstor authorization
+requested through the public certificate API. It adds the RawStor authorization
 extension without exposing arbitrary certificate extensions to callers. See
-[Rawstor TLS integration](../usage/rawstor-tls.md) for delivery and renewal.
+[RawStor TLS integration](../usage/rawstor-tls.md) for delivery and renewal.

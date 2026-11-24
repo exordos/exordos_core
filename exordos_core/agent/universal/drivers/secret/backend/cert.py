@@ -116,7 +116,7 @@ class CertBotBackendClient(base.AbstractBackendClient):
         extensions = ()
         if method["kind"] == "rawstor":
             if uuid.UUID(str(value["project_id"])) != rawstor_pki.AUTHORITY_PROJECT:
-                raise ValueError("Rawstor authority requires the administrator project")
+                raise ValueError("RawStor authority requires the administrator project")
             extensions = rawstor_pki.permissions(
                 method["spiffe_id"], method.get("object_id")
             )

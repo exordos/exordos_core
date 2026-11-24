@@ -1,7 +1,7 @@
 #    Copyright 2026 Genesis Corporation.
 #    Licensed under the Apache License, Version 2.0 (the "License").
 
-"""Optional end-to-end check against the packaged Rawstor daemons."""
+"""Optional end-to-end check against the packaged RawStor daemons."""
 
 import os
 from pathlib import Path
@@ -22,7 +22,7 @@ from exordos_core.common import spiffe
 
 @pytest.mark.skipif(
     not os.environ.get("RAWSTOR_TLS_TEST_BIN"),
-    reason="Requires Rawstor 0.3.4 native daemons",
+    reason="Requires RawStor 0.3.4 native daemons",
 )
 def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
     binaries = Path(os.environ["RAWSTOR_TLS_TEST_BIN"])

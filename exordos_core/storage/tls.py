@@ -41,7 +41,7 @@ def credential(path, object_id=None):
     cert = records[0]
     if cert.method.dump_to_simple_view() != method.dump_to_simple_view():
         raise ValueError(
-            "Rawstor certificate identity or permissions changed unexpectedly"
+            "RawStor certificate identity or permissions changed unexpectedly"
         )
     if (
         not cert.key
@@ -52,7 +52,7 @@ def credential(path, object_id=None):
         return {"pending": True, "certificate_id": str(cert_id)}
     chain = x509.load_pem_x509_certificates(cert.cert.encode())
     if len(chain) != 2:
-        raise ValueError("Rawstor certificate requires the installation CA")
+        raise ValueError("RawStor certificate requires the installation CA")
     return {
         "certificate_id": str(cert_id),
         "trust_domain": rawstor_pki.TRUST_DOMAIN,
@@ -72,7 +72,7 @@ def bundle(kind, resource_uuid, agent, project=None):
     elif kind == "volume":
         identity = f"account/{project}/client/{resource_uuid}"
     else:
-        raise ValueError("Unknown Rawstor workload kind")
+        raise ValueError("Unknown RawStor workload kind")
     return {
         "service": credential(identity, resource_uuid if kind == "volume" else None),
         "control": credential("admin/" + str(agent)),

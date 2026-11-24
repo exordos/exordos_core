@@ -1,15 +1,15 @@
-# Rawstor TLS integration
+# RawStor TLS integration
 
 This branch layers runtime mutual TLS on `feat/spiffe-certificates` and requires
 the matching `feat/rawstor-tls` SDK branch. Enable the existing Core
-`[features] rawstor = true` flag; no separate TLS opt-in is needed. Rawstor
+`[features] rawstor = true` flag; no separate TLS opt-in is needed. RawStor
 services and control operations fail closed while their certificates are pending.
-This branch does not start Rawstor with `--insecure`.
+This branch does not start RawStor with `--insecure`.
 
 ## Issuance and authorization
 
 The existing Secret Manager issues and renews X.509-SVIDs. A private `rawstor`
-certificate profile adds Rawstor's signed object permissions to the generic
+certificate profile adds RawStor's signed object permissions to the generic
 SPIFFE issuer. The public certificate API rejects this profile. Core creates
 its certificate resources under the administrator project, not under the
 workload's project, so a project owner cannot mint infrastructure identities.
@@ -28,7 +28,7 @@ CA, not a root presented by a remote peer.
 | Per-volume vhost | `/account/PROJECT_UUID/client/VOLUME_UUID` | Only its own volume |
 
 The MDS identity UUID is `uuid5(cluster_uuid, "mds-witness")`, matching its
-witness topology entry. Exordos projects map to Rawstor accounts. A vhost has
+witness topology entry. Exordos projects map to RawStor accounts. A vhost has
 role `none` and a single object permission mask `7` (read, write and manage).
 Manage permission allows repair to allocate replacement members; it also permits
 managing or deleting that object. The certificate grants no access to other
@@ -50,9 +50,9 @@ snapshots.
 
 Agents validate the pair and issuer, then publish an immutable generation under
 `/etc/rawstor/tls/` through an atomic `current` symlink. Each generation uses
-Rawstor’s documented filenames: `cert.crt`, `cert.key` and `ca.crt`. Service private keys are
+RawStor’s documented filenames: `cert.crt`, `cert.key` and `ca.crt`. Service private keys are
 `root:rawstor` mode `0640`, in directories with mode `0750`. Control-plane keys
-are root-only (`0600`, directories `0700`) and cannot be read by Rawstor services.
+are root-only (`0600`, directories `0700`) and cannot be read by RawStor services.
 Agent metadata containing the delivered credentials uses the existing owner-only
 storage permissions.
 
@@ -62,7 +62,7 @@ symlink in its `volume-VOLUME_UUID/` directory. Deleting a volume removes its
 service certificate and link, leaving the shared control identity available to
 other volumes. Renewal is shared, and an older volume target cannot roll back a
 newer control certificate. The control identity remains administrative; this
-layout does not reduce its Rawstor permissions.
+layout does not reduce its RawStor permissions.
 
 MDS and OST configurations and per-volume vhost systemd drop-ins set
 `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY` and

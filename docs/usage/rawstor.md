@@ -273,7 +273,7 @@ RawStor only bypasses it when `FORCE` is explicitly combined with `READONLY`.
 
 ### Deployment trust boundary
 
-Rawstor listeners authenticate peers with Core-issued SPIFFE certificates.
+RawStor listeners authenticate peers with Core-issued SPIFFE certificates.
 Keep storage traffic on a trusted network and restrict access with host/network
 firewall rules.
 Storage configuration is an administrator operation: advertised endpoints are
@@ -315,8 +315,8 @@ for unfiltered listings, not ownership.
 
 Cluster and OST capacity queries remain unfiltered, covering every project in
 the shared physical budget. A account is not automatically removed when a disk
-is deleted: Rawstor account removal also deletes that account's objects and
-versions. Account UUIDs scope Rawstor client identities; vhost certificates grant
+is deleted: RawStor account removal also deletes that account's objects and
+versions. Account UUIDs scope RawStor client identities; vhost certificates grant
 access only to their own volume.
 
 Build 44297955553 requires a protocol handshake and account-aware wire frames
@@ -333,7 +333,7 @@ Certificates are delivered over the encrypted agent channel and renewed without
 restarting live vhost backends. Control operations use isolated TLS clients with
 provider credentials; each vhost receives permissions only for its own volume.
 
-See [Rawstor TLS integration](rawstor-tls.md) for identities, file permissions,
+See [RawStor TLS integration](rawstor-tls.md) for identities, file permissions,
 renewal, and migration from an insecure development cluster.
 
 ## Object lifecycle ownership

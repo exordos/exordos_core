@@ -174,7 +174,7 @@ class CertificatesController(iam_controllers.PolicyBasedController):
             raise common_exceptions.ValidateException(err="invalid certificate method")
         if kind == "rawstor":
             raise common_exceptions.ValidateException(
-                err="Rawstor credentials are managed internally"
+                err="RawStor credentials are managed internally"
             )
         if kind == "spiffe":
             try:
