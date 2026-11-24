@@ -955,3 +955,84 @@ def test_builder_keeps_remote_assignment_when_local_pool_name_collides(monkeypat
     assert builder._select_storage_pool(pool.pool, volume, 1)[1] is cluster
     volume.storage_backend = "local"
     assert builder._select_storage_pool(pool.pool, volume, 1) == (local, None)
+
+
+@pytest.mark.parametrize("failed_save", ["node", "machine", "volume"])
+@pytest.mark.parametrize("backend", ["local", "remote", "reusable"])
+def test_new_vm_persistence_failure_restores_allocations(
+    scheduler, monkeypatch, failed_save, backend
+):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    local = _storage_pool("local", "WARM", True, 10, 4 if backend == "reusable" else 0)
+    reusable = _machine_volume("image", 4, "WARM", True, "local")
+    pool = _machine_pool_bundle(
+        [local] if backend != "remote" else [],
+        [reusable] if backend == "reusable" else [],
+    )
+    pool.pool.avail_cores, pool.pool.avail_ram = 8, 8192
+    cluster = _storage_cluster("remote", "WARM", True, 10)
+    monkeypatch.setattr(
+        storage_select,
+        "_active_clusters",
+        lambda: [cluster] if backend == "remote" else [],
+    )
+    scheduler._storage_reservations = {str(cluster.uuid): {"existing": 1 << 30}}
+    node = base.NodeBundle(
+        SimpleNamespace(
+            uuid=sys_uuid.uuid4(),
+            name="vm",
+            cores=1,
+            ram=1024,
+            project_id=sys_uuid.uuid4(),
+            target_power_state="ON",
+            pool=None,
+            save=Mock(),
+        ),
+        [
+            _requested_volume("image", 6, "WARM", True),
+            _requested_volume(None, 1, "WARM", True),
+        ],
+    )
+    machine_save = Mock(
+        side_effect=RuntimeError("machine save failed")
+        if failed_save == "machine"
+        else None
+    )
+    volume_save = Mock(
+        side_effect=[None, RuntimeError("volume save failed")]
+        if failed_save == "volume"
+        else None
+    )
+    monkeypatch.setattr(models.Machine, "save", machine_save)
+    monkeypatch.setattr(models.MachineVolume, "save", volume_save)
+    if failed_save == "node":
+        node.node.save.side_effect = RuntimeError("node save failed")
+
+    with pytest.raises(RuntimeError, match="save failed"):
+        scheduler._place_node_into_pool(node, pool)
+
+    assert node.node.pool is None
+    assert pool.pool.avail_cores == 8 and pool.pool.avail_ram == 8192
+    assert scheduler._storage_reservations == {str(cluster.uuid): {"existing": 1 << 30}}
+    assert local.capacity_provisioned == (4 if backend == "reusable" else 0)
+    assert pool.volumes == ([reusable] if backend == "reusable" else [])
+    assert (
+        reusable.node_volume is None
+        and reusable.machine is None
+        and reusable.pool is None
+    )
+
+    node.node.save.side_effect = machine_save.side_effect = volume_save.side_effect = (
+        None
+    )
+    scheduler._place_node_into_pool(node, pool)
+    assert node.node.pool == pool.pool.uuid
+    assert pool.pool.avail_cores == 7 and pool.pool.avail_ram == 7168
+    if backend == "remote":
+        assert (
+            sum(scheduler._storage_reservations[str(cluster.uuid)].values()) == 8 << 30
+        )
+    else:
+        assert local.capacity_provisioned == 7

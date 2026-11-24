@@ -451,18 +451,36 @@ class SchedulerService(basic.BasicService):
             target_power_state=node.node.target_power_state,
         )
 
-        # Place volumes into the pool
-        volume_allocations = self._allocate_node_volumes(node, pool)
-
-        # Set pool to machine, node and volumes
-        machine.pool = pool.pool.uuid
-        node.node.pool = pool.pool.uuid
-        node.node.save()
-        machine.save()
-        for volume in volume_allocations:
-            volume.pool = pool.pool.uuid
-            volume.machine = machine_uuid
-            volume.save()
+        capacities = [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
+        idle_volumes = list(pool.volumes)
+        volume_state = [
+            (volume, volume.node_volume, volume.pool, volume.machine)
+            for volume in idle_volumes
+        ]
+        reservations = copy.deepcopy(getattr(self, "_storage_reservations", {}))
+        previous_pool = getattr(node.node, "pool", None)
+        try:
+            volume_allocations = self._allocate_node_volumes(node, pool)
+            with sql_utils.savepoint(name="new_machine_assignment"):
+                machine.pool = pool.pool.uuid
+                node.node.pool = pool.pool.uuid
+                node.node.save()
+                machine.save()
+                for volume in volume_allocations:
+                    volume.pool = pool.pool.uuid
+                    volume.machine = machine_uuid
+                    volume.save()
+        except Exception:
+            self._storage_reservations = reservations
+            for storage_pool, capacity in capacities:
+                storage_pool.capacity_provisioned = capacity
+            pool.volumes[:] = idle_volumes
+            for volume, owner, original_pool, original_machine in volume_state:
+                volume.node_volume = owner
+                volume.pool = original_pool
+                volume.machine = original_machine
+            node.node.pool = previous_pool
+            raise
 
         LOG.info(
             "The machine %s scheduled to %s pool",
