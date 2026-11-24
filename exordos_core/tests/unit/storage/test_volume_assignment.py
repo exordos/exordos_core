@@ -62,7 +62,7 @@ def test_volume_agent_payload_resolves_current_pool_and_cluster(monkeypatch):
     assert first.hash != second.hash
 
     monkeypatch.setattr(compute.features, "rawstor_enabled", lambda: False)
-    with pytest.raises(ValueError, match="Rawstor integration is disabled"):
+    with pytest.raises(ValueError, match="RawStor integration is disabled"):
         volume.to_ua_resource()
 
 

@@ -97,7 +97,7 @@ class MigrationStep(migrations.AbstractMigrationStep):
             "CHECK (storage_backend IN ('local', 'rawstor'))"
         )
 
-        # Rebuild existing volume resources with the Rawstor-capable payload.
+        # Rebuild existing volume resources with the RawStor-capable payload.
         session.execute(
             "UPDATE compute_machine_volumes SET updated_at=CURRENT_TIMESTAMP"
         )

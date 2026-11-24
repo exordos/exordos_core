@@ -8,7 +8,7 @@ from oslo_config import cfg
 cfg.CONF.register_opts(
     [
         cfg.BoolOpt(
-            "rawstor", default=False, help="Enable experimental Rawstor integration"
+            "rawstor", default=False, help="Enable experimental RawStor integration"
         )
     ],
     group="features",

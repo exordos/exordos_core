@@ -157,12 +157,12 @@ class MachineVolume(
         location, policy = None, {}
         if self.storage_backend == "rawstor":
             if pool_uuid is None:
-                raise ValueError("Rawstor volume requires a storage pool UUID")
+                raise ValueError("RawStor volume requires a storage pool UUID")
             storage_pool = storage_models.StoragePool.objects.get_one(
                 filters={"uuid": dm_filters.EQ(pool_uuid)}
             )
             if not features.rawstor_enabled():
-                raise ValueError("Rawstor integration is disabled")
+                raise ValueError("RawStor integration is disabled")
             cluster = storage_models.StorageCluster.objects.get_one(
                 filters={"uuid": dm_filters.EQ(storage_pool.cluster)}
             )
