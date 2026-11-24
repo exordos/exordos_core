@@ -609,6 +609,25 @@ class ProjectController(controllers.BaseResourceControllerPaginated, EnforceMixi
                         rule=permission,
                     )
 
+        # Serialize invitations for this user, including invitations to
+        # different projects in the same organization.
+        target_user = models.User.objects.get_one(
+            filters={"uuid": ra_filters.EQ(target_user.uuid)},
+            locked=True,
+        )
+        membership = models.OrganizationMember.objects.get_one_or_none(
+            filters={
+                "organization": ra_filters.EQ(project.organization),
+                "user": ra_filters.EQ(target_user),
+            }
+        )
+        if membership is None:
+            models.OrganizationMember(
+                organization=project.organization,
+                user=target_user,
+                role=c.OrganizationRole.MEMBER.value,
+            ).insert()
+
         role_binding = models.RoleBinding.objects.get_one_or_none(
             filters={
                 "project": ra_filters.EQ(project),
