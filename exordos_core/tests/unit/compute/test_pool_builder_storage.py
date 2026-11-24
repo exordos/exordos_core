@@ -141,7 +141,14 @@ def test_builder_does_not_charge_own_cluster_reservation_twice(
     cluster.capacity_info["objects"][str(volume.uuid)] = actual_size << 30
     reservations = [volume]
     if other_size:
-        reservations.append(SimpleNamespace(uuid=uuid.uuid4(), size=other_size))
+        reservations.append(
+            SimpleNamespace(
+                uuid=uuid.uuid4(),
+                size=other_size,
+                storage_pool=str(storage_pool.uuid),
+                pool=None,
+            )
+        )
     with (
         patch.object(select, "_active_clusters", return_value=[cluster]),
         patch.object(

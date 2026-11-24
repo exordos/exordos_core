@@ -717,7 +717,16 @@ def test_orphaned_volume_keeps_capacity_reserved(monkeypatch, resource_model):
         models.MachineVolume,
         "objects",
         MagicMock(
-            get_all=MagicMock(return_value=[SimpleNamespace(uuid=volume_uuid, size=8)])
+            get_all=MagicMock(
+                return_value=[
+                    SimpleNamespace(
+                        uuid=volume_uuid,
+                        size=8,
+                        storage_pool=str(selected.uuid),
+                        pool=None,
+                    )
+                ]
+            )
         ),
     )
     other = (
@@ -781,8 +790,18 @@ def test_resize_retains_unobserved_old_bytes(monkeypatch):
         MagicMock(
             get_all=MagicMock(
                 return_value=[
-                    SimpleNamespace(uuid=identifier, size=8),
-                    SimpleNamespace(uuid=sys_uuid.uuid4(), size=4),
+                    SimpleNamespace(
+                        uuid=identifier,
+                        size=8,
+                        storage_pool=str(selected.uuid),
+                        pool=None,
+                    ),
+                    SimpleNamespace(
+                        uuid=sys_uuid.uuid4(),
+                        size=4,
+                        storage_pool=str(selected.uuid),
+                        pool=None,
+                    ),
                 ]
             )
         ),
