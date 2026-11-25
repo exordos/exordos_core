@@ -395,6 +395,29 @@ OA_SPEC_GET_ROLE_PERMISSIONS = dict(
 )
 
 
+OA_SPEC_REQUEST_EMAIL_CHANGE = dict(
+    summary="Request an email change for the authenticated local user",
+    request_body=oa_c.build_openapi_req_body(
+        description="Email change parameters",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["new_email", "password"],
+            "properties": {
+                "new_email": {"type": "string", "format": "email", "maxLength": 128},
+                "password": {"type": "string", "writeOnly": True},
+                "otp_code": {
+                    "type": "string",
+                    "description": "Required when MFA is enabled",
+                },
+            },
+        },
+    ),
+    responses={
+        "202": {"description": "Confirmation queued; current email is unchanged"}
+    },
+)
+
 OA_SPEC_CONFIRM_EMAIL_CHANGE = dict(
     summary="Confirm a pending email change using its single-use code",
     request_body=oa_c.build_openapi_req_body(

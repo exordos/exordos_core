@@ -341,3 +341,8 @@ class EmailAlreadyUsed(ra_e.RestAlchemyException):
 class EmailDeliveryUnavailable(ra_e.RestAlchemyException):
     code = 503
     message = "Email delivery is not configured."
+
+
+class EmailChangeRateLimited(ra_e.RestAlchemyException):
+    code = 429
+    message = "Wait one minute before requesting another email change."

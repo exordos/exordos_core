@@ -534,6 +534,17 @@ class User(
             client.build_user_event(context=ctx, user=self, payload=payload)
         )
 
+    def request_email_change(self, new_email):
+        new_email = self._validate_email_change(new_email)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            self.email_change_requested_at is not None
+            and now - self.email_change_requested_at
+            < iam_c.EMAIL_CHANGE_RESEND_INTERVAL
+        ):
+            raise iam_exceptions.EmailChangeRateLimited()
+        self._issue_email_change_code(new_email, now)
+
     def _issue_email_change_code(self, new_email, now):
         code = secrets.token_urlsafe(32)
         self.pending_email = new_email

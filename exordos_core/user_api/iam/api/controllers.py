@@ -261,6 +261,27 @@ class UserController(
             locked=True,
         )
 
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_REQUEST_EMAIL_CHANGE)
+    @actions.post
+    def request_email_change(self, resource, new_email, password, otp_code=None):
+        if models.User.me().uuid != resource.uuid:
+            raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule="self")
+        user = self._lock_email_change_user(resource)
+        if (
+            not isinstance(user.user_source, models.IamUserSource)
+            or user.type != "user"
+        ):
+            raise iam_e.EmailChangeNotAllowed()
+        if not isinstance(password, str) or not password:
+            raise ValidationException(description="Password is required")
+        user.process_secret(password)
+        if user.otp_enabled and (
+            not isinstance(otp_code, str) or not user.validate_otp(otp_code)
+        ):
+            raise gcl_iam_e.OTPInvalidCodeError()
+        user.request_email_change(new_email)
+        return {"status": "pending"}, 202
+
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_CONFIRM_EMAIL_CHANGE)
     @actions.post
     def confirm_email_change(self, resource, code):

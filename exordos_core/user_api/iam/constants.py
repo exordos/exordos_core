@@ -57,6 +57,7 @@ PARAM_REDIRECT_URI = "redirect_uri"
 # User settings
 USER_CONFIRMATION_CODE_TTL = timedelta(hours=1)
 EMAIL_CHANGE_CODE_TTL = timedelta(hours=1)
+EMAIL_CHANGE_RESEND_INTERVAL = timedelta(minutes=1)
 
 
 # Default Values
