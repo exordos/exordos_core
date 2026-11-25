@@ -16,3 +16,5 @@
 
 IAM_USER_REGISTRATION_EVENT = "IamUserRegistration"
 IAM_USER_RESET_PASSWORD_EVENT = "IamUserResetPassword"
+
+IAM_USER_EMAIL_CHANGE_EVENT = "IamUserEmailChange"

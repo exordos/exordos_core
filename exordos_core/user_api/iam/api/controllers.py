@@ -164,6 +164,9 @@ class UserController(
                     ra_c.UPDATE: iam_fp.Permissions.HIDDEN,
                 },
                 "registration_client": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "pending_email": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "email_change_code_hash": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "email_change_requested_at": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
             },
         ),
         name_map={"secret": "password", "name": "username"},
@@ -251,6 +254,35 @@ class UserController(
         raise iam_e.CanNotUpdateUser(
             uuid=resource.uuid, rule=c.PERMISSION_USER_WRITE_ALL
         )
+
+    def _lock_email_change_user(self, resource):
+        return models.User.objects.get_one(
+            filters={"uuid": ra_filters.EQ(resource.uuid)},
+            locked=True,
+        )
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_CONFIRM_EMAIL_CHANGE)
+    @actions.post
+    def confirm_email_change(self, resource, code):
+        user = self._lock_email_change_user(resource)
+        user.confirm_email_change(code)
+        return None
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_ADMIN_CHANGE_EMAIL)
+    @actions.post
+    def admin_change_email(self, resource, new_email, reason, verified=False):
+        self.enforce(c.PERMISSION_USER_CHANGE_EMAIL, do_raise=True)
+        if not isinstance(verified, bool):
+            raise ValidationException(description="verified must be a boolean")
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 1024:
+            raise ValidationException(
+                description="A reason of 1 to 1024 characters is required"
+            )
+        if verified:
+            self.enforce(c.PERMISSION_USER_VERIFY_CHANGED_EMAIL, do_raise=True)
+        user = self._lock_email_change_user(resource)
+        user.admin_change_email(new_email, reason.strip(), verified=verified)
+        return None
 
     @actions.post
     def enable_otp(self, resource, password):

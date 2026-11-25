@@ -30,6 +30,7 @@ from gcl_iam import enforcers
 from gcl_iam import exceptions as iam_e
 from gcl_iam import tokens
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.events import clients as event_clients
 import pyotp
 from restalchemy.common import contexts
 from restalchemy.dm import filters as ra_filters
@@ -349,6 +350,24 @@ class User(
 ):
     __tablename__ = "iam_users"
 
+    __audit_excluded_fields__ = (
+        audit_models.AuditLogSQLStorableMixin.__audit_excluded_fields__
+        | {"pending_email", "email_change_code_hash", "email_change_requested_at"}
+    )
+
+    pending_email = properties.property(
+        ra_types.AllowNone(types.Email(max_length=128)),
+        default=None,
+    )
+    email_change_code_hash = properties.property(
+        ra_types.AllowNone(ra_types.String(max_length=64)),
+        default=None,
+    )
+    email_change_requested_at = properties.property(
+        ra_types.AllowNone(ra_types.UTCDateTimeZ()),
+        default=None,
+    )
+
     name = properties.property(
         types.Username(min_length=1, max_length=128),
         required=True,
@@ -482,6 +501,102 @@ class User(
         )
         project.insert()
         project.add_owner(self)
+
+    def _validate_email_change(self, new_email):
+        if not isinstance(self.user_source, IamUserSource) or self.type != "user":
+            raise iam_exceptions.EmailChangeNotAllowed()
+        if not isinstance(new_email, str) or not types.Email(max_length=128).validate(
+            new_email
+        ):
+            raise iam_exceptions.InvalidEmailChange()
+        new_email = new_email.lower()
+        if new_email == self.email.lower() and self.email_verified:
+            raise iam_exceptions.InvalidEmailChange()
+        # Escape LIKE metacharacters while retaining case-insensitive matching.
+        pattern = (
+            new_email.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        users = User.objects.get_all(filters={"email": ra_filters.ILike(pattern)})
+        if any(user.uuid != self.uuid for user in users):
+            raise iam_exceptions.EmailAlreadyUsed()
+        return new_email
+
+    def _email_change_event(self, recipient, code=None):
+        ctx = contexts.get_context()
+        client = ctx.context_storage.get(iam_c.STORAGE_KEY_EVENTS_CLIENT)
+        if client is None or isinstance(client, event_clients.DummyEventClient):
+            raise iam_exceptions.EmailDeliveryUnavailable()
+        payload = event_payloads.EmailChangeEventPayload(
+            recipient=recipient,
+            code=code or "",
+        )
+        client.send_event(
+            client.build_user_event(context=ctx, user=self, payload=payload)
+        )
+
+    def _issue_email_change_code(self, new_email, now):
+        code = secrets.token_urlsafe(32)
+        self.pending_email = new_email
+        self.email_change_code_hash = hashlib.sha256(code.encode()).hexdigest()
+        self.email_change_requested_at = now
+        self.save()
+        self._email_change_event(new_email, code=code)
+
+    def _clear_email_change(self):
+        self.pending_email = None
+        self.email_change_code_hash = None
+
+    def confirm_email_change(self, code):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            not isinstance(code, str)
+            or len(code) > 128
+            or not self.pending_email
+            or not self.email_change_code_hash
+            or self.email_change_requested_at is None
+            or now - self.email_change_requested_at >= iam_c.EMAIL_CHANGE_CODE_TTL
+            or not secrets.compare_digest(
+                self.email_change_code_hash, hashlib.sha256(code.encode()).hexdigest()
+            )
+        ):
+            raise iam_exceptions.InvalidEmailChange()
+        new_email = self._validate_email_change(self.pending_email)
+        old_email = self.email
+        self.email = new_email
+        self.email_verified = True
+        self._clear_email_change()
+        self.confirmation_code = None
+        self.confirmation_code_made_at = None
+        self.save()
+        if old_email != new_email:
+            self._email_change_event(old_email)
+
+    def admin_change_email(self, new_email, reason, verified=False):
+        new_email = self._validate_email_change(new_email)
+        old_email = self.email
+        self.email = new_email
+        self.email_verified = verified
+        self._clear_email_change()
+        self.confirmation_code = None
+        self.confirmation_code_made_at = None
+        self.save()
+        # Persist the support reason with the actor in the transactional audit outbox.
+        self._write_audit_event(
+            action="update",
+            snapshot={
+                "email": new_email,
+                "previous_email": old_email,
+                "email_verified": verified,
+                "reason": reason,
+                "operation": "admin_change_email",
+            },
+        )
+        if not verified:
+            self._issue_email_change_code(
+                new_email, datetime.datetime.now(datetime.timezone.utc)
+            )
+        if old_email != new_email:
+            self._email_change_event(old_email)
 
     def get_my_roles(self):
         return RolesInfo(

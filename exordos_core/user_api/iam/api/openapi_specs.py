@@ -393,3 +393,42 @@ OA_SPEC_GET_ROLE_PERMISSIONS = dict(
     ],
     responses=oa_c.build_openapi_list_model_response("Permission_Get"),
 )
+
+
+OA_SPEC_CONFIRM_EMAIL_CHANGE = dict(
+    summary="Confirm a pending email change using its single-use code",
+    request_body=oa_c.build_openapi_req_body(
+        description="Email change parameters",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+                "code": {"type": "string", "maxLength": 128, "writeOnly": True}
+            },
+        },
+    ),
+    responses={"200": {"description": "Email confirmed; no content returned"}},
+)
+
+OA_SPEC_ADMIN_CHANGE_EMAIL = dict(
+    summary="Change a local user's email with an audited support reason",
+    request_body=oa_c.build_openapi_req_body(
+        description="Email change parameters",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["new_email", "reason"],
+            "properties": {
+                "new_email": {"type": "string", "format": "email", "maxLength": 128},
+                "reason": {"type": "string", "minLength": 1, "maxLength": 1024},
+                "verified": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Requires iam.user.verify_changed_email in addition to iam.user.change_email",
+                },
+            },
+        },
+    ),
+    responses={"200": {"description": "Email changed; no content returned"}},
+)

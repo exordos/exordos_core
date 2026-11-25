@@ -54,6 +54,7 @@ resources:
               # notification email_confirmation event_type UUID
               IamUserRegistration: e0fe8070-e59c-4347-8df1-b3f638c06565
               IamUserResetPassword: b7ac18fa-3935-4f52-848f-e64bbd19abfb
+              IamUserEmailChange: 57136d71-5f69-4d8d-bd3c-92a5915c52ef
     core_events_conf:
       mode: "0600"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
@@ -108,6 +109,10 @@ resources:
       name: exordos_notification.event_type_b7ac18fa-3935-4f52-848f-e64bbd19abfb.create
     core_reset_password_read:
       name: exordos_notification.event_type_b7ac18fa-3935-4f52-848f-e64bbd19abfb.read
+    core_email_change_create:
+      name: exordos_notification.event_type_57136d71-5f69-4d8d-bd3c-92a5915c52ef.create
+    core_email_change_read:
+      name: exordos_notification.event_type_57136d71-5f69-4d8d-bd3c-92a5915c52ef.read
   $core.iam.roles:
     core_event_sender:
       name: notification-core-confirmation-sender
@@ -124,6 +129,12 @@ resources:
     reset_password_read:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core.iam.permissions.$core_reset_password_read:uuid
+    email_change_create:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core.iam.permissions.$core_email_change_create:uuid
+    email_change_read:
+      role: $core.iam.roles.$core_event_sender:uuid
+      permission: $core.iam.permissions.$core_email_change_read:uuid
     event_type_read:
       role: $core.iam.roles.$core_event_sender:uuid
       permission: $core_notification_email.imports.$event_type_read:uuid
@@ -162,8 +173,36 @@ resources:
       name: "reset_password"
       description: "User password reset"
 
+    email_change:
+      uuid: "57136d71-5f69-4d8d-bd3c-92a5915c52ef"
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      name: "email_change"
+      description: "Email change confirmation and notification"
+
   # Email letter templates — fully configurable per installation.
   $exordos_notification.types.email.templates:
+    email_change_template:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      name: "email_change"
+      description: "Email change confirmation and notification"
+      provider: $core_notification_email.imports.$email_provider:uuid
+      event_type: $exordos_notification.types.email.event_types.$email_change:uuid
+      is_default: true
+      params: {}
+      content:
+        kind: email
+        recipient: "{{ '{{' }} recipient {{ '}}' }}"
+        title: "Your Exordos email address"
+        bodies:
+          - |
+            {{ '{%' }} if code {{ '%}' }}
+            <p>Enter this code in the email change form to confirm this address:</p>
+            <p><code>{{ '{{' }} code | e {{ '}}' }}</code></p>
+            <p>The code expires in one hour. If you did not request this change, ignore this email.</p>
+            {{ '{%' }} else {{ '%}' }}
+            <p>The email address on your Exordos account has been changed.</p>
+            <p>If you did not request this change, contact your administrator.</p>
+            {{ '{%' }} endif {{ '%}' }}
     reset_password_template:
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
       name: "reset_password"

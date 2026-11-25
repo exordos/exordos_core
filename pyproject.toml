@@ -181,6 +181,7 @@ DatabaseProxyRepoDriver = "exordos_core.repo.drivers.database:DatabaseProxyRepoD
 [project.entry-points."gcl_sdk_event_payloads"]
 IamUserRegistration = "exordos_core.events.payloads:RegistrationEventPayload"
 IamUserResetPassword = "exordos_core.events.payloads:ResetPasswordEventPayload"
+IamUserEmailChange = "exordos_core.events.payloads:EmailChangeEventPayload"
 
 [project.entry-points."gcl_sdk_universal_agent"]
 OpaqueSecretCapabilityDriver = "exordos_core.agent.universal.drivers.secret.secret:OpaqueSecretCapabilityDriver"
