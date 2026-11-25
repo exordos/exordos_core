@@ -609,6 +609,19 @@ class ProjectController(controllers.BaseResourceControllerPaginated, EnforceMixi
                         rule=permission,
                     )
 
+        membership = models.OrganizationMember.objects.get_one_or_none(
+            filters={
+                "organization": ra_filters.EQ(project.organization),
+                "user": ra_filters.EQ(target_user),
+            }
+        )
+        if membership is None:
+            models.OrganizationMember(
+                organization=project.organization,
+                user=target_user,
+                role=c.OrganizationRole.MEMBER.value,
+            ).insert()
+
         role_binding = models.RoleBinding.objects.get_one_or_none(
             filters={
                 "project": ra_filters.EQ(project),

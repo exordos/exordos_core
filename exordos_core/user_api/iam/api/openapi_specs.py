@@ -343,7 +343,7 @@ OA_SPEC_GET_TOKEN_KWARGS = dict(
 )
 
 OA_SPEC_ADD_USER_TO_PROJECT = dict(
-    summary="Add a user to a project",
+    summary="Add a user to a project and ensure organization membership",
     parameters=[
         oa_c.build_openapi_parameter(
             name="ProjectUuid",
