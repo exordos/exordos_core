@@ -22,7 +22,7 @@ from exordos_core.common import spiffe
 
 @pytest.mark.skipif(
     not os.environ.get("RAWSTOR_TLS_TEST_BIN"),
-    reason="Requires RawStor 0.3.4 native daemons",
+    reason="Requires RawStor 0.3.5 native daemons",
 )
 def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
     binaries = Path(os.environ["RAWSTOR_TLS_TEST_BIN"])
@@ -151,9 +151,9 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
             generation = current.with_name("renewed")
             generation.mkdir(mode=0o700)
             for name, field in [
-                ("cert.pem", "cert"),
-                ("key.pem", "key"),
-                ("ca.pem", "ca"),
+                ("cert.crt", "cert"),
+                ("cert.key", "key"),
+                ("ca.crt", "ca"),
                 ("domain", "trust_domain"),
             ]:
                 (generation / name).write_text(replacement[field])
@@ -162,12 +162,12 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
             staged.replace(current)
             server.send_signal(signal.SIGUSR1)
             context = ssl.create_default_context(
-                cafile=str(Path(client.directory) / "current/ca.pem")
+                cafile=str(Path(client.directory) / "current/ca.crt")
             )
             context.check_hostname = False
             context.load_cert_chain(
-                str(Path(client.directory) / "current/cert.pem"),
-                str(Path(client.directory) / "current/key.pem"),
+                str(Path(client.directory) / "current/cert.crt"),
+                str(Path(client.directory) / "current/cert.key"),
             )
             expected = x509.load_pem_x509_certificate(
                 replacement["cert"].encode()
