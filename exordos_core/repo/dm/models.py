@@ -175,6 +175,7 @@ class DatabaseDriverSpec(AbstractDriverSpec):
 
 
 class Repository(
+    models.ModelWithTags,
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,

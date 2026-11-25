@@ -113,6 +113,7 @@ class Manifest(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
+    models.ModelWithTags,
     audit_models.AuditLogSQLStorableMixin,
     models.DumpToSimpleViewMixin,
 ):
@@ -188,6 +189,7 @@ class Manifest(
             version=self.version,
             api_version=self.api_version,
             description=self.description,
+            tags=list(self.tags),
             project_id=utils.get_project_id(),
             manifest=self,
         )
@@ -211,6 +213,7 @@ class Manifest(
         element.version = self.version
         element.api_version = self.api_version
         element.description = self.description
+        element.tags = list(self.tags)
         element.manifest = self
         element.status = Status.IN_PROGRESS.value
         element.save(session=session)
@@ -434,6 +437,7 @@ class Element(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
     models.ModelWithTimestamp,
+    models.ModelWithTags,
     models.CustomPropertiesMixin,
     models.SimpleViewMixin,
     audit_models.AuditLogSQLStorableMixin,

@@ -61,6 +61,7 @@ class InstalledManifest(
     """
 
     MANIFEST_OPTIONAL_FIELDS = (
+        "tags",
         "openapi_spec",
         "exports",
         "imports",

@@ -112,6 +112,7 @@ exports:
 ```yaml
 name: "core"
 description: "Exordos Core element"
+tags: ["platform", "env:prod"]
 schema_version: 1
 version: "1.0.0"
 api_version: "v1"
@@ -121,6 +122,7 @@ api_version: "v1"
 |---|---|---|
 | `name` | string | Имя элемента. Должно быть уникальным в пределах realm. |
 | `description` | string | Человекочитаемое описание, до 65 536 символов. |
+| `tags` | массив строк | Необязательно, по умолчанию `[]`. Копируются в элемент при установке и заменяют его теги при обновлении. |
 | `schema_version` | integer | Версия схемы манифеста. Сейчас `1`. |
 | `version` | string | Версия элемента. |
 | `api_version` | string | Версия API, на которую рассчитан манифест. Сейчас `v1`. |
