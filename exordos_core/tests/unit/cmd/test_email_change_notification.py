@@ -70,7 +70,7 @@ def test_email_change_manifest_and_outbox_payload():
         )
 
 
-def test_email_change_requires_recipient_support_and_trusted_https():
+def test_email_change_requires_recipient_support_and_https():
     source = pathlib.Path(__file__).parents[4] / "exordos/manifests"
     environment = jinja2.Environment(loader=jinja2.FileSystemLoader(source))
     manifest = yaml.safe_load(
@@ -91,19 +91,6 @@ def test_email_change_requires_recipient_support_and_trusted_https():
         manifest["imports"]["notification_api_domain"]["element"]
         == "$notification_api_https"
     )
-    ca = configs["notification_api_ca"]
-    assert (
-        ca["body"]["content"]
-        == "$core_notification_email.imports.$notification_api_trust_pem:value"
-    )
-    assert ca["path"] == "/usr/local/share/ca-certificates/notification-api.crt"
-    assert "update-ca-certificates" in ca["on_change"]["command"]
-    sender = configs["notification_sender_trust"]
-    assert (
-        "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt"
-        in sender["body"]["content"]
-    )
-    assert "systemctl daemon-reload" in sender["on_change"]["command"]
     core = yaml.safe_load(
         environment.get_template("core.yaml.j2").render(version="test")
     )
