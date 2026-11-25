@@ -39,6 +39,7 @@ class DomainController(
 
     __resource__ = resources.ResourceByRAModel(
         models.Domain,
+        process_filters=True,
         convert_underscore=False,
         fields_permissions=field_p.FieldsPermissions(
             default=field_p.Permissions.RW,

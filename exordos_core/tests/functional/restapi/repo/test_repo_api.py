@@ -97,7 +97,7 @@ class TestRepoElements:
         elements_url = client.build_collection_uri(self.REPO_ELEMENTS_PATH)
         elements_response = client.get(
             elements_url,
-            params={"repository": repo_uuid},
+            params={"repository": f"/v1/repo/repositories/{repo_uuid}"},
         )
         elements = elements_response.json()
         return next(
@@ -163,7 +163,10 @@ class TestRepoElements:
             user_api_client, auth_user_admin, repo1["uuid"], name="elem-in-repo1"
         )
         elements_url = client.build_collection_uri(self.REPO_ELEMENTS_PATH)
-        elements = client.get(elements_url, params={"repository": repo1["uuid"]}).json()
+        elements = client.get(
+            elements_url,
+            params={"repository": f"/v1/repo/repositories/{repo1['uuid']}"},
+        ).json()
         assert len(elements) == 1
         assert elements[0]["repository"].endswith(repo1["uuid"])
         assert not elements[0]["repository"].endswith(repo2["uuid"])
