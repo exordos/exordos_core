@@ -893,3 +893,68 @@ def test_new_vm_assignment_savepoint_rolls_back_partial_writes(
             assert len(cursor.fetchall()) == 4
         assert local.capacity_provisioned == 7
         assert pool.pool.avail_cores == 7 and pool.pool.avail_ram == 7168
+
+
+def test_object_jobs_wait_for_hypervisor_detach_acknowledgement(database):
+    from exordos_core.storage import volumes
+
+    with contexts.Context().session_manager():
+        cluster = controller(controllers.StorageClustersController).create(
+            name="object-owner",
+            driver_spec={"kind": "rawstor", "endpoint": "mds://core:7776/"},
+        )
+        agent = ua_models.UniversalAgent(
+            uuid=uuid.uuid4(),
+            node=uuid.uuid4(),
+            name="core-object-agent",
+            capabilities={"capabilities": ["storage_cluster", "storage_volume"]},
+            facts={"facts": []},
+        )
+        agent.insert()
+        cluster.agent = agent.uuid
+        cluster.builder = uuid.uuid4()
+        cluster.save()
+        policy = models.StoragePool.objects.get_all(filters={"cluster": cluster.uuid})[
+            0
+        ]
+        disk = compute.MachineVolume(
+            uuid=uuid.uuid4(),
+            project_id=uuid.uuid4(),
+            name="object",
+            size=8,
+            storage_pool=str(policy.uuid),
+            storage_backend="rawstor",
+        )
+        disk.insert()
+        volumes.sync_targets(cluster.builder)
+        job = ua_models.TargetResource.objects.get_one(
+            filters={"uuid": disk.uuid, "kind": "storage_volume"}
+        )
+        assert job.agent == cluster.agent
+        disk.size = 16
+        disk.update()
+        volumes.sync_targets(cluster.builder)
+        assert (
+            ua_models.TargetResource.objects.get_one(
+                filters={"uuid": disk.uuid, "kind": "storage_volume"}
+            ).value["size"]
+            == 16
+        )
+        actual = ua_models.Resource(
+            uuid=disk.uuid,
+            kind="pool_volume",
+            value={},
+            agent=agent.uuid,
+            res_uuid=ua_models.Resource.gen_res_uuid(disk.uuid, "pool_volume"),
+        )
+        actual.insert()
+        disk.delete()
+        volumes.sync_targets(cluster.builder)
+        assert ua_models.TargetResource.objects.get_all(
+            filters={"uuid": disk.uuid, "kind": "storage_volume"}
+        )
+        actual.delete()
+        volumes.sync_targets(cluster.builder)
+        assert not ua_models.TargetResource.objects.get_all(
+            filters={"uuid": disk.uuid, "kind": "storage_volume"}
+        )
