@@ -62,18 +62,24 @@ def credential(path, object_id=None):
 
 
 def bundle(kind, resource_uuid, agent, project=None):
+    if kind == "volume":
+        if agent is None:
+            return {"service": {"pending": True}}
+        return {
+            "service": credential(
+                f"account/{project}/client/{resource_uuid}", resource_uuid
+            )
+        }
     if agent is None:
         return {"service": {"pending": True}, "control": {"pending": True}}
     if kind == "mds":
         identity = "mds/" + str(uuid.uuid5(resource_uuid, "mds-witness"))
     elif kind == "ost":
         identity = "ost/" + str(resource_uuid)
-    elif kind == "volume":
-        identity = f"account/{project}/client/{resource_uuid}"
     else:
         raise ValueError("Unknown RawStor workload kind")
     return {
-        "service": credential(identity, resource_uuid if kind == "volume" else None),
+        "service": credential(identity),
         "control": credential("admin/" + str(agent)),
     }
 

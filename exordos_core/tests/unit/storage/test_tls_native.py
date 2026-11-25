@@ -10,9 +10,11 @@ import socket
 import ssl
 import subprocess
 import time
+from types import SimpleNamespace
 import uuid
 
 from cryptography import x509
+from gcl_sdk.agents.universal.drivers import rawstor_cluster
 from gcl_sdk.agents.universal.drivers import rawstor_tls
 import pytest
 
@@ -108,13 +110,21 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
                         raise
                     time.sleep(0.1)
             account = uuid.uuid4()
-            location.create_account(str(account))
-            target = client.Target(
-                f"mds://{account}@127.0.0.1:{mds_port}/{uuid.uuid4()}"
+            job = rawstor_cluster.MetaStorageVolume(
+                uuid=uuid.uuid4(),
+                cluster=uuid.uuid4(),
+                project_id=account,
+                storage_pool=str(uuid.uuid4()),
+                storage_location=f"mds://127.0.0.1:{mds_port}/",
+                storage_policy={"mirrors": 1, "failure_domain": "ost"},
+                size=1,
             )
-            target.create(
-                size=1 << 30, width=1, chunk_size=1 << 30, failure_domain="ost"
+            cluster = SimpleNamespace(
+                load_driver=lambda: SimpleNamespace(bindings=client)
             )
+            job.dump_to_dp(cluster)
+            job.dump_to_dp(cluster)
+            target = client.Target(f"mds://{account}@127.0.0.1:{mds_port}/{job.uuid}")
             assert target.spec().size == 1 << 30
             other = client.Target(
                 f"mds://{account}@127.0.0.1:{mds_port}/{uuid.uuid4()}"
@@ -141,6 +151,9 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
                 assert restricted.Target(target.uri).spec().size == 1 << 30
                 with pytest.raises(PermissionError):
                     restricted.Target(other.uri).remove()
+            job.size = 2
+            job.update_on_dp(cluster)
+            assert target.spec().size == 2 << 30
             replacement = credentials("mds/" + str(mds))
             current = Path(server_files.directory) / "current"
             old = current.with_name("old")
@@ -182,8 +195,10 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
                     "MDS did not reload its renewed leaf"
                 )
                 time.sleep(0.05)
-            assert target.spec().size == 1 << 30
-            target.remove()
+            assert target.spec().size == 2 << 30
+            job.delete_from_dp(cluster)
+            with pytest.raises(FileNotFoundError):
+                target.spec()
             other.remove()
     finally:
         for p in reversed(processes):

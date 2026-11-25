@@ -240,3 +240,11 @@ def test_rawstor_profile_uses_generic_authority_and_renews_signed_permissions(tm
         assert info.object_permissions == {str(volume): 7}
         assert cert.fullchain.endswith(authority.cert)
         assert not cert.is_under_threshold()
+
+
+def test_volume_bundle_never_issues_hypervisor_admin_credentials():
+    volume, project = uuid.uuid4(), uuid.uuid4()
+    with patch.object(tls, "credential", return_value={"key": "volume-key"}) as issue:
+        bundle = tls.bundle("volume", volume, uuid.uuid4(), project)
+    assert bundle == {"service": {"key": "volume-key"}}
+    issue.assert_called_once_with(f"account/{project}/client/{volume}", volume)

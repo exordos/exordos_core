@@ -24,7 +24,7 @@ CA, not a root presented by a remote peer.
 | --- | --- | --- |
 | OST | `/ost/STORAGE_NODE_UUID` | Storage member |
 | MDS | `/mds/WITNESS_UUID` | Metadata server and witness |
-| Agent control operations | `/admin/AGENT_UUID` | Provider control operations |
+| Core agent control operations | `/admin/AGENT_UUID` | Provider control operations |
 | Per-volume vhost | `/account/PROJECT_UUID/client/VOLUME_UUID` | Only its own volume |
 
 The MDS identity UUID is `uuid5(cluster_uuid, "mds-witness")`, matching its
@@ -56,13 +56,12 @@ are root-only (`0600`, directories `0700`) and cannot be read by RawStor service
 Agent metadata containing the delivered credentials uses the existing owner-only
 storage permissions.
 
-Hypervisor control credentials are stored once per agent under
-`/etc/rawstor/tls/control-agent-AGENT_UUID/`. Each volume keeps only a `control`
-symlink in its `volume-VOLUME_UUID/` directory. Deleting a volume removes its
-service certificate and link, leaving the shared control identity available to
-other volumes. Renewal is shared, and an older volume target cannot roll back a
-newer control certificate. The control identity remains administrative; this
-layout does not reduce its RawStor permissions.
+The Core agent owns account registration and object creation, growth and deletion.
+Its administrative credentials stay on Core. Hypervisors receive only the
+per-volume service credentials under `/etc/rawstor/tls/volume-VOLUME_UUID/`.
+They observe the object through that identity, refresh vhost after Core grows
+it, and remove the local credentials after stopping vhost. Core waits for
+attachment removal before deleting the object.
 
 MDS and OST configurations and per-volume vhost systemd drop-ins set
 `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY` and
@@ -73,7 +72,7 @@ requires `RAWSTOR_TLS_TRUST_DOMAIN`, which the agent derives from that CA. Renew
 is retried during reconciliation. Established TLS connections retain their
 session; the renewed leaf applies to new connections.
 
-Python bindings have one TLS context per process. Agent control operations run
+Python bindings have one TLS context per process. Core control operations run
 in short-lived child processes with the intended admin credentials, so each
 operation loads the current generation and cannot reuse another workload's
 context. No plaintext fallback or process-wide single-MDS identity pin is used.
