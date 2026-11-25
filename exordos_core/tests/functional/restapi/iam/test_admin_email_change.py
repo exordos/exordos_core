@@ -81,27 +81,10 @@ def request(workspace, **kwargs):
         "admin_change_email",
         {
             "new_email": "after@example.com",
-            "reason": "Support ticket",
             **kwargs,
         },
         headers=workspace[3],
     )
-
-
-@pytest.mark.parametrize("extra", [{"reason": " "}, {"reason": "x" * 1025}])
-def test_admin_validation(workspace, extra):
-    response = post(
-        workspace,
-        "admin_change_email",
-        {
-            "new_email": "support@example.com",
-            "reason": "Ticket 123",
-            **extra,
-        },
-        headers=workspace[3],
-    )
-    assert response.status_code == 400
-    assert load(workspace).email == "before@example.com"
 
 
 @pytest.mark.parametrize("event_client", [None, event_clients.DummyEventClient()])
@@ -137,7 +120,6 @@ def test_managed_accounts_cannot_change_email(workspace, source):
             "admin_change_email",
             {
                 "new_email": "support@example.com",
-                "reason": "Ticket 123",
             },
             headers=workspace[3],
         ).status_code
@@ -154,7 +136,7 @@ def test_invalid_or_unchanged_address(workspace, email):
 def test_user_and_write_all_cannot_change_email(
     workspace, user_api_client, auth_test1_user
 ):
-    body = {"new_email": "support@example.com", "reason": "Ticket 123"}
+    body = {"new_email": "support@example.com"}
     assert post(workspace, "admin_change_email", body).status_code == 403
     client = user_api_client(auth_test1_user, permissions=[c.PERMISSION_USER_WRITE_ALL])
     headers = {"Authorization": f"Bearer {client.authenticate()['access_token']}"}
@@ -182,7 +164,7 @@ def test_admin_change_never_emits_notification(workspace, monkeypatch):
     assert load(workspace).email == "after@example.com"
 
 
-def test_admin_change_emits_one_reason_bearing_audit(workspace):
+def test_admin_change_emits_one_automatic_audit(workspace):
     before = {e.uuid for e in audit_models.AuditDeliveryEvent.objects.get_all()}
     assert request(workspace).status_code == 200
     events = [
@@ -192,9 +174,9 @@ def test_admin_change_emits_one_reason_bearing_audit(workspace):
         and (e.snapshot or {}).get("email") == "after@example.com"
     ]
     assert len(events) == 1
-    assert events[0].snapshot["reason"] == "Support ticket"
-    assert events[0].snapshot["previous_email"] == "before@example.com"
-    assert events[0].snapshot["operation"] == "admin_change_email"
+    assert events[0].actor_user_uuid is not None
+    assert events[0].action == "update"
+    assert events[0].resource_uuid == load(workspace).uuid
 
 
 def test_email_login_is_case_insensitive(
@@ -258,7 +240,7 @@ def test_concurrent_address_claim_returns_conflict(
                 target = models.User.objects.get_one(
                     filters={"uuid": w[1]}, locked=True
                 )
-                target.admin_change_email("after@example.com", "Concurrent claim")
+                target.admin_change_email("after@example.com")
             return 200
         except storage_e.ConflictRecords as exc:
             return exc.code
@@ -303,7 +285,7 @@ def test_registration_code_is_rechecked_after_admin_change(
                 target = models.User.objects.get_one(
                     filters={"uuid": workspace[1]}, locked=True
                 )
-                target.admin_change_email("after@example.com", "Concurrent update")
+                target.admin_change_email("after@example.com")
         finally:
             resume.set()
         assert future.result(timeout=5).status_code == 403

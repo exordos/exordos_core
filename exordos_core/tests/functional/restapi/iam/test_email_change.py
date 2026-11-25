@@ -188,7 +188,6 @@ def test_self_only_and_admin_permission(workspace):
             "admin_change_email",
             {
                 "new_email": "after@example.com",
-                "reason": "Support ticket",
             },
         ).status_code
         == 403
@@ -235,7 +234,6 @@ def test_admin_change_and_audit(workspace):
         "admin_change_email",
         {
             "new_email": "support@example.com",
-            "reason": "Ticket 123",
         },
         headers=workspace[3],
     )
@@ -247,26 +245,9 @@ def test_admin_change_and_audit(workspace):
     )
     events = audit_models.AuditDeliveryEvent.objects.get_all()
     event = next(
-        e for e in events if (e.snapshot or {}).get("operation") == "admin_change_email"
+        e for e in events if (e.snapshot or {}).get("email") == "support@example.com"
     )
-    assert event.snapshot["reason"] == "Ticket 123"
     assert event.actor_user_uuid is not None
-
-
-@pytest.mark.parametrize("extra", [{"reason": " "}, {"reason": "x" * 1025}])
-def test_admin_validation(workspace, extra):
-    response = post(
-        workspace,
-        "admin_change_email",
-        {
-            "new_email": "support@example.com",
-            "reason": "Ticket 123",
-            **extra,
-        },
-        headers=workspace[3],
-    )
-    assert response.status_code == 400
-    assert load(workspace).email == "before@example.com"
 
 
 def test_missing_delivery_rolls_back(workspace, context_storage, monkeypatch):
@@ -283,7 +264,6 @@ def test_missing_delivery_rolls_back(workspace, context_storage, monkeypatch):
             "admin_change_email",
             {
                 "new_email": "support@example.com",
-                "reason": "Ticket 123",
             },
             headers=workspace[3],
         ).status_code
@@ -345,7 +325,6 @@ def test_managed_accounts_cannot_change_email(workspace, source, monkeypatch):
             "admin_change_email",
             {
                 "new_email": "support@example.com",
-                "reason": "Ticket 123",
             },
             headers=workspace[3],
         ).status_code
@@ -380,7 +359,7 @@ def test_registration_must_complete_before_email_change(workspace, administrativ
         result = post(
             workspace,
             "admin_change_email",
-            {"new_email": "new@example.com", "reason": "Support"},
+            {"new_email": "new@example.com"},
             headers=workspace[3],
         )
     else:

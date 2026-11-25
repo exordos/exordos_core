@@ -279,14 +279,10 @@ class UserController(
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_ADMIN_CHANGE_EMAIL)
     @actions.post
-    def admin_change_email(self, resource, new_email, reason):
+    def admin_change_email(self, resource, new_email):
         self.enforce(c.PERMISSION_USER_CHANGE_EMAIL, do_raise=True)
-        if not isinstance(reason, str) or not reason.strip() or len(reason) > 1024:
-            raise ValidationException(
-                description="A reason of 1 to 1024 characters is required"
-            )
         user = self._lock_email_change_user(resource)
-        user.admin_change_email(new_email, reason.strip())
+        user.admin_change_email(new_email)
         return None
 
     @actions.post

@@ -511,11 +511,6 @@ class User(
             limit=1,
         )
 
-    def dump_to_audit_snapshot(self):
-        snapshot = super().dump_to_audit_snapshot()
-        snapshot.update(getattr(self, "_email_change_audit", {}))
-        return snapshot
-
     def _validate_email_change_account(self):
         if not isinstance(self.user_source, IamUserSource) or self.type != "user":
             raise iam_exceptions.EmailChangeNotAllowed()
@@ -607,23 +602,13 @@ class User(
         if old_email != new_email:
             self._email_change_event(old_email)
 
-    def admin_change_email(self, new_email, reason):
+    def admin_change_email(self, new_email):
         self._validate_email_change_account()
         new_email = self._validate_email_change(new_email)
-        old_email = self.email
         self.email = new_email
         self.email_verified = True
         self._clear_email_change()
-        # Enrich the single automatic audit event for this mutation.
-        self._email_change_audit = {
-            "previous_email": old_email,
-            "reason": reason,
-            "operation": "admin_change_email",
-        }
-        try:
-            self.save()
-        finally:
-            del self._email_change_audit
+        self.save()
 
     def get_my_roles(self):
         return RolesInfo(

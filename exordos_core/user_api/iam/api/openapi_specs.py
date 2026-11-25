@@ -435,16 +435,15 @@ OA_SPEC_CONFIRM_EMAIL_CHANGE = dict(
 )
 
 OA_SPEC_ADMIN_CHANGE_EMAIL = dict(
-    summary="Change a local user's email with an audited support reason",
+    summary="Change a local user's email as an administrator",
     request_body=oa_c.build_openapi_req_body(
         description="Email change parameters",
         content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
         schema={
             "type": "object",
-            "required": ["new_email", "reason"],
+            "required": ["new_email"],
             "properties": {
                 "new_email": {"type": "string", "format": "email", "maxLength": 128},
-                "reason": {"type": "string", "minLength": 1, "maxLength": 1024},
             },
         },
     ),
