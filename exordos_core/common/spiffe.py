@@ -15,6 +15,9 @@ from cryptography.x509.oid import ExtendedKeyUsageOID
 from cryptography.x509.oid import NameOID
 
 
+LINK_TRUST_DOMAIN = "link.exordos.internal"
+
+
 def trust_domain(spiffe_id: str) -> str:
     """Validate a canonical workload SPIFFE ID and return its trust domain."""
     if not isinstance(spiffe_id, str) or len(spiffe_id) > 2048:
@@ -100,14 +103,24 @@ def create_authority(domain: str) -> IssuedCertificate:
 def issue_certificate(
     authority_key: bytes, authority_cert: str, spiffe_id: str, validity_days: int
 ) -> IssuedCertificate:
-    """Issue a fresh key and SVID, retaining the supplied CA and workload identity.
-
-    Both TLS client and server EKUs are required by the X.509-SVID specification.
-    The chain includes the public CA. Issuance never silently replaces a CA.
-    """
-    domain = trust_domain(spiffe_id)
+    """Issue a fresh key and SVID under the supplied authority."""
     if type(validity_days) is not int or not 1 <= validity_days <= 365:
         raise ValueError("SPIFFE validity_days must be between 1 and 365")
+    return issue_svid(
+        authority_key, authority_cert, spiffe_id, datetime.timedelta(days=validity_days)
+    )
+
+
+def issue_svid(
+    authority_key: bytes,
+    authority_cert: str,
+    spiffe_id: str,
+    lifetime: datetime.timedelta,
+) -> IssuedCertificate:
+    """Generate a key and issue an X.509-SVID with the requested lifetime."""
+    domain = trust_domain(spiffe_id)
+    if not datetime.timedelta(0) < lifetime <= datetime.timedelta(days=365):
+        raise ValueError("Invalid SPIFFE certificate lifetime")
     ca = x509.load_pem_x509_certificate(authority_cert.encode())
     ca_key = serialization.load_pem_private_key(authority_key, password=None)
     ca_ids = ca.extensions.get_extension_for_class(
@@ -127,7 +140,7 @@ def issue_certificate(
     ):
         raise ValueError("SPIFFE authority key and certificate do not match")
     now = datetime.datetime.now(datetime.timezone.utc)
-    expiration = now + datetime.timedelta(days=validity_days)
+    expiration = now + lifetime
     if ca.not_valid_before_utc > now or ca.not_valid_after_utc <= expiration:
         raise ValueError(
             "SPIFFE authority is not valid for the requested certificate lifetime"

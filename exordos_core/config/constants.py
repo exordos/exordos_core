@@ -20,6 +20,7 @@ import re
 from restalchemy.dm import types
 
 CONFIG_KIND = "config"
+ENDPOINT_PROXY_CONFIG = "/etc/exordos-link/listeners.json"
 RENDER_KIND = "render"
 
 

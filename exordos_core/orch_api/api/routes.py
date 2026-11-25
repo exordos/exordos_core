@@ -20,10 +20,19 @@ from restalchemy.api import routes
 from exordos_core.orch_api.api import controllers
 
 
+class UniversalAgentsGetPayloadAction(orch_routes.UniversalAgentsGetPayloadAction):
+    __controller__ = controllers.UniversalAgentsController
+
+
+class UniversalAgentsRoute(orch_routes.UniversalAgentsRoute):
+    __controller__ = controllers.UniversalAgentsController
+    get_payload = routes.action(UniversalAgentsGetPayloadAction)
+
+
 class ApiEndpointRoute(routes.Route):
     """Handler for /v1/ endpoint"""
 
     __controller__ = controllers.ApiEndpointController
     __allow_methods__ = [routes.FILTER]
 
-    agents = routes.route(orch_routes.UniversalAgentsRoute)
+    agents = routes.route(UniversalAgentsRoute)

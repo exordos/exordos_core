@@ -20,12 +20,16 @@ from restalchemy.api import routes
 from exordos_core.status_api.api import controllers
 
 
+class UniversalAgentsRoute(status_routes.UniversalAgentsRoute):
+    __controller__ = controllers.UniversalAgentsController
+
+
 class ApiEndpointRoute(routes.Route):
     """Handler for /v1/ endpoint"""
 
     __controller__ = controllers.ApiEndpointController
     __allow_methods__ = [routes.FILTER]
 
-    agents = routes.route(status_routes.UniversalAgentsRoute)
+    agents = routes.route(UniversalAgentsRoute)
     node_verifiers = routes.route(status_routes.NodeVerifiersRoute)
     kind = routes.route(status_routes.KindRoute)

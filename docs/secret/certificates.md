@@ -145,6 +145,7 @@ DNS SANs are not requested: supply `domains: []`. The certificate contains
 exactly one URI SAN, critical when the subject is empty, critical key usage,
 `CA=false`, and both TLS client/server EKUs as required by the
 [X.509-SVID specification](https://github.com/spiffe/spiffe/blob/main/standards/X509-SVID.md).
+The `link.exordos.internal` trust domain is reserved for Core-managed Link identities.
 
 One CA is persisted for each `(project_id, trust_domain)` pair in the
 issuer-only `storage_spiffe_authorities` table. Each project can persist at most

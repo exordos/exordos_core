@@ -43,6 +43,7 @@ from exordos_core.compute.scheduler import service as n_scheduler_service
 from exordos_core.compute.scheduler.driver.filters import affinity
 from exordos_core.compute.scheduler.driver.filters import available
 from exordos_core.compute.scheduler.driver.weighter import relative
+from exordos_core.config import endpoints as link_service
 from exordos_core.config import service as config_service
 from exordos_core.dns_sync import service as dns_sync_service
 from exordos_core.elements.builders import service as service_builder_svc
@@ -210,6 +211,7 @@ class GeneralService(basic.BasicService):
             iter_min_period=iter_min_period,
         )
 
+        link_svc = link_service.LinkService(iter_min_period=iter_min_period)
         cfg_service = config_service.ConfigServiceBuilder(
             iter_min_period=iter_min_period,
         )
@@ -272,6 +274,7 @@ class GeneralService(basic.BasicService):
             node_builder,
             volume_builder,
             machine_pool_agent,
+            link_svc,
             cfg_service,
             service_builder,
             net_lb_iaas_builder,

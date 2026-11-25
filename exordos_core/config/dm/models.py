@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import posixpath
 import typing as tp
 import uuid as sys_uuid
 
@@ -25,6 +26,7 @@ from restalchemy.dm import types_dynamic
 
 from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c
+from exordos_core.common import exceptions
 from exordos_core.common.dm import models as cm
 from exordos_core.common.dm import targets as ct
 from exordos_core.config import constants as cc
@@ -125,6 +127,13 @@ class Config(
         types.String(max_length=128),
         default="root",
     )
+
+    def validate(self):
+        super().validate()
+        if posixpath.normpath(self.path).lstrip("/") == cc.ENDPOINT_PROXY_CONFIG[1:]:
+            raise exceptions.ValidateException(
+                err="Path reserved for service endpoints."
+            )
 
     def target_nodes(self) -> tp.List[sys_uuid.UUID]:
         return self.target.target_nodes()

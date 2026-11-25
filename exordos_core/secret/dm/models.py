@@ -212,7 +212,8 @@ class SPIFFECertificateMethod(AbstractCertificateMethod):
 
     def validate(self):
         super().validate()
-        spiffe.trust_domain(self.spiffe_id)
+        if spiffe.trust_domain(self.spiffe_id) == spiffe.LINK_TRUST_DOMAIN:
+            raise ValueError("SPIFFE domain is reserved for Exordos Link")
         if type(self.validity_days) is not int:
             raise ValueError("SPIFFE validity_days must be an integer, not a boolean")
 

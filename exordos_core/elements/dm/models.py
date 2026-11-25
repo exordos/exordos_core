@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from contextlib import contextmanager
+from contextlib import nullcontext
 import enum
 from functools import partial
 import logging
@@ -33,6 +35,8 @@ from restalchemy.dm import types as ra_types
 from restalchemy.dm import types_dynamic as ra_types_dyn
 from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import orm
+from restalchemy.storage.sql import sessions
+from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.common import audit as audit_models
 from exordos_core.common import exceptions
@@ -40,6 +44,7 @@ from exordos_core.common import utils as cm_utils
 from exordos_core.common.dm import models as cm
 from exordos_core.common.dm import targets as ct
 from exordos_core.elements import constants as cc
+from exordos_core.elements import endpoints
 from exordos_core.elements.dm import utils
 from exordos_core.vs.dm import models as vs_models
 
@@ -109,6 +114,26 @@ class LinkResolver:
         return self._resource.link + self._discarded_part
 
 
+@contextmanager
+def _element_savepoint(name, session=None):
+    engine = engines.engine_factory.get_engine()
+    storage = engine.get_session_storage()
+    with engine.session_manager(session=session) as active:
+        try:
+            storage.get_session()
+        except sessions.SessionNotFound:
+            storage.store_session(active)
+            owns_storage = True
+        else:
+            owns_storage = False
+        try:
+            with sql_utils.savepoint(name):
+                yield active
+        finally:
+            if owns_storage:
+                storage.remove_session()
+
+
 class Manifest(
     models.ModelWithUUID,
     models.ModelWithRequiredNameDesc,
@@ -171,50 +196,51 @@ class Manifest(
     )
 
     def install(self, session: tp.Any | None = None) -> tuple["Manifest", "Element"]:
-        """
-        Create an element from the manifest if it does not exist.
-
-        """
-        if Element.objects.get_one_or_none(filters={"name": ra_filters.EQ(self.name)}):
-            raise exceptions.ValidateException(
-                err=f"Element '{self.name}' already exists."
-            )
-
-        element_engine.load_from_database()
-
-        element = Element(
-            uuid=self.uuid,
-            name=self.name,
-            version=self.version,
-            api_version=self.api_version,
-            description=self.description,
-            project_id=utils.get_project_id(),
-            manifest=self,
-        )
-        element.save(session=session)
-        element_engine.add_element(element)
-
-        return self.apply_element(element)
+        """Create an element from the manifest if it does not exist."""
+        return self._apply_manifest(session, upgrade=False)
 
     def upgrade(self, session: tp.Any | None = None) -> tuple["Manifest", "Element"]:
-        element = Element.objects.get_one_or_none(
-            filters={"name": ra_filters.EQ(self.name)},
-            session=session,
-        )
-        if not element:
-            raise exceptions.ValidateException(
-                err=f"Element '{self.name}' does not exist, please install it first."
+        return self._apply_manifest(session, upgrade=True)
+
+    def _apply_manifest(self, session, *, upgrade):
+        with (
+            element_engine.restore_on_error(),
+            _element_savepoint("apply_manifest", session) as session,
+        ):
+            element = Element.objects.get_one_or_none(
+                filters={"name": ra_filters.EQ(self.name)},
+                session=session,
             )
+            if upgrade and element is None:
+                raise exceptions.ValidateException(
+                    err=f"Element '{self.name}' does not exist, please install it first."
+                )
+            if not upgrade and element is not None:
+                raise exceptions.ValidateException(
+                    err=f"Element '{self.name}' already exists."
+                )
 
-        element_engine.load_from_database()
-
-        element.version = self.version
-        element.api_version = self.api_version
-        element.description = self.description
-        element.manifest = self
-        element.status = Status.IN_PROGRESS.value
-        element.save(session=session)
-        return self.apply_element(element)
+            element_engine.load_from_database()
+            if element is None:
+                element = Element(
+                    uuid=self.uuid,
+                    name=self.name,
+                    version=self.version,
+                    api_version=self.api_version,
+                    description=self.description,
+                    project_id=utils.get_project_id(),
+                    manifest=self,
+                )
+            else:
+                element.version = self.version
+                element.api_version = self.api_version
+                element.description = self.description
+                element.manifest = self
+                element.status = Status.IN_PROGRESS.value
+            element.save(session=session)
+            if not upgrade:
+                element_engine.add_element(element)
+            return self.apply_element(element)
 
     def apply_requirements(self, element: "Element"):
         element.requirements = self.requirements
@@ -247,23 +273,18 @@ class Manifest(
             if "kind" in import_data:
                 import_kwargs["kind"] = import_data["kind"]
 
+            resource = ImportedResource(element, from_resource, import_name)
             if import_model := existing_imports.pop(import_name, None):
                 for k, v in import_kwargs.items():
                     setattr(import_model, k, v)
                 import_model.save()
+                element_engine.delete_resource(resource)
             else:
-                import_model = Import(
+                Import(
                     uuid=cm_utils.get_or_create_uuid_from_dict(import_data),
                     **import_kwargs,
-                )
-
-                import_model.insert()
-                resource = ImportedResource(
-                    element=import_model.element,
-                    resource=import_model.from_resource,
-                    import_name=import_model.name,
-                )
-                element_engine.add_resource(resource)
+                ).insert()
+            element_engine.add_resource(resource)
 
         for imp in existing_imports.values():
             resource = ImportedResource(
@@ -371,6 +392,18 @@ class Manifest(
         self.apply_imports(element)
         self.apply_resources(element)
         self.apply_exports(element)
+        element_engine.load_from_database()
+        affected = {element.link}
+        affected.update(
+            imp.element.link
+            for imp in Import.objects.get_all(
+                filters={"from_element": ra_filters.EQ(element.uuid)}
+            )
+        )
+        for link in sorted(affected):
+            for resource in element_engine.get_namespace(link).get_resources():
+                if resource.original is resource:
+                    resource.validate_endpoint_references(element_engine)
         return self, element
 
     @staticmethod
@@ -733,50 +766,54 @@ class Resource(
         return str(getattr(self.element, field))
 
     # Support inplace vars with f"" syntax
-    def _fstring_replacement_callback(self, match, engine):
-        # Just remove escape syntax
-        if match.group(0).startswith("\\{") and match.group(0)[-1] == "}":
-            return match.group(0)[1:]
-        var = match.group(1)
-        if self._is_self_link(var):
-            return self._render_self_value(var)
-        link = utils.ResourceLink(var)
+    def _get_link_value(self, value, engine, endpoint_config):
+        validate_only = endpoint_config is not None and endpoint_config.validate_only
+        if self._is_self_link(value):
+            return value if validate_only else self._render_self_value(value)
+        link = utils.ResourceLink(value)
+        name = endpoints.endpoint_name(link.parameter) if endpoint_config else None
+        if validate_only and (
+            name is None
+            or not any(part in link.location for part in (".em.services.", ".imports."))
+        ):
+            return value
         try:
             resource = engine.get_resource_by_link(
                 element=self.element,
                 link=link.location,
             )
-            value = resource.get_parameter_value(
-                parameter=link.parameter,
+            if (
+                name is not None
+                and resource.resource_link_prefix == "$core.em.services"
+            ):
+                return endpoint_config.address(resource, name, engine)
+            return (
+                value
+                if validate_only
+                else resource.get_parameter_value(parameter=link.parameter)
             )
-            return str(value)
         except ValueError as e:
             raise exceptions.ValidateException(
-                err=f"Can't render value `{var}` for resource `{repr(self)}` by reason: {e}"
-            )
+                err=f"Can't render value `{value}` for resource `{repr(self)}` by reason: {e}"
+            ) from e
 
-    def _render_value(self, value, engine):
+    def _fstring_replacement_callback(self, match, engine, endpoint_config):
+        # Just remove escape syntax
+        if match.group(0).startswith("\\{") and match.group(0)[-1] == "}":
+            return match.group(0)[1:]
+        return str(self._get_link_value(match.group(1), engine, endpoint_config))
+
+    def _render_value(self, value, engine, endpoint_config=None):
         if value.startswith("$"):
-            if self._is_self_link(value):
-                return self._render_self_value(value)
-            link = utils.ResourceLink(value)
-            try:
-                resource = engine.get_resource_by_link(
-                    element=self.element,
-                    link=link.location,
-                )
-                return resource.get_parameter_value(
-                    parameter=link.parameter,
-                )
-            except ValueError as e:
-                raise exceptions.ValidateException(
-                    err=f"Can't render value `{value}` for resource"
-                    f" `{repr(self)}` by reason: {e}"
-                )
+            return self._get_link_value(value, engine, endpoint_config)
         elif value.startswith('f"'):
             return re.sub(
                 self.__inline_vars_regex__,
-                partial(self._fstring_replacement_callback, engine=engine),
+                partial(
+                    self._fstring_replacement_callback,
+                    engine=engine,
+                    endpoint_config=endpoint_config,
+                ),
                 value[2 : value.rfind('"')],
             )
 
@@ -843,9 +880,42 @@ class Resource(
             self.validate_value_update(values["value"])
         super().update_dm(values)
 
-    def render_target_state(self, engine=None):
+    def _has_endpoint_content(self):
+        if self.resource_link_prefix != "$core.config.configs":
+            return False
+        body = self.value.get("body")
+        if not isinstance(body, dict) or body.get("kind") != "text":
+            return False
+        content = body.get("content")
+        return (
+            isinstance(content, str)
+            and content.startswith(("$", 'f"'))
+            and ":address" in content
+        )
+
+    def validate_endpoint_references(self, engine):
+        if self._has_endpoint_content():
+            config = endpoints.ConfigEndpoints(
+                None, self.value.get("target", {}), validate_only=True
+            )
+            self._render_value(self.value["body"]["content"], engine, config)
+
+    def render_target_state(self, engine=None, *, endpoint_uses=None):
         engine = engine or element_engine
-        res = self._recursive_render(self.value, engine)
+        if self._has_endpoint_content():
+            raw_content = self.value["body"]["content"]
+            value = {**self.value, "body": {**self.value["body"], "content": None}}
+            res = self._recursive_render(value, engine)
+            config = endpoints.ConfigEndpoints(
+                res.get("project_id"),
+                res.get("target", {}),
+                allocate=endpoint_uses is not None,
+            )
+            res["body"]["content"] = self._render_value(raw_content, engine, config)
+            if endpoint_uses is not None:
+                endpoint_uses.update(config.uses)
+        else:
+            res = self._recursive_render(self.value, engine)
         # uuid is mandatory to find already created resources in services
         if "uuid" not in res:
             res["uuid"] = str(self.uuid)
@@ -888,15 +958,45 @@ class Resource(
         return self.actual_resource
 
     def actualize(self):
+        if self.resource_link_prefix != "$core.config.configs":
+            return self._actualize(is_config=False)
+        with _element_savepoint("actualize_config") as session:
+            # A manifest upgrade can replace the config after the builder loads it.
+            # Keep the declaration and its endpoint grants in the same transaction.
+            current = session.execute(
+                "SELECT 1 FROM em_resources WHERE uuid = %s AND updated_at = %s "
+                "FOR NO KEY UPDATE SKIP LOCKED",
+                (str(self.uuid), self.updated_at.replace(tzinfo=None)),
+            ).fetchone()
+            if current is not None:
+                self._actualize(is_config=True)
+
+    def _actualize(self, *, is_config):
+        config_changed = is_config and (
+            self.target_resource is not None
+            and self.target_resource.tracked_at != self.updated_at
+        )
+        uses = set() if is_config else None
         try:
-            target_state = self.render_target_state()
-        except KeyError as e:
+            with (
+                _element_savepoint("render_endpoint_addresses")
+                if self._has_endpoint_content()
+                else nullcontext()
+            ):
+                target_state = self.render_target_state(endpoint_uses=uses)
+        except (KeyError, exceptions.ValidateException) as e:
+            if config_changed or self._has_endpoint_content():
+                endpoints.sync_config_uses(self.uuid, set())
+            elif not isinstance(e, KeyError) and not is_config:
+                raise
             LOG.warning(
                 "Target state is not available for resource %s by reason: %s",
                 self,
                 e.args[0] if e.args else repr(e),
             )
             return
+        if uses or config_changed:
+            endpoints.sync_config_uses(self.uuid, uses)
         self.actual_resource = self._find_actual_resource()
         hash = sdk_utils.calculate_hash(target_state)
         self.full_hash = self.calculate_full_hash(target_state)
@@ -1195,6 +1295,16 @@ class ElementEngine:
         self._resource_exports: tp.Dict[str, Resource] = {}
         self.base_schema: tp.Dict[str, tp.Any] = {}
 
+    @contextmanager
+    def restore_on_error(self):
+        # Manifest application reloads the engine before mutating its maps.
+        previous = self._namespaces, self._resource_exports
+        try:
+            yield
+        except Exception:
+            self._namespaces, self._resource_exports = previous
+            raise
+
     def load_schemas(self) -> None:
         if not self.base_schema:
             self.base_schema = utils.load_base_manifest_schema()
@@ -1423,6 +1533,10 @@ class Service(
         ),
         required=True,
     )
+    endpoints = properties.property(
+        ra_types.TypedDict(endpoints.EndpointSpec()),
+        default=dict,
+    )
     user = properties.property(
         ra_types.String(min_length=1, max_length=255),
         default="root",
@@ -1458,6 +1572,22 @@ class Service(
         ),
         default=[],
     )
+
+    def insert(self, session=None):
+        endpoints.validate_endpoints(self.endpoints, self.target.kind)
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager(session=session) as session:
+            endpoints.validate_target_protocols(self, session)
+            return super().insert(session=session)
+
+    def update(self, session=None, force=False):
+        endpoints.validate_endpoints(self.endpoints, self.target.kind)
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager(session=session) as session:
+            if force or self.is_dirty():
+                endpoints.validate_target_protocols(self, session)
+                endpoints.allocate_missing_provider_ports(self, session)
+            return super().update(session=session, force=force)
 
     def target_nodes(self) -> tp.List[sys_uuid.UUID]:
         return self.target.target_nodes()

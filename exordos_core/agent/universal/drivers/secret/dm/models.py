@@ -16,14 +16,18 @@
 
 import datetime
 import typing as tp
+import uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
+from restalchemy.dm import filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
 from restalchemy.dm import types
+from restalchemy.storage import exceptions
 from restalchemy.storage.sql import orm
 
 from exordos_core.common import constants as c
+from exordos_core.common import spiffe
 from exordos_core.secret import constants as sc
 
 
@@ -175,3 +179,22 @@ class SPIFFEAuthority(models.ModelWithUUID, orm.SQLStorableMixin):
     cert = properties.property(
         types.String(min_length=1, max_length=10240), required=True
     )
+
+
+    @classmethod
+    def get_or_create(cls, project: uuid.UUID, domain: str):
+        authority_id = uuid.uuid5(project, f"spiffe://{domain}")
+        try:
+            return cls.objects.get_one(filters={"uuid": filters.EQ(authority_id)})
+        except exceptions.RecordNotFound:
+            issued = spiffe.create_authority(domain)
+            authority = cls(
+                uuid=authority_id,
+                project_id=project,
+                trust_domain=domain,
+                key=issued.key.decode(),
+                cert=issued.cert,
+            )
+            # An INSERT conflict retries through the caller without replacing the CA.
+            authority.insert()
+            return authority

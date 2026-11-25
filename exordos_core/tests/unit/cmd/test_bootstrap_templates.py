@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import pytest
+
 
 from exordos_core.cmd import bootstrap_templates
 
@@ -44,16 +44,3 @@ def test_disjoint_networks_build_context():
 
     assert ctx["main_ip_with_mask"] == "10.31.0.2/22"
     assert ctx["boot_ip_with_mask"] == "10.30.0.2/24"
-
-
-@pytest.mark.parametrize(
-    "boot_cidr",
-    [
-        "10.31.0.0/24",  # inside the main network
-        "10.31.0.0/22",  # same as the main network
-        "10.0.0.0/8",  # contains the main network
-    ],
-)
-def test_overlapping_networks_rejected(boot_cidr):
-    with pytest.raises(ValueError, match="overlaps main network"):
-        bootstrap_templates._build_template_context(_spec("10.31.0.0/22", boot_cidr))

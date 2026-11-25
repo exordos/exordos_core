@@ -1,0 +1,79 @@
+#    Copyright 2026 Genesis Corporation.
+#    Licensed under the Apache License, Version 2.0 (the "License").
+
+name: service-endpoints
+description: Access named endpoints on a replicated service.
+schema_version: 1
+version: "0.0.1"
+api_version: v1
+
+requirements:
+  core:
+    from_version: "0.0.0"
+
+resources:
+  $core.compute.sets:
+    catalog_nodes:
+      name: endpoint-catalog-nodes
+      project_id: "{{ project_id }}"
+      replicas: 2
+      cores: 1
+      ram: 1024
+      disk_spec:
+        kind: root_disk
+        size: 10
+        image: "{{ image }}"
+    api_nodes:
+      name: endpoint-api-nodes
+      project_id: "{{ project_id }}"
+      replicas: 1
+      cores: 1
+      ram: 1024
+      disk_spec:
+        kind: root_disk
+        size: 10
+        image: "{{ image }}"
+
+  $core.em.services:
+    catalog:
+      name: endpoint-catalog
+      project_id: "{{ project_id }}"
+      target:
+        kind: node_set
+        node_set: "$core.compute.sets.$catalog_nodes:uuid"
+      service_type:
+        kind: simple
+        count: 1
+      user: nobody
+      before:
+        - kind: shell
+          command: >-
+            /usr/bin/install -d -m 0755 /run/endpoint-catalog
+            && /usr/bin/hostname > /run/endpoint-catalog/whoami
+      path: >-
+        /bin/sh -c '
+        /usr/bin/python3 -m http.server -b 127.0.0.1 -d /run/endpoint-catalog 8080 &
+        /usr/bin/python3 -m http.server -b 127.0.0.1 -d /run/endpoint-catalog 8081 &
+        wait'
+      endpoints:
+        default:
+          port: 8080
+        events:
+          port: 8081
+          protocol: tcp
+
+  $core.config.configs:
+    api_config:
+      name: endpoint-api-config
+      project_id: "{{ project_id }}"
+      path: /etc/endpoint-api/config.yaml
+      target:
+        kind: node_set
+        node_set: "$core.compute.sets.$api_nodes:uuid"
+      body:
+        kind: text
+        content: |
+          f"
+          catalog_url: http://{$core.em.services.$catalog:address}
+          catalog_events_url: http://{$core.em.services.$catalog:endpoints:events:address}
+          "

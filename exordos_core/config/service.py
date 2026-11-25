@@ -24,12 +24,15 @@ from gcl_looper.services import basic
 from gcl_sdk.agents.universal.dm import models as ua_models
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage.sql import engines
 from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.common import constants as c
+from exordos_core.common.dm import targets
 from exordos_core.compute.dm import models as node_models
 from exordos_core.config import constants as cc
 from exordos_core.config.dm import models
+from exordos_core.config.endpoints import LinkService
 
 LOG = logging.getLogger(__name__)
 ORPHAN_CFG_ITERATION_FREQUENCY = 10
@@ -62,9 +65,23 @@ class ConfigServiceBuilder(basic.BasicService):
         sys_uuid.UUID,
         tp.List[tp.Tuple[ua_models.TargetResource, ua_models.Resource]],
     ]:
-        renders = ua_models.OutdatedResource.objects.get_all(
-            filters={"kind": dm_filters.EQ(cc.RENDER_KIND)},
-            limit=limit,
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            rows = session.execute(
+                """
+                SELECT outdated.uuid FROM ua_outdated_resources_view AS outdated
+                JOIN ua_target_resources AS render ON render.res_uuid = outdated.target_resource
+                JOIN config_configs AS config ON config.uuid = render.master
+                WHERE outdated.kind = %s LIMIT %s
+                """,
+                (cc.RENDER_KIND, limit),
+            ).fetchall()
+        renders = (
+            ua_models.OutdatedResource.objects.get_all(
+                filters={"uuid": dm_filters.In(row["uuid"] for row in rows)}
+            )
+            if rows
+            else ()
         )
         render_map = collections.defaultdict(list)
         for render in renders:
@@ -77,34 +94,41 @@ class ConfigServiceBuilder(basic.BasicService):
     def _get_outdated_configs(
         self, config_uuids: tp.Collection[sys_uuid.UUID]
     ) -> tp.List[tp.Tuple[models.Config, ua_models.TargetResource]]:
+        config_filter = {"uuid": dm_filters.In(tuple(str(cfg) for cfg in config_uuids))}
         configs = models.Config.objects.get_all(
-            filters={"uuid": dm_filters.In(str(cfg) for cfg in config_uuids)},
+            filters=config_filter,
             order_by={"uuid": "asc"},
         )
         resources = ua_models.TargetResource.objects.get_all(
             filters={
-                "uuid": dm_filters.In(str(cfg) for cfg in config_uuids),
+                **config_filter,
                 "kind": dm_filters.EQ(cc.CONFIG_KIND),
             },
             order_by={"uuid": "asc"},
         )
 
-        return list(zip(configs, resources))
+        by_uuid = {resource.uuid: resource for resource in resources}
+        return [
+            (config, by_uuid[config.uuid])
+            for config in configs
+            if config.uuid in by_uuid
+        ]
 
     def _actualize_new_config(
         self,
         config: models.Config,
         target_nodes: tp.List[node_models.Node],
     ) -> None:
-        # Validate the owners exist
-        # FIXME(akremenetsky): Only nodes as owners are supported for now.
-        # It will be update when sets will appear.
-
-        # FIXME(akremenetsky): Seems the config may be deleted since its
-        # owners are absent. May be it will be better to control this
-        # behavior via an additional option in the target model but for
-        # now just delete this config.
-        if not config.target.are_owners_alive():
+        if isinstance(config.target, targets.NodeSetTarget):
+            owner_alive = (
+                node_models.NodeSet.objects.get_one_or_none(
+                    filters={"uuid": dm_filters.EQ(config.target.node_set)}
+                )
+                is not None
+            )
+        else:
+            owner_alive = config.target.are_owners_alive()
+        if not owner_alive:
             LOG.error("Config %s has no owners, delete it.", config.uuid)
             config.delete()
             return
@@ -117,14 +141,7 @@ class ConfigServiceBuilder(basic.BasicService):
         config_resource = config.to_ua_resource(cc.CONFIG_KIND)
         config_resource.insert()
 
-        # Make renders for this config
-        for node in target_nodes:
-            render = config.render(node=node.uuid)
-
-            # Hack for scheduler
-            render.agent = node.uuid
-
-            render.insert()
+        self._sync_renders(config, {node.uuid for node in target_nodes}, ())
 
         config.status = cc.ConfigStatus.IN_PROGRESS.value
         config.save()
@@ -135,8 +152,52 @@ class ConfigServiceBuilder(basic.BasicService):
         config_resource.update()
         LOG.debug("Config resource %s created", config_resource.uuid)
 
+    def _config_targets(self, configs, endpoint_configs):
+        endpoint_configs = set(endpoint_configs)
+        node_sets = {
+            config.target.node_set
+            for config in configs
+            if isinstance(config.target, targets.NodeSetTarget)
+        }
+        members_by_set = collections.defaultdict(set)
+        if node_sets:
+            for node in node_models.Node.objects.get_all(
+                filters={"node_set": dm_filters.In(node_sets)}
+            ):
+                members_by_set[node.node_set].add(node.uuid)
+        wanted = {
+            config.uuid: (
+                members_by_set[config.target.node_set].copy()
+                if isinstance(config.target, targets.NodeSetTarget)
+                else set(config.target_nodes())
+            )
+            for config in configs
+        }
+        candidates = set().union(*wanted.values())
+        if not candidates:
+            return wanted
+        agents = {
+            agent.uuid: agent
+            for agent in ua_models.UniversalAgent.objects.get_all(
+                filters={"uuid": dm_filters.In(candidates)}
+            )
+            if agent.uuid == agent.node
+        }
+        for config_id, members in wanted.items():
+            members.intersection_update(agents)
+            if config_id in endpoint_configs:
+                wanted[config_id] = {
+                    node
+                    for node in members
+                    if LinkService.supports_endpoints(agents[node])
+                }
+        return wanted
+
     def _actualize_new_configs(
-        self, configs: tp.Optional[tp.List[models.Config]] = None
+        self,
+        configs: tp.Optional[tp.List[models.Config]] = None,
+        *,
+        endpoint_configs=(),
     ) -> None:
         """Actualize new configs."""
         configs = configs or self._get_new_configs()
@@ -144,11 +205,8 @@ class ConfigServiceBuilder(basic.BasicService):
         if len(configs) == 0:
             return
 
-        # Collect all target nodes
-        target_nodes = set()
-        for config in configs:
-            target_nodes |= {n for n in config.target_nodes()}
-
+        wanted = self._config_targets(configs, endpoint_configs)
+        target_nodes = {node for members in wanted.values() for node in members}
         nodes = {
             n.uuid: n
             for n in node_models.Node.objects.get_all(
@@ -158,17 +216,17 @@ class ConfigServiceBuilder(basic.BasicService):
             )
         }
 
-        # Make renders for each new config
         for config in configs:
-            # Collect all available nodes for the config
-            target_nodes = tuple(nodes[n] for n in config.target_nodes() if n in nodes)
+            target_nodes = tuple(
+                nodes[n] for n in sorted(wanted[config.uuid]) if n in nodes
+            )
             try:
                 with sql_utils.savepoint():
                     self._actualize_new_config(config, target_nodes)
             except Exception:
                 LOG.exception("Error actualizing config %s", config.uuid)
 
-    def _actualize_changed_configs(self) -> None:
+    def _actualize_changed_configs(self, endpoint_configs=()) -> None:
         """Actualize configs changed by user."""
         changed_configs = self._get_changed_configs()
 
@@ -194,7 +252,7 @@ class ConfigServiceBuilder(basic.BasicService):
             LOG.debug("Outdated resource (config/render) %s deleted", cfg.uuid)
 
         # Now they are new configs
-        self._actualize_new_configs(changed_configs)
+        self._actualize_new_configs(changed_configs, endpoint_configs=endpoint_configs)
 
     def _actualize_outdated_config(
         self,
@@ -259,6 +317,86 @@ class ConfigServiceBuilder(basic.BasicService):
                 self._actualize_outdated_config(config, config_resource, renders)
             except Exception:
                 LOG.exception("Error actualizing config %s", config.uuid)
+
+    def _endpoint_config_ids(self):
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            rows = session.execute(
+                "SELECT DISTINCT config FROM em_endpoint_uses"
+            ).fetchall()
+        return {row["config"] for row in rows}
+
+    def _actualize_config_members(self, endpoint_configs) -> None:
+        engine = engines.engine_factory.get_engine()
+        with engine.session_manager() as session:
+            rows = session.execute("""
+                SELECT uuid FROM config_configs WHERE target->>'kind' = 'node_set'
+                """).fetchall()
+        candidates = {row["uuid"] for row in rows}.union(endpoint_configs)
+        if not candidates:
+            return
+        configs = self._get_outdated_configs(candidates)
+        if not configs:
+            return
+        wanted = self._config_targets(
+            [config for config, _ in configs], endpoint_configs
+        )
+        live = {
+            node.uuid
+            for node in node_models.Node.objects.get_all(
+                filters={"uuid": dm_filters.In(set().union(*wanted.values()))}
+            )
+        }
+        renders = collections.defaultdict(list)
+        for render in ua_models.TargetResource.objects.get_all(
+            filters={
+                "kind": dm_filters.EQ(cc.RENDER_KIND),
+                "master": dm_filters.In(wanted),
+            }
+        ):
+            renders[render.master].append(render)
+        for config, master in configs:
+            try:
+                with sql_utils.savepoint():
+                    desired = wanted[config.uuid] & live
+                    current = renders[config.uuid]
+                    if self._sync_renders(config, desired, current):
+                        retained = [
+                            render for render in current if render.agent in desired
+                        ]
+                        status = (
+                            cc.ConfigStatus.ACTIVE
+                            if retained
+                            and len(retained) == len(desired)
+                            and all(
+                                render.status == cc.ConfigStatus.ACTIVE
+                                for render in retained
+                            )
+                            else cc.ConfigStatus.IN_PROGRESS
+                        )
+                        if config.status == status:
+                            continue
+                        config.status = status.value
+                        config.update()
+                        master.status = config.status
+                        master.tracked_at = config.updated_at
+                        master.update()
+            except Exception:
+                LOG.exception("Error updating delivery of config %s", config.uuid)
+
+    @staticmethod
+    def _sync_renders(config, wanted, renders):
+        removed = False
+        for render in renders:
+            if render.agent not in wanted:
+                render.delete()
+                removed = True
+        missing = wanted - {render.agent for render in renders}
+        for node in sorted(missing):
+            render = config.render(node=node)
+            render.agent = node
+            render.insert()
+        return removed or bool(missing)
 
     def _actualize_deleted_configs(self) -> None:
         """Actualize configs deleted by user."""
@@ -326,15 +464,21 @@ class ConfigServiceBuilder(basic.BasicService):
 
     def _iteration(self) -> None:
         with contexts.Context().session_manager():
+            endpoint_configs = self._endpoint_config_ids()
             try:
-                self._actualize_new_configs()
+                self._actualize_new_configs(endpoint_configs=endpoint_configs)
             except Exception:
                 LOG.exception("Error actualizing new configs")
 
             try:
-                self._actualize_changed_configs()
+                self._actualize_changed_configs(endpoint_configs)
             except Exception:
                 LOG.exception("Error actualizing changed configs")
+
+            try:
+                self._actualize_config_members(endpoint_configs)
+            except Exception:
+                LOG.exception("Error updating config delivery")
 
             try:
                 self._actualize_outdated_configs()
