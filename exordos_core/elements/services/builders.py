@@ -82,5 +82,6 @@ class ElementManagerBuilder(basic.BasicService):
                 self._element_engine.load_from_database()
                 self._first_step = True  # Disable optimization
             self._actualize_target_resources(session)
+        with contexts.Context().session_manager() as session:
             self._actualize_statuses(session)
             LOG.debug("Starting iteration")

@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from contextlib import nullcontext
 from unittest import mock
 import uuid as sys_uuid
 
@@ -819,6 +820,10 @@ class TestManifestUpgrade:
         )
         monkeypatch.setattr(element_engine, "load_from_database", lambda: None)
         monkeypatch.setattr(Element, "save", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "exordos_core.elements.dm.models._element_savepoint",
+            lambda *args: nullcontext(),
+        )
         monkeypatch.setattr(
             Manifest, "apply_element", lambda self, element: (self, element)
         )

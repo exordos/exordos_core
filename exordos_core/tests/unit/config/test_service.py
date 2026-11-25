@@ -41,6 +41,7 @@ def test_failed_config_rolls_back_before_next_row():
         config.target_nodes.return_value = [nodes[0].uuid]
     poisoned = False
     applied = []
+    agent = mock.Mock(uuid=nodes[0].uuid, node=nodes[0].uuid)
 
     @contextlib.contextmanager
     def savepoint():
@@ -61,10 +62,12 @@ def test_failed_config_rolls_back_before_next_row():
 
     with (
         mock.patch.object(service.node_models.Node, "objects") as objects,
+        mock.patch.object(service.ua_models.UniversalAgent, "objects") as agents,
         mock.patch.object(service.sql_utils, "savepoint", savepoint),
         mock.patch.object(builder, "_actualize_new_config", actualize),
     ):
         objects.get_all.return_value = nodes
+        agents.get_all.return_value = [agent]
         builder._actualize_new_configs(configs)
     assert applied == [configs[1]]
     assert not poisoned

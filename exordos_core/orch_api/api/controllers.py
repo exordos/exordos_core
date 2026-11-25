@@ -13,10 +13,26 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.agents.universal.orch_api import controllers as ua_controllers
+from restalchemy.api import actions
 from restalchemy.api import controllers
+
+from exordos_core.common import ua_access
 
 
 class ApiEndpointController(controllers.RoutesListController):
     """Controller for /v1/ endpoint"""
 
     __TARGET_PATH__ = "/v1/"
+
+
+class UniversalAgentsController(ua_controllers.UniversalAgentsController):
+    @actions.get
+    def get_payload(
+        self, resource: ua_models.UniversalAgent, hash: str = "", version: int = 0
+    ):
+        ua_access.require_request_node(self._req.context, resource.node)
+        return resource.get_payload(
+            hash=hash, version=int(version)
+        ).dump_to_simple_view()

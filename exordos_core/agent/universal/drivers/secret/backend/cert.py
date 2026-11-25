@@ -113,23 +113,9 @@ class CertBotBackendClient(base.AbstractBackendClient):
         method = value["method"]
         domain = spiffe.trust_domain(method["spiffe_id"])
         project = uuid.UUID(str(value["project_id"]))
-        authority_id = uuid.uuid5(project, f"spiffe://{domain}")
-        try:
-            authority = driver_dm.SPIFFEAuthority.objects.get_one(
-                filters={"uuid": dm_filters.EQ(authority_id)}
-            )
-        except ra_exc.RecordNotFound:
-            issued = spiffe.create_authority(domain)
-            authority = driver_dm.SPIFFEAuthority(
-                uuid=authority_id,
-                project_id=project,
-                trust_domain=domain,
-                key=issued.key.decode(),
-                cert=issued.cert,
-            )
-            # INSERT, not an upsert: concurrent issuers must never replace a CA.
-            # A conflicting transaction rolls back and reconciliation retries.
-            authority.insert()
+        if domain == spiffe.LINK_TRUST_DOMAIN:
+            raise ValueError("SPIFFE domain is reserved for Exordos Link")
+        authority = driver_dm.SPIFFEAuthority.get_or_create(project, domain)
         issued = spiffe.issue_certificate(
             authority.key.encode(),
             authority.cert,
