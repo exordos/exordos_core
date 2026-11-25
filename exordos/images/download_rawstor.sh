@@ -6,7 +6,7 @@ set -euo pipefail
 
 DESTINATION=$1
 shift
-RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.4}
+RAWSTOR_VERSION=${RAWSTOR_VERSION:-0.3.5}
 RAWSTOR_WHEEL_VERSION=${RAWSTOR_WHEEL_VERSION:-$RAWSTOR_VERSION}
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 RELEASE_URL="https://github.com/rawstor/librawstor/releases/download/v${RAWSTOR_VERSION}"
