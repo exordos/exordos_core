@@ -43,7 +43,6 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
             "cert": issued.cert,
             "key": issued.key.decode(),
             "ca": ca.cert,
-            "trust_domain": "rawstor.local",
         }
 
     def start(name, args, creds):
@@ -137,7 +136,6 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
                 "cert": issued.cert,
                 "key": issued.key.decode(),
                 "ca": ca.cert,
-                "trust_domain": "rawstor.local",
             }
             with rawstor_tls.temporary_bindings(leaf) as restricted:
                 assert restricted.Target(target.uri).spec().size == 1 << 30
@@ -154,7 +152,6 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
                 ("cert.crt", "cert"),
                 ("cert.key", "key"),
                 ("ca.crt", "ca"),
-                ("domain", "trust_domain"),
             ]:
                 (generation / name).write_text(replacement[field])
             staged = current.with_name("next")

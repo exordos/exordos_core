@@ -66,7 +66,9 @@ layout does not reduce its RawStor permissions.
 
 MDS and OST configurations and per-volume vhost systemd drop-ins set
 `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY` and
-`RAWSTOR_TLS_CA`. Renewals send `SIGUSR1` without restarting the service.
+`RAWSTOR_TLS_CA`. The trust domain is read from the URI SAN in `ca.crt`; no
+separate `domain` file or trust-domain field is delivered. RawStor 0.3.5 still
+requires `RAWSTOR_TLS_TRUST_DOMAIN`, which the agent derives from that CA. Renewals send `SIGUSR1` without restarting the service.
 `SIGHUP` remains available for topology reload and disk resize. A failed signal
 is retried during reconciliation. Established TLS connections retain their
 session; the renewed leaf applies to new connections.

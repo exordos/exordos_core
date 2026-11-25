@@ -55,7 +55,6 @@ def credential(path, object_id=None):
         raise ValueError("RawStor certificate requires the installation CA")
     return {
         "certificate_id": str(cert_id),
-        "trust_domain": rawstor_pki.TRUST_DOMAIN,
         "cert": cert.cert,
         "key": cert.key,
         "ca": chain[1].public_bytes(serialization.Encoding.PEM).decode(),
