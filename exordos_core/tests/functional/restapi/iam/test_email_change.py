@@ -160,6 +160,15 @@ def test_request_validation(workspace, body, status):
     assert load(workspace).pending_email is None
 
 
+@pytest.mark.parametrize("password", [None, "wrong-password"])
+def test_password_is_checked_before_new_email(workspace, monkeypatch, password):
+    def unexpected_email_check(*args, **kwargs):
+        pytest.fail("New email must not be checked before password verification")
+
+    monkeypatch.setattr(models.User, "_validate_email_change", unexpected_email_check)
+    assert request(workspace, password=password).status_code == 400
+
+
 def test_self_only_and_admin_permission(workspace):
     assert (
         post(
@@ -218,8 +227,7 @@ def test_mfa_required(workspace):
     )
 
 
-@pytest.mark.parametrize("verified", [False, True])
-def test_admin_change_and_audit(workspace, verified):
+def test_admin_change_and_audit(workspace):
     assert request(workspace).status_code == 202
     stale_code = pending_code(workspace)
     response = post(
@@ -228,13 +236,12 @@ def test_admin_change_and_audit(workspace, verified):
         {
             "new_email": "support@example.com",
             "reason": "Ticket 123",
-            "verified": verified,
         },
         headers=workspace[3],
     )
     assert response.status_code == 200, response.text
     user = load(workspace)
-    assert user.email == "support@example.com" and user.email_verified == verified
+    assert user.email == "support@example.com" and user.email_verified
     assert (
         post(workspace, "confirm_email_change", {"code": stale_code}).status_code == 400
     )
@@ -244,17 +251,9 @@ def test_admin_change_and_audit(workspace, verified):
     )
     assert event.snapshot["reason"] == "Ticket 123"
     assert event.actor_user_uuid is not None
-    if not verified:
-        assert (
-            post(
-                workspace, "confirm_email_change", {"code": pending_code(workspace)}
-            ).status_code
-            == 200
-        )
-        assert load(workspace).email_verified
 
 
-@pytest.mark.parametrize("extra", [{"reason": " "}, {"verified": "true"}])
+@pytest.mark.parametrize("extra", [{"reason": " "}, {"reason": "x" * 1025}])
 def test_admin_validation(workspace, extra):
     response = post(
         workspace,
@@ -288,9 +287,9 @@ def test_missing_delivery_rolls_back(workspace, context_storage, monkeypatch):
             },
             headers=workspace[3],
         ).status_code
-        == 503
+        == 200
     )
-    assert load(workspace).email == "before@example.com"
+    assert load(workspace).email == "support@example.com"
 
 
 def test_conflict_rechecked_at_confirmation(
@@ -322,46 +321,12 @@ def test_concurrent_confirmation_only_succeeds_once(workspace):
     assert sorted(results) == [200, 400]
 
 
-def test_admin_cannot_mark_verified_without_separate_permission(
-    workspace,
-    user_api_client,
-    auth_test1_user,
-):
-    support = user_api_client(
-        auth_test1_user, permissions=[c.PERMISSION_USER_CHANGE_EMAIL]
-    )
-    headers = {"Authorization": f"Bearer {support.authenticate()['access_token']}"}
-    assert (
-        post(
-            workspace,
-            "admin_change_email",
-            {
-                "new_email": "support@example.com",
-                "reason": "Ticket 123",
-                "verified": True,
-            },
-            headers=headers,
-        ).status_code
-        == 403
-    )
-    assert load(workspace).email == "before@example.com"
-    assert (
-        post(
-            workspace,
-            "admin_change_email",
-            {
-                "new_email": "support@example.com",
-                "reason": "Ticket 123",
-            },
-            headers=headers,
-        ).status_code
-        == 200
-    )
-    assert not load(workspace).email_verified
-
-
 @pytest.mark.parametrize("source", ["service", "keycloak"])
-def test_managed_accounts_cannot_change_email(workspace, source):
+def test_managed_accounts_cannot_change_email(workspace, source, monkeypatch):
+    def unexpected_password_check(*args, **kwargs):
+        pytest.fail("Managed accounts must be rejected before password verification")
+
+    monkeypatch.setattr(models.User, "process_secret", unexpected_password_check)
     user = load(workspace)
     if source == "service":
         user.type = "service"
@@ -403,3 +368,35 @@ def test_outbox_failure_rolls_back_email_and_audit(workspace, monkeypatch):
         user.email == "before@example.com" and user.pending_email == "after@example.com"
     )
     assert len(audit_models.AuditDeliveryEvent.objects.get_all()) == before
+
+
+@pytest.mark.parametrize("administrative", [False, True])
+def test_registration_must_complete_before_email_change(workspace, administrative):
+    user = load(workspace)
+    user.email_verified = False
+    user.create_confirmation_code()
+    code = str(user.confirmation_code)
+    if administrative:
+        result = post(
+            workspace,
+            "admin_change_email",
+            {"new_email": "new@example.com", "reason": "Support"},
+            headers=workspace[3],
+        )
+    else:
+        result = request(workspace)
+    assert result.status_code == 403
+    assert load(workspace).email == "before@example.com"
+    assert str(load(workspace).confirmation_code) == code
+    assert post(workspace, "confirm_email", {"code": code}).status_code == 200
+
+
+def test_confirmed_request_keeps_resend_cooldown(workspace):
+    assert request(workspace).status_code == 202
+    assert (
+        post(
+            workspace, "confirm_email_change", {"code": pending_code(workspace)}
+        ).status_code
+        == 200
+    )
+    assert request(workspace, new_email="next@example.com").status_code == 429

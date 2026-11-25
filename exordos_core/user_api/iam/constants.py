@@ -136,9 +136,6 @@ PERMISSION_USER_RESET_PASSWORD = rules.Rule.from_raw(
 
 
 PERMISSION_USER_CHANGE_EMAIL = rules.Rule.from_raw("iam.user.change_email")
-PERMISSION_USER_VERIFY_CHANGED_EMAIL = rules.Rule.from_raw(
-    "iam.user.verify_changed_email"
-)
 
 
 # Organizations

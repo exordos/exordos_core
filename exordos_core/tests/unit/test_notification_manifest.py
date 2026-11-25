@@ -119,7 +119,11 @@ def test_core_email_depends_on_transport_and_supplies_its_own_template(trim_bloc
         .from_string(path.read_text())
         .render(version="2.0.1-dev+contract")
     )
-    assert set(manifest["requirements"]) == {"core", "notification_email"}
+    assert set(manifest["requirements"]) == {
+        "core",
+        "notification_email",
+        "notification_api_https",
+    }
     resources = manifest["resources"]
     assert "$mailaas.types.mail.instances" not in resources
     assert "$exordos_notification.types.email.providers" not in resources

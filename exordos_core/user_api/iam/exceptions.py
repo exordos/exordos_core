@@ -330,7 +330,7 @@ class InvalidEmailChange(exceptions.CommonValueErrorException):
 
 
 class EmailChangeNotAllowed(exceptions.CommonForbiddenException, iam_exc.Forbidden):
-    __template__ = "Email changes require a local user account."
+    __template__ = "Email changes require a confirmed local user account."
 
 
 class EmailAlreadyUsed(ra_e.RestAlchemyException):

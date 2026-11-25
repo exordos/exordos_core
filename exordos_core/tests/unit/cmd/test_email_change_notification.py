@@ -68,3 +68,44 @@ def test_email_change_manifest_and_outbox_payload():
             permission["name"]
             == f"exordos_notification.event_type_{event_type}.{operation}"
         )
+
+
+def test_email_change_requires_recipient_support_and_trusted_https():
+    source = pathlib.Path(__file__).parents[4] / "exordos/manifests"
+    environment = jinja2.Environment(loader=jinja2.FileSystemLoader(source))
+    manifest = yaml.safe_load(
+        environment.get_template("core_notification_email.yaml.j2").render(
+            version="test"
+        )
+    )
+    assert manifest["requirements"]["notification_email"]["from_version"] == "2.1.2"
+    assert manifest["requirements"]["notification_api_https"]["from_version"] == "2.1.2"
+    configs = manifest["resources"]["$core.config.configs"]
+    settings = configs["core_events_conf"]["body"]["content"]
+    assert (
+        "exordos_notification_endpoint = https://{$core_notification_email.imports.$notification_api_domain:value}"
+        in settings
+    )
+    assert "http://" not in settings
+    assert (
+        manifest["imports"]["notification_api_domain"]["element"]
+        == "$notification_api_https"
+    )
+    ca = configs["notification_api_ca"]
+    assert (
+        ca["body"]["content"]
+        == "$core_notification_email.imports.$notification_api_trust_pem:value"
+    )
+    assert ca["path"] == "/usr/local/share/ca-certificates/notification-api.crt"
+    assert "update-ca-certificates" in ca["on_change"]["command"]
+    sender = configs["notification_sender_trust"]
+    assert (
+        "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt"
+        in sender["body"]["content"]
+    )
+    assert "systemctl daemon-reload" in sender["on_change"]["command"]
+    core = yaml.safe_load(
+        environment.get_template("core.yaml.j2").render(version="test")
+    )
+    names = {p["name"] for p in core["resources"]["$core.iam.permissions"].values()}
+    assert "iam.user.change_email" in names

@@ -11,7 +11,9 @@ requirements:
   core:
     from_version: "{{ version }}"
   notification_email:
-    from_version: "2.0.1"
+    from_version: "2.1.2"
+  notification_api_https:
+    from_version: "2.1.2"
 
 resources:
   $core.config.configs:
@@ -72,12 +74,46 @@ resources:
       body:
         kind: text
         content: |
+          f"
           [events]
           enabled = true
           client_type = async
           event_type_mapping_filepath = /etc/exordos_core/event_type_mapping.yaml
           project_id = 12345678-c625-4fee-81d5-f691897b8142
-          exordos_notification_endpoint = http://notification-cp.local.genesis-core.tech:8080
+          exordos_notification_endpoint = https://{$core_notification_email.imports.$notification_api_domain:value}
+          "
+    notification_api_ca:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /usr/local/share/ca-certificates/notification-api.crt
+      owner: root
+      group: root
+      mode: "0644"
+      target:
+        kind: node_set
+        node_set: $core_notification_email.imports.$core_set:uuid
+      body:
+        kind: text
+        content: $core_notification_email.imports.$notification_api_trust_pem:value
+      on_change:
+        kind: shell
+        command: update-ca-certificates && systemctl restart ec-gservice
+    notification_sender_trust:
+      project_id: "12345678-c625-4fee-81d5-f691897b8142"
+      path: /etc/systemd/system/ec-gservice.service.d/notification-trust.conf
+      owner: root
+      group: root
+      mode: "0644"
+      target:
+        kind: node_set
+        node_set: $core_notification_email.imports.$core_set:uuid
+      body:
+        kind: text
+        content: |
+          [Service]
+          Environment=REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      on_change:
+        kind: shell
+        command: systemctl daemon-reload && systemctl restart ec-gservice
     core_events_token:
       mode: "0600"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
@@ -253,6 +289,14 @@ resources:
 
 
 imports:
+  notification_api_domain:
+    element: "$notification_api_https"
+    kind: resource
+    link: "$core.vs.variables.$notification_api_domain"
+  notification_api_trust_pem:
+    element: "$notification_api_https"
+    kind: resource
+    link: "$core.vs.variables.$notification_api_trust_pem"
   core_set:
     element: "$core"
     kind: resource

@@ -445,11 +445,6 @@ OA_SPEC_ADMIN_CHANGE_EMAIL = dict(
             "properties": {
                 "new_email": {"type": "string", "format": "email", "maxLength": 128},
                 "reason": {"type": "string", "minLength": 1, "maxLength": 1024},
-                "verified": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Requires iam.user.verify_changed_email in addition to iam.user.change_email",
-                },
             },
         },
     ),

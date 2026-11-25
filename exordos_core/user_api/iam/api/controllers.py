@@ -267,19 +267,7 @@ class UserController(
         if models.User.me().uuid != resource.uuid:
             raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule="self")
         user = self._lock_email_change_user(resource)
-        if (
-            not isinstance(user.user_source, models.IamUserSource)
-            or user.type != "user"
-        ):
-            raise iam_e.EmailChangeNotAllowed()
-        if not isinstance(password, str) or not password:
-            raise ValidationException(description="Password is required")
-        user.process_secret(password)
-        if user.otp_enabled and (
-            not isinstance(otp_code, str) or not user.validate_otp(otp_code)
-        ):
-            raise gcl_iam_e.OTPInvalidCodeError()
-        user.request_email_change(new_email)
+        user.request_email_change(new_email, password, otp_code)
         return {"status": "pending"}, 202
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_CONFIRM_EMAIL_CHANGE)
@@ -291,18 +279,14 @@ class UserController(
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_ADMIN_CHANGE_EMAIL)
     @actions.post
-    def admin_change_email(self, resource, new_email, reason, verified=False):
+    def admin_change_email(self, resource, new_email, reason):
         self.enforce(c.PERMISSION_USER_CHANGE_EMAIL, do_raise=True)
-        if not isinstance(verified, bool):
-            raise ValidationException(description="verified must be a boolean")
         if not isinstance(reason, str) or not reason.strip() or len(reason) > 1024:
             raise ValidationException(
                 description="A reason of 1 to 1024 characters is required"
             )
-        if verified:
-            self.enforce(c.PERMISSION_USER_VERIFY_CHANGED_EMAIL, do_raise=True)
         user = self._lock_email_change_user(resource)
-        user.admin_change_email(new_email, reason.strip(), verified=verified)
+        user.admin_change_email(new_email, reason.strip())
         return None
 
     @actions.post
@@ -403,9 +387,10 @@ class UserController(
     @actions.post
     def confirm_email(self, resource, code=None):
         code = code or self._req.params.get("code", "")
-        resource.confirm_email_by_code(code)
-        self._maybe_provision_workspace(resource)
-        return resource
+        user = self._lock_email_change_user(resource)
+        user.confirm_email_by_code(code)
+        self._maybe_provision_workspace(user)
+        return user
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_RESET_PASSWORD_USER)
     @actions.post

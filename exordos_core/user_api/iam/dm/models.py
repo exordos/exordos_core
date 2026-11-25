@@ -502,21 +502,36 @@ class User(
         project.insert()
         project.add_owner(self)
 
-    def _validate_email_change(self, new_email):
+    @classmethod
+    def find_by_email(cls, email):
+        # Match the existing lower(email) unique index, including legacy casing.
+        return cls.objects.query(
+            where_conditions="LOWER(email) = LOWER(%s)",
+            where_values=(email,),
+            limit=1,
+        )
+
+    def dump_to_audit_snapshot(self):
+        snapshot = super().dump_to_audit_snapshot()
+        snapshot.update(getattr(self, "_email_change_audit", {}))
+        return snapshot
+
+    def _validate_email_change_account(self):
         if not isinstance(self.user_source, IamUserSource) or self.type != "user":
             raise iam_exceptions.EmailChangeNotAllowed()
+        # Initial registration must finish through its own onboarding flow.
+        if not self.email_verified:
+            raise iam_exceptions.EmailChangeNotAllowed()
+
+    def _validate_email_change(self, new_email):
         if not isinstance(new_email, str) or not types.Email(max_length=128).validate(
             new_email
         ):
             raise iam_exceptions.InvalidEmailChange()
         new_email = new_email.lower()
-        if new_email == self.email.lower() and self.email_verified:
+        if new_email == self.email.lower():
             raise iam_exceptions.InvalidEmailChange()
-        # Escape LIKE metacharacters while retaining case-insensitive matching.
-        pattern = (
-            new_email.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        )
-        users = User.objects.get_all(filters={"email": ra_filters.ILike(pattern)})
+        users = User.find_by_email(new_email)
         if any(user.uuid != self.uuid for user in users):
             raise iam_exceptions.EmailAlreadyUsed()
         return new_email
@@ -534,7 +549,15 @@ class User(
             client.build_user_event(context=ctx, user=self, payload=payload)
         )
 
-    def request_email_change(self, new_email):
+    def request_email_change(self, new_email, password, otp_code=None):
+        self._validate_email_change_account()
+        if not isinstance(password, str) or not password:
+            raise iam_exceptions.InvalidEmailChange()
+        self.process_secret(password)
+        if self.otp_enabled and (
+            not isinstance(otp_code, str) or not self.validate_otp(otp_code)
+        ):
+            raise iam_e.OTPInvalidCodeError()
         new_email = self._validate_email_change(new_email)
         now = datetime.datetime.now(datetime.timezone.utc)
         if (
@@ -543,19 +566,22 @@ class User(
             < iam_c.EMAIL_CHANGE_RESEND_INTERVAL
         ):
             raise iam_exceptions.EmailChangeRateLimited()
-        self._issue_email_change_code(new_email, now)
+        code = self._prepare_email_change_code(new_email, now)
+        self.save()
+        self._email_change_event(new_email, code=code)
 
-    def _issue_email_change_code(self, new_email, now):
+    def _prepare_email_change_code(self, new_email, now):
         code = secrets.token_urlsafe(32)
         self.pending_email = new_email
         self.email_change_code_hash = hashlib.sha256(code.encode()).hexdigest()
         self.email_change_requested_at = now
-        self.save()
-        self._email_change_event(new_email, code=code)
+        return code
 
     def _clear_email_change(self):
         self.pending_email = None
         self.email_change_code_hash = None
+        self.confirmation_code = None
+        self.confirmation_code_made_at = None
 
     def confirm_email_change(self, code):
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -571,43 +597,33 @@ class User(
             )
         ):
             raise iam_exceptions.InvalidEmailChange()
+        self._validate_email_change_account()
         new_email = self._validate_email_change(self.pending_email)
         old_email = self.email
         self.email = new_email
         self.email_verified = True
         self._clear_email_change()
-        self.confirmation_code = None
-        self.confirmation_code_made_at = None
         self.save()
         if old_email != new_email:
             self._email_change_event(old_email)
 
-    def admin_change_email(self, new_email, reason, verified=False):
+    def admin_change_email(self, new_email, reason):
+        self._validate_email_change_account()
         new_email = self._validate_email_change(new_email)
         old_email = self.email
         self.email = new_email
-        self.email_verified = verified
+        self.email_verified = True
         self._clear_email_change()
-        self.confirmation_code = None
-        self.confirmation_code_made_at = None
-        self.save()
-        # Persist the support reason with the actor in the transactional audit outbox.
-        self._write_audit_event(
-            action="update",
-            snapshot={
-                "email": new_email,
-                "previous_email": old_email,
-                "email_verified": verified,
-                "reason": reason,
-                "operation": "admin_change_email",
-            },
-        )
-        if not verified:
-            self._issue_email_change_code(
-                new_email, datetime.datetime.now(datetime.timezone.utc)
-            )
-        if old_email != new_email:
-            self._email_change_event(old_email)
+        # Enrich the single automatic audit event for this mutation.
+        self._email_change_audit = {
+            "previous_email": old_email,
+            "reason": reason,
+            "operation": "admin_change_email",
+        }
+        try:
+            self.save()
+        finally:
+            del self._email_change_audit
 
     def get_my_roles(self):
         return RolesInfo(
@@ -1079,6 +1095,9 @@ class MeInfo:
             "user_source",
             "custom_props",
             "registration_client",
+            "pending_email",
+            "email_change_code_hash",
+            "email_change_requested_at",
         ]
         user = self._user.get_storable_snapshot()
         for drop_field in skip_fields:
@@ -1482,7 +1501,7 @@ class IamClient(
         This method supports service account tokens via service_account_uuid parameter.
         """
         # Create users query
-        users_query = User.objects.get_all(filters={"email": ra_filters.EQ(email)})
+        users_query = User.find_by_email(email)
 
         return self._get_token_by_password_and_smth(users_query=users_query, **kwargs)
 
