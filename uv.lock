@@ -792,7 +792,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.8.1,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=52c690b" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -896,8 +896,8 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.8.1"
-source = { registry = "https://pypi.org/simple" }
+version = "3.8.2.dev1+g52c690b1a"
+source = { git = "https://github.com/exordos/gcl_sdk.git?rev=52c690b#52c690b1a65c4e0540ab1bc282037976356211c6" }
 dependencies = [
     { name = "bjoern" },
     { name = "cryptography" },
@@ -910,10 +910,6 @@ dependencies = [
     { name = "renameat2", marker = "sys_platform == 'linux'" },
     { name = "restalchemy" },
     { name = "xxhash" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c8/49/2f3ad4f98ac9f3064389b6fde6f0e0c1f3012c1345a646baca8e6a18df4e/gcl_sdk-3.8.1.tar.gz", hash = "sha256:f28c5e4ffe19239b0ebbd1b2aecb20f53ed8926f55579bf75fd52519ff7b2499", size = 462015, upload-time = "2026-11-20T16:22:48Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/f4/7c07c4b94bdc2653b6ab06ac8d7fac58505687e4c055d578b77ace58d3a6/gcl_sdk-3.8.1-py3-none-any.whl", hash = "sha256:dbdc8d5901a37990d8dafe8f4cff3e8d6412fc3ca1ecbf7de193fe0aa126a655", size = 429920, upload-time = "2026-11-20T16:22:46.367Z" },
 ]
 
 [package.optional-dependencies]

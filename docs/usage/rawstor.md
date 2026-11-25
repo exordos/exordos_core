@@ -299,7 +299,7 @@ The core image's installation script performs the binding installation itself.
 ## Project accounts and upgrade compatibility
 
 RawStor account UUIDs match Exordos `project_id`. Before creating the first disk
-of a project in an MDS, the hypervisor registers that account idempotently.
+of a project in an MDS, the Core agent registers that account idempotently.
 Object and vhost locations carry it as URI user information, for example
 `mds://PROJECT_UUID@core:7776/OBJECT_UUID`. Discovery restores the project from
 the saved location. The nil project UUID cannot be used: RawStor reserves it
@@ -327,3 +327,12 @@ layered on the storage integration.
 Agents and the API explicitly call `rawstor.initialize(insecure=True)` before
 loading native `Target` or `Location` types. This matches the service transport
 mode; setting any `RAWSTOR_TLS_*` options in insecure mode is rejected.
+
+## Object lifecycle ownership
+
+The Core agent handles account registration and object creation, growth and
+deletion through `storage_volume` resources. The hypervisor only discovers the
+object and manages its vhost attachment. During resize it waits for Core to grow
+the object before refreshing vhost and acknowledging the new size. Core deletes
+an object only after both the desired and observed hypervisor attachments are
+gone. Accounts are retained when their last object is deleted.

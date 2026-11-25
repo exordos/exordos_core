@@ -374,7 +374,7 @@ def _require_no_disks(cluster, pool_uuid=None):
         _references_remote_pool(resource.value, pool_ids, local_pools)
         for model in (ua_models.TargetResource, ua_models.Resource)
         for resource in model.objects.get_all(
-            filters={"kind": dm_filters.EQ("pool_volume")}
+            filters={"kind": dm_filters.In(("pool_volume", "storage_volume"))}
         )
     )
     if has_volumes or pending_resources:
