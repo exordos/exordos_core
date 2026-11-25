@@ -345,6 +345,7 @@ object and manages its vhost attachment. During resize it waits for Core to grow
 the object before refreshing vhost and acknowledging the new size. Core deletes
 an object only after both the desired and observed hypervisor attachments are
 gone. Accounts are retained when their last object is deleted.
+
 ## Managed OST virtual machines
 
 `e build` also builds the `rawstor-ost` image in the core element. Its provisioning
