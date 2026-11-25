@@ -390,7 +390,8 @@ capabilities =
     paas_lb_agent,
     repo_proxy_installed_element,
     border_agent,
-    storage_cluster
+    storage_cluster,
+    storage_volume
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
 _UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
@@ -518,7 +519,8 @@ def _ensure_ua_config_current() -> None:
         _UA_SCHEDULER_SECTION
         if features.rawstor_enabled()
         else _UA_SCHEDULER_SECTION.replace(
-            "    border_agent,\n    storage_cluster", "    border_agent"
+            "    border_agent,\n    storage_cluster,\n    storage_volume",
+            "    border_agent",
         ),
         content,
         count=1,

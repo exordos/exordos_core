@@ -24,6 +24,7 @@ from gcl_sdk.agents.universal.services import common as sdk_svc_common
 
 from exordos_core.storage import constants as sc
 from exordos_core.storage import state
+from exordos_core.storage import volumes
 from exordos_core.storage.dm import models as storage_models
 
 
@@ -63,6 +64,7 @@ class StorageClusterBuilderService(sdk_builder.CollectionUniversalBuilderService
         """
         with storage_models.StorageCluster._get_engine().session_manager() as session:
             state.lock(session)
+            volumes.sync_targets(self.ua_service_spec.uuid)
         return {"clause_filters": {"builder": self.ua_service_spec.uuid}}
 
     def actualize_outdated_instance(
