@@ -248,3 +248,11 @@ def test_volume_bundle_never_issues_hypervisor_admin_credentials():
         bundle = tls.bundle("volume", volume, uuid.uuid4(), project)
     assert bundle == {"service": {"key": "volume-key"}}
     issue.assert_called_once_with(f"account/{project}/client/{volume}", volume)
+
+
+def test_ost_bundle_has_only_service_identity():
+    node = uuid.uuid4()
+    with patch.object(tls, "credential", return_value={"key": "ost-key"}) as issue:
+        assert tls.bundle("ost", node, uuid.uuid4()) == {"service": {"key": "ost-key"}}
+    issue.assert_called_once_with(f"ost/{node}")
+    assert tls.bundle("ost", node, None) == {"service": {"pending": True}}

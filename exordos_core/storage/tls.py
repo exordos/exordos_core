@@ -70,12 +70,16 @@ def bundle(kind, resource_uuid, agent, project=None):
                 f"account/{project}/client/{resource_uuid}", resource_uuid
             )
         }
+    if kind == "ost":
+        return (
+            {"service": credential("ost/" + str(resource_uuid))}
+            if agent is not None
+            else {"service": {"pending": True}}
+        )
     if agent is None:
         return {"service": {"pending": True}, "control": {"pending": True}}
     if kind == "mds":
         identity = "mds/" + str(uuid.uuid5(resource_uuid, "mds-witness"))
-    elif kind == "ost":
-        identity = "ost/" + str(resource_uuid)
     else:
         raise ValueError("Unknown RawStor workload kind")
     return {

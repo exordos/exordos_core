@@ -56,6 +56,10 @@ are root-only (`0600`, directories `0700`) and cannot be read by RawStor service
 Agent metadata containing the delivered credentials uses the existing owner-only
 storage permissions.
 
+OST agents receive only their OST service certificate. They check local service
+liveness through systemd; MDS observes network availability. OST agents do not
+receive administrative credentials.
+
 The Core agent owns account registration and object creation, growth and deletion.
 Its administrative credentials stay on Core. Hypervisors receive only the
 per-volume service credentials under `/etc/rawstor/tls/volume-VOLUME_UUID/`.
