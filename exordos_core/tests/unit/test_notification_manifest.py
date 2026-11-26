@@ -122,7 +122,6 @@ def test_core_email_depends_on_transport_and_supplies_its_own_template(trim_bloc
     assert set(manifest["requirements"]) == {
         "core",
         "notification_email",
-        "notification_api_https",
     }
     resources = manifest["resources"]
     assert "$mailaas.types.mail.instances" not in resources

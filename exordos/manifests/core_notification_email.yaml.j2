@@ -12,8 +12,6 @@ requirements:
     from_version: "{{ version }}"
   notification_email:
     from_version: "2.1.2"
-  notification_api_https:
-    from_version: "2.1.2"
 
 resources:
   $core.config.configs:
@@ -74,14 +72,12 @@ resources:
       body:
         kind: text
         content: |
-          f"
           [events]
           enabled = true
           client_type = async
           event_type_mapping_filepath = /etc/exordos_core/event_type_mapping.yaml
           project_id = 12345678-c625-4fee-81d5-f691897b8142
-          exordos_notification_endpoint = https://{$core_notification_email.imports.$notification_api_domain:value}
-          "
+          exordos_notification_endpoint = http://notification-cp.local.genesis-core.tech:8080
     core_events_token:
       mode: "0600"
       project_id: "12345678-c625-4fee-81d5-f691897b8142"
@@ -257,10 +253,6 @@ resources:
 
 
 imports:
-  notification_api_domain:
-    element: "$notification_api_https"
-    kind: resource
-    link: "$core.vs.variables.$notification_api_domain"
   core_set:
     element: "$core"
     kind: resource

@@ -70,7 +70,7 @@ def test_email_change_manifest_and_outbox_payload():
         )
 
 
-def test_email_change_requires_recipient_support_and_https():
+def test_email_change_requires_recipient_support_and_internal_http():
     source = pathlib.Path(__file__).parents[4] / "exordos/manifests"
     environment = jinja2.Environment(loader=jinja2.FileSystemLoader(source))
     manifest = yaml.safe_load(
@@ -79,17 +79,12 @@ def test_email_change_requires_recipient_support_and_https():
         )
     )
     assert manifest["requirements"]["notification_email"]["from_version"] == "2.1.2"
-    assert manifest["requirements"]["notification_api_https"]["from_version"] == "2.1.2"
+    assert "notification_api_https" not in manifest["requirements"]
     configs = manifest["resources"]["$core.config.configs"]
     settings = configs["core_events_conf"]["body"]["content"]
     assert (
-        "exordos_notification_endpoint = https://{$core_notification_email.imports.$notification_api_domain:value}"
+        "exordos_notification_endpoint = http://notification-cp.local.genesis-core.tech:8080"
         in settings
-    )
-    assert "http://" not in settings
-    assert (
-        manifest["imports"]["notification_api_domain"]["element"]
-        == "$notification_api_https"
     )
     core = yaml.safe_load(
         environment.get_template("core.yaml.j2").render(version="test")

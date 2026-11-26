@@ -1,31 +1,23 @@
 #    Copyright 2026 Genesis Corporation.
 #    Licensed under the Apache License, Version 2.0 (the "License").
 
-import datetime
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 import json
 import pathlib
-import ssl
 import threading
 import types
 from unittest import mock
 import uuid
 
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
 from gcl_sdk.events import opts
 from gcl_sdk.events.services import senders
 import jinja2
 from oslo_config import cfg
 import pytest
-import requests as http_requests
 import yaml
 
 from exordos_core.common import config
-from exordos_core.elements.dm import models as element_models
 from exordos_core.events import payloads
 
 
@@ -38,7 +30,7 @@ from exordos_core.events import payloads
     ],
 )
 def test_sender_loads_managed_token_for_submission_and_polling(
-    tmp_path, payload_class, code_field, monkeypatch
+    tmp_path, payload_class, code_field
 ):
     requests = []
     source = pathlib.Path(__file__).parents[4] / "exordos/manifests"
@@ -76,58 +68,14 @@ def test_sender_loads_managed_token_for_submission_and_polling(
     mapping = tmp_path / "event_type_mapping.yaml"
     configs = manifest["resources"]["$core.config.configs"]
     mapping.write_text(configs["core_event_type_mapping"]["body"]["content"])
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, "localhost")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    certificate = (
-        x509.CertificateBuilder()
-        .subject_name(name)
-        .issuer_name(name)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(minutes=1))
-        .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(
-            x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False
-        )
-        .sign(key, hashes.SHA256())
-    )
-    cert_path, key_path = tmp_path / "ca.pem", tmp_path / "key.pem"
-    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
-    key_path.write_bytes(
-        key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
-    )
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.load_cert_chain(cert_path, key_path)
     with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-        server.socket = tls.wrap_socket(server.socket, server_side=True)
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
         try:
-            endpoint = f"https://localhost:{server.server_port}"
-            # A valid certificate still fails unless its issuer is trusted.
-            with pytest.raises(http_requests.exceptions.SSLError):
-                http_requests.get(endpoint, timeout=2, verify=True)
-            monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert_path))
-            settings = configs["core_events_conf"]["body"]["content"]
-            element = element_models.Element(
-                name="core_notification_email",
-                version="3.1.2-dev",
-                link="$core_notification_email",
+            endpoint = f"http://127.0.0.1:{server.server_port}"
+            settings = configs["core_events_conf"]["body"]["content"].replace(
+                "http://notification-cp.local.genesis-core.tech:8080", endpoint
             )
-            resource = element_models.Resource(
-                name="config",
-                element=element,
-                resource_link_prefix="$core.config.configs",
-                value={},
-            )
-            engine = mock.Mock()
-            engine.get_resource_by_link.return_value.get_parameter_value.return_value = f"localhost:{server.server_port}"
-            settings = resource._render_value(settings, engine)
             settings = settings.replace("/etc/exordos_core/", f"{tmp_path}/")
             (dropins / "90-notification-events.conf").write_text(settings)
             # Each new sender process must pick up the replacement managed token.
