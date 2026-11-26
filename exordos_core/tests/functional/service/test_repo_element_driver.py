@@ -264,10 +264,20 @@ class TestRepoEmBackendClientList:
         )
         core.update()
 
-        result = backend_client.list(driver.KIND)
+        element = em_models.Element.objects.get_one(
+            filters={"manifest": installed.uuid}
+        )
+        with mock.patch.object(
+            em_models.Element.objects,
+            "get_all",
+            side_effect=AssertionError("Listing must not load full EM elements"),
+        ):
+            result = backend_client.list(driver.KIND)
         assert len(result) >= 1
         names = [r.name for r in result]
         assert "core" in names
+        listed = next(r for r in result if r.uuid == installed.uuid)
+        assert listed.element == element.uuid
 
     def test_list_raises_on_wrong_kind(self, backend_client, user_api):
         """_list should raise ValueError for unsupported kind."""

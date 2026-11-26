@@ -217,22 +217,14 @@ class RepoEmBackendClient(client.DatabaseBackendClient):
         if kind != KIND:
             raise ValueError(f"Unsupported kind {kind}")
 
-        # NOTE(akremenetsky): Fetching manifests and elements separately is
-        # not the most efficient approach. In the future, a dedicated view
-        # that joins repo elements with EM manifests and elements in a single
-        # query would be preferable. For now, we keep it simple with
-        # individual queries.
-        #
-        # Elements are matched by their manifest link rather than by
-        # (name, version): the same name and version may exist in several
-        # projects, and keying manifests that way hides all but one of them.
-        # Keep only UUIDs so prefetched manifests and profiles can be released
-        # before the manifests are read.
-        em_element_uuids = {
-            e.manifest.uuid: e.uuid
-            for e in em_models.Element.objects.get_all(session=session)
-            if e.manifest is not None
-        }
+        # Read only the links: loading Element models also prefetches their
+        # manifests and profiles. Match by manifest UUID because the same
+        # name and version may exist in several projects.
+        rows = session.execute(
+            f"SELECT uuid, manifest FROM {em_models.Element.__tablename__}"
+            " WHERE manifest IS NOT NULL",
+        ).fetchall()
+        em_element_uuids = {row["manifest"]: row["uuid"] for row in rows}
 
         installed = []
         for em_manifest in em_models.Manifest.objects.get_all(session=session):
