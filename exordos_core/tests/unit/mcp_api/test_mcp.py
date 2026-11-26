@@ -14,8 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 import json
+import threading
 import urllib.parse
+from unittest import mock
 
 from bazooka import exceptions as bazooka_exc
 import pytest
@@ -30,7 +34,8 @@ USER_API_URL = "https://exordos.example.com/api/core"
 class EchoClient:
     """Answer a call with what the MCP service sent, instead of calling out."""
 
-    def request(self, method, url, headers=None, json=None):
+    def request(self, method, url, headers=None, json=None, allow_redirects=False):
+        assert allow_redirects is False
         parts = urllib.parse.urlsplit(url)
         status = 404 if parts.path.endswith("/v1/missing/") else 200
         resp = requests.Response()
@@ -684,3 +689,328 @@ class TestCuratedTools:
                 "variables": {"type": "object"},
             },
         }
+
+
+ECOSYSTEM_SPEC = {
+    "openapi": "3.0.3",
+    "paths": {
+        "/v1/realms/": {
+            "get": {
+                "summary": "List realms",
+                "tags": ["realms"],
+                "responses": {"200": {"$ref": "#/components/responses/Realms"}},
+            },
+        },
+    },
+    "components": {"responses": {"Realms": {"description": "Realm collection"}}},
+}
+
+
+@pytest.fixture
+def ecosystem_application():
+    specification_client = mock.Mock()
+    specification_client.get.return_value.status_code = 200
+    specification_client.get.return_value.content = _json_bytes(ECOSYSTEM_SPEC)
+    return mcp.McpApplication(
+        USER_API_URL,
+        client=EchoClient(),
+        ecosystem_api_url="http://ecosystem.internal:8080/",
+        ecosystem_openapi_url="https://repo.example/1.2.3/openapi.yaml",
+        specification_client=specification_client,
+    )
+
+
+class TestEcosystem:
+    def test_discovery_caches_only_ecosystem_specification(self, ecosystem_application):
+        app = ecosystem_application
+        text, failed = call_tool(
+            app, "list_endpoints", service="ecosystem", search="realm"
+        )
+        assert not failed
+        assert text == "GET /v1/realms/ - List realms"
+        text, failed = call_tool(
+            app,
+            "describe_endpoint",
+            service="ecosystem",
+            method="GET",
+            path="/v1/realms/",
+        )
+        assert not failed
+        assert json.loads(text)["responses"]["200"] == {
+            "description": "Realm collection"
+        }
+        app.specification_client.get.assert_called_once_with(
+            "https://repo.example/1.2.3/openapi.yaml",
+            allow_redirects=False,
+        )
+        assert app._specification is None
+
+    def test_yaml_artifact(self, ecosystem_application):
+        app = ecosystem_application
+        app.specification_client.get.return_value.content = (
+            b"openapi: 3.0.3\npaths:\n  /v1/realms/:\n    get:\n      summary: Realms\n"
+        )
+        text, failed = call_tool(app, "list_endpoints", service="ecosystem")
+        assert not failed
+        assert text == "GET /v1/realms/ - Realms"
+
+    @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
+    def test_calls_use_ecosystem_without_loading_spec(
+        self, ecosystem_application, method
+    ):
+        app = ecosystem_application
+        text, failed = call_tool(
+            app,
+            "call_api",
+            service="ecosystem",
+            method=method,
+            path="/v1/realms/",
+            query={"name": "my realm"},
+            body={"name": "new realm"},
+        )
+        assert not failed
+        sent = json.loads(text.split("\n", 1)[1])
+        assert sent["url"] == "http://ecosystem.internal:8080/v1/realms/?name=my+realm"
+        assert sent["headers"]["Authorization"] == "Bearer token"
+        assert sent["headers"]["X-Forwarded-Prefix"] == "/api/ecosystem"
+        assert sent["method"] == method
+        assert sent["body"] == {"name": "new realm"}
+        app.specification_client.get.assert_not_called()
+
+    def test_default_and_explicit_core_still_address_core(self, ecosystem_application):
+        app = ecosystem_application
+        for kwargs in ({}, {"service": "core"}):
+            text, failed = call_tool(
+                app, "call_api", method="GET", path="/v1/realms/", **kwargs
+            )
+            assert not failed
+            sent = json.loads(text.split("\n", 1)[1])
+            assert sent["url"] == USER_API_URL + "/v1/realms/"
+        app.specification_client.get.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "service", ["ecosystem", "unknown", "https://evil.example"]
+    )
+    @pytest.mark.parametrize(
+        "tool, arguments",
+        [
+            ("list_endpoints", {}),
+            ("describe_endpoint", {"method": "GET", "path": "/v1/realms/"}),
+            ("call_api", {"method": "GET", "path": "/v1/realms/"}),
+        ],
+    )
+    def test_disabled_or_unknown_service(self, application, service, tool, arguments):
+        text, failed = call_tool(application, tool, service=service, **arguments)
+        assert failed
+        assert "not enabled" in text or "Unknown service" in text
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            b"<html>error</html>",
+            b"[]",
+            b"{",
+            b"openapi: 2.0\npaths: {}",
+            b"openapi: 3.0.3\npaths: []",
+            b"openapi: 3.0.3\npaths: { /v1/realms/: [] }",
+            b"openapi: 3.0.3\npaths: { /v1/realms/: { get: null } }",
+            b"openapi: 3.0.3\npaths: { /v1/realms/: { get: {tags: [1]} } }",
+            b"openapi: 3.0.3\npaths: { /v1/realms/: { get: {summary: 1} } }",
+            b'openapi: 3.0.3\npaths: { /v1/realms/: { get: {$ref: "#/missing"} } }',
+        ],
+    )
+    def test_invalid_schema_is_not_cached(self, ecosystem_application, content):
+        app = ecosystem_application
+        app.specification_client.get.return_value.content = content
+        text, failed = call_tool(app, "list_endpoints", service="ecosystem")
+        assert failed
+        assert text == "Could not load the Ecosystem OpenAPI document."
+        assert app._ecosystem_specification is None
+        app.specification_client.get.return_value.content = _json_bytes(ECOSYSTEM_SPEC)
+        assert not call_tool(app, "list_endpoints", service="ecosystem")[1]
+
+    @pytest.mark.parametrize("status", [302, 401, 403, 404, 500])
+    def test_schema_http_failure_does_not_affect_core(
+        self, ecosystem_application, status
+    ):
+        app = ecosystem_application
+        app.specification_client.get.return_value.status_code = status
+        assert call_tool(app, "list_endpoints", service="ecosystem")[1]
+        assert not call_tool(app, "call_api", method="GET", path="/v1/compute/nodes/")[
+            1
+        ]
+        assert app._ecosystem_specification is None
+
+    def test_schema_timeout_is_a_tool_error(self, ecosystem_application):
+        app = ecosystem_application
+        app.specification_client.get.side_effect = requests.Timeout("internal detail")
+        text, failed = call_tool(app, "list_endpoints", service="ecosystem")
+        assert failed
+        assert "internal detail" not in text
+        assert app._ecosystem_specification is None
+
+    @pytest.mark.parametrize("status", [301, 401, 403, 500])
+    def test_api_error_status_is_preserved(self, ecosystem_application, status):
+        app = ecosystem_application
+        response = requests.Response()
+        response.status_code = status
+        response.reason = "Refused"
+        response._content = b'{"error":"denied"}'
+        app.client = mock.Mock()
+        app.client.request.return_value = response
+        text, failed = call_tool(
+            app, "call_api", service="ecosystem", method="GET", path="/v1/realms/"
+        )
+        assert failed
+        assert text == f'HTTP {status} Refused\n{{"error":"denied"}}'
+        assert app.client.request.call_count == 1
+        assert app.client.request.call_args.kwargs["allow_redirects"] is False
+
+    def test_api_timeout_is_not_retried(self, ecosystem_application):
+        app = ecosystem_application
+        app.client = mock.Mock()
+        app.client.request.side_effect = requests.Timeout("internal detail")
+        text, failed = call_tool(
+            app,
+            "call_api",
+            service="ecosystem",
+            method="POST",
+            path="/v1/realms/",
+            body={},
+        )
+        assert failed
+        assert "internal detail" not in text
+        assert app.client.request.call_count == 1
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/v1/../admin",
+            "/v1/%2e%2e/admin",
+            "/v1/%252e%252e/admin",
+            "/v1/realms/?url=https://evil",
+            "/v1/realms/#fragment",
+            "/v1/%5cadmin",
+            "/v1/%6dcp",
+            "/v1/realms/%0a",
+            "https://evil/v1/realms/",
+        ],
+    )
+    def test_api_cannot_escape_configured_path(self, ecosystem_application, path):
+        assert call_tool(
+            ecosystem_application,
+            "call_api",
+            service="ecosystem",
+            method="GET",
+            path=path,
+        )[1]
+
+    def test_instruction_advertises_ecosystem(self, ecosystem_application):
+        response = post(
+            ecosystem_application, {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+        )
+        assert "service='ecosystem'" in response.json_body["result"]["instructions"]
+
+    def test_specification_client_has_bounded_timeout(self):
+        with mock.patch.object(mcp.bazooka, "Client") as client:
+            mcp.McpApplication(USER_API_URL, client=EchoClient())
+        client.assert_called_once_with(default_timeout=mcp.SPEC_TIMEOUT)
+
+
+@pytest.fixture
+def ecosystem_http_server():
+    """Exercise actual HTTP serialization against a local API and artifact host."""
+    received = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            received.append((self.path, dict(self.headers)))
+            status = 200
+            if self.path == "/openapi.yaml":
+                payload = ECOSYSTEM_SPEC
+            elif self.path == "/v1/redirect/":
+                status, payload = 302, {}
+            elif self.path == "/v1/denied/":
+                status, payload = 403, {"error": "denied"}
+            else:
+                payload = {"path": self.path}
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            if status == 302:
+                self.send_header("Location", "/v1/should-not-be-called/")
+            self.end_headers()
+            self.wfile.write(_json_bytes(payload))
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}", received
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def test_ecosystem_http_flow(ecosystem_http_server):
+    base_url, received = ecosystem_http_server
+    application = mcp.McpApplication(
+        USER_API_URL,
+        ecosystem_api_url=base_url,
+        ecosystem_openapi_url=base_url + "/openapi.yaml",
+    )
+    assert not call_tool(application, "list_endpoints", service="ecosystem")[1]
+    assert "Authorization" not in received[0][1]
+
+    req = webob.Request.blank(mcp.MCP_PATH, method="POST")
+    req.authorization = "Bearer user-project-token"
+    req.headers.update(
+        {
+            "Host": "public.example",
+            "X-Forwarded-Prefix": "/api/core",
+            "X-Forwarded-Proto": "https",
+            "X-OTP": "123456",
+            "X-Real-IP": "192.0.2.12",
+            "Cookie": "must-not-cross=1",
+        }
+    )
+    req.body = _json_bytes(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "call_api",
+                "arguments": {
+                    "service": "ecosystem",
+                    "method": "GET",
+                    "path": "/v1/realms/",
+                },
+            },
+        }
+    )
+    assert not req.get_response(application).json_body["result"]["isError"]
+    headers = received[-1][1]
+    assert headers["Authorization"] == "Bearer user-project-token"
+    assert headers["Host"] == "public.example"
+    assert headers["X-Forwarded-Prefix"] == "/api/ecosystem"
+    assert headers["X-Forwarded-Proto"] == "https"
+    assert headers["X-OTP"] == "123456"
+    assert headers["X-Real-IP"] == "192.0.2.12"
+    assert "Cookie" not in headers
+
+    for path, status in [("/v1/denied/", 403), ("/v1/redirect/", 302)]:
+        text, failed = call_tool(
+            application, "call_api", service="ecosystem", method="GET", path=path
+        )
+        assert failed
+        assert text.startswith(f"HTTP {status}")
+    assert [path for path, _ in received] == [
+        "/openapi.yaml",
+        "/v1/realms/",
+        "/v1/denied/",
+        "/v1/redirect/",
+    ]

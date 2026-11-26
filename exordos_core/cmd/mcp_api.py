@@ -57,6 +57,15 @@ DOMAIN = "mcp_api"
 
 CONF = cfg.CONF
 CONF.register_cli_opts(api_cli_opts, DOMAIN)
+CONF.register_opts(
+    [
+        cfg.BoolOpt("enabled", default=False),
+        cfg.StrOpt("api_url", default="", help="Internal Ecosystem User API URL."),
+        cfg.StrOpt("openapi_url", default="", help="Versioned OpenAPI artifact URL."),
+        cfg.StrOpt("public_prefix", default="/api/ecosystem"),
+    ],
+    "mcp_api_ecosystem",
+)
 
 
 def main():
@@ -80,6 +89,13 @@ def main():
         service = bjoern_service.BjoernService(
             wsgi_app=app.build_wsgi_application(
                 user_api_url=CONF[DOMAIN].user_api_url,
+                ecosystem_api_url=(
+                    CONF.mcp_api_ecosystem.api_url
+                    if CONF.mcp_api_ecosystem.enabled
+                    else ""
+                ),
+                ecosystem_openapi_url=CONF.mcp_api_ecosystem.openapi_url,
+                ecosystem_public_prefix=CONF.mcp_api_ecosystem.public_prefix,
             ),
             host=CONF[DOMAIN].bind_host,
             port=CONF[DOMAIN].bind_port,
