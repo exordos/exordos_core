@@ -24,7 +24,7 @@ from exordos_core.common import spiffe
 
 @pytest.mark.skipif(
     not os.environ.get("RAWSTOR_TLS_TEST_BIN"),
-    reason="Requires RawStor 0.3.5 native daemons",
+    reason="Requires RawStor 0.3.6 native daemons",
 )
 def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
     binaries = Path(os.environ["RAWSTOR_TLS_TEST_BIN"])

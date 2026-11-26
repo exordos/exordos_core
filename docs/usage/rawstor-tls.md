@@ -61,7 +61,9 @@ liveness through systemd; MDS observes network availability. OST agents do not
 receive administrative credentials.
 
 The Core agent owns account registration and object creation, growth and deletion.
-Its administrative credentials stay on Core. Hypervisors receive only the
+Its administrative credentials stay on Core. Since RawStor 0.3.6, admin and
+MDS identities cannot open or read account objects on OSTs. VM data access uses
+the per-volume client identity. Hypervisors receive only the
 per-volume service credentials under `/etc/rawstor/tls/volume-VOLUME_UUID/`.
 They observe the object through that identity, refresh vhost after Core grows
 it, and remove the local credentials after stopping vhost. Core waits for
@@ -70,7 +72,7 @@ attachment removal before deleting the object.
 MDS and OST configurations and per-volume vhost systemd drop-ins set
 `RAWSTOR_TLS_TRUST_DOMAIN`, `RAWSTOR_TLS_CERT`, `RAWSTOR_TLS_KEY` and
 `RAWSTOR_TLS_CA`. The trust domain is read from the URI SAN in `ca.crt`; no
-separate `domain` file or trust-domain field is delivered. RawStor 0.3.5 still
+separate `domain` file or trust-domain field is delivered. RawStor 0.3.6 still
 requires `RAWSTOR_TLS_TRUST_DOMAIN`, which the agent derives from that CA. Renewals send `SIGUSR1` without restarting the service.
 `SIGHUP` remains available for topology reload and disk resize. A failed signal
 is retried during reconciliation. Established TLS connections retain their

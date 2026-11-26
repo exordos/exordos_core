@@ -33,7 +33,7 @@ def test_rawstor_client_signed_policy_roundtrips(tmp_path):
     path.write_text(issued.cert)
     info = pki.show(path)
     assert info.identity == identity
-    assert info.access_role == "none"
+    assert info.role == "none"
     assert info.object_permissions == {str(volume): 7}
 
 
