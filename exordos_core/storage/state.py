@@ -43,7 +43,6 @@ def agent_driver_spec(cluster):
     spec["nodes"] = {
         str(node.uuid): {
             "endpoint": node.driver_spec.endpoint,
-            "weight": node.driver_spec.weight,
             "failure_domain_path": node.driver_spec.failure_domain_path,
         }
         for node in nodes

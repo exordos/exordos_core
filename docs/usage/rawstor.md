@@ -143,7 +143,7 @@ Advertised hostnames must use valid DNS labels; use ASCII Punycode for IDNs.
 
 The failure domain path runs from outermost to innermost:
 `dc/row/rack/server`. Shorter paths omit outer levels; omitted domains are shared.
-`--weight` defaults to 100. Node lists expose the assigned agent and readiness status.
+Node lists expose the assigned agent and readiness status.
 
 On hypervisors use `exordos hypervisors init` to install the
 Python binding and rawstor-vhost.
@@ -158,7 +158,7 @@ ambiguous across clusters.
 exordos storages clusters list
 exordos storages clusters show storage1
 exordos storages nodes list --cluster storage1
-exordos storages nodes update OST_UUID --weight 200
+exordos storages nodes update OST_UUID --failure-domain-path dc1/row1/rack2/host1
 exordos storages pools list --cluster storage1
 exordos storages pools update POOL_UUID --mirrors 2 --failure-domain rack
 ```
@@ -249,7 +249,7 @@ RawStor settings are nested in `driver_spec`:
 
 Storage nodes keep their identity, cluster, agent and status as common fields.
 Their `driver_spec` contains `kind: rawstor`, `endpoint`, `location`,
-`bind_address`, `failure_domain_path` and `weight`.
+`bind_address`, `failure_domain_path`.
 CLI options remain unchanged; commands construct the nested API configuration.
 
 The pinned build requires a strict majority for writable mirrors. With two

@@ -563,14 +563,6 @@ class StorageNodesController(ClusterMemberController):
                 )
         if agent_uuid is not None:
             _check_core_ost_port(agent, data["bind_address"])
-        weight = data.get("weight", 100)
-        if (
-            isinstance(weight, bool)
-            or not isinstance(weight, (int, float))
-            or not 1 <= weight <= (1 << 63) - 1
-            or weight != int(weight)
-        ):
-            raise InvalidRawstorEndpoint(msg="OST weight must be a positive integer")
         path = data.get("failure_domain_path")
         if not isinstance(path, str):
             raise InvalidRawstorEndpoint(msg="A failure domain path is required")

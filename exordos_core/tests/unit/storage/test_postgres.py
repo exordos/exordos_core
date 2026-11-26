@@ -168,13 +168,10 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
             ),
         )
         assert first.driver_spec.bind_address == "10.0.0.1:7777"
-        assert first.driver_spec.weight == 100
-        assert isinstance(node_api.get(uuid=first.uuid).driver_spec.weight, int)
         second = node_api.create(
             name="ost2",
             driver_spec={
                 "kind": "rawstor",
-                "weight": 100,
                 "endpoint": "ost://10.0.0.2:7777",
                 "failure_domain_path": "dc1/row1/rack2/host2",
             },
@@ -193,16 +190,29 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
             str(first.uuid),
             str(second.uuid),
         }
-        node_api.update(second.uuid, driver_spec={"kind": "rawstor", "weight": 2})
+        node_api.update(
+            second.uuid,
+            driver_spec={
+                "kind": "rawstor",
+                "failure_domain_path": "dc1/row1/rack3/host2",
+            },
+        )
         cluster = cluster_api.get(uuid=cluster.uuid)
-        assert state.agent_driver_spec(cluster).nodes[str(second.uuid)]["weight"] == 2.0
+        assert (
+            state.agent_driver_spec(cluster).nodes[str(second.uuid)][
+                "failure_domain_path"
+            ]
+            == "dc1/row1/rack3/host2"
+        )
         ready_target = models.Cluster.restore_from_simple_view(
             **cluster.dump_to_simple_view()
         ).to_ua_resource()
         assert ready_target.hash != initial_target.hash
         assert (
-            ready_target.value["driver_spec"]["nodes"][str(second.uuid)]["weight"]
-            == 2.0
+            ready_target.value["driver_spec"]["nodes"][str(second.uuid)][
+                "failure_domain_path"
+            ]
+            == "dc1/row1/rack3/host2"
         )
         reported = models.Cluster.from_ua_resource(ready_target)
         assert (

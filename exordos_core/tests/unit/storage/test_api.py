@@ -141,31 +141,6 @@ def test_cluster_rejects_node_and_pool_settings(field, value):
 
 
 @pytest.mark.parametrize(
-    "weight", [0, 1.5, float("inf"), float("nan"), None, "100", True, False, 1 << 64]
-)
-def test_node_rejects_weights_that_cannot_be_parsed_by_mds(weight):
-    controller = controllers.StorageNodesController.__new__(
-        controllers.StorageNodesController
-    )
-    with pytest.raises(controllers.InvalidRawstorEndpoint, match="positive integer"):
-        controller.validate_member(
-            {
-                "agent": None,
-                "driver_spec": {
-                    "kind": "rawstor",
-                    "endpoint": "ost://host:7777",
-                    "location": "",
-                    "weight": weight,
-                },
-            },
-            _cluster(_spec()),
-            existing=SimpleNamespace(
-                agent=None, driver_spec=SimpleNamespace(location="")
-            ),
-        )
-
-
-@pytest.mark.parametrize(
     "resource_type",
     [controllers.ua_models.TargetResource, controllers.ua_models.Resource],
 )

@@ -151,7 +151,7 @@ Core отклоняет совпадения управляемых bind-пор�
 
 Путь домена отказа задаётся от внешнего уровня к внутреннему: `dc/row/rack/server`.
 Короткий путь опускает внешние уровни; пропущенные домены считаются общими.
-Значение `--weight` по умолчанию — 100. В списке узлов отображаются назначенный
+В списке узлов отображаются назначенный
 агент и статус готовности.
 
 На гипервизорах выполните `exordos hypervisors init`, чтобы установить
@@ -167,7 +167,7 @@ Python binding и rawstor-vhost.
 exordos storages clusters list
 exordos storages clusters show storage1
 exordos storages nodes list --cluster storage1
-exordos storages nodes update OST_UUID --weight 200
+exordos storages nodes update OST_UUID --failure-domain-path dc1/row1/rack2/host1
 exordos storages pools list --cluster storage1
 exordos storages pools update POOL_UUID --mirrors 2 --failure-domain rack
 ```
@@ -268,7 +268,7 @@ SHA256. CLI скачивает OST, vhost, librawstor и binding из того �
 
 Общие поля узлов хранения — идентификатор, кластер, агент и статус.
 `driver_spec` содержит `kind: rawstor`, `endpoint`, `location`, `bind_address`,
-`failure_domain_path` и `weight`. Параметры CLI не меняются: команды формируют
+`failure_domain_path`. Параметры CLI не меняются: команды формируют
 вложенную конфигурацию API.
 
 Закреплённая версия требует строгого большинства для записи в зеркало.

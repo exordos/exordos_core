@@ -212,7 +212,6 @@ def test_cluster_status_compares_enriched_agent_snapshot():
         spec.nodes = {
             str(sys_uuid.uuid4()): {
                 "endpoint": "ost://host:7777",
-                "weight": 100,
                 "failure_domain_path": "server",
             }
         }
@@ -253,7 +252,7 @@ def test_ost_deletion_requires_successful_mds_report(status, allowed):
 def test_topology_only_update_keeps_active_ost_admitted():
     identifier, cluster, agent = sys_uuid.uuid4(), sys_uuid.uuid4(), sys_uuid.uuid4()
 
-    def node(weight):
+    def node(path):
         return models.Node(
             uuid=identifier,
             name="ost",
@@ -264,12 +263,11 @@ def test_topology_only_update_keeps_active_ost_admitted():
                 endpoint="ost://host:7777",
                 bind_address="host:7777",
                 location="file:///data/ost",
-                weight=weight,
-                failure_domain_path="rack/host",
+                failure_domain_path=path,
             ),
         )
 
-    current, actual = node(200), node(100)
+    current, actual = node("rack/host"), node("rack/old-host")
     service = cluster_builder.StorageClusterBuilderService.__new__(
         cluster_builder.StorageClusterBuilderService
     )
