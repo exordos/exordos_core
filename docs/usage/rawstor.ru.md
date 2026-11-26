@@ -247,8 +247,8 @@ exordos compute nodes update -u VM_UUID --root-disk 20
 
 ## Версия RawStor
 
-Deb-пакеты и Python binding по умолчанию имеют версию `0.3.5` из
-[RawStor v0.3.5](https://github.com/rawstor/librawstor/releases/tag/v0.3.5).
+Deb-пакеты и Python binding по умолчанию имеют версию `0.3.6` из
+[RawStor v0.3.6](https://github.com/rawstor/librawstor/releases/tag/v0.3.6).
 Core скачивает пакеты релиза при подготовке образа и проверяет закреплённые
 SHA256. CLI скачивает OST, vhost, librawstor и binding из того же релиза.
 `RAWSTOR_VERSION` выбирает релиз, а `RAWSTOR_WHEEL_VERSION` — другую версию binding,
@@ -301,8 +301,8 @@ RawStor обходит эту проверку лишь при явном соч
 ```bash
 rawstor_packages=$(mktemp -d)
 bash exordos/images/download_rawstor.sh "$rawstor_packages" librawstor rawstor-mds
-sudo apt-get install "$rawstor_packages/librawstor_0.3.5_amd64.deb" \
-  "$rawstor_packages/rawstor-mds_0.3.5_amd64.deb"
+sudo apt-get install "$rawstor_packages/librawstor_0.3.6_amd64.deb" \
+  "$rawstor_packages/rawstor-mds_0.3.6_amd64.deb"
 uv sync --extra rawstor
 ```
 
