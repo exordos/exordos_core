@@ -274,6 +274,12 @@ class TestList:
         return em_element
 
     def _list(self, client, em_manifests, em_elements):
+        session = mock.MagicMock()
+        session.execute.return_value.fetchall.return_value = [
+            {"uuid": e.uuid, "manifest": e.manifest.uuid}
+            for e in em_elements
+            if e.manifest is not None
+        ]
         with (
             mock.patch.object(
                 driver.em_models.Manifest, "objects", new=mock.MagicMock()
@@ -283,8 +289,13 @@ class TestList:
             ) as element_objects,
         ):
             manifest_objects.get_all.return_value = em_manifests
-            element_objects.get_all.return_value = em_elements
-            return client._list(None, driver.KIND)
+            result = client._list(session, driver.KIND)
+            element_objects.get_all.assert_not_called()
+            manifest_objects.get_all.assert_called_once_with(session=session)
+            session.execute.assert_called_once_with(
+                "SELECT uuid, manifest FROM em_elements WHERE manifest IS NOT NULL"
+            )
+            return result
 
     def test_unsupported_kind(self):
         """Should reject a kind the driver does not serve."""
