@@ -110,7 +110,6 @@ def reconcile(cluster):
                 bind_address=f"{host}:7777",
                 location=f"lvm://rawstor-{ost_id}",
                 failure_domain_path=str(node_id),
-                weight=100,
             ),
         ).insert()
 
