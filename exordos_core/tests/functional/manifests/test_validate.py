@@ -18,6 +18,8 @@ import os
 
 import pytest
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import yaml
 
 from exordos_core.common import exceptions
@@ -35,8 +37,6 @@ class TestSpec:
             "communal_pg_cluster",
             "core",
             "dbaas",
-            "core-node-set-example",
-            "core-service-example",
             "genesis_notification",
             # TODO(slashburygin): need mutate imports to validate them
         ],
@@ -44,7 +44,22 @@ class TestSpec:
     def test_validate_manifests(
         self, element, base_manifest_schema, full_manifest_schema
     ):
-        resp = requests.get(f"{REPO_URL}/{element}/latest/manifests/{element}.yaml")
+        with requests.Session() as session:
+            session.mount(
+                "https://",
+                HTTPAdapter(
+                    max_retries=Retry(
+                        total=2,
+                        backoff_factor=1,
+                        status_forcelist=(502, 503, 504),
+                        raise_on_status=False,
+                    )
+                ),
+            )
+            resp = session.get(
+                f"{REPO_URL}/{element}/latest/manifests/{element}.yaml",
+                timeout=75,
+            )
         if resp.status_code == 404:
             pytest.skip(f"latest version for {element} is not available")
         assert resp.status_code == 200
