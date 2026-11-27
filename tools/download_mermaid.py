@@ -21,8 +21,10 @@ its bundled dependency notices; both files are copied into the generated site.
 
 from contextlib import closing
 import hashlib
-from http.client import HTTPSConnection
+from http.client import HTTPException, HTTPSConnection
+from io import BytesIO
 from pathlib import Path
+import tarfile
 
 VERSION = "11.17.2"
 FILES = {
@@ -37,22 +39,60 @@ FILES = {
 }
 
 
+SOURCES = (
+    ("cdn.jsdelivr.net", f"/npm/mermaid@{VERSION}"),
+    ("unpkg.com", f"/mermaid@{VERSION}"),
+    ("registry.npmjs.org", f"/mermaid/-/mermaid-{VERSION}.tgz"),
+)
+
+
+def download(host: str, path: str) -> bytes:
+    with closing(HTTPSConnection(host, timeout=30)) as connection:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        if response.status != 200:
+            raise ValueError(f"HTTP {response.status}: https://{host}{path}")
+        return response.read()
+
+
+def download_files() -> dict[str, bytes]:
+    errors = []
+    for host, path in SOURCES:
+        try:
+            if host == "registry.npmjs.org":
+                with tarfile.open(
+                    fileobj=BytesIO(download(host, path)), mode="r:gz"
+                ) as archive:
+                    contents = {}
+                    for filename, (source, _) in FILES.items():
+                        member = archive.getmember(f"package/{source}")
+                        if not member.isfile():
+                            raise ValueError(f"Not a regular file: {member.name}")
+                        with archive.extractfile(member) as stream:
+                            contents[filename] = stream.read()
+            else:
+                contents = {
+                    filename: download(host, f"{path}/{source}")
+                    for filename, (source, _) in FILES.items()
+                }
+            for filename, (_, expected) in FILES.items():
+                if hashlib.sha256(contents[filename]).hexdigest() != expected:
+                    raise ValueError(f"SHA-256 mismatch: {filename}")
+        except (OSError, HTTPException, ValueError, tarfile.TarError, KeyError) as exc:
+            errors.append(f"{host}: {exc}")
+            print(f"Mermaid {VERSION} download failed from {host}: {exc}", flush=True)
+            continue
+        print(f"Downloaded Mermaid {VERSION} from {host}")
+        return contents
+    raise RuntimeError("All Mermaid download sources failed: " + "; ".join(errors))
+
+
 def main() -> None:
+    contents = download_files()
     destination = Path(__file__).resolve().parents[1] / "docs/javascripts/vendor"
     destination.mkdir(parents=True, exist_ok=True)
-    for filename, (source, expected) in FILES.items():
-        with closing(HTTPSConnection("unpkg.com", timeout=30)) as connection:
-            connection.request("GET", f"/mermaid@{VERSION}/{source}")
-            response = connection.getresponse()
-            if response.status != 200:
-                raise ValueError(
-                    f"Download failed for {filename}: HTTP {response.status}"
-                )
-            content = response.read()
-        if hashlib.sha256(content).hexdigest() != expected:
-            raise ValueError(f"SHA-256 mismatch for Mermaid {VERSION}: {filename}")
+    for filename, content in contents.items():
         (destination / filename).write_bytes(content)
-        print(f"Downloaded Mermaid {VERSION}: {filename}")
 
 
 if __name__ == "__main__":
