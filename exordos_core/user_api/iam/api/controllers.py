@@ -791,10 +791,7 @@ class TokenController(
         ):
             raise gcl_iam_e.Forbidden()
         for binding in models.PermissionFastView.objects.get_all(
-            filters={
-                "user": ra_filters.EQ(user),
-                "project": ra_filters.Is(project),
-            }
+            filters=models.PermissionFastView.scope_filters(user, project)
         ):
             self._enforcer.enforce(
                 rules.Rule.from_raw(binding.permission.name), do_raise=True

@@ -72,8 +72,7 @@ def test_create_allows_own_permissions(setup_token_controller):
     assert controller.create() is token
     token.insert.assert_called_once()
     filters = permissions.call_args.kwargs["filters"]
-    assert filters["user"].value is token.user
-    assert filters["project"].value is token.project
+    assert filters == models.PermissionFastView.scope_filters(token.user, token.project)
 
 
 @pytest.mark.parametrize("project", [None, SimpleNamespace(uuid=uuid.uuid4())])
