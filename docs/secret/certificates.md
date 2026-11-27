@@ -147,10 +147,9 @@ exactly one URI SAN, critical when the subject is empty, critical key usage,
 [X.509-SVID specification](https://github.com/spiffe/spiffe/blob/main/standards/X509-SVID.md).
 
 One CA is persisted for each `(project_id, trust_domain)` pair in the
-issuer-only `storage_spiffe_authorities` table. Each project can persist at most
-32 authorities, independently of its leaf certificate quota. The database
-serializes concurrent inserts for a project so racing domain changes cannot
-exceed that limit. Authorities are not automatically deleted when a leaf
+issuer-only `storage_spiffe_authorities` table. A unique constraint prevents
+concurrent issuers from replacing an existing authority. Authorities are not
+automatically deleted when a leaf
 changes domain or is removed. Different projects get different
 roots even if they use the same trust-domain name. Do not combine their roots
 into one bundle when they must remain isolated. The project owner controls

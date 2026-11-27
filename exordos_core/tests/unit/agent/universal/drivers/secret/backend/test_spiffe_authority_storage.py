@@ -36,7 +36,7 @@ def test_authority_survives_restart_and_concurrent_first_issuance():
     dsn = admin_dsn.rsplit("/", 1)[0] + "/" + name
     path = (
         Path(__file__).resolve().parents[8]
-        / "migrations/0017-spiffe-authorities-2f5766.py"
+        / "migrations/0015-spiffe-authorities-2f5766.py"
     )
     spec = importlib.util.spec_from_file_location("spiffe_migration", path)
     migration = importlib.util.module_from_spec(spec)
@@ -96,53 +96,7 @@ def test_authority_survives_restart_and_concurrent_first_issuance():
         retry_chain = x509.load_pem_x509_certificates(retried.fullchain.encode())
         assert first_chain[1] == retry_chain[1]
         retry_chain[0].verify_directly_issued_by(first_chain[1])
-        # Fill all but one project slot, then race two different domains.
-        with psycopg.connect(dsn) as connection:
-            for index in range(30):
-                connection.execute(
-                    "INSERT INTO storage_spiffe_authorities VALUES (%s, %s, %s, %s, %s)",
-                    (
-                        uuid.uuid4(),
-                        project,
-                        f"reserved-{index}.example",
-                        "test-key",
-                        "test-cert",
-                    ),
-                )
-
-        insert_barrier = threading.Barrier(2)
-
-        def insert_domain(index):
-            try:
-                with psycopg.connect(dsn) as connection:
-                    insert_barrier.wait(timeout=10)
-                    connection.execute(
-                        "INSERT INTO storage_spiffe_authorities VALUES (%s, %s, %s, %s, %s)",
-                        (
-                            uuid.uuid4(),
-                            project,
-                            f"racing-{index}.example",
-                            "test-key",
-                            "test-cert",
-                        ),
-                    )
-                return True
-            except psycopg.errors.CheckViolation as exc:
-                assert "SPIFFE authority limit (32)" in str(exc)
-                return False
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            assert sorted(executor.map(insert_domain, range(2))) == [False, True]
-        with psycopg.connect(dsn) as connection:
-            assert (
-                connection.execute(
-                    "SELECT count(*) FROM storage_spiffe_authorities"
-                ).fetchone()[0]
-                == 32
-            )
-        # Existing authorities can still issue at the limit; other projects
-        # have independent budgets.
-        issue()
+        # Other projects get their own authorities.
         issue(uuid.uuid4())
         engines.engine_factory.destroy_engine()
         # Refuse rollback rather than destroy a distributed trust root.
