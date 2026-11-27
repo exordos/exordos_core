@@ -39,17 +39,17 @@ exordos storages clusters add --type rawstor --name storage1 --host 10.100.0.2
 ```
 
 The core agent starts a separate `rawstor-mds@UUID.service` with its own
-persistent SQLite index and topology. The agent uses the package's template
-and writes `/etc/rawstor/mds/UUID.conf` and `UUID.topology`; new databases live
-under `/var/lib/rawstor/mds/UUID/`. The first MDS defaults to port 7776.
+persistent SQLite index and registered topology. The agent uses the package's
+template and writes `/etc/rawstor/mds/UUID.conf` with `DB_URI`, `ADVERTISE` and
+`DOMAIN_PATH`; databases live under `/var/lib/rawstor/mds/UUID/`.
+OSTs register directly with MDS and renew their registration through heartbeats. The first MDS defaults to port 7776.
 For subsequent clusters specify `--port` or enter an unused port when prompted.
 The cluster endpoint is `mds://<core-ip>:<port>/`.
 
 The public cluster `driver_spec` contains only `kind` and `endpoint`. OSTs and
 pool policies are separate resources (`storages nodes` and `storages pools`).
 Core assembles their current snapshot only when sending the cluster to its
-agent; it is not stored in the public `driver_spec`. `ost_endpoint` belonged to
-the old single-OST configuration and is no longer a cluster API field.
+agent for capacity accounting; it is not stored in the public `driver_spec`.
 
 Each new cluster has two policies sharing the same OST capacity:
 
@@ -109,8 +109,9 @@ registered name; use its UUID to avoid ambiguity.
 The agent receives the desired resource through reconciliation, writes
 `/etc/rawstor/ost/UUID.conf` and starts the package's `rawstor-ost@UUID.service`
 template. A ZFS location must already exist; for a file location the agent
-creates the backing directory. Only after the OST answers at its advertised
-endpoint does core add it to the MDS topology and reload MDS.
+creates the backing directory. The OST registers its advertised endpoint and
+failure domain directly with MDS. The agent checks the systemd service; capacity
+admission excludes OSTs that MDS has not registered yet.
 
 For a native ZFS backing store, specify `--location zfs://POOL/DATASET`.
 Provision the zpool separately using explicitly selected storage disks, then
@@ -170,19 +171,16 @@ MDS endpoints cannot change after registration. Cluster deletion automatically
 removes its empty nodes and pools; deletion is blocked while the cluster has managed
 or pending disks, or the OST contains unmanaged objects. Pool removal is
 blocked while disks still reference it. Unregistering a cluster retains
-its database and data. Node deletion first removes the OST from MDS topology;
-after the MDS agent successfully requests reload and reports the desired state,
-the host agent stops the OST and removes its config/drop-in. Reload is asynchronous;
-Exordos trusts the generated topology and does not parse journal messages.
-Backing directories and their data remain. An absent agent report does not prove
-that an OST is empty. Deletion requires a reachable, empty OST and MDS topology
-acknowledgement; restore an unavailable endpoint before deleting its registration. A deleting cluster stays in `DELETING`
+its database and data. On node deletion, its host agent stops the OST and removes
+its config/drop-in. The OST notifies MDS when leaving; heartbeat expiration
+handles an abrupt disconnect. Backing directories and their data remain.
+An absent agent report does not prove that an OST is empty. Deletion requires
+a reachable, empty OST; restore an unavailable endpoint before deleting its registration. A deleting cluster stays in `DELETING`
 until the agents acknowledge stopping every OST; then its MDS is stopped through
 reconciliation. New disks, nodes and pools cannot be added while it is deleting.
 The assigned agent and backing location are immutable;
 `nodes update --bind IP:PORT --endpoint ost://HOST:PORT` changes connectivity only
-when the cluster has no managed disks. Nodes registered before this lifecycle
-remain externally managed; their services are not automatically adopted or stopped.
+when the cluster has no managed disks.
 
 ## Shared free space
 
@@ -229,8 +227,8 @@ The guest must expand its partitions and filesystem separately.
 
 ## RawStor version
 
-The default Debian packages and Python binding are version `0.3.6`, from
-[RawStor v0.3.6](https://github.com/rawstor/librawstor/releases/tag/v0.3.6).
+The default Debian packages and Python binding are version `0.3.7`, from
+[RawStor v0.3.7](https://github.com/rawstor/librawstor/releases/tag/v0.3.7).
 Core downloads release packages during image provisioning and checks their
 pinned SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same release. Set `RAWSTOR_VERSION` for a release,
@@ -282,8 +280,8 @@ and enable the pinned `rawstor` Python extra:
 ```bash
 rawstor_packages=$(mktemp -d)
 bash exordos/images/download_rawstor.sh "$rawstor_packages" librawstor rawstor-mds
-sudo apt-get install "$rawstor_packages/librawstor_0.3.6_amd64.deb" \
-  "$rawstor_packages/rawstor-mds_0.3.6_amd64.deb"
+sudo apt-get install "$rawstor_packages/librawstor_0.3.7_amd64.deb" \
+  "$rawstor_packages/rawstor-mds_0.3.7_amd64.deb"
 uv sync --extra rawstor
 ```
 

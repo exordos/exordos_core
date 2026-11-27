@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-"""Storage policy/topology snapshots sent to the core agent."""
+"""Storage policy and capacity inventory snapshots sent to the core agent."""
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool
@@ -39,7 +39,6 @@ def agent_driver_spec(cluster):
         filters={"cluster": filters.EQ(cluster.uuid)}
     )
     spec = cluster.driver_spec.dump_to_simple_view()
-    spec["managed"] = True
     spec["nodes"] = {
         str(node.uuid): {
             "endpoint": node.driver_spec.endpoint,
@@ -64,7 +63,7 @@ def agent_driver_spec(cluster):
 
 
 def sync_cluster(cluster):
-    # Publish membership changes before capacity reports can consume updated_at.
+    # Publish capacity inventory changes before reports consume updated_at.
     # The public cluster configuration still contains no agent-only snapshot.
     targets = ua_models.TargetResource.objects.get_all(
         filters={

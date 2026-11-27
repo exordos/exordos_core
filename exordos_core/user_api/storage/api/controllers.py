@@ -522,7 +522,12 @@ class StorageNodesController(ClusterMemberController):
             previous = self.get(uuid=uuid)
             if previous.agent is not None and any(
                 field in spec and spec[field] != getattr(previous.driver_spec, field)
-                for field in ("endpoint", "bind_address", "location")
+                for field in (
+                    "endpoint",
+                    "bind_address",
+                    "location",
+                    "failure_domain_path",
+                )
             ):
                 kwargs["status"] = "IN_PROGRESS"
         return super().update(uuid, **kwargs)

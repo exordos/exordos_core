@@ -23,6 +23,7 @@ Each run creates and drops its own database, leaving other databases untouched.
 import importlib.util
 import json
 import os
+import subprocess
 from pathlib import Path
 import time
 from unittest.mock import MagicMock
@@ -100,7 +101,7 @@ def database(empty_database):
         connection.execute(
             "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
-        migration("0015-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
+        migration("0016-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
     return uri
 
 
@@ -135,7 +136,7 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
         initial_target = models.Cluster.restore_from_simple_view(
             **cluster.dump_to_simple_view()
         ).to_ua_resource()
-        assert initial_target.value["driver_spec"]["witness_endpoint"] == ""
+        assert "witness_endpoint" not in initial_target.value["driver_spec"]
         assert len(initial_target.value["driver_spec"]["pools"]) == 2
         assert initial_target.value["driver_spec"]["nodes"] == {}
         assert state.agent_driver_spec(cluster).nodes == {}
@@ -198,6 +199,12 @@ def test_clusters_nodes_pools_and_shared_pending_budget(database, typed_spec):
             },
         )
         cluster = cluster_api.get(uuid=cluster.uuid)
+        updated_node = node_api.get(uuid=second.uuid)
+        assert updated_node.status == "IN_PROGRESS"
+        assert str(second.uuid) not in state.agent_driver_spec(cluster).nodes
+        updated_node.status = "ACTIVE"
+        updated_node.update()
+        state.sync_cluster(cluster)
         assert (
             state.agent_driver_spec(cluster).nodes[str(second.uuid)][
                 "failure_domain_path"
@@ -382,7 +389,7 @@ def test_storage_schema_upgrade_and_downgrade_preserve_local_volumes(database):
             storage_pool="default",
         ).insert()
     with psycopg.connect(database) as connection:
-        step = migration("0015-rawstor-storage-0b42fe.py").migration_step
+        step = migration("0016-rawstor-storage-0b42fe.py").migration_step
         step.downgrade(connection)
         for table in ("storage_clusters", "storage_nodes", "storage_pools"):
             assert connection.execute(
@@ -464,7 +471,7 @@ def test_full_migration_graph_applies_from_empty_database(
         } <= tables
 
 
-def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
+def test_managed_ost_registration_settings_and_ordered_cluster_shutdown(
     database, tmp_path, monkeypatch
 ):
     from gcl_sdk.agents.universal.drivers import rawstor_node
@@ -487,6 +494,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
     service = cluster_builder.StorageClusterBuilderService.__new__(
         cluster_builder.StorageClusterBuilderService
     )
+    service._instance_model = models.Node
     driver = rawstor_node.StorageNodeAgentDriver(meta_file=str(tmp_path / "meta.json"))
     driver.start()
     with (
@@ -523,7 +531,15 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
         desired = current.to_ua_resource()
         desired.agent = agent.uuid
         desired.insert()
-        with patch.object(rawstor_node.subprocess, "run"), patch("rawstor.Location"):
+        assert desired.value["driver_spec"]["mds"] == cluster.driver_spec.endpoint
+        with (
+            patch.object(
+                rawstor_node.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ),
+            patch("rawstor.Location"),
+        ):
             actual = driver.create(desired)
         assert actual.hash == desired.hash  # Real CP/DP serialization contract.
         assert actual.status == "ACTIVE"
@@ -559,7 +575,7 @@ def test_managed_ost_reconciles_before_topology_and_stops_after_mds_ack(
         mds_target.value = removed.value
         mds_target.hash = removed.hash
         mds_target.update()
-        assert not service.can_delete_instance_resource(desired)
+        assert service.can_delete_instance_resource(desired)
         mds_actual.value = removed.value
         mds_actual.hash = removed.hash
         mds_actual.update()

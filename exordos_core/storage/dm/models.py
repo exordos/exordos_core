@@ -167,6 +167,24 @@ class Node(
     def get_filter_clause(cls, builder, **kwargs):
         return {"builder": dm_filters.EQ(str(builder))}
 
+    def get_ua_all_and_target_values(self):
+        value, target = super().get_ua_all_and_target_values()
+        cluster = StorageCluster.objects.get_one(filters={"uuid": self.cluster})
+        spec = {
+            **self.driver_spec.dump_to_simple_view(),
+            "mds": cluster.driver_spec.endpoint,
+        }
+        value["driver_spec"] = target["driver_spec"] = spec
+        return value, target
+
+    @classmethod
+    def from_ua_resource(cls, resource):
+        value = dict(resource.value)
+        value["driver_spec"] = {
+            k: v for k, v in value["driver_spec"].items() if k != "mds"
+        }
+        return cls.restore_from_simple_view(skip_unknown_fields=True, **value)
+
     def get_resource_target_fields(self):
         return frozenset(
             (

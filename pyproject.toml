@@ -31,7 +31,7 @@ dependencies = [
     "Jinja2>=3.1.5,<4.0.0",  # BSD License (BSD-3-Clause)
     "izulu>=0.50.0,<1.0.0",  # MIT License
     "gcl_iam>=1.4.1,<2.0.0",  # Apache-2.0
-    "gcl_sdk[libvirt] @ git+https://github.com/exordos/gcl_sdk.git@606b994e70cff75cd31b3006172b247015552b66",  # Apache-2.0
+    "gcl_sdk[libvirt] @ git+https://github.com/exordos/gcl_sdk.git@e9ddf2c1aab99fe396f1749ff204ff62f590546c",  # Apache-2.0
     "gcl_certbot_plugin>=0.0.12,<1.0.0",  # Apache-2.0
     "pyotp>=2.9.0,<3.0.0",  # MIT License
     "pyyaml>=6.0.0,<7.0.0",  # MIT
@@ -57,7 +57,7 @@ build-backend = "setuptools.build_meta"
 
 [project.optional-dependencies]
 rawstor = [
-    "rawstor @ https://github.com/rawstor/librawstor/releases/download/v0.3.6/rawstor-0.3.6-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",  # Apache-2.0
+    "rawstor @ https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",  # Apache-2.0
 ]
 
 dev = [

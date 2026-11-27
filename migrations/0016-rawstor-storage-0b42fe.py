@@ -29,7 +29,7 @@ POOL_STATUS_CHECK = "('" + "', '".join(POOL_STATUSES) + "')"
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0014-manifest-description-4e83cda1.py"]
+        self._depends = ["0015-spiffe-authorities-2f5766.py"]
 
     @property
     def migration_id(self):

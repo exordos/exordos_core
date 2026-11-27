@@ -792,7 +792,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=606b994e70cff75cd31b3006172b247015552b66" },
+    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=e9ddf2c1aab99fe396f1749ff204ff62f590546c" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -810,7 +810,7 @@ requires-dist = [
     { name = "pytest-timer", marker = "extra == 'test'", specifier = ">=1.0.0,<2.0.0" },
     { name = "pytest-xdist", extras = ["psutil"], marker = "extra == 'test'", specifier = ">=3.6.1,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0,<7.0.0" },
-    { name = "rawstor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rawstor'", url = "https://github.com/rawstor/librawstor/releases/download/v0.3.6/rawstor-0.3.6-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" },
+    { name = "rawstor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rawstor'", url = "https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" },
     { name = "restalchemy", specifier = ">=16.1.5,<17.0.0" },
     { name = "ruamel-yaml", marker = "extra == 'docs'", specifier = "==0.19.1" },
     { name = "ruamel-yaml", marker = "extra == 'test'", specifier = "==0.19.1" },
@@ -896,8 +896,8 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.8.2.dev4+g606b994e7"
-source = { git = "https://github.com/exordos/gcl_sdk.git?rev=606b994e70cff75cd31b3006172b247015552b66#606b994e70cff75cd31b3006172b247015552b66" }
+version = "3.8.2.dev5+ge9ddf2c1a"
+source = { git = "https://github.com/exordos/gcl_sdk.git?rev=e9ddf2c1aab99fe396f1749ff204ff62f590546c#e9ddf2c1aab99fe396f1749ff204ff62f590546c" }
 dependencies = [
     { name = "bjoern" },
     { name = "cryptography" },
@@ -2634,10 +2634,10 @@ wheels = [
 
 [[package]]
 name = "rawstor"
-version = "0.3.6"
-source = { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.6/rawstor-0.3.6-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" }
+version = "0.3.7"
+source = { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.6/rawstor-0.3.6-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:6144f143b36b004d1e8772dd98b552cac1fe867fdc7f96cafd8853527bae90cb" },
+    { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:4ab5e937d2f1f244ff884dba6a1d8ca0fdd588f2fb828007f41da6eecb3bf5ca" },
 ]
 
 [[package]]
