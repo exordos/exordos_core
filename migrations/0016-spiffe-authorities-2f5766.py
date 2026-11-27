@@ -6,7 +6,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0014-manifest-description-4e83cda1.py"]
+        self._depends = ["0015-element-manifest-tags-324ac8.py"]
 
     @property
     def migration_id(self):
