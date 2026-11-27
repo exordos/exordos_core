@@ -101,7 +101,7 @@ def database(empty_database):
         connection.execute(
             "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
-        migration("0016-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
+        migration("0017-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
     return uri
 
 
@@ -389,7 +389,7 @@ def test_storage_schema_upgrade_and_downgrade_preserve_local_volumes(database):
             storage_pool="default",
         ).insert()
     with psycopg.connect(database) as connection:
-        step = migration("0016-rawstor-storage-0b42fe.py").migration_step
+        step = migration("0017-rawstor-storage-0b42fe.py").migration_step
         step.downgrade(connection)
         for table in ("storage_clusters", "storage_nodes", "storage_pools"):
             assert connection.execute(
