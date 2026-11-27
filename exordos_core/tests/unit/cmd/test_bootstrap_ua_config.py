@@ -14,8 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import configparser
+import os
 import pathlib
 from unittest import mock
+
+import pytest
 
 from exordos_core.cmd import bootstrap
 
@@ -184,6 +188,126 @@ def test_upgrades_old_persisted_config(tmp_path):
     assert data_path.read_text(encoding="utf-8") == content
     run.assert_called_once()
     assert "try-restart" in run.call_args.args[0]
+
+
+@pytest.mark.parametrize(
+    "drivers",
+    [
+        "\n    CustomCapabilityDriver,\n    SSHKeyCapabilityDriver",
+        "\n    CustomCapabilityDriver,\n    SSHKeyCapabilityDriver,",
+        "CustomCapabilityDriver, SSHKeyCapabilityDriver",
+        "\n    CustomCapabilityDriver,\n    # RenderAgentDriver is required after upgrade\n    SSHKeyCapabilityDriver",
+        "\n    CustomCapabilityDriver,\n    SSHKeyCapabilityDriver # keep this comment",
+    ],
+)
+def test_adds_missing_render_driver_and_preserves_custom_config(tmp_path, drivers):
+    content = (
+        "[universal_agent]\n"
+        "orch_endpoint = https://example.invalid/orchestrator\n"
+        f"caps_drivers = {drivers}\n\n"
+        + bootstrap._UA_SCHEDULER_SECTION
+        + "\n[CustomCapabilityDriver]\nusername = test-user\npassword = fixture-value\n"
+    )
+    etc_path = tmp_path / "exordos_universal_agent.conf"
+    etc_path.write_text(content, encoding="utf-8")
+    etc_path.chmod(0o600)
+
+    etc_path, data_path, run = _run_ua(tmp_path)
+
+    migrated = etc_path.read_text(encoding="utf-8")
+    parsed = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
+    parsed.read_string(migrated)
+    actual_drivers = [
+        value.strip()
+        for value in parsed.get("universal_agent", "caps_drivers").split(",")
+        if value.strip()
+    ]
+    assert actual_drivers == [
+        "CustomCapabilityDriver",
+        "SSHKeyCapabilityDriver",
+        "RenderAgentDriver",
+    ]
+    assert "orch_endpoint = https://example.invalid/orchestrator\n" in migrated
+    assert migrated.endswith(
+        "[CustomCapabilityDriver]\nusername = test-user\npassword = fixture-value\n"
+    )
+    for line in content.splitlines():
+        if line.lstrip().startswith("#") or "# keep this comment" in line:
+            assert line[line.index("#") :] in migrated
+    assert etc_path.stat().st_mode & 0o777 == 0o600
+    assert data_path.read_text(encoding="utf-8") == migrated
+    run.assert_called_once_with(
+        [
+            "systemctl",
+            "try-restart",
+            "exordos-universal-agent",
+            "exordos-universal-scheduler",
+        ],
+        check=True,
+    )
+
+    _, _, second_run = _run_ua(tmp_path)
+    assert etc_path.read_text(encoding="utf-8") == migrated
+    second_run.assert_not_called()
+
+
+@pytest.mark.parametrize("indent", ["  ", "        ", "\t"])
+def test_render_migration_preserves_indented_sibling_options(indent):
+    content = (
+        "[universal_agent]\n"
+        f"{indent}caps_drivers = CustomCapabilityDriver, SSHKeyCapabilityDriver\n"
+        f"{indent}orch_endpoint = https://example.invalid/orchestrator\n"
+        f"{indent}status_endpoint = https://example.invalid/status\n"
+        "\n[CustomCapabilityDriver]\nusername = test-user\n"
+    )
+
+    migrated = bootstrap._migrate_ua_render_driver(content)
+
+    parsed = configparser.ConfigParser()
+    parsed.read_string(migrated)
+    drivers = [
+        v.strip() for v in parsed.get("universal_agent", "caps_drivers").split(",")
+    ]
+    assert drivers == [
+        "CustomCapabilityDriver",
+        "SSHKeyCapabilityDriver",
+        "RenderAgentDriver",
+    ]
+    assert (
+        parsed.get("universal_agent", "orch_endpoint")
+        == "https://example.invalid/orchestrator"
+    )
+    assert (
+        parsed.get("universal_agent", "status_endpoint")
+        == "https://example.invalid/status"
+    )
+    assert bootstrap._migrate_ua_render_driver(migrated) == migrated
+
+
+@pytest.mark.parametrize("existing_mode", [None, 0o600, 0o644])
+def test_persisted_config_copy_is_private(tmp_path, existing_mode):
+    target = tmp_path / "data" / "agent.conf"
+    if existing_mode is not None:
+        target.parent.mkdir()
+        target.write_text("old config", encoding="utf-8")
+        target.chmod(existing_mode)
+    previous_umask = os.umask(0o022)
+    try:
+        bootstrap._sync_config_to_data_path("fixture config", str(target))
+    finally:
+        os.umask(previous_umask)
+    assert target.read_text(encoding="utf-8") == "fixture config"
+    assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_render_driver_migration_preserves_current_ua_template():
+    template = (
+        pathlib.Path(__file__).parents[4]
+        / "etc/exordos_universal_agent/exordos_universal_agent.conf.j2"
+    )
+    content = template.read_text(encoding="utf-8")
+
+    assert bootstrap._migrate_ua_render_driver(content) == content
 
 
 def test_migrates_user_capability_driver_section(tmp_path):

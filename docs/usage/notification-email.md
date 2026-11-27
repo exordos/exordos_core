@@ -31,6 +31,15 @@ so the integration follows that installation's node set without a fixed UUID.
 Update the base Core element to register this export before installing the
 optional email integration.
 
+During an in-place Core upgrade, bootstrap also adds a missing `RenderAgentDriver`
+to older persisted universal-agent configurations. It preserves the existing
+drivers and deployment settings, synchronizes the persisted copy, and restarts
+the agent and scheduler when the configuration changes. Updating the image
+template alone cannot repair an older saved configuration. If Notification
+returns HTTP 401 after a token renewal, check whether the token config is still
+`IN_PROGRESS` and whether the agent advertises the `render` capability. The
+sender continues to use the old token until the agent applies the new file.
+
 These paths are relative to `/etc/exordos_core`. Both `ec-user-api` and
 `ec-gservice` load the configuration directory through `--config-dir`.
 When the token changes, the config agent replaces its file and restarts only
