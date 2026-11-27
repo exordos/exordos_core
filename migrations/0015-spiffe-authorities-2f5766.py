@@ -6,7 +6,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0016-managed-ost-compute-68ba8e2d.py"]
+        self._depends = ["0014-manifest-description-4e83cda1.py"]
 
     @property
     def migration_id(self):
@@ -28,29 +28,6 @@ class MigrationStep(migrations.AbstractMigrationStep):
             )""",
             None,
         )
-        session.execute(
-            """CREATE FUNCTION enforce_spiffe_authority_limit() RETURNS trigger
-            LANGUAGE plpgsql AS $$
-            BEGIN
-                -- Serialize inserts for a project, including different domains.
-                PERFORM pg_advisory_xact_lock(hashtextextended('spiffe-authorities/' || NEW.project_id::text, 0));
-                IF (SELECT count(*) FROM storage_spiffe_authorities
-                    WHERE project_id = NEW.project_id) >= 32 THEN
-                    RAISE EXCEPTION 'SPIFFE authority limit (32) exceeded for project %', NEW.project_id
-                        USING ERRCODE = '23514';
-                END IF;
-                RETURN NEW;
-            END
-            $$""",
-            None,
-        )
-        session.execute(
-            """CREATE TRIGGER spiffe_authority_limit BEFORE INSERT
-            ON storage_spiffe_authorities FOR EACH ROW
-            EXECUTE FUNCTION enforce_spiffe_authority_limit()""",
-            None,
-        )
-
     def downgrade(self, session):
         session.execute(
             "LOCK TABLE storage_spiffe_authorities IN ACCESS EXCLUSIVE MODE", None
@@ -64,7 +41,6 @@ class MigrationStep(migrations.AbstractMigrationStep):
             None,
         )
         session.execute("DROP TABLE storage_spiffe_authorities", None)
-        session.execute("DROP FUNCTION enforce_spiffe_authority_limit()", None)
 
 
 migration_step = MigrationStep()
