@@ -57,6 +57,12 @@ class StorageCluster(
         ),
         required=True,
     )
+    nodes = properties.property(types.Integer(min_value=0), default=0, read_only=True)
+    size = properties.property(
+        types.Integer(min_value=1, max_value=1000000), default=10, read_only=True
+    )
+    cpu = properties.property(types.Integer(min_value=1), default=2, read_only=True)
+    ram = properties.property(types.Integer(min_value=1), default=2048, read_only=True)
     capacity_info = properties.property(types.Dict(), default=dict)
     agent = properties.property(types.AllowNone(types.UUID()), default=None)
     builder = properties.property(types.AllowNone(types.UUID()), default=None)
@@ -99,6 +105,14 @@ class Cluster(
         It depends on the service implementation.
         """
         return {"builder": dm_filters.EQ(str(builder))}
+
+    def get_resource_ignore_fields(self):
+        return set(super().get_resource_ignore_fields()) | {
+            "nodes",
+            "size",
+            "cpu",
+            "ram",
+        }
 
     def get_ua_all_and_target_values(self):
         from exordos_core.storage import state

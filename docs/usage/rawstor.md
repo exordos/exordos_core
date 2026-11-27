@@ -38,6 +38,15 @@ are not published until that path enforces the same lifecycle and deletion guard
 exordos storages clusters add --type rawstor --name storage1 --host 10.100.0.2
 ```
 
+To provision OST VMs automatically, pass `--nodes`; `--cpu` and `--ram` set
+vCPUs and RAM in MiB per OST VM (defaults: 2 vCPUs and 2048 MiB):
+
+```bash
+exordos storages clusters add --type rawstor --name storage1 --nodes 2 --cpu 2 --ram 4096
+```
+
+These settings apply when creating the cluster; existing OST VMs are not resized.
+
 The core agent starts a separate `rawstor-mds@UUID.service` with its own
 persistent SQLite index and registered topology. The agent uses the package's
 template and writes `/etc/rawstor/mds/UUID.conf` with `DB_URI`, `ADVERTISE` and
@@ -334,3 +343,31 @@ object and manages its vhost attachment. During resize it waits for Core to grow
 the object before refreshing vhost and acknowledging the new size. Core deletes
 an object only after both the desired and observed hypervisor attachments are
 gone. Accounts are retained when their last object is deleted.
+
+## Managed OST virtual machines
+
+`e build` also builds the `rawstor-ost` image in the core element. Its provisioning
+script installs the pinned rawstor packages, matching SDK and LVM support. On
+before starting an OST it creates the `rawstor-<OST_UUID>` volume group on the
+second disk (`/dev/vdb`),
+refusing mounted or non-empty disks. Later boots activate and preserve the existing VG.
+The storage agent starts after the data backend is ready.
+
+Create managed OST VMs with:
+
+```shell
+exordos storages clusters add --type rawstor --name storage --nodes 3 --size 30
+```
+
+Core reconciles three VMs, each with 2 CPUs, 2048 MiB RAM, a 10 GiB root disk
+and a 30 GiB data disk. Both disks request `WARM`/`ephemeral=true`; data uses a
+native LVM backend, `lvm://rawstor-<OST_UUID>`. Registered storage agents reconcile
+OST services, which register themselves with MDS and maintain their registration.
+Each VM has a distinct server failure-domain path. These are VM failure domains;
+physical host redundancy also requires placing VMs on separate hosts.
+
+`--nodes` defaults to `0`, preserving manually added storage nodes; `--size`
+defaults to `10` GiB. Count and size are chosen at creation. Deleting the cluster
+retires its managed VMs after OST resources have drained. The core manifest
+publishes the OST image reference through the `rawstor_ost_image` variable,
+including references to locally built element artifacts.
