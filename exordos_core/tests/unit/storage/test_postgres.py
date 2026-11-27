@@ -21,6 +21,7 @@ Each run creates and drops its own database, leaving other databases untouched.
 """
 
 import importlib.util
+import contextlib
 import json
 import os
 import subprocess
@@ -60,6 +61,24 @@ def migration(filename):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(autouse=True)
+def storage_control_credentials(monkeypatch):
+    """Keep storage SQL tests independent of certificate issuance and delivery."""
+    from exordos_core.storage import tls
+    from gcl_sdk.agents.universal.drivers import rawstor_tls
+
+    @contextlib.contextmanager
+    def bindings(_):
+        import rawstor
+
+        yield rawstor
+
+    monkeypatch.setattr(tls, "credential", lambda *args: {})
+    monkeypatch.setattr(tls, "bundle", lambda *args: {"service": {}, "control": {}})
+    monkeypatch.setattr(tls, "prune_unused_certificates", lambda *args: None)
+    monkeypatch.setattr(rawstor_tls, "temporary_bindings", bindings)
 
 
 @pytest.fixture
@@ -491,6 +510,12 @@ def test_managed_ost_registration_settings_and_ordered_cluster_shutdown(
     )
 
     from exordos_core.storage.builders import cluster as cluster_builder
+    from gcl_sdk.agents.universal.drivers import rawstor_tls
+
+    monkeypatch.setattr(rawstor_tls, "install", lambda *args: (tmp_path / "tls", False))
+    monkeypatch.setattr(rawstor_tls, "service_environment", lambda _: "")
+    monkeypatch.setattr(rawstor_tls, "reload_if_changed", lambda *args: None)
+    monkeypatch.setattr(rawstor_tls, "remove", lambda *args: None)
 
     cluster_api = controller(controllers.StorageClustersController)
     node_api = controller(controllers.StorageNodesController)

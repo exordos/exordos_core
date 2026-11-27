@@ -176,11 +176,24 @@ def test_node_delivers_private_tls_without_exposing_it_in_public_model():
         ),
     )
     credentials = {"service": {"pending": True}, "control": {"pending": True}}
-    with patch.object(tls, "bundle", return_value=credentials):
+    cluster = models.StorageCluster(
+        uuid=node.cluster,
+        name="cluster",
+        driver_spec=models.ua_pool.RawstorStorageClusterDriverSpec(
+            endpoint="mds://core:7776/"
+        ),
+    )
+    with (
+        patch.object(tls, "bundle", return_value=credentials),
+        patch.object(
+            type(models.StorageCluster.objects), "get_one", return_value=cluster
+        ),
+    ):
         resource = node.to_ua_resource()
     assert resource.value["driver_spec"]["tls"] == credentials
     actual = rawstor_node.MetaStorageNode.from_ua_resource(resource)
     assert actual.driver_spec.tls == credentials
+    assert actual.driver_spec.mds == cluster.driver_spec.endpoint
     restored = models.Node.from_ua_resource(resource)
     assert "tls" not in restored.driver_spec.dump_to_simple_view()
 

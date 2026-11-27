@@ -24,7 +24,7 @@ from exordos_core.common import spiffe
 
 @pytest.mark.skipif(
     not os.environ.get("RAWSTOR_TLS_TEST_BIN"),
-    reason="Requires RawStor 0.3.6 native daemons",
+    reason="Requires RawStor 0.3.7 native daemons",
 )
 def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
     binaries = Path(os.environ["RAWSTOR_TLS_TEST_BIN"])
@@ -72,14 +72,24 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
     ost_port, mds_port = port(), port()
     backing = tmp_path / "data"
     backing.mkdir()
-    topology = tmp_path / "topology"
-    topology.write_text(
-        f"{ost} ost://127.0.0.1:{ost_port} 100 data,witness host1\n{mds} ost://127.0.0.1:{mds_port} 100 witness host2\n"
-    )
     try:
         start(
             "rawstor-ost",
-            ["-b", f"127.0.0.1:{ost_port}", "--workers", "1", f"file://{backing}"],
+            [
+                "-b",
+                f"127.0.0.1:{ost_port}",
+                "--id",
+                str(ost),
+                "--mds",
+                f"mds://127.0.0.1:{mds_port}/",
+                "--advertise",
+                f"ost://127.0.0.1:{ost_port}",
+                "--domain-path",
+                "host1",
+                "--workers",
+                "1",
+                f"file://{backing}",
+            ],
             credentials("ost/" + str(ost)),
         )
         server, server_files = start(
@@ -88,9 +98,11 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
                 "-b",
                 f"127.0.0.1:{mds_port}",
                 "-d",
-                str(tmp_path / "mds.db"),
-                "-t",
-                str(topology),
+                f"sqlite://{tmp_path / 'mds.db'}",
+                "--advertise",
+                f"ost://127.0.0.1:{mds_port}",
+                "--domain-path",
+                "host2",
                 "--workers",
                 "1",
             ],
@@ -103,12 +115,13 @@ def test_native_mds_ost_tls_and_leaf_reload(tmp_path):
             deadline = time.monotonic() + 15
             while True:
                 try:
-                    location.info()
-                    break
+                    if location.info().total > 0:
+                        break
                 except OSError:
                     if time.monotonic() >= deadline:
                         raise
                     time.sleep(0.1)
+            assert f"ost://127.0.0.1:{ost_port}" in location.locations()
             account = uuid.uuid4()
             job = rawstor_cluster.MetaStorageVolume(
                 uuid=uuid.uuid4(),
