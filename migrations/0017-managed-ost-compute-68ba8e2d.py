@@ -6,7 +6,7 @@ from restalchemy.storage.sql import migrations
 
 class MigrationStep(migrations.AbstractMigrationStep):
     def __init__(self):
-        self._depends = ["0015-rawstor-storage-0b42fe.py"]
+        self._depends = ["0016-rawstor-storage-0b42fe.py"]
 
     @property
     def migration_id(self):

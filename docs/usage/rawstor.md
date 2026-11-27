@@ -362,7 +362,7 @@ exordos storages clusters add --type rawstor --name storage --nodes 3 --size 30
 Core reconciles three VMs, each with 2 CPUs, 2048 MiB RAM, a 10 GiB root disk
 and a 30 GiB data disk. Both disks request `WARM`/`ephemeral=true`; data uses a
 native LVM backend, `lvm://rawstor-<OST_UUID>`. Registered storage agents reconcile
-OST services and the existing cluster builder admits ready OSTs into MDS topology.
+OST services, which register themselves with MDS and maintain their registration.
 Each VM has a distinct server failure-domain path. These are VM failure domains;
 physical host redundancy also requires placing VMs on separate hosts.
 
