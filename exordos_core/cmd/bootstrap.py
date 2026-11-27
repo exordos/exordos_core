@@ -15,6 +15,7 @@
 #    under the License.
 from __future__ import annotations
 
+import configparser
 import grp
 import ipaddress
 import json
@@ -38,6 +39,7 @@ from exordos_core.bootstrap import defaults as bootstrap_defaults
 from exordos_core.common import config
 from exordos_core.common import constants as c
 from exordos_core.common import exceptions as common_exc
+from exordos_core.common import features
 from exordos_core.common import log as infra_log
 from exordos_core.compute.dm import models
 from exordos_core.elements.dm import models as em_models
@@ -387,7 +389,9 @@ capabilities =
     certificate,
     paas_lb_agent,
     repo_proxy_installed_element,
-    border_agent
+    border_agent,
+    storage_cluster,
+    storage_volume
 """
 _UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
 _UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
@@ -443,6 +447,44 @@ def _migrate_ua_secret_driver(content: str) -> str:
     return content
 
 
+def _ensure_ua_driver(content: str, driver: str, enabled: bool = True) -> str:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(content)
+    drivers = [
+        name.strip()
+        for name in parser.get("universal_agent", "caps_drivers").split(",")
+        if name.strip()
+    ]
+    if (driver in drivers) == enabled:
+        return content
+    drivers = [name for name in drivers if name != driver]
+    if enabled:
+        drivers.append(driver)
+    section = re.search(r"(?ms)^\[universal_agent\][ \t]*\n.*?(?=^\[|\Z)", content)
+    block = re.search(
+        r"(?m)^[ \t]*caps_drivers[ \t]*=[^\n]*(?:\n[ \t]+[^\n]*)*", section.group()
+    )
+    if block is None:
+        raise ValueError("Cannot update universal agent caps_drivers")
+    value = "caps_drivers =\n    " + ",\n    ".join(drivers)
+    start, end = section.start() + block.start(), section.start() + block.end()
+    return content[:start] + value + content[end:]
+
+
+def _restart_config_services(config_path, services):
+    marker = config_path + ".restart-pending"
+    with open(marker, "w", encoding="utf-8"):
+        pass
+    try:
+        subprocess.run(["systemctl", "try-restart", *services], check=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        LOG.warning(
+            "Failed to apply %s; restart will be retried: %s", config_path, error
+        )
+    else:
+        os.unlink(marker)
+
+
 def _ensure_ua_config_current() -> None:
     """Bring the universal agent config up to date with this image.
 
@@ -474,7 +516,12 @@ def _ensure_ua_config_current() -> None:
 
     new_content = re.sub(
         r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
-        _UA_SCHEDULER_SECTION,
+        _UA_SCHEDULER_SECTION
+        if features.rawstor_enabled()
+        else _UA_SCHEDULER_SECTION.replace(
+            "    border_agent,\n    storage_cluster,\n    storage_volume",
+            "    border_agent",
+        ),
         content,
         count=1,
         flags=re.DOTALL | re.MULTILINE,
@@ -504,9 +551,29 @@ def _ensure_ua_config_current() -> None:
                 UA_CONFIG_PATH,
             )
 
+    if features.rawstor_enabled():
+        new_content = _ensure_ua_driver(new_content, "StorageClusterAgentDriver")
+        new_content = _ensure_section(
+            new_content,
+            "StorageClusterAgentDriver",
+            {"meta_file": "/var/lib/exordos/exordos_core/storage_agent_meta.json"},
+        )
+    else:
+        new_content = _ensure_ua_driver(
+            new_content, "StorageClusterAgentDriver", enabled=False
+        )
+        new_content = re.sub(
+            r"(?ms)^\[StorageClusterAgentDriver\]\n.*?(?=^\[|\Z)", "", new_content
+        )
+
     new_content = _migrate_ua_secret_driver(new_content)
 
     if new_content == content:
+        if os.path.exists(UA_CONFIG_PATH + ".restart-pending"):
+            _restart_config_services(
+                UA_CONFIG_PATH,
+                ["exordos-universal-agent", "exordos-universal-scheduler"],
+            )
         LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
         return
 
@@ -515,19 +582,9 @@ def _ensure_ua_config_current() -> None:
     LOG.info("Updated universal agent config %s", UA_CONFIG_PATH)
     _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
 
-    try:
-        subprocess.run(
-            [
-                "systemctl",
-                "try-restart",
-                "exordos-universal-agent",
-                "exordos-universal-scheduler",
-            ],
-            check=True,
-        )
-        LOG.info("Restarted universal agent services to apply the new config")
-    except (OSError, subprocess.CalledProcessError) as e:
-        LOG.warning("Failed to restart universal agent services: %s", e)
+    _restart_config_services(
+        UA_CONFIG_PATH, ["exordos-universal-agent", "exordos-universal-scheduler"]
+    )
 
 
 # The image-defined parts of the core agent config, by section. Keep in
@@ -535,6 +592,9 @@ def _ensure_ua_config_current() -> None:
 # not be in its section.
 _CORE_AGENT_SECTIONS: dict[str, dict[str, str | None]] = {
     "models": {
+        "em_core_storage_pools": None,
+        "em_core_storage_nodes": None,
+        "em_core_storage_clusters": None,
         "em_core_iam_idp": "exordos_core.user_api.iam.dm.models:Idp",
         "em_core_secret_secrets": "exordos_core.secret.dm.models:Secret",
         "em_core_iam_tokens": "exordos_core.user_api.iam.dm.models:ManagedToken",
@@ -627,6 +687,8 @@ def _ensure_core_agent_config_current() -> None:
         new_content = _ensure_section(new_content, section, items)
 
     if new_content == content:
+        if os.path.exists(CORE_AGENT_CONFIG_PATH + ".restart-pending"):
+            _restart_config_services(CORE_AGENT_CONFIG_PATH, ["ec-core-agent"])
         LOG.info("Core agent config already up to date in %s", CORE_AGENT_CONFIG_PATH)
         return
 
@@ -635,14 +697,7 @@ def _ensure_core_agent_config_current() -> None:
     LOG.info("Updated core agent config %s", CORE_AGENT_CONFIG_PATH)
     _sync_config_to_data_path(new_content, CORE_AGENT_CONFIG_DATA_PATH)
 
-    try:
-        subprocess.run(
-            ["systemctl", "try-restart", "ec-core-agent"],
-            check=True,
-        )
-        LOG.info("Restarted core agent service to apply the new config")
-    except (OSError, subprocess.CalledProcessError) as e:
-        LOG.warning("Failed to restart core agent service: %s", e)
+    _restart_config_services(CORE_AGENT_CONFIG_PATH, ["ec-core-agent"])
 
 
 def _ensure_cors_config(spec: dict[str, tp.Any]) -> None:

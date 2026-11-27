@@ -30,6 +30,7 @@ from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.pool.dm import models as pool_models
 from exordos_core.repo.dm import models as repo_models
+from exordos_core.storage.scheduler import select as storage_select
 
 LOG = logging.getLogger(__name__)
 
@@ -514,26 +515,37 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         pool: pool_models.Pool,
         volume: pool_models.MachineVolume,
         size: int,
-    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+    ) -> tp.Optional[storage_select.PoolCandidate]:
         """Select the storage pool to use for `volume`.
 
-        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
-        rules (soft tier/ephemeral match with a capacity fallback; a
-        volume already scheduled onto a pool only considers that one).
+        The pool's own local pools and every active StorageCluster's
+        pools are equal candidates - see `storage_select.
+        select_storage_pool_with_clusters` for the matching rules (soft
+        tier/ephemeral match with a capacity fallback; a volume already
+        scheduled onto a pool only considers that one).
         """
         if (
-            volume.storage_pool
-            and sum(sp.name == volume.storage_pool for sp in pool.storage_pools) != 1
+            getattr(volume, "storage_backend", None) != "rawstor"
+            and volume.storage_pool
+            and sum(sp.name == volume.storage_pool for sp in pool.storage_pools) > 1
         ):
             return None
         names = [sp.name for sp in pool.storage_pools]
         pools = [sp for sp in pool.storage_pools if names.count(sp.name) == 1]
-        return ua_pool.select_storage_pool(
+        return storage_select.select_storage_pool_with_clusters(
             pools,
             volume.tier,
             volume.ephemeral,
             size,
             volume.storage_pool or None,
+            assigned_backend=getattr(volume, "storage_backend", None)
+            if volume.storage_pool
+            else None,
+            # This check admits the volume itself; other reservations still count.
+            exclude_volume=volume.uuid,
+            allow_remote=isinstance(
+                getattr(pool, "driver_spec", None), ua_pool.ExordosLocalHyperDriverSpec
+            ),
         )
 
     def _has_enough_space_in_pool(
@@ -564,7 +576,8 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         """Check if the volume can be created."""
 
         # Check pool has enough space
-        if not self._has_enough_space_in_pool(volume.pool, volume):
+        selected = self._select_storage_pool(volume.pool, volume, volume.size)
+        if selected is None:
             LOG.warning("Pool %s has not enough space", volume.pool)
 
             # Seems the scheduler missed the pool. Try to reschedule
@@ -577,11 +590,16 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             self._reschedule_volume(volume)
             return False
 
-        storage_pool = self._select_storage_pool(volume.pool, volume, volume.size)
+        storage_pool, cluster = selected
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(volume.size)
+        volume.storage_backend = "rawstor" if cluster else "local"
+        if not volume.storage_pool:
+            volume.storage_pool = (
+                str(storage_pool.uuid) if cluster else storage_pool.name
+            )
 
         return True
 
@@ -595,9 +613,10 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
         actual_volume = pool_models.MachineVolume.from_ua_resource(resource)
 
         # Check pool has enough space
-        if not self._has_enough_space_in_pool(
-            volume.pool, target_volume, actual_volume
-        ):
+        selected = self._select_storage_pool(
+            volume.pool, target_volume, target_volume.size - actual_volume.size
+        )
+        if selected is None:
             LOG.warning("Pool %s has not enough space", volume.pool)
 
             # FIXME(akremenetsky): It's more safer do nothing and set the
@@ -608,13 +627,16 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             volume.node_volume.save()
             return False
 
-        storage_pool = self._select_storage_pool(
-            volume.pool, target_volume, target_volume.size - actual_volume.size
-        )
+        storage_pool, cluster = selected
 
         # FIXME(akremenetsky): Does it work correctly?
         # Will every volume refer to own pool object?
         storage_pool.allocate_capacity(target_volume.size - actual_volume.size)
+        volume.storage_backend = "rawstor" if cluster else "local"
+        if not volume.storage_pool:
+            volume.storage_pool = (
+                str(storage_pool.uuid) if cluster else storage_pool.name
+            )
 
         return True
 

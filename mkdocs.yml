@@ -51,6 +51,7 @@ plugins:
             Local Deployment: Локальное развёртывание
             Admin Guide: Руководство администратора
             Notification Email: Почтовые уведомления
+            RawStor storage: Хранилище RawStor
             Support: Поддержка
             Security: Безопасность
             Troubleshooting: Устранение неполадок
@@ -146,6 +147,7 @@ nav:
     - Local Deployment: usage/local_deployment.md
     - Admin Guide: usage/admin-guide.md
     - Notification Email: usage/notification-email.md
+    - RawStor storage: usage/rawstor.md
     - Support: usage/support-lifecycle.md
     - Security: usage/security.md
     - MCP Server: usage/mcp.md

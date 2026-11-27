@@ -17,8 +17,8 @@ from importlib import import_module
 from unittest import mock
 import uuid
 
-from oslo_config import cfg
 from gcl_sdk.audit.dm import models as audit_sdk_models
+from oslo_config import cfg
 import pytest
 from restalchemy.storage.sql import orm
 
@@ -32,6 +32,7 @@ from exordos_core.user_api.iam.dm import models as iam
     "module",
     [
         "compute",
+        "storage",
         "config",
         "secret",
         "vs",

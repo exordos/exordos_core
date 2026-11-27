@@ -27,6 +27,7 @@ from restalchemy.dm import relationships
 from restalchemy.dm import types
 from restalchemy.dm import types_network
 
+from exordos_core.common import features
 from exordos_core.compute.dm import models
 
 
@@ -144,6 +145,36 @@ class MachineVolume(
                 "project_id",
             )
         )
+
+    def get_ua_all_and_target_values(self):
+        value, target = super().get_ua_all_and_target_values()
+        from exordos_core.storage.dm import models as storage_models
+
+        try:
+            pool_uuid = sys_uuid.UUID(self.storage_pool) if self.storage_pool else None
+        except ValueError:
+            pool_uuid = None
+        location, policy = None, {}
+        if self.storage_backend == "rawstor":
+            if pool_uuid is None:
+                raise ValueError("RawStor volume requires a storage pool UUID")
+            storage_pool = storage_models.StoragePool.objects.get_one(
+                filters={"uuid": dm_filters.EQ(pool_uuid)}
+            )
+            if not features.rawstor_enabled():
+                raise ValueError("RawStor integration is disabled")
+            cluster = storage_models.StorageCluster.objects.get_one(
+                filters={"uuid": dm_filters.EQ(storage_pool.cluster)}
+            )
+            location = cluster.driver_spec.endpoint
+            policy = {
+                "pool_uuid": str(storage_pool.uuid),
+                "mirrors": storage_pool.driver_spec.mirrors,
+                "failure_domain": storage_pool.driver_spec.failure_domain,
+            }
+        for data in (value, target):
+            data.update(storage_location=location, storage_policy=policy)
+        return value, target
 
 
 class PoolMachine(

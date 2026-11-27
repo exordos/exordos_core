@@ -31,6 +31,7 @@ from gcl_sdk.events.services import senders
 from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 
+from exordos_core.common import features
 from exordos_core.compute import constants as nc
 from exordos_core.compute.builders import node as node_builder_svc
 from exordos_core.compute.builders import node_set as set_builder_svc
@@ -59,6 +60,8 @@ from exordos_core.network.lb.builders import paas as net_lb_paas
 from exordos_core.network.lb.dm import models as lb_models
 from exordos_core.secret import service as secret_service
 from exordos_core.secret.builders import service as secret_builder_svc
+from exordos_core.storage.builders import cluster as cluster_builder_svc
+from exordos_core.storage.scheduler import service as cluster_scheduler_service
 from exordos_core.telemetry import service as telemetry_service
 from exordos_core.vs.builders import service as vs_builder_svc
 
@@ -187,6 +190,21 @@ class GeneralService(basic.BasicService):
             iter_min_period=iter_min_period,
         )
 
+        storage_services = []
+        if features.rawstor_enabled():
+            storage_services = [
+                cluster_builder_svc.StorageClusterBuilderService(
+                    uuid=sys_uuid.uuid5(
+                        ua_utils.system_uuid(), "storage_cluster_builder"
+                    ),
+                    orch_client=orch_db.DatabaseOrchClient(),
+                    iter_min_period=iter_min_period,
+                ),
+                cluster_scheduler_service.StorageClusterSchedulerService(
+                    iter_min_period=iter_min_period,
+                ),
+            ]
+
         # ValuesStore
         vs_builder_service = vs_builder_svc.VSBuilderService(
             iter_min_period=iter_min_period,
@@ -250,6 +268,7 @@ class GeneralService(basic.BasicService):
             n_scheduler,
             n_network,
             pool_builder_service,
+            *storage_services,
             node_builder,
             volume_builder,
             machine_pool_agent,

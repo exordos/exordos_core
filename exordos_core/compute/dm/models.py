@@ -14,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from collections.abc import Mapping
 import random
 import typing as tp
 import uuid as sys_uuid
@@ -134,7 +135,7 @@ class Volume(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),
         default=ua_pool.VolumeStatus.NEW.value,
     )
-    # Changing a disk's tier/ephemeral tier after creation would mean
+    # Changing a disk's tier/ephemeral policy after creation would mean
     # migrating it to a different storage pool, which isn't implemented -
     # read-only makes that unsupported change fail loudly instead of
     # being silently accepted with no actual effect on where the disk
@@ -148,6 +149,26 @@ class Volume(
 
     # Internal field for scheduling purposes
     pool = properties.property(types.AllowNone(types.UUID()), default=None)
+
+    def update_dm(self, values):
+        if "size" in values:
+            validate_volume_growth(self.size, values["size"])
+        super().update_dm(values)
+
+
+class DiskShrinkNotSupportedError(ra_e.ValidationErrorException):
+    message = "Shrinking disks is unsupported"
+
+
+class InvalidDiskSizeError(ra_e.ValidationErrorException):
+    message = "Disk size must be a positive integer"
+
+
+def validate_volume_growth(old_size, new_size):
+    if isinstance(new_size, bool) or not isinstance(new_size, int) or new_size < 1:
+        raise InvalidDiskSizeError()
+    if new_size < old_size:
+        raise DiskShrinkNotSupportedError()
 
 
 class UnscheduledVolume(models.ModelWithUUID, orm.SQLStorableMixin):
@@ -171,7 +192,12 @@ def validate_disk_policy_update(old_spec, new_spec):
             return [value]
         return value.get("disks", [])
 
+    for disk in disks(new_spec):
+        if not isinstance(disk, Mapping):
+            raise InvalidDiskSizeError()
+        validate_volume_growth(0, disk.get("size"))
     for old, new in zip(disks(old_spec), disks(new_spec)):
+        validate_volume_growth(old["size"], new["size"])
         if any(
             old.get(field, default) != new.get(field, default)
             for field, default in (("tier", "WARM"), ("ephemeral", True))
@@ -435,12 +461,13 @@ class MachineVolume(
         default=ic.DiskTier.WARM.value,
     )
     ephemeral = properties.property(types.Boolean(), default=True)
-    # Name of the storage pool (within this compute pool) the scheduler
-    # placed the volume on - needed to re-locate it by name (rather than
-    # by tier/ephemeral, which several pools could match) when
-    # allocating extra capacity for a resize or a reused volume.
+    # Local libvirt pool name, or stable StoragePool UUID for a cluster disk.
     storage_pool = properties.property(
         types.AllowNone(types.String(max_length=255)), default=None
+    )
+    # Record the selected backend independently of mutable local pool names.
+    storage_backend = properties.property(
+        types.Enum(["local", "rawstor"]), default="local"
     )
     status = properties.property(
         types.Enum([s.value for s in ua_pool.VolumeStatus]),

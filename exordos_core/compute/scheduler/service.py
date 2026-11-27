@@ -25,10 +25,13 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import pool as ua_pool
 from restalchemy.common import contexts
 from restalchemy.dm import filters as dm_filters
+from restalchemy.storage.sql import utils as sql_utils
 
 from exordos_core.compute import constants as nc
 from exordos_core.compute.dm import models
 from exordos_core.compute.scheduler.driver import base
+from exordos_core.storage import state as storage_state
+from exordos_core.storage.scheduler import select as storage_select
 
 LOG = logging.getLogger(__name__)
 BUILDER_REBALANCE_RATE = 100
@@ -185,50 +188,62 @@ class SchedulerService(basic.BasicService):
         pool: base.MachinePoolBundle,
         volume: models.Volume,
         size: int | None = None,
-    ) -> ua_pool.AbstractStoragePool:
+    ) -> storage_select.PoolCandidate:
         """Select a storage pool for `volume`.
 
         `size` is passed separately (rather than using `volume.size`)
         since callers also use this for a resize's capacity delta.
 
-        See gcl_sdk's `ua_pool.select_storage_pool` for the matching
-        rules (soft tier match and mandatory ephemeral match).
+        Local pools and active clusters are candidates. Tier is a soft
+        preference and ephemeral must match.
         """
         size = volume.size if size is None else size
         names = [sp.name for sp in pool.pool.storage_pools]
         pools = [sp for sp in pool.pool.storage_pools if names.count(sp.name) == 1]
-        storage_pool = ua_pool.select_storage_pool(
-            pools, volume.tier, volume.ephemeral, size
+        result = storage_select.select_storage_pool_with_clusters(
+            pools,
+            volume.tier,
+            volume.ephemeral,
+            size,
+            staged=getattr(self, "_storage_reservations", {}),
+            exclude_volume=volume.uuid,
+            allow_remote=isinstance(
+                pool.pool.driver_spec, ua_pool.ExordosLocalHyperDriverSpec
+            ),
         )
-        if storage_pool is not None:
-            return storage_pool
+        if result is not None:
+            if getattr(self, "_placement_preview", False) and result[1] is not None:
+                return copy.deepcopy(result[0]), result[1]
+            return result
 
         raise ValueError(
             f"No storage pool with {size}GiB free capacity in pool {pool.pool.uuid}"
         )
 
     def _find_storage_pool_by_name(
-        self, pool: base.MachinePoolBundle, name: str
-    ) -> ua_pool.AbstractStoragePool:
-        matches = [sp for sp in pool.pool.storage_pools if sp.name == name]
-
-        if not matches:
+        self, pool: base.MachinePoolBundle, name: str, assigned_backend=None
+    ) -> storage_select.PoolCandidate:
+        result = storage_select.find_storage_pool_by_name_with_clusters(
+            pool.pool.storage_pools, name, assigned_backend=assigned_backend
+        )
+        if result is None:
             raise ValueError(f"Unknown storage pool {name!r} in pool {pool.pool.uuid}")
 
-        if len(matches) > 1:
-            # Ambiguous: silently picking one could account capacity
-            # against the wrong physical pool.
-            raise ValueError(
-                f"Storage pool name {name!r} is not unique in pool {pool.pool.uuid}"
-            )
-
-        return matches[0]
+        if getattr(self, "_placement_preview", False) and result[1] is not None:
+            return copy.deepcopy(result[0]), result[1]
+        return result
 
     def _build_machine_volume(
         self, pool: base.MachinePoolBundle, volume: models.Volume
     ) -> models.MachineVolume:
-        storage_pool = self._select_storage_pool(pool, volume)
+        storage_pool, cluster = self._select_storage_pool(pool, volume)
         storage_pool.allocate_capacity(volume.size)
+        if cluster is not None:
+            if not hasattr(self, "_storage_reservations"):
+                self._storage_reservations = {}
+            self._storage_reservations.setdefault(str(cluster.uuid), {})[
+                str(volume.uuid)
+            ] = volume.size << 30
 
         pool_volume = models.MachineVolume(
             uuid=volume.uuid,
@@ -241,7 +256,8 @@ class SchedulerService(basic.BasicService):
             device_type=volume.device_type,
             tier=volume.tier,
             ephemeral=volume.ephemeral,
-            storage_pool=storage_pool.name,
+            storage_pool=str(storage_pool.uuid) if cluster else storage_pool.name,
+            storage_backend="rawstor" if cluster else "local",
             node_volume=volume.uuid,
             project_id=volume.project_id,
         )
@@ -250,13 +266,17 @@ class SchedulerService(basic.BasicService):
 
     def _existing_storage_pool(
         self, pool: base.MachinePoolBundle, pool_volume: models.MachineVolume
-    ) -> tp.Optional[ua_pool.AbstractStoragePool]:
+    ) -> tp.Optional[storage_select.PoolCandidate]:
         """The storage pool `pool_volume` actually lives on, if known."""
         if not pool_volume.storage_pool:
             return None
 
         try:
-            return self._find_storage_pool_by_name(pool, pool_volume.storage_pool)
+            return self._find_storage_pool_by_name(
+                pool,
+                pool_volume.storage_pool,
+                assigned_backend=pool_volume.storage_backend,
+            )
         except ValueError:
             return None
 
@@ -278,6 +298,9 @@ class SchedulerService(basic.BasicService):
         volumes = []
         exact_volumes = []
         for pool_volume in pool.volumes:
+            assigned = self._existing_storage_pool(pool, pool_volume)
+            if assigned is not None and assigned[1] is not None:
+                continue
             # We can take less than required size and resize it later
             # NOTE(akremenetsky): Need to think about target fileds for
             # volumes. Is the size is a target or actual field?
@@ -290,8 +313,11 @@ class SchedulerService(basic.BasicService):
             # (renamed/removed), there's no way to tell where its data
             # actually is - skip it rather than guessing, and let a
             # fresh volume be created instead.
-            actual_pool = self._existing_storage_pool(pool, pool_volume)
-            if actual_pool is None or actual_pool.ephemeral != volume.ephemeral:
+            existing = self._existing_storage_pool(pool, pool_volume)
+            if existing is None:
+                continue
+            actual_pool, _owner_cluster = existing
+            if actual_pool.ephemeral != volume.ephemeral:
                 continue
 
             volumes.append(pool_volume)
@@ -307,7 +333,7 @@ class SchedulerService(basic.BasicService):
             ):
                 exact_volumes.append(pool_volume)
 
-        # Prefer a volume already on the requested tier/ephemeral tier,
+        # Prefer a volume already on the requested tier/ephemeral policy,
         # but reusing one from a different tier (soft match, like storage
         # pool placement above) beats downloading the image again onto a
         # brand new volume - try exact matches first, then anything else,
@@ -322,9 +348,35 @@ class SchedulerService(basic.BasicService):
             need_size = volume.size - pool_volume.size
             # Already resolvable, or classification above would have
             # skipped this candidate.
-            storage_pool = self._find_storage_pool_by_name(
-                pool, pool_volume.storage_pool
+            storage_pool, owner_cluster = self._find_storage_pool_by_name(
+                pool,
+                pool_volume.storage_pool,
+                assigned_backend=pool_volume.storage_backend,
             )
+
+            if (
+                need_size
+                and owner_cluster is not None
+                and (
+                    owner_cluster.status != "ACTIVE"
+                    or not storage_select.capacity_is_fresh(owner_cluster)
+                )
+            ):
+                continue
+
+            if need_size and owner_cluster is not None:
+                selected = storage_select.select_storage_pool_with_clusters(
+                    [],
+                    volume.tier,
+                    volume.ephemeral,
+                    need_size,
+                    assigned_name=str(storage_pool.uuid),
+                    staged=getattr(self, "_storage_reservations", {}),
+                    exclude_volume=pool_volume.uuid,
+                )
+                if selected is None:
+                    continue
+                storage_pool, owner_cluster = selected
 
             # Not enough space for the resize - try the next candidate
             # instead of giving up on reuse altogether.
@@ -333,6 +385,10 @@ class SchedulerService(basic.BasicService):
 
             # Allocate additional space for the volume
             storage_pool.allocate_capacity(need_size)
+            if owner_cluster is not None:
+                self._storage_reservations.setdefault(str(owner_cluster.uuid), {})[
+                    str(pool_volume.uuid)
+                ] = volume.size << 30
 
             # Remove the volume from the pool
             pool.volumes.remove(pool_volume)
@@ -354,11 +410,16 @@ class SchedulerService(basic.BasicService):
         capacities = [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
         idle_volumes = list(pool.volumes)
         owners = [(volume, volume.node_volume) for volume in idle_volumes]
+        reservations = {
+            cluster: dict(objects)
+            for cluster, objects in getattr(self, "_storage_reservations", {}).items()
+        }
         try:
             return [
                 self._place_volume_into_pool(volume, pool) for volume in node.volumes
             ]
         except Exception:
+            self._storage_reservations = reservations
             for storage_pool, capacity in capacities:
                 storage_pool.capacity_provisioned = capacity
             pool.volumes[:] = idle_volumes
@@ -390,18 +451,36 @@ class SchedulerService(basic.BasicService):
             target_power_state=node.node.target_power_state,
         )
 
-        # Place volumes into the pool
-        volume_allocations = self._allocate_node_volumes(node, pool)
-
-        # Set pool to machine, node and volumes
-        machine.pool = pool.pool.uuid
-        node.node.pool = pool.pool.uuid
-        node.node.save()
-        machine.save()
-        for volume in volume_allocations:
-            volume.pool = pool.pool.uuid
-            volume.machine = machine_uuid
-            volume.save()
+        capacities = [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
+        idle_volumes = list(pool.volumes)
+        volume_state = [
+            (volume, volume.node_volume, volume.pool, volume.machine)
+            for volume in idle_volumes
+        ]
+        reservations = copy.deepcopy(getattr(self, "_storage_reservations", {}))
+        previous_pool = getattr(node.node, "pool", None)
+        try:
+            volume_allocations = self._allocate_node_volumes(node, pool)
+            with sql_utils.savepoint(name="new_machine_assignment"):
+                machine.pool = pool.pool.uuid
+                node.node.pool = pool.pool.uuid
+                node.node.save()
+                machine.save()
+                for volume in volume_allocations:
+                    volume.pool = pool.pool.uuid
+                    volume.machine = machine_uuid
+                    volume.save()
+        except Exception:
+            self._storage_reservations = reservations
+            for storage_pool, capacity in capacities:
+                storage_pool.capacity_provisioned = capacity
+            pool.volumes[:] = idle_volumes
+            for volume, owner, original_pool, original_machine in volume_state:
+                volume.node_volume = owner
+                volume.pool = original_pool
+                volume.machine = original_machine
+            node.node.pool = previous_pool
+            raise
 
         LOG.info(
             "The machine %s scheduled to %s pool",
@@ -415,7 +494,7 @@ class SchedulerService(basic.BasicService):
         pool.pool.avail_cores -= machine.cores
         pool.pool.avail_ram -= machine.ram
 
-    def _machine_has_disk_capacity(self, node, machine, pools):
+    def _machine_has_disk_capacity(self, node, machine, pools, reserve=False):
         if not node.volumes:
             return True
         pool = pools.get(machine.machine.pool)
@@ -424,10 +503,27 @@ class SchedulerService(basic.BasicService):
         # Run the same placement algorithm on a copy: sum all allocations,
         # including reusable disks, without changing real capacity or ownership.
         candidate = copy.deepcopy(pool)
+        preview = copy.copy(self)
+        preview._placement_preview = True
+        preview._storage_reservations = copy.deepcopy(
+            getattr(self, "_storage_reservations", {})
+        )
         try:
-            self._allocate_node_volumes(node, candidate)
+            allocations = preview._allocate_node_volumes(node, candidate)
         except ValueError:
             return False
+        if reserve:
+            self._storage_reservations = preview._storage_reservations
+            for original, planned in zip(
+                pool.pool.storage_pools, candidate.pool.storage_pools
+            ):
+                original.capacity_provisioned = planned.capacity_provisioned
+            pool.volumes[:] = candidate.volumes
+            if not hasattr(self, "_idle_volume_allocations"):
+                self._idle_volume_allocations = {}
+            self._idle_volume_allocations.update(
+                {str(v.node_volume): v for v in allocations}
+            )
         return True
 
     def _schedule_on_existing_machines(
@@ -514,21 +610,49 @@ class SchedulerService(basic.BasicService):
             index = accumulated_weights.index(max(accumulated_weights))
             machine_bundle = idle_machines[index]
 
-            # TODO(akremenetsky): Map volumes to machine volumes
-            machine_bundle.machine.node = node.uuid
-            machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
-            machine_bundle.machine.target_power_state = node.target_power_state
-            node.status = nc.NodeStatus.SCHEDULED.value
+            pool = pools.get(machine_bundle.machine.pool)
+            reservations = copy.deepcopy(getattr(self, "_storage_reservations", {}))
+            allocations = dict(getattr(self, "_idle_volume_allocations", {}))
+            capacities = (
+                [(sp, sp.capacity_provisioned) for sp in pool.pool.storage_pools]
+                if pool is not None
+                else []
+            )
+            idle_volumes = list(pool.volumes) if pool is not None else []
+            old_node_status = getattr(node, "status", None)
+            old_machine = {
+                field: getattr(machine_bundle.machine, field, None)
+                for field in ("node", "status", "target_power_state")
+            }
             try:
-                node.save()
-                machine_bundle.machine.save()
+                if not self._machine_has_disk_capacity(
+                    unscheduled_node, machine_bundle, pools, reserve=True
+                ):
+                    continue
+                machine_bundle.machine.node = node.uuid
+                machine_bundle.machine.status = ua_pool.MachineStatus.SCHEDULED.value
+                machine_bundle.machine.target_power_state = node.target_power_state
+                node.status = nc.NodeStatus.SCHEDULED.value
+                with sql_utils.savepoint(name="idle_machine_assignment"):
+                    node.save()
+                    machine_bundle.machine.save()
                 LOG.info(
                     "The node %s scheduled to %s machine",
                     node.uuid,
                     machine_bundle.machine.uuid,
                 )
             except Exception:
+                self._storage_reservations = reservations
+                self._idle_volume_allocations = allocations
+                for storage_pool, capacity in capacities:
+                    storage_pool.capacity_provisioned = capacity
+                if pool is not None:
+                    pool.volumes[:] = idle_volumes
+                node.status = old_node_status
+                for field, value in old_machine.items():
+                    setattr(machine_bundle.machine, field, value)
                 LOG.exception("Error scheduling node %s", node.uuid)
+                continue
 
             # Actualize idle machines
             if node.node_type == ua_pool.NodeType.HW.value:
@@ -715,7 +839,11 @@ class SchedulerService(basic.BasicService):
 
             # Place the volume into the same pool as the machine
             try:
-                machine_volume = self._place_volume_into_pool(volume, pool)
+                machine_volume = getattr(self, "_idle_volume_allocations", {}).pop(
+                    str(volume.uuid), None
+                )
+                if machine_volume is None:
+                    machine_volume = self._place_volume_into_pool(volume, pool)
                 machine_volume.pool = pool.pool.uuid
                 machine_volume.machine = node_map[volume.node].uuid
                 machine_volume.save()
@@ -731,7 +859,10 @@ class SchedulerService(basic.BasicService):
                 continue
 
     def _iteration(self):
-        with contexts.Context().session_manager():
+        with contexts.Context().session_manager() as session:
+            storage_state.lock(session)
+            self._storage_reservations = {}
+            self._idle_volume_allocations = {}
             pool_builders = self._get_pool_builders()
             pools = self._get_pools()
 

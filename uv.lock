@@ -760,6 +760,9 @@ docs = [
 mypy = [
     { name = "mypy" },
 ]
+rawstor = [
+    { name = "rawstor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
 ruff = [
     { name = "ruff" },
 ]
@@ -789,7 +792,7 @@ requires-dist = [
     { name = "gcl-certbot-plugin", specifier = ">=0.0.12,<1.0.0" },
     { name = "gcl-iam", specifier = ">=1.4.1,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
-    { name = "gcl-sdk", extras = ["libvirt"], specifier = ">=3.7.7,<4.0.0" },
+    { name = "gcl-sdk", extras = ["libvirt"], git = "https://github.com/exordos/gcl_sdk.git?rev=e9ddf2c1aab99fe396f1749ff204ff62f590546c" },
     { name = "izulu", specifier = ">=0.50.0,<1.0.0" },
     { name = "jinja2", specifier = ">=3.1.5,<4.0.0" },
     { name = "mkdocs-glightbox", marker = "extra == 'docs'" },
@@ -807,6 +810,7 @@ requires-dist = [
     { name = "pytest-timer", marker = "extra == 'test'", specifier = ">=1.0.0,<2.0.0" },
     { name = "pytest-xdist", extras = ["psutil"], marker = "extra == 'test'", specifier = ">=3.6.1,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0,<7.0.0" },
+    { name = "rawstor", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'rawstor'", url = "https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" },
     { name = "restalchemy", specifier = ">=16.1.5,<17.0.0" },
     { name = "ruamel-yaml", marker = "extra == 'docs'", specifier = "==0.19.1" },
     { name = "ruamel-yaml", marker = "extra == 'test'", specifier = "==0.19.1" },
@@ -816,7 +820,7 @@ requires-dist = [
     { name = "tox-uv", marker = "extra == 'dev'" },
     { name = "zensical", marker = "extra == 'docs'", specifier = ">=0.0.51" },
 ]
-provides-extras = ["dev", "test", "mypy", "ruff", "shellcheck", "docs"]
+provides-extras = ["rawstor", "dev", "test", "mypy", "ruff", "shellcheck", "docs"]
 
 [[package]]
 name = "filelock"
@@ -892,8 +896,8 @@ wheels = [
 
 [[package]]
 name = "gcl-sdk"
-version = "3.7.7"
-source = { registry = "https://pypi.org/simple" }
+version = "3.8.2.dev5+ge9ddf2c1a"
+source = { git = "https://github.com/exordos/gcl_sdk.git?rev=e9ddf2c1aab99fe396f1749ff204ff62f590546c#e9ddf2c1aab99fe396f1749ff204ff62f590546c" }
 dependencies = [
     { name = "bjoern" },
     { name = "cryptography" },
@@ -906,10 +910,6 @@ dependencies = [
     { name = "renameat2", marker = "sys_platform == 'linux'" },
     { name = "restalchemy" },
     { name = "xxhash" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/c0/c06a5248f8bf92cd3ab95f1805a2c5ab503694e753b238fe0c6cf8fd2879/gcl_sdk-3.7.7.tar.gz", hash = "sha256:a2410d1acb69822ef89f18cf2b2d0279458fd9308431cb12500d045b24812a14", size = 416290, upload-time = "2026-11-06T11:17:58.215Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/32/09965dde2c9a1b203c5fa29d56a7daa276fc8acdf24e5e3eec9deb83c5f0/gcl_sdk-3.7.7-py3-none-any.whl", hash = "sha256:34f90eb2b8eb7183b8c228553cc77ad58fc5d7bade5b1ce762e4c7357b9ee1fb", size = 373121, upload-time = "2026-11-06T11:17:56.724Z" },
 ]
 
 [package.optional-dependencies]
@@ -2630,6 +2630,14 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/eb/2e/79c822141bfd05a853236b504869ebc6b70159afc570e1d5a20641782eaa/pyyaml_env_tag-1.1.tar.gz", hash = "sha256:2eb38b75a2d21ee0475d6d97ec19c63287a7e140231e4214969d0eac923cd7ff", size = 5737, upload-time = "2025-05-13T15:24:01.64Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/04/11/432f32f8097b03e3cd5fe57e88efb685d964e2e5178a48ed61e841f7fdce/pyyaml_env_tag-1.1-py3-none-any.whl", hash = "sha256:17109e1a528561e32f026364712fee1264bc2ea6715120891174ed1b980d2e04", size = 4722, upload-time = "2025-05-13T15:23:59.629Z" },
+]
+
+[[package]]
+name = "rawstor"
+version = "0.3.7"
+source = { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl" }
+wheels = [
+    { url = "https://github.com/rawstor/librawstor/releases/download/v0.3.7/rawstor-0.3.7-cp39-abi3-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:4ab5e937d2f1f244ff884dba6a1d8ca0fdd588f2fb828007f41da6eecb3bf5ca" },
 ]
 
 [[package]]
