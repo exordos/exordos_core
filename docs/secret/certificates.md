@@ -108,3 +108,82 @@ Manual certificates are stored and delivered without ACME issuance, renewal, or 
 is derived from the certificate. Renew them by updating `cert` and `key` together in the manifest or API.
 A partial API update can reuse the existing key if it still matches. Removing a manual certificate
 removes its stored copy without revoking it. Imported PEM fields are accepted only for `manual`.
+
+## SPIFFE workload certificates
+
+The generic `spiffe` method issues X.509-SVIDs for service-to-service mutual
+TLS, independently of any storage or other application. It uses an internal
+CA, requires no public DNS challenge, and renews certificates through the
+existing certificate reconciliation loop. Upgrade all certificate issuer
+replicas before creating SPIFFE resources; mixed-version issuers are not
+supported, and older replicas cannot parse the new certificate method.
+
+```json
+{
+  "name": "payments-api",
+  "project_id": "12345678-0000-0000-0000-000000000000",
+  "email": "infra@example.org",
+  "domains": [],
+  "method": {
+    "kind": "spiffe",
+    "spiffe_id": "spiffe://production.example.org/services/payments-api",
+    "validity_days": 30
+  }
+}
+```
+
+Create this resource through `/v1/secret/certificates/`, like a DNS or manual
+certificate. `key`, `cert` and `expiration_at` are generated outputs. The PEM
+`cert` contains the leaf followed by the public CA certificate. Deliver the
+leaf/key to the workload and distribute the CA to its peers as trust material;
+never trust a peer merely because it supplied its own CA in a TLS chain.
+
+The method accepts a canonical, lowercase trust domain and a non-root workload
+path. It rejects ports, user information, query/fragment components, percent
+encoding, empty path segments and `.`/`..` segments. Path case is preserved.
+DNS SANs are not requested: supply `domains: []`. The certificate contains
+exactly one URI SAN, critical when the subject is empty, critical key usage,
+`CA=false`, and both TLS client/server EKUs as required by the
+[X.509-SVID specification](https://github.com/spiffe/spiffe/blob/main/standards/X509-SVID.md).
+
+One CA is persisted for each `(project_id, trust_domain)` pair in the
+issuer-only `storage_spiffe_authorities` table. A unique constraint prevents
+concurrent issuers from replacing an existing authority. Authorities are not
+automatically deleted when a leaf
+changes domain or is removed. Different projects get different
+roots even if they use the same trust-domain name. Do not combine their roots
+into one bundle when they must remain isolated. The project owner controls
+identity paths within its own authority. Cross-project infrastructure identities
+must be issued under an administrator-controlled project, not by trusting
+arbitrary project certificates.
+
+CA private keys never appear in certificate resources, manifests or returned
+leaf chains. They remain in the certificate driver's database. Restrict database
+access and protect its backups as signing-key material. All issuer replicas
+must use the same database. The migration creates the issuer table; no separate
+SPIFFE daemon, SPIRE server or Workload API is introduced.
+
+`validity_days` defaults to 30 and accepts 1 through 365. The existing renewal
+threshold defaults to 14 days. For SPIFFE, the effective renewal window is
+the smaller of that threshold and half the requested lifetime, so a one-day
+certificate renews during its last 12 hours without exposing the hidden
+legacy threshold through the API. Renewal creates a fresh key and serial while retaining the SPIFFE ID and CA. Changes
+to identity, project or lifetime reissue immediately; ordinary metadata updates
+keep the current key. Consumers must apply the new pair together and reload
+their TLS context when a renewed resource is delivered.
+
+Deleting a leaf resource does not delete its CA or revoke an already issued
+certificate. Peers must enforce certificate expiry; use shorter lifetimes when
+prompt revocation is needed. CA keys have a ten-year lifetime. This version
+does not silently rotate an expiring CA: issuance fails before a leaf could
+outlive it. CA rollover requires an explicit overlap of old and new trusted
+roots and is separate from automatic leaf renewal.
+
+Application-specific authorization extensions and Rawstor integration belong
+to separate profiles layered on this issuer; the generic method does not grant
+application permissions or accept arbitrary caller-supplied extensions.
+
+The SPIFFE migration refuses to downgrade while signing authorities exist.
+This prevents rollback and subsequent upgrade from silently replacing already
+distributed trust roots. Downgrade is permitted only after an operator has
+explicitly removed the authority records; deleting leaf resources does not do so.

@@ -172,6 +172,30 @@ class CertificatesController(iam_controllers.PolicyBasedController):
             kind = method.KIND
         else:
             raise common_exceptions.ValidateException(err="invalid certificate method")
+        if kind == "spiffe":
+            try:
+                spec = (
+                    models.SPIFFECertificateMethod(
+                        spiffe_id=method.get("spiffe_id"),
+                        validity_days=method.get("validity_days", 30),
+                    )
+                    if isinstance(method, dict)
+                    else method
+                )
+                spec.validate()
+                domains = kwargs.get("domains", current.domains if current else [])
+                if domains:
+                    raise ValueError(
+                        "SPIFFE certificates use spiffe_id, not DNS domains"
+                    )
+            except (ValueError, TypeError) as exc:
+                raise common_exceptions.ValidateException(err=str(exc)) from exc
+        if kind == "dns_core" and not kwargs.get(
+            "domains", current.domains if current else []
+        ):
+            raise common_exceptions.ValidateException(
+                err="DNS certificates require at least one domain"
+            )
         if kind != "manual":
             if "key" in kwargs or "cert" in kwargs:
                 raise common_exceptions.ValidateException(

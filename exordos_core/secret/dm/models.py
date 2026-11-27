@@ -32,6 +32,7 @@ from restalchemy.storage.sql import orm
 
 from exordos_core.common import audit as audit_models
 from exordos_core.common import constants as c
+from exordos_core.common import spiffe
 from exordos_core.common.dm import models as cm
 from exordos_core.common.dm import targets as ct
 from exordos_core.quota.dm.models import QuotaModelMixin
@@ -199,6 +200,23 @@ class ManualCertificateMethod(AbstractCertificateMethod):
     KIND = "manual"
 
 
+class SPIFFECertificateMethod(AbstractCertificateMethod):
+    KIND = "spiffe"
+
+    spiffe_id = properties.property(
+        types.String(min_length=1, max_length=2048), required=True
+    )
+    validity_days = properties.property(
+        types.Integer(min_value=1, max_value=365), default=30
+    )
+
+    def validate(self):
+        super().validate()
+        spiffe.trust_domain(self.spiffe_id)
+        if type(self.validity_days) is not int:
+            raise ValueError("SPIFFE validity_days must be an integer, not a boolean")
+
+
 class Certificate(
     AbstractSecret,
     ra_models.ModelWithTags,
@@ -214,6 +232,7 @@ class Certificate(
         types_dynamic.KindModelSelectorType(
             types_dynamic.KindModelType(DNSCoreCertificateMethod),
             types_dynamic.KindModelType(ManualCertificateMethod),
+            types_dynamic.KindModelType(SPIFFECertificateMethod),
         ),
         required=True,
         default=DNSCoreCertificateMethod,
@@ -278,6 +297,12 @@ class Certificate(
         super().validate()
         if self.method.KIND == "manual":
             self.validate_manual_certificate(self.key, self.cert)
+        elif self.method.KIND == "spiffe":
+            spiffe.trust_domain(self.method.spiffe_id)
+            if self.domains:
+                raise ValueError("SPIFFE certificates use spiffe_id, not DNS domains")
+        elif self.method.KIND == "dns_core" and not self.domains:
+            raise ValueError("DNS certificates require at least one domain")
 
     def get_resource_target_fields(self) -> tp.Set[str]:
         """Return the collection of target fields.
