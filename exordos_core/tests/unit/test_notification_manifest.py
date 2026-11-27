@@ -119,7 +119,10 @@ def test_core_email_depends_on_transport_and_supplies_its_own_template(trim_bloc
         .from_string(path.read_text())
         .render(version="2.0.1-dev+contract")
     )
-    assert set(manifest["requirements"]) == {"core", "notification_email"}
+    assert set(manifest["requirements"]) == {
+        "core",
+        "notification_email",
+    }
     resources = manifest["resources"]
     assert "$mailaas.types.mail.instances" not in resources
     assert "$exordos_notification.types.email.providers" not in resources
@@ -179,6 +182,8 @@ def test_email_sender_uses_platform_managed_token_and_minimal_permissions():
         "exordos_notification.event_type_e0fe8070-e59c-4347-8df1-b3f638c06565.read",
         "exordos_notification.event_type_b7ac18fa-3935-4f52-848f-e64bbd19abfb.create",
         "exordos_notification.event_type_b7ac18fa-3935-4f52-848f-e64bbd19abfb.read",
+        "exordos_notification.event_type_57136d71-5f69-4d8d-bd3c-92a5915c52ef.create",
+        "exordos_notification.event_type_57136d71-5f69-4d8d-bd3c-92a5915c52ef.read",
     }
 
 

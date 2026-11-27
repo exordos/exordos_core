@@ -56,6 +56,8 @@ PARAM_REDIRECT_URI = "redirect_uri"
 
 # User settings
 USER_CONFIRMATION_CODE_TTL = timedelta(hours=1)
+EMAIL_CHANGE_CODE_TTL = timedelta(hours=1)
+EMAIL_CHANGE_RESEND_INTERVAL = timedelta(minutes=1)
 
 
 # Default Values
@@ -131,6 +133,9 @@ PERMISSION_USER_DELETE = rules.Rule.from_raw(
 PERMISSION_USER_RESET_PASSWORD = rules.Rule.from_raw(
     "iam.user.reset_password",
 )
+
+
+PERMISSION_USER_CHANGE_EMAIL = rules.Rule.from_raw("iam.user.change_email")
 
 
 # Organizations

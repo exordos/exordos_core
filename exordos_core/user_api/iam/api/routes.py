@@ -79,12 +79,27 @@ class ResetPasswordAction(routes.Action):
     __controller__ = controllers.UserController
 
 
+class RequestEmailChangeAction(routes.Action):
+    __controller__ = controllers.UserController
+
+
+class ConfirmEmailChangeAction(routes.Action):
+    __controller__ = controllers.UserController
+
+
+class AdminChangeEmailAction(routes.Action):
+    __controller__ = controllers.UserController
+
+
 class UserRoute(routes.Route):
     """Handler for /v1/iam/users/ endpoint"""
 
     __controller__ = controllers.UserController
 
     change_password = routes.action(ChangePasswordAction, invoke=True)
+    request_email_change = routes.action(RequestEmailChangeAction, invoke=True)
+    confirm_email_change = routes.action(ConfirmEmailChangeAction, invoke=True)
+    admin_change_email = routes.action(AdminChangeEmailAction, invoke=True)
     enable_otp = routes.action(EnableOTPAction, invoke=True)
     activate_otp = routes.action(ActivateOTPAction, invoke=True)
     disable_otp = routes.action(DisableOTPAction, invoke=True)

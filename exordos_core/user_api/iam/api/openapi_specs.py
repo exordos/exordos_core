@@ -393,3 +393,59 @@ OA_SPEC_GET_ROLE_PERMISSIONS = dict(
     ],
     responses=oa_c.build_openapi_list_model_response("Permission_Get"),
 )
+
+
+OA_SPEC_REQUEST_EMAIL_CHANGE = dict(
+    summary="Request an email change for the authenticated local user",
+    request_body=oa_c.build_openapi_req_body(
+        description="Email change parameters",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["new_email", "password"],
+            "properties": {
+                "new_email": {"type": "string", "format": "email", "maxLength": 128},
+                "password": {"type": "string", "writeOnly": True},
+                "otp_code": {
+                    "type": "string",
+                    "description": "Required when MFA is enabled",
+                },
+            },
+        },
+    ),
+    responses={
+        "202": {"description": "Confirmation queued; current email is unchanged"}
+    },
+)
+
+OA_SPEC_CONFIRM_EMAIL_CHANGE = dict(
+    summary="Confirm a pending email change using its single-use code",
+    request_body=oa_c.build_openapi_req_body(
+        description="Email change parameters",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["code"],
+            "properties": {
+                "code": {"type": "string", "maxLength": 128, "writeOnly": True}
+            },
+        },
+    ),
+    responses={"200": {"description": "Email confirmed; no content returned"}},
+)
+
+OA_SPEC_ADMIN_CHANGE_EMAIL = dict(
+    summary="Change a local user's email as an administrator",
+    request_body=oa_c.build_openapi_req_body(
+        description="Email change parameters",
+        content_type=ra_c.CONTENT_TYPE_APPLICATION_JSON,
+        schema={
+            "type": "object",
+            "required": ["new_email"],
+            "properties": {
+                "new_email": {"type": "string", "format": "email", "maxLength": 128},
+            },
+        },
+    ),
+    responses={"200": {"description": "Email changed; no content returned"}},
+)

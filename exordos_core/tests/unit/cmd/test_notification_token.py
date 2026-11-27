@@ -26,6 +26,7 @@ from exordos_core.events import payloads
     [
         (payloads.RegistrationEventPayload, "confirmation_code"),
         (payloads.ResetPasswordEventPayload, "reset_code"),
+        (payloads.EmailChangeEventPayload, "code"),
     ],
 )
 def test_sender_loads_managed_token_for_submission_and_polling(
@@ -71,12 +72,11 @@ def test_sender_loads_managed_token_for_submission_and_polling(
         thread = threading.Thread(target=server.serve_forever)
         thread.start()
         try:
-            settings = configs["core_events_conf"]["body"]["content"]
-            settings = settings.replace("/etc/exordos_core/", f"{tmp_path}/")
-            settings = settings.replace(
-                "http://notification-cp.local.genesis-core.tech:8080",
-                f"http://127.0.0.1:{server.server_port}",
+            endpoint = f"http://127.0.0.1:{server.server_port}"
+            settings = configs["core_events_conf"]["body"]["content"].replace(
+                "http://notification-cp.local.genesis-core.tech:8080", endpoint
             )
+            settings = settings.replace("/etc/exordos_core/", f"{tmp_path}/")
             (dropins / "90-notification-events.conf").write_text(settings)
             # Each new sender process must pick up the replacement managed token.
             for token in ("synthetic-first-token", "synthetic-replacement-token"):
@@ -91,9 +91,15 @@ def test_sender_loads_managed_token_for_submission_and_polling(
                 )
                 assert conf.events.event_type_mapping_filepath == str(mapping)
                 sender = senders.EventSenderService.build_from_config(conf=conf)
-                payload = payload_class(
-                    site_endpoint="https://example.com", **{code_field: uuid.uuid4()}
-                )
+                if payload_class is payloads.EmailChangeEventPayload:
+                    payload = payload_class(
+                        recipient="new@example.com", code="single-use-code"
+                    )
+                else:
+                    payload = payload_class(
+                        site_endpoint="https://example.com",
+                        **{code_field: uuid.uuid4()},
+                    )
                 event = sender._notification_client.build_user_event(
                     context=None,
                     user=types.SimpleNamespace(uuid=uuid.uuid4()),

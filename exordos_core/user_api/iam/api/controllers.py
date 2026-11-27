@@ -164,6 +164,9 @@ class UserController(
                     ra_c.UPDATE: iam_fp.Permissions.HIDDEN,
                 },
                 "registration_client": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "pending_email": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "email_change_code_hash": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
+                "email_change_requested_at": {ra_c.ALL: iam_fp.Permissions.HIDDEN},
             },
         ),
         name_map={"secret": "password", "name": "username"},
@@ -251,6 +254,36 @@ class UserController(
         raise iam_e.CanNotUpdateUser(
             uuid=resource.uuid, rule=c.PERMISSION_USER_WRITE_ALL
         )
+
+    def _lock_email_change_user(self, resource):
+        return models.User.objects.get_one(
+            filters={"uuid": ra_filters.EQ(resource.uuid)},
+            locked=True,
+        )
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_REQUEST_EMAIL_CHANGE)
+    @actions.post
+    def request_email_change(self, resource, new_email, password, otp_code=None):
+        if models.User.me().uuid != resource.uuid:
+            raise iam_e.CanNotUpdateUser(uuid=resource.uuid, rule="self")
+        user = self._lock_email_change_user(resource)
+        user.request_email_change(new_email, password, otp_code)
+        return {"status": "pending"}, 202
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_CONFIRM_EMAIL_CHANGE)
+    @actions.post
+    def confirm_email_change(self, resource, code):
+        user = self._lock_email_change_user(resource)
+        user.confirm_email_change(code)
+        return None
+
+    @oa_utils.extend_schema(**oa_specs.OA_SPEC_ADMIN_CHANGE_EMAIL)
+    @actions.post
+    def admin_change_email(self, resource, new_email):
+        self.enforce(c.PERMISSION_USER_CHANGE_EMAIL, do_raise=True)
+        user = self._lock_email_change_user(resource)
+        user.admin_change_email(new_email)
+        return None
 
     @actions.post
     def enable_otp(self, resource, password):
@@ -350,9 +383,10 @@ class UserController(
     @actions.post
     def confirm_email(self, resource, code=None):
         code = code or self._req.params.get("code", "")
-        resource.confirm_email_by_code(code)
-        self._maybe_provision_workspace(resource)
-        return resource
+        user = self._lock_email_change_user(resource)
+        user.confirm_email_by_code(code)
+        self._maybe_provision_workspace(user)
+        return user
 
     @oa_utils.extend_schema(**oa_specs.OA_SPEC_RESET_PASSWORD_USER)
     @actions.post

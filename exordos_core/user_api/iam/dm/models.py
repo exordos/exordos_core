@@ -30,6 +30,7 @@ from gcl_iam import enforcers
 from gcl_iam import exceptions as iam_e
 from gcl_iam import tokens
 from gcl_sdk.agents.universal.dm import models as ua_models
+from gcl_sdk.events import clients as event_clients
 import pyotp
 from restalchemy.common import contexts
 from restalchemy.dm import filters as ra_filters
@@ -349,6 +350,24 @@ class User(
 ):
     __tablename__ = "iam_users"
 
+    __audit_excluded_fields__ = (
+        audit_models.AuditLogSQLStorableMixin.__audit_excluded_fields__
+        | {"pending_email", "email_change_code_hash", "email_change_requested_at"}
+    )
+
+    pending_email = properties.property(
+        ra_types.AllowNone(types.Email(max_length=128)),
+        default=None,
+    )
+    email_change_code_hash = properties.property(
+        ra_types.AllowNone(ra_types.String(max_length=64)),
+        default=None,
+    )
+    email_change_requested_at = properties.property(
+        ra_types.AllowNone(ra_types.UTCDateTimeZ()),
+        default=None,
+    )
+
     name = properties.property(
         types.Username(min_length=1, max_length=128),
         required=True,
@@ -482,6 +501,114 @@ class User(
         )
         project.insert()
         project.add_owner(self)
+
+    @classmethod
+    def find_by_email(cls, email):
+        # Match the existing lower(email) unique index, including legacy casing.
+        return cls.objects.query(
+            where_conditions="LOWER(email) = LOWER(%s)",
+            where_values=(email,),
+            limit=1,
+        )
+
+    def _validate_email_change_account(self):
+        if not isinstance(self.user_source, IamUserSource) or self.type != "user":
+            raise iam_exceptions.EmailChangeNotAllowed()
+        # Initial registration must finish through its own onboarding flow.
+        if not self.email_verified:
+            raise iam_exceptions.EmailChangeNotAllowed()
+
+    def _validate_email_change(self, new_email):
+        if not isinstance(new_email, str) or not types.Email(max_length=128).validate(
+            new_email
+        ):
+            raise iam_exceptions.InvalidEmailChange()
+        new_email = new_email.lower()
+        if new_email == self.email.lower():
+            raise iam_exceptions.InvalidEmailChange()
+        users = User.find_by_email(new_email)
+        if any(user.uuid != self.uuid for user in users):
+            raise iam_exceptions.EmailAlreadyUsed()
+        return new_email
+
+    def _email_change_event(self, recipient, code=None):
+        ctx = contexts.get_context()
+        client = ctx.context_storage.get(iam_c.STORAGE_KEY_EVENTS_CLIENT)
+        if client is None or isinstance(client, event_clients.DummyEventClient):
+            raise iam_exceptions.EmailDeliveryUnavailable()
+        payload = event_payloads.EmailChangeEventPayload(
+            recipient=recipient,
+            code=code or "",
+        )
+        client.send_event(
+            client.build_user_event(context=ctx, user=self, payload=payload)
+        )
+
+    def request_email_change(self, new_email, password, otp_code=None):
+        self._validate_email_change_account()
+        if not isinstance(password, str) or not password:
+            raise iam_exceptions.InvalidEmailChange()
+        self.process_secret(password)
+        if self.otp_enabled and (
+            not isinstance(otp_code, str) or not self.validate_otp(otp_code)
+        ):
+            raise iam_e.OTPInvalidCodeError()
+        new_email = self._validate_email_change(new_email)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            self.email_change_requested_at is not None
+            and now - self.email_change_requested_at
+            < iam_c.EMAIL_CHANGE_RESEND_INTERVAL
+        ):
+            raise iam_exceptions.EmailChangeRateLimited()
+        code = self._prepare_email_change_code(new_email, now)
+        self.save()
+        self._email_change_event(new_email, code=code)
+
+    def _prepare_email_change_code(self, new_email, now):
+        code = secrets.token_urlsafe(32)
+        self.pending_email = new_email
+        self.email_change_code_hash = hashlib.sha256(code.encode()).hexdigest()
+        self.email_change_requested_at = now
+        return code
+
+    def _clear_email_change(self):
+        self.pending_email = None
+        self.email_change_code_hash = None
+        self.confirmation_code = None
+        self.confirmation_code_made_at = None
+
+    def confirm_email_change(self, code):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            not isinstance(code, str)
+            or len(code) > 128
+            or not self.pending_email
+            or not self.email_change_code_hash
+            or self.email_change_requested_at is None
+            or now - self.email_change_requested_at >= iam_c.EMAIL_CHANGE_CODE_TTL
+            or not secrets.compare_digest(
+                self.email_change_code_hash, hashlib.sha256(code.encode()).hexdigest()
+            )
+        ):
+            raise iam_exceptions.InvalidEmailChange()
+        self._validate_email_change_account()
+        new_email = self._validate_email_change(self.pending_email)
+        old_email = self.email
+        self.email = new_email
+        self.email_verified = True
+        self._clear_email_change()
+        self.save()
+        if old_email != new_email:
+            self._email_change_event(old_email)
+
+    def admin_change_email(self, new_email):
+        self._validate_email_change_account()
+        new_email = self._validate_email_change(new_email)
+        self.email = new_email
+        self.email_verified = True
+        self._clear_email_change()
+        self.save()
 
     def get_my_roles(self):
         return RolesInfo(
@@ -953,6 +1080,9 @@ class MeInfo:
             "user_source",
             "custom_props",
             "registration_client",
+            "pending_email",
+            "email_change_code_hash",
+            "email_change_requested_at",
         ]
         user = self._user.get_storable_snapshot()
         for drop_field in skip_fields:
@@ -1356,7 +1486,7 @@ class IamClient(
         This method supports service account tokens via service_account_uuid parameter.
         """
         # Create users query
-        users_query = User.objects.get_all(filters={"email": ra_filters.EQ(email)})
+        users_query = User.find_by_email(email)
 
         return self._get_token_by_password_and_smth(users_query=users_query, **kwargs)
 

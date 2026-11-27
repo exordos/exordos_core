@@ -15,6 +15,7 @@
 #    under the License.
 
 from gcl_iam import exceptions as iam_exc
+from restalchemy.common import exceptions as ra_e
 
 from exordos_core.common import exceptions
 
@@ -322,3 +323,26 @@ class InvalidPkceGrant(
     exceptions.CommonValueErrorException, iam_exc.CredentialsAreInvalidError
 ):
     __template__ = "invalid_grant: PKCE authorization code verification failed"
+
+
+class InvalidEmailChange(exceptions.CommonValueErrorException):
+    __template__ = "Invalid or expired email change request."
+
+
+class EmailChangeNotAllowed(exceptions.CommonForbiddenException, iam_exc.Forbidden):
+    __template__ = "Email changes require a confirmed local user account."
+
+
+class EmailAlreadyUsed(ra_e.RestAlchemyException):
+    code = 409
+    message = "Email address is already in use."
+
+
+class EmailDeliveryUnavailable(ra_e.RestAlchemyException):
+    code = 503
+    message = "Email delivery is not configured."
+
+
+class EmailChangeRateLimited(ra_e.RestAlchemyException):
+    code = 429
+    message = "Wait one minute before requesting another email change."

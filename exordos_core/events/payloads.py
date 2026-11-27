@@ -57,3 +57,13 @@ class ResetPasswordEventPayload(sdk.AbstractEventPayload):
             "site_endpoint": self.site_endpoint,
             "reset_code": str(self.reset_code),
         }
+
+
+class EmailChangeEventPayload(sdk.AbstractEventPayload):
+    KIND = event_c.IAM_USER_EMAIL_CHANGE_EVENT
+
+    recipient = properties.property(types.Email(max_length=128), required=True)
+    code = properties.property(types.String(max_length=128), default="")
+
+    def to_simple_dict(self):
+        return {"recipient": self.recipient, "code": self.code}
