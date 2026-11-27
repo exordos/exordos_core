@@ -102,7 +102,7 @@ def database(empty_database):
             "ALTER TABLE compute_machine_volumes ADD tier varchar(16) DEFAULT 'WARM', ADD ephemeral boolean DEFAULT true, ADD storage_pool varchar(255)"
         )
         migration("0017-rawstor-storage-0b42fe.py").migration_step.upgrade(connection)
-        migration("0017-managed-ost-compute-68ba8e2d.py").migration_step.upgrade(
+        migration("0018-managed-ost-compute-68ba8e2d.py").migration_step.upgrade(
             connection
         )
     return uri
@@ -783,7 +783,7 @@ def test_managed_ost_vm_creation_and_drained_cleanup_use_real_models(empty_datab
         cluster.insert()
         with models.StorageCluster._get_engine().session_manager() as session:
             with pytest.raises(ValueError, match="Delete managed OST clusters"):
-                migration("0016-rawstor-storage-0b42fe.py").migration_step.downgrade(
+                migration("0017-rawstor-storage-0b42fe.py").migration_step.downgrade(
                     session
                 )
         managed.reconcile(cluster)
@@ -1060,7 +1060,7 @@ def test_object_jobs_wait_for_hypervisor_detach_acknowledgement(database):
 
 def test_managed_compute_schema_upgrades_existing_clusters(database):
     identifier = uuid.uuid4()
-    step = migration("0017-managed-ost-compute-68ba8e2d.py").migration_step
+    step = migration("0018-managed-ost-compute-68ba8e2d.py").migration_step
     with psycopg.connect(database) as connection:
         step.downgrade(connection)
         connection.execute(
