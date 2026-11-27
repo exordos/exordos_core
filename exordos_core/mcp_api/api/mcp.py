@@ -44,6 +44,7 @@ from bazooka import exceptions as bazooka_exc
 from restalchemy.openapi import utils as ra_openapi_utils
 import webob
 from webob import dec
+import yaml
 
 from exordos_core import version
 from exordos_core.common import openapi
@@ -55,6 +56,7 @@ MCP_PATH = "/v1/mcp"
 # A call is one request the caller is waiting on, so it fails rather than
 # holds the worker: this service serves one request at a time per worker.
 CALL_TIMEOUT = 60
+SPEC_TIMEOUT = 10
 
 # Newest first; the first one is offered when the client asks for another.
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -201,6 +203,13 @@ FIELD_OVERRIDES = {
     },
 }
 
+SERVICE_ARGUMENT = {
+    "type": "string",
+    "enum": ["core", "ecosystem"],
+    "default": "core",
+    "description": "API to use. Ecosystem must be enabled by the installation.",
+}
+
 TOOLS = [
     {
         "name": "list_endpoints",
@@ -211,6 +220,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "service": SERVICE_ARGUMENT,
                 "search": {
                     "type": "string",
                     "description": (
@@ -231,6 +241,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "service": SERVICE_ARGUMENT,
                 "method": {"type": "string", "enum": list(HTTP_METHODS)},
                 "path": {
                     "type": "string",
@@ -254,6 +265,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
+                "service": SERVICE_ARGUMENT,
                 "method": {"type": "string", "enum": list(HTTP_METHODS)},
                 "path": {
                     "type": "string",
@@ -300,7 +312,23 @@ class McpApplication:
     public host even when the service calls an internal address.
     """
 
-    def __init__(self, user_api_url, client=None):
+    def __init__(
+        self,
+        user_api_url,
+        client=None,
+        *,
+        ecosystem_api_url: str = "",
+        ecosystem_openapi_url: str = "",
+        ecosystem_public_prefix: str = "/api/ecosystem",
+        specification_client=None,
+    ):
+        self.ecosystem_api_url = ecosystem_api_url.rstrip("/")
+        self.ecosystem_openapi_url = ecosystem_openapi_url
+        self.ecosystem_public_prefix = ecosystem_public_prefix.rstrip("/")
+        self._ecosystem_specification = None
+        self.specification_client = specification_client or bazooka.Client(
+            default_timeout=SPEC_TIMEOUT,
+        )
         self.user_api_url = user_api_url.rstrip("/")
         self.client = client or bazooka.Client(default_timeout=CALL_TIMEOUT)
         self._specification = None
@@ -359,7 +387,14 @@ class McpApplication:
                         "name": "exordos-core-user-api",
                         "version": version.version_info,
                     },
-                    "instructions": INSTRUCTIONS,
+                    "instructions": INSTRUCTIONS
+                    + (
+                        "\nEcosystem is enabled: pass service='ecosystem' to "
+                        "list_endpoints, describe_endpoint and call_api. "
+                        "Resource tools always address Core."
+                        if self.ecosystem_api_url
+                        else ""
+                    ),
                 },
             )
         if method == "ping":
@@ -392,7 +427,34 @@ class McpApplication:
             )
         return _error(msg_id, METHOD_NOT_FOUND, f"Method not found: {method}")
 
-    def _get_specification(self):
+    def _service_url(self, service: str) -> str:
+        if service == "core":
+            return self.user_api_url
+        if service != "ecosystem":
+            raise ToolError(f"Unknown service: {service}")
+        if not self.ecosystem_api_url:
+            raise ToolError("Ecosystem API is not enabled on this installation.")
+        return self.ecosystem_api_url
+
+    def _get_specification(self, service: str = "core"):
+        self._service_url(service)
+        if service == "ecosystem":
+            if self._ecosystem_specification is None:
+                try:
+                    # Never send the caller's credentials to the artifact host.
+                    response = self.specification_client.get(
+                        self.ecosystem_openapi_url,
+                        allow_redirects=False,
+                    )
+                    if response.status_code != 200:
+                        raise ValueError("OpenAPI download failed")
+                    spec = yaml.safe_load(response.content)
+                    _validate_specification(spec)
+                except Exception:
+                    LOG.exception("Loading Ecosystem OpenAPI failed")
+                    raise ToolError("Could not load the Ecosystem OpenAPI document.")
+                self._ecosystem_specification = spec
+            return self._ecosystem_specification
         # Built on first use: it takes a while and most workers never need it.
         if self._specification is None:
             self._specification = openapi.build(openapi.USER_API)
@@ -422,24 +484,24 @@ class McpApplication:
         method = "POST" if operation == "create" else "PUT"
         return self._tool_call_api(req, method, path, body=arguments)
 
-    def _operations(self):
-        for path, item in self._get_specification()["paths"].items():
+    def _operations(self, service: str = "core"):
+        for path, item in self._get_specification(service)["paths"].items():
             for method, operation in item.items():
                 if method.upper() in HTTP_METHODS:
                     yield method.upper(), path, operation
 
-    def _tool_list_endpoints(self, req, search=""):
+    def _tool_list_endpoints(self, req, search="", service: str = "core"):
         search = search.lower()
         lines = []
-        for method, path, operation in self._operations():
+        for method, path, operation in self._operations(service):
             summary = operation.get("summary", "")
             haystack = " ".join([path, summary, *operation.get("tags", [])])
             if search in haystack.lower():
                 lines.append(f"{method} {path} - {summary}")
         return "\n".join(lines) or "No endpoints match.", False
 
-    def _tool_describe_endpoint(self, req, method, path):
-        spec = self._get_specification()
+    def _tool_describe_endpoint(self, req, method, path, service: str = "core"):
+        spec = self._get_specification(service)
         operation = spec["paths"].get(path, {}).get(method.lower())
         if operation is None:
             raise ToolError(
@@ -447,20 +509,38 @@ class McpApplication:
             )
         return json.dumps(_resolve(spec, operation, ()), indent=1), False
 
-    def _tool_call_api(self, req, method, path, query=None, body=None):
+    def _tool_call_api(
+        self,
+        req,
+        method,
+        path,
+        query=None,
+        body=None,
+        service: str = "core",
+    ):
         method = method.upper()
         if method not in HTTP_METHODS:
             raise ToolError(f"Unsupported method: {method}")
         if not path.startswith("/v1/") or path.rstrip("/") == MCP_PATH:
             raise ToolError("path must be a User API path starting with '/v1/'.")
 
-        url = self.user_api_url + path
+        decoded = urllib.parse.unquote(path)
+        if (
+            any(part in (".", "..") for part in decoded.split("/"))
+            or any(char in decoded for char in ("\\", "?", "#", "%"))
+            or any(ord(char) < 32 for char in decoded)
+            or decoded.rstrip("/") == MCP_PATH
+        ):
+            raise ToolError("path must stay within '/v1/'; pass parameters in query.")
+        url = self._service_url(service) + path
         if query:
             url += "?" + urllib.parse.urlencode(query, doseq=True)
         headers = {"Accept": "application/json"}
         for header in FORWARDED_HEADERS:
             if header in req.headers:
                 headers[header] = req.headers[header]
+        if service == "ecosystem":
+            headers["X-Forwarded-Prefix"] = self.ecosystem_public_prefix
         if (
             not headers.get("X-Forwarded-For")
             and not headers.get("X-Real-IP")
@@ -469,7 +549,13 @@ class McpApplication:
             headers["X-Forwarded-For"] = req.remote_addr
 
         try:
-            resp = self.client.request(method, url, headers=headers, json=body)
+            resp = self.client.request(
+                method,
+                url,
+                headers=headers,
+                json=body,
+                allow_redirects=False,
+            )
         except bazooka_exc.BaseHTTPException as e:
             # The User API refused the call and said why; that answer is the
             # tool's result, not a failure of this service.
@@ -481,7 +567,35 @@ class McpApplication:
         text = f"HTTP {resp.status_code} {resp.reason}"
         if resp.content:
             text += "\n" + resp.text
-        return text, resp.status_code >= 400
+        return text, resp.status_code >= 300
+
+
+def _validate_specification(spec: dict) -> None:
+    """Check the OpenAPI structure consumed by the discovery tools."""
+    if (
+        not isinstance(spec, dict)
+        or not str(spec.get("openapi", "")).startswith("3.")
+        or not isinstance(spec.get("paths"), dict)
+    ):
+        raise ValueError("Expected an OpenAPI 3 document with paths")
+    for path, item in spec["paths"].items():
+        if not isinstance(path, str) or not path.startswith("/"):
+            raise ValueError("Expected an absolute API path")
+        if not isinstance(item, dict):
+            raise ValueError("Expected a path item")
+        for method, operation in item.items():
+            if not isinstance(method, str):
+                raise ValueError("Expected an operation name")
+            if method.upper() not in HTTP_METHODS:
+                continue
+            if not isinstance(operation, dict):
+                raise ValueError("Expected an operation")
+            if not isinstance(operation.get("summary", ""), str):
+                raise ValueError("Expected an operation summary")
+            tags = operation.get("tags", [])
+            if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+                raise ValueError("Expected operation tags")
+            _resolve(spec, operation, ())
 
 
 def _check_arguments(tool, arguments):

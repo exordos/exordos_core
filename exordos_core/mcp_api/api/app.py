@@ -21,9 +21,20 @@ from exordos_core.common.api.middlewares import errors as errors_mw
 from exordos_core.mcp_api.api import mcp
 
 
-def build_wsgi_application(user_api_url):
+def build_wsgi_application(
+    user_api_url,
+    *,
+    ecosystem_api_url: str = "",
+    ecosystem_openapi_url: str = "",
+    ecosystem_public_prefix: str = "/api/ecosystem",
+):
     return middlewares.attach_middlewares(
-        mcp.McpApplication(user_api_url=user_api_url),
+        mcp.McpApplication(
+            user_api_url=user_api_url,
+            ecosystem_api_url=ecosystem_api_url,
+            ecosystem_openapi_url=ecosystem_openapi_url,
+            ecosystem_public_prefix=ecosystem_public_prefix,
+        ),
         [
             errors_mw.ErrorsHandlerMiddleware,
             logging_mw.LoggingMiddleware,

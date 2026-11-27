@@ -42,6 +42,50 @@ bind_port = 11014
 user_api_url = http://127.0.0.1:11010
 ```
 
+### Ecosystem API
+
+Core also supports an optional Ecosystem API connection. The Ecosystem
+manifest installs `/etc/exordos_core/exordos_core.d/90-mcp-ecosystem.conf`
+on the Core node set and restarts `ec-mcp-api` when that file changes:
+
+```ini
+[mcp_api_ecosystem]
+enabled = true
+api_url = http://192.0.2.10:8080
+public_prefix = /api/ecosystem
+openapi_url = https://repo.example/exordos_ecosystem/1.2.3/artifacts/openapi_user.yaml
+```
+
+`api_url` and `openapi_url` are administrator-controlled HTTP(S) URLs.
+The manifest uses the Ecosystem node's address and the OpenAPI artifact
+from the same release as the element, respecting the `repository` build
+parameter. Deploy Core with Ecosystem MCP support before this manifest;
+the integration requires Core 0.5.3 or later (the planned first release).
+
+Pass `service="ecosystem"` to `list_endpoints`, `describe_endpoint` and
+`call_api`. Without `service`, or with `service="core"`, the tools retain
+their Core behavior. Resource tools always address Core.
+
+The schema is loaded lazily, without user credentials, with a ten-second
+HTTP timeout. A valid document is cached per worker until restart. Failed
+loads are not cached, so the next discovery call can retry. Core discovery
+and API calls do not depend on Ecosystem schema availability. Redirects
+are not followed for schema downloads or API calls; API mutations are not
+retried. API paths cannot escape `/v1/`; pass query parameters in `query`.
+
+Ecosystem calls carry the caller's token and verifier headers; the public
+prefix is replaced with `/api/ecosystem` (or the configured prefix).
+This retains the existing IAM token forwarding contract, not OAuth token
+exchange. The token must belong to the IAM client accepted by Ecosystem;
+the stock installation uses Core's default client. No service-account or
+administrator token is configured for MCP.
+
+Disabling the connection requires `enabled = false` and a restart.
+The config agent currently removes files without running `on_change` on
+deletion: after uninstalling Ecosystem, restart `ec-mcp-api` on the Core
+nodes to unload the removed connection. Updating or rolling back the
+manifest changes the pinned schema URL and restarts MCP automatically.
+
 ## Tools
 
 ### Resource tools
