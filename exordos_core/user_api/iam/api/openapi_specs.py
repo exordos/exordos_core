@@ -100,6 +100,42 @@ responses.update(
     )
 )
 
+responses.update(
+    oa_c.build_openapi_user_response(
+        code=400,
+        **{
+            "anyOf": [
+                {"$ref": "#/components/schemas/Error"},
+                {
+                    "title": "External action required",
+                    "description": (
+                        "Keycloak password login requires completing account actions. "
+                        "Open redirect_url, complete the actions, then sign in again."
+                    ),
+                    "type": "object",
+                    "required": ["error", "error_description", "redirect_url"],
+                    "properties": {
+                        "error": {
+                            "type": "string",
+                            "enum": ["external_action_required"],
+                        },
+                        "error_description": {
+                            "type": "string",
+                            "example": "Complete the required actions in Keycloak, then sign in again.",
+                        },
+                        "redirect_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "Credential-free Keycloak Account Console URL",
+                            "example": "https://keycloak.example/realms/company/account/",
+                        },
+                    },
+                },
+            ],
+        },
+    )
+)
+
 
 OA_SPEC_SEND_RESET_PASSWORD_CODE = dict(
     summary="Send password reset code to email",

@@ -19,6 +19,12 @@ from gcl_iam import exceptions as iam_exc
 from exordos_core.common import exceptions
 
 
+class KeycloakRequiredAction(exceptions.CommonValueErrorException):
+    __template__ = "Complete the required actions in Keycloak, then sign in again."
+
+    redirect_url: str
+
+
 class UserNotFound(exceptions.CommonNotFoundException):
     __template__ = "User not found"
 
@@ -52,6 +58,14 @@ class CanNotUpdateUser(exceptions.CommonForbiddenException, iam_exc.Forbidden):
     __template__ = (
         "The current user is not permitted to update the user `{uuid}`."
         " This action requires the `{rule}`, which has not been granted."
+    )
+
+
+class ExternalPasswordChangeForbidden(
+    exceptions.CommonForbiddenException, iam_exc.Forbidden
+):
+    __template__ = (
+        "Password changes are forbidden for external authentication providers."
     )
 
 

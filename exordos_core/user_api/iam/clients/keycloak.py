@@ -17,6 +17,9 @@
 import urllib.parse
 
 import bazooka
+from bazooka import exceptions as bazooka_exc
+
+from exordos_core.user_api.iam import exceptions
 
 
 class KeycloakClient:
@@ -32,18 +35,32 @@ class KeycloakClient:
             (f"realms/{realm}/protocol/openid-connect/token"),
         )
 
-        response = self._client.post(
-            token_endpoint,
-            data={
-                "grant_type": "password",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "username": login,
-                "password": password,
-            },
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-        )
+        try:
+            response = self._client.post(
+                token_endpoint,
+                data={
+                    "grant_type": "password",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "username": login,
+                    "password": password,
+                },
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            )
+        except bazooka_exc.BadRequestError as exc:
+            error = exc.cause.response.json()
+            if error.get("error") != "invalid_grant":
+                raise
+            if error.get("error_description") == "Account is not fully set up":
+                account_url = urllib.parse.urljoin(
+                    endpoint,
+                    f"realms/{urllib.parse.quote(realm, safe='')}/account/",
+                )
+                raise exceptions.KeycloakRequiredAction(
+                    redirect_url=account_url,
+                ) from None
+            return False
 
         return response.status_code == 200
