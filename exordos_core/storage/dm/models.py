@@ -182,11 +182,14 @@ class Node(
         return {"builder": dm_filters.EQ(str(builder))}
 
     def get_ua_all_and_target_values(self):
+        from exordos_core.storage import tls
+
         value, target = super().get_ua_all_and_target_values()
         cluster = StorageCluster.objects.get_one(filters={"uuid": self.cluster})
         spec = {
             **self.driver_spec.dump_to_simple_view(),
             "mds": cluster.driver_spec.endpoint,
+            "tls": tls.bundle("ost", self.uuid, self.agent),
         }
         value["driver_spec"] = target["driver_spec"] = spec
         return value, target
@@ -195,7 +198,7 @@ class Node(
     def from_ua_resource(cls, resource):
         value = dict(resource.value)
         value["driver_spec"] = {
-            k: v for k, v in value["driver_spec"].items() if k != "mds"
+            k: v for k, v in value["driver_spec"].items() if k not in ("mds", "tls")
         }
         return cls.restore_from_simple_view(skip_unknown_fields=True, **value)
 

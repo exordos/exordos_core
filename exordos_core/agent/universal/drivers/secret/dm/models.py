@@ -133,7 +133,7 @@ class Certificate(AbstractSecret, orm.SQLStorableMixin):
             return True
         else:
             delta = self.expiration_at - datetime.datetime.now(tz=datetime.timezone.utc)
-            if self.meta.get("method", {}).get("kind") == "spiffe":
+            if self.meta.get("method", {}).get("kind") in ("spiffe", "rawstor"):
                 # Short-lived SVIDs renew before expiry without changing the hidden
                 # legacy threshold used by DNS certificates.
                 window = min(

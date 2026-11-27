@@ -1,5 +1,5 @@
 [Unit]
-Description=Prepare the Rawstor OST %i data disk
+Description=Prepare the RawStor OST %i data disk
 Requires=dev-vdb.device
 After=dev-vdb.device
 

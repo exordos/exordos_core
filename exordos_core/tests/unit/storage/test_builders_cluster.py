@@ -50,11 +50,16 @@ class TestStorageClusterBuilderService:
         with (
             patch.object(models.StorageCluster, "_get_engine"),
             patch.object(cluster_builder.volumes, "sync_targets") as sync,
+            patch.object(cluster_builder.tls, "refresh_targets") as refresh,
+            patch.object(cluster_builder.tls, "prune_unused_certificates"),
         ):
             context = service.prepare_iteration()
 
         assert context == {"clause_filters": {"builder": builder_uuid}}
         sync.assert_called_once_with(builder_uuid)
+        refresh.assert_called_once_with(
+            ("storage_cluster", "storage_node"), builder_uuid=builder_uuid
+        )
 
     def test_actualize_outdated_instance_syncs_capacity_and_status(self):
         service = cluster_builder.StorageClusterBuilderService.__new__(

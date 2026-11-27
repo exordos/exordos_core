@@ -243,7 +243,7 @@ pinned SHA256 checksums. CLI downloads OST, vhost,
 librawstor and bindings from the same release. Set `RAWSTOR_VERSION` for a release,
 `RAWSTOR_WHEEL_VERSION` when its binding version differs. `nodes init --version VERSION` overrides the
 release used for OST and binding installation. Build core with `LOCAL_GENESIS_SDK_PATH`
-pointing to the matching `gcl_sdk` checkout on `feat/rawstor`.
+pointing to the matching `gcl_sdk` checkout on `feat/rawstor-tls`.
 
 ## Driver configuration
 
@@ -273,8 +273,9 @@ RawStor only bypasses it when `FORCE` is explicitly combined with `READONLY`.
 
 ### Deployment trust boundary
 
-RawStor listeners do not authenticate clients. Place MDS, OST and vhost traffic
-on a trusted storage network and restrict access with host/network firewall rules.
+RawStor listeners authenticate peers with Core-issued SPIFFE certificates.
+Keep storage traffic on a trusted network and restrict access with host/network
+firewall rules.
 Storage configuration is an administrator operation: advertised endpoints are
 probed by the agent, so only trusted administrators should supply them.
 Managed file-backed OST directories must be direct children of
@@ -315,8 +316,8 @@ for unfiltered listings, not ownership.
 Cluster and OST capacity queries remain unfiltered, covering every project in
 the shared physical budget. A account is not automatically removed when a disk
 is deleted: RawStor account removal also deletes that account's objects and
-versions. This integration runs RawStor in explicit insecure mode; account UUIDs are
-ownership metadata, and access control remains in Exordos.
+versions. Account UUIDs scope RawStor client identities; vhost certificates grant
+access only to their own volume.
 
 Build 44297955553 requires a protocol handshake and account-aware wire frames
 and metadata. Upgrade librawstor, Python bindings, MDS, OST and vhost together.
@@ -326,14 +327,14 @@ this build. Updating packages does not convert or delete existing storage.
 
 ## Transport mode
 
-The integration currently starts MDS, OST and vhost with explicit
-`EXTRA_ARGS="--insecure"`. Connections are plaintext and peers are not
-authenticated. TLS and SPIFFE issuance are maintained in a separate branch
-layered on the storage integration.
+MDS, OST and vhost use mutual TLS with SPIFFE workload certificates issued by
+Core. Services wait for their credentials and never fall back to plaintext.
+Certificates are delivered over the encrypted agent channel and renewed without
+restarting live vhost backends. Control operations use isolated TLS clients with
+provider credentials; each vhost receives permissions only for its own volume.
 
-Agents and the API explicitly call `rawstor.initialize(insecure=True)` before
-loading native `Target` or `Location` types. This matches the service transport
-mode; setting any `RAWSTOR_TLS_*` options in insecure mode is rejected.
+See [RawStor TLS integration](rawstor-tls.md) for identities, file permissions,
+renewal, and migration from an insecure development cluster.
 
 ## Object lifecycle ownership
 

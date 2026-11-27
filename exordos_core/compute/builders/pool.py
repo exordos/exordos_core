@@ -653,6 +653,9 @@ class PoolBuilderService(sdk_builder.CollectionUniversalBuilderService):
             },
         )
 
+        from exordos_core.storage import tls
+
+        tls.refresh_targets(("pool_volume",), {p.agent for p in pools})
         return {
             "clause_filters": {
                 "builder": self.ua_service_spec.uuid,
