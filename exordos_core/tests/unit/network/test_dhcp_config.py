@@ -24,6 +24,7 @@ never only that subnet's business.
 import types
 
 import netaddr
+import pytest
 
 from exordos_core.network.dhcp import isc
 
@@ -75,3 +76,43 @@ def test_a_pool_subnet_does_not_disturb_the_ones_beside_it():
     assert "next-server 10.30.0.2;" in config
     # Nothing dangles: every option that is written has a value.
     assert "option domain-name-servers ;" not in config
+
+
+@pytest.mark.parametrize("dhcp", [True, False])
+@pytest.mark.parametrize("intent", [None, [], "explicit"])
+def test_raw_subnet_renders_automatic_empty_and_explicit_options(dhcp, intent):
+    routers = (
+        [{"to": netaddr.IPNetwork("0.0.0.0/0"), "via": netaddr.IPAddress("10.20.0.9")}]
+        if intent == "explicit"
+        else intent
+    )
+    dns = ["8.8.8.8"] if intent == "explicit" else intent
+    subnet = _Subnet(
+        next_server=None,
+        ip_discovery_range_pair=None,
+        cidr=netaddr.IPNetwork("10.20.0.0/24"),
+        dhcp=dhcp,
+        routers=routers,
+        dns_servers=dns,
+    )
+    config = isc.dhcp_config({subnet: []})
+    gateway = (
+        "10.20.0.9"
+        if intent == "explicit"
+        else ("10.20.0.1" if intent is None and dhcp else None)
+    )
+    resolver = (
+        "8.8.8.8"
+        if intent == "explicit"
+        else ("10.20.0.1" if intent is None and dhcp else None)
+    )
+    if gateway:
+        assert f"option routers {gateway};" in config
+    else:
+        assert "option routers" not in config
+    if resolver:
+        assert f"option domain-name-servers {resolver};" in config
+    else:
+        assert "domain-name-servers" not in config
+    assert subnet.routers == routers
+    assert subnet.dns_servers == dns

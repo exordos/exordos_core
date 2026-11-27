@@ -245,11 +245,7 @@ class TestPoolBuilderPowerState:
             pool=SimpleNamespace(uuid=sys_uuid.uuid4()),
             target_power_state=PS.REBOOT.value,
         )
-        port = SimpleNamespace(ipv4=None, mask=None, mac=None, source=None)
-
-        pool_machine = pool_builder.pool_models.PoolMachine.from_machine_and_port(
-            machine, port
-        )
+        pool_machine = pool_builder.pool_models.PoolMachine.from_machine(machine)
 
         assert pool_machine.power_state == PS.REBOOT.value
         assert "power_state" in pool_machine.get_resource_target_fields()

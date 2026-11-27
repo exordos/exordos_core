@@ -23,6 +23,17 @@ from exordos_core import version
 from exordos_core.common import constants
 
 GLOBAL_SERVICE_NAME = constants.GLOBAL_SERVICE_NAME
+CONF = cfg.CONF
+CONF.register_opts(
+    [
+        cfg.BoolOpt(
+            "legacy_flat_default",
+            default=True,
+            help="Reuse an existing project flat subnet for automatic ports; disable to default to project SDN networks",
+        )
+    ],
+    group="network",
+)
 _CONFIG_NOT_FOUND_MESSAGE = (
     "Unable to find configuration file in the"
     " default search paths (~/.%(service_name)s/, ~/,"

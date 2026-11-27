@@ -25,6 +25,18 @@ from exordos_core.repo.builders import element as re_builder
 from exordos_core.repo.dm import models as repo_models
 
 
+def test_installed_manifest_resolves_fields_without_database_model_spec(tmp_path):
+    capability = driver.RepoElementCapabilityDriver(agent_work_dir=str(tmp_path))
+    resource = mock.Mock(
+        kind=driver.KIND,
+        value={"name": "core", "manifest": {"name": "core", "version": "1.0.0"}},
+    )
+    assert capability._resolve_target_fields(resource) == {
+        "name": None,
+        "manifest": {"name": None, "version": None},
+    }
+
+
 class TestMakeInstalledManifest:
     """Tests for RepoEmBackendClient._make_installed_manifest."""
 

@@ -170,6 +170,7 @@ exordos-repo-proxy-gservice = "exordos_core.cmd.repo_proxy_gservice:main"
 [project.entry-points."gcn_network_driver"]
 DummyNetworkDriver = "exordos_core.network.driver.base:DummyNetworkDriver"
 FlatBridgeNetworkDriver = "exordos_core.network.driver.flat:FlatBridgeNetworkDriver"
+OvsEvpnNetworkDriver = "exordos_core.network.driver.evpn:OvsEvpnNetworkDriver"
 
 [project.entry-points."exordos.repo_proxy.drivers"]
 RealmProxyRepoDriver = "exordos_core.repo.drivers.realm:RealmProxyRepoDriver"
@@ -247,3 +248,6 @@ directory = "cover"
 
 [tool.coverage.xml]
 output = "cover/coverage.xml"
+
+[tool.uv.sources]
+gcl-sdk = { git = "https://github.com/exordos/gcl_sdk.git", rev = "40cdd8c549fc8b0aa78abad0a838e025b12301b8" }

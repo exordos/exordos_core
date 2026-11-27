@@ -1,0 +1,17 @@
+[Unit]
+Description=gobgpd (exordos evpn fabric)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+RuntimeDirectory=gobgpd
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStartPre=/usr/bin/rm -f /run/gobgpd/api.sock
+ExecStart=/usr/local/bin/gobgpd -f /etc/gobgp.conf --api-hosts unix:///run/gobgpd/api.sock --pprof-disable --metrics-path=
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

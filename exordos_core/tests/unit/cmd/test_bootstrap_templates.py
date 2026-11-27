@@ -15,6 +15,7 @@
 #    under the License.
 
 import pytest
+from types import SimpleNamespace
 
 from exordos_core.cmd import bootstrap_templates
 
@@ -57,3 +58,44 @@ def test_disjoint_networks_build_context():
 def test_overlapping_networks_rejected(boot_cidr):
     with pytest.raises(ValueError, match="overlaps main network"):
         bootstrap_templates._build_template_context(_spec("10.31.0.0/22", boot_cidr))
+
+
+@pytest.mark.parametrize("restored", [False, True])
+def test_agent_credentials_are_private_when_rendered_or_restored(
+    tmp_path, monkeypatch, restored
+):
+    source = tmp_path / "agent.conf.j2"
+    destination = tmp_path / "etc" / "agent.conf"
+    persisted = tmp_path / "data" / "agent.conf"
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}")
+    source.write_text("password = {{ admin_password }}\n")
+    if restored:
+        persisted.parent.mkdir()
+        persisted.write_text("password = persisted-test-password\n")
+        persisted.chmod(0o644)
+    monkeypatch.setattr(bootstrap_templates, "SPEC_PATH", str(spec))
+    monkeypatch.setattr(
+        bootstrap_templates,
+        "CONF",
+        SimpleNamespace(ua_config_template_dst=str(destination)),
+    )
+    monkeypatch.setattr(bootstrap_templates.config, "parse", lambda _: None)
+    monkeypatch.setattr(
+        bootstrap_templates,
+        "_template_mappings",
+        lambda: [(str(source), str(destination), str(persisted))],
+    )
+    monkeypatch.setattr(
+        bootstrap_templates,
+        "_build_template_context",
+        lambda _: {"admin_password": "rendered-test-password"},
+    )
+
+    bootstrap_templates.main()
+
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert persisted.stat().st_mode & 0o777 == 0o600
+    expected = "persisted-test-password" if restored else "rendered-test-password"
+    assert destination.read_text().strip() == f"password = {expected}"
+    assert persisted.read_text() == destination.read_text()

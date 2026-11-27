@@ -33,7 +33,10 @@ class Node(compute_models.Node):
         The power state is managed per node by the power actions, so the
         set must not override it.
         """
-        return super().get_resource_target_fields() - {"target_power_state"}
+        fields = super().get_resource_target_fields() - {"target_power_state"}
+        if self.default_network is not None:
+            fields = fields | {"default_network"}
+        return fields
 
 
 class Volume(compute_models.Volume):
@@ -76,6 +79,7 @@ class NodeSet(compute_models.NodeSet):
                 status=nc.NodeStatus.NEW.value,
                 placement_policies=[p.uuid for p in placement_policies],
                 disk_spec=self.disk_spec.node_spec(self, node_uuid),
+                default_network=self.default_network,
             )
             nodes.append(node)
 
