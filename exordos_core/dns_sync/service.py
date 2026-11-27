@@ -91,15 +91,28 @@ class DNSSyncService(basic.BasicService):
             },
         )
 
-    def _realm_domains(self):
-        domains = dns_models.Domain.objects.get_all(
-            filters={"sync_to_ecosystem": dm_filters.EQ(True)}
-        )
-        return [domain for domain in domains if domain.realm_id is not None]
+    def _sync_custom_zones(
+        self,
+        endpoint: str,
+        realm_uuid: str,
+        auth: requests_auth.AuthBase,
+        domains: list[dns_models.Domain],
+    ) -> None:
+        """Send all opted-in custom zones, including an empty inventory.
 
-    def _ensure_realm_domain(self, endpoint, realm_uuid, auth):
-        domains = self._realm_domains()
-        if domains:
+        Ecosystem retains ownership, so deleting a local zone or disabling
+        sync is reconciled even when this process has restarted meanwhile.
+        """
+        zones = [
+            {"name": domain.name, "records": self._domain_records(domain)}
+            for domain in domains
+            if domain.realm_id is None
+        ]
+        url = f"{endpoint}/api/ecosystem/v1/realms/{realm_uuid}/actions/sync_dns/invoke"
+        self._client.post(url, auth=auth, json={"zones": zones})
+
+    def _ensure_realm_domain(self, endpoint, realm_uuid, auth, domains):
+        if any(domain.realm_id is not None for domain in domains):
             return True
 
         realm = self._eco_get_realm(endpoint, realm_uuid, auth)
@@ -142,6 +155,8 @@ class DNSSyncService(basic.BasicService):
                         record.delete(force=True)
                     else:
                         record.update()
+                domains[:] = [d for d in domains if d.uuid != legacy_domain.uuid]
+                domains.append(legacy_domain)
                 LOG.info("Migrated legacy realm DNS domain to %s", domain_name)
                 return True
 
@@ -153,6 +168,7 @@ class DNSSyncService(basic.BasicService):
                 project_id=c.ZERO_UUID,
             )
             domain.insert()
+            domains.append(domain)
             return True
 
         if (
@@ -172,6 +188,7 @@ class DNSSyncService(basic.BasicService):
             and domain.sync_to_ecosystem
         ):
             raise ValueError("Local DNS domain conflicts with the realm DNS contract")
+        domains.append(domain)
         return True
 
     @staticmethod
@@ -203,20 +220,10 @@ class DNSSyncService(basic.BasicService):
                 "type": dm_filters.NE("SOA"),
             }
         )
-        return any(record.domain.realm_id is not None for record in records)
+        return any(record.domain.sync_to_ecosystem for record in records)
 
     def _sync_all_domains(self, endpoint, realm_uuid, realm_secret):
         auth = self._make_basic_auth(realm_uuid, realm_secret)
-        if not self._initialized:
-            try:
-                initialized = self._ensure_realm_domain(endpoint, realm_uuid, auth)
-            except bazooka_exc.ForbiddenError:
-                LOG.warning("Not authorized to fetch realm, skipping DNS sync")
-                return
-            if not initialized:
-                return
-            self._initialized = True
-
         now = time.monotonic()
         need_full = (now - self._last_full_sync_at) >= FULL_SYNC_INTERVAL
         if (
@@ -226,8 +233,24 @@ class DNSSyncService(basic.BasicService):
         ):
             return
 
-        domains = self._realm_domains()
+        domains = dns_models.Domain.objects.get_all(
+            filters={"sync_to_ecosystem": dm_filters.EQ(True)}
+        )
+        if not self._initialized:
+            try:
+                initialized = self._ensure_realm_domain(
+                    endpoint, realm_uuid, auth, domains
+                )
+            except bazooka_exc.ForbiddenError:
+                LOG.warning("Not authorized to fetch realm, skipping DNS sync")
+                return
+            if not initialized:
+                return
+            self._initialized = True
+
         for domain in domains:
+            if domain.realm_id is None:
+                continue
             records = self._domain_records(domain)
             try:
                 self._eco_sync_domain(
@@ -239,6 +262,8 @@ class DNSSyncService(basic.BasicService):
                 )
             except Exception:
                 LOG.exception("DNS sync failed for realm domain %s", domain.name)
+
+        self._sync_custom_zones(endpoint, realm_uuid, auth, domains)
 
         if need_full:
             self._last_full_sync_at = now
