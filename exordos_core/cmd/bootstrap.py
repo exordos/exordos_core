@@ -15,15 +15,19 @@
 #    under the License.
 from __future__ import annotations
 
+import configparser
 import grp
+import io
 import ipaddress
 import json
 import logging
 import os
+import pathlib
 import pwd
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import typing as tp
 import uuid as sys_uuid
@@ -374,160 +378,112 @@ def _migrate_installed_elements_configs() -> None:
             LOG.info("[launchpad] section already exists in %s", CORE_CONFIG_PATH)
 
 
-# The parts of the universal agent config that evolve with the core image.
-# The scheduler section is fully rewritten to handle any indentation
-# differences; keep both literals in sync with
-# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
-_UA_SCHEDULER_SECTION = """\
-[universal_agent_scheduler]
-capabilities =
-    em_*,
-    secret,
-    password,
-    certificate,
-    paas_lb_agent,
-    repo_proxy_installed_element,
-    border_agent
-"""
-_UA_BORDER_DRIVER_LINE = "    BorderAgentCapabilityDriver,\n"
-_UA_OPAQUE_SECRET_DRIVER_LINE = "    OpaqueSecretCapabilityDriver,\n"
-
-# Extra lines appended to the [SecretCapabilityDriver] section when
-# migrating from [UserCapabilityDriver]. Keep in sync with
-# etc/exordos_universal_agent/exordos_universal_agent.conf.j2.
-_UA_SECRET_DRIVER_EXTRA_LINES = (
-    "em_core_iam_users = /v1/iam/users/, password\n"
-    "em_core_iam_clients = /v1/iam/clients/, secret, "
-    "filter:project_id:12345678-c625-4fee-81d5-f691897b8142\n"
-)
+def _read_ua_config(path: str) -> tuple[str, configparser.ConfigParser, list[str]]:
+    """Use the agent's list option type and retain the full INI for updates."""
+    content = pathlib.Path(path).read_text(encoding="utf-8")
+    document = configparser.ConfigParser(interpolation=None)
+    document.optionxform = str
+    options = cfg.ConfigOpts()
+    options.register_opt(
+        cfg.ListOpt("caps_drivers", default=[]), group="universal_agent"
+    )
+    try:
+        document.read_string(content, source=path)
+        options(["--config-file", path])
+        return content, document, options.universal_agent.caps_drivers
+    except (configparser.Error, cfg.ConfigFileParseError, cfg.ConfigFileValueError):
+        raise ValueError(f"Invalid universal agent configuration in {path}") from None
 
 
-def _migrate_ua_secret_driver(content: str) -> str:
-    """Migrate UserCapabilityDriver to SecretCapabilityDriver.
-
-    Replaces the driver name in caps_drivers, renames the
-    [UserCapabilityDriver] section to [SecretCapabilityDriver], and
-    appends the IAM users/clients endpoint lines required by the
-    secret driver. Idempotent.
-    """
-    if "UserCapabilityDriver" in content:
-        content = content.replace(
-            "    UserCapabilityDriver,\n",
-            "    SecretCapabilityDriver,\n",
-            1,
-        )
-        content = content.replace(
-            "[UserCapabilityDriver]",
-            "[SecretCapabilityDriver]",
-            1,
-        )
-
-    if "em_core_iam_users" not in content:
-        match = re.search(
-            r"(\[SecretCapabilityDriver\].*?)(?=^\[|\Z)",
-            content,
-            flags=re.DOTALL | re.MULTILINE,
-        )
-        if match is not None:
-            section = match.group(0)
-            if not section.endswith("\n"):
-                section += "\n"
-            section += _UA_SECRET_DRIVER_EXTRA_LINES
-            content = content[: match.start()] + section + content[match.end() :]
-        else:
-            LOG.warning(
-                "Could not find [SecretCapabilityDriver] section to append "
-                "IAM users/clients endpoints"
-            )
-
-    return content
+def _replace_ua_config(path: str, content: str) -> None:
+    """Replace a Universal Agent config without exposing partial contents."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=os.path.dirname(path), delete=False
+    ) as staged:
+        try:
+            os.fchmod(staged.fileno(), 0o600)
+            staged.write(content)
+            staged.flush()
+            os.fsync(staged.fileno())
+            os.replace(staged.name, path)
+        finally:
+            pathlib.Path(staged.name).unlink(missing_ok=True)
 
 
 def _ensure_ua_config_current() -> None:
     """Bring the universal agent config up to date with this image.
 
-    ec-bootstrap-templates restores /etc configs from the persisted
-    copies on the data disk, so template changes shipped in a new core
-    image never reach an upgraded stand on their own. Idempotently
-    reapply the image-defined parts of the UA config:
-
-    1. Rewrite the [universal_agent_scheduler] section with the current
-       capabilities list.
-    2. Ensure BorderAgentCapabilityDriver is present in caps_drivers
-       ([universal_agent] holds stand-specific endpoints, so only this
-       line is inserted, not the whole section).
-    3. Migrate UserCapabilityDriver to SecretCapabilityDriver in
-       caps_drivers and rename the [UserCapabilityDriver] section,
-       appending the IAM users/clients endpoints required by the
-       secret driver.
-
-    On changes the result is synced back to the persisted copy and the
-    agent services (started before ec-bootstrap runs, thus holding the
-    stale config) are restarted to pick it up.
+    Merge the shipped driver list into the saved settings and update the
+    managed scheduler capabilities. Write the persisted copy first and
+    keep the restart marker until both services have loaded the config.
     """
     try:
-        with open(UA_CONFIG_PATH, "r", encoding="utf-8") as f:
-            content = f.read()
+        content, settings, installed_drivers = _read_ua_config(UA_CONFIG_PATH)
     except FileNotFoundError:
         LOG.warning("Universal agent config not found: %s", UA_CONFIG_PATH)
         return
 
-    new_content = re.sub(
-        r"^\[universal_agent_scheduler\].*?(?=^\[|\Z)",
-        _UA_SCHEDULER_SECTION,
-        content,
-        count=1,
-        flags=re.DOTALL | re.MULTILINE,
-    )
+    _, template, required_drivers = _read_ua_config(c.UA_CONFIG_TEMPLATE_PATH)
+    original = {section: dict(options) for section, options in settings.items()}
 
-    if "BorderAgentCapabilityDriver" not in new_content:
-        new_content = new_content.replace(
-            "    LBAgentCapabilityDriver,\n",
-            "    LBAgentCapabilityDriver,\n" + _UA_BORDER_DRIVER_LINE,
-            1,
-        )
-        if "BorderAgentCapabilityDriver" not in new_content:
-            LOG.warning(
-                "Could not insert BorderAgentCapabilityDriver into caps_drivers in %s",
-                UA_CONFIG_PATH,
-            )
+    legacy_driver = "UserCapabilityDriver"
+    secret_driver = "SecretCapabilityDriver"
+    drivers = [
+        secret_driver if name == legacy_driver else name for name in installed_drivers
+    ]
+    merged = list(dict.fromkeys(drivers + required_drivers))
+    if merged != installed_drivers:
+        if "universal_agent" not in settings:
+            settings.add_section("universal_agent")
+        settings["universal_agent"]["caps_drivers"] = ", ".join(merged)
 
-    if "OpaqueSecretCapabilityDriver" not in new_content:
-        new_content = new_content.replace(
-            "    PasswordCapabilityDriver,\n",
-            _UA_OPAQUE_SECRET_DRIVER_LINE + "    PasswordCapabilityDriver,\n",
-            1,
-        )
-        if "OpaqueSecretCapabilityDriver" not in new_content:
-            LOG.warning(
-                "Could not insert OpaqueSecretCapabilityDriver into caps_drivers in %s",
-                UA_CONFIG_PATH,
-            )
+    if legacy_driver in settings or secret_driver in settings:
+        if secret_driver not in settings:
+            settings.add_section(secret_driver)
+        secret = settings[secret_driver]
+        # The SDK loads driver options with case-insensitive names.
+        configured = {name.lower() for name in secret}
+        if legacy_driver in settings:
+            for name, value in settings[legacy_driver].items():
+                option = name.lower()
+                if option not in configured:
+                    secret[name] = value
+                    configured.add(option)
+            settings.remove_section(legacy_driver)
+        for name in ("em_core_iam_users", "em_core_iam_clients"):
+            if name not in configured:
+                secret[name] = template[secret_driver][name]
 
-    new_content = _migrate_ua_secret_driver(new_content)
+    scheduler = "universal_agent_scheduler"
+    if scheduler in settings:
+        settings[scheduler]["capabilities"] = template[scheduler]["capabilities"]
 
-    if new_content == content:
+    pending = f"{UA_CONFIG_DATA_PATH}.restart-pending"
+    if original != {section: dict(options) for section, options in settings.items()}:
+        output = io.StringIO()
+        settings.write(output)
+        content = output.getvalue()
+    elif not os.path.exists(pending):
         LOG.info("Universal agent config already up to date in %s", UA_CONFIG_PATH)
         return
 
-    with open(UA_CONFIG_PATH, "w", encoding="utf-8") as f:
-        f.write(new_content)
-    LOG.info("Updated universal agent config %s", UA_CONFIG_PATH)
-    _sync_config_to_data_path(new_content, UA_CONFIG_DATA_PATH)
+    os.makedirs(os.path.dirname(UA_CONFIG_DATA_PATH), exist_ok=True)
+    _replace_ua_config(pending, "")
+    _replace_ua_config(UA_CONFIG_DATA_PATH, content)
+    _replace_ua_config(UA_CONFIG_PATH, content)
+    LOG.info("Updated active and persisted universal agent configs")
 
-    try:
-        subprocess.run(
-            [
-                "systemctl",
-                "try-restart",
-                "exordos-universal-agent",
-                "exordos-universal-scheduler",
-            ],
-            check=True,
-        )
-        LOG.info("Restarted universal agent services to apply the new config")
-    except (OSError, subprocess.CalledProcessError) as e:
-        LOG.warning("Failed to restart universal agent services: %s", e)
+    subprocess.run(
+        [
+            "systemctl",
+            "restart",
+            "exordos-universal-agent",
+            "exordos-universal-scheduler",
+        ],
+        check=True,
+    )
+    pathlib.Path(pending).unlink(missing_ok=True)
+    LOG.info("Restarted universal agent services to apply the new config")
 
 
 # The image-defined parts of the core agent config, by section. Keep in
@@ -1051,7 +1007,15 @@ def main() -> None:
     # working installations are migrated.
     _migrate_installed_elements_to_repo()
 
-    _ensure_ua_config_current()
+    while True:
+        try:
+            _ensure_ua_config_current()
+            break
+        except (OSError, subprocess.CalledProcessError):
+            if not retry_on_error:
+                raise
+            LOG.exception("Unable to update the universal agent config, retrying")
+            time.sleep(2.0)
     _ensure_core_agent_config_current()
 
     if not os.path.exists(SPEC_PATH):

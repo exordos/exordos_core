@@ -14,10 +14,21 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import configparser
+import os
 import pathlib
+import subprocess
 from unittest import mock
 
+from oslo_config import cfg
+import pytest
+
 from exordos_core.cmd import bootstrap
+
+_UA_TEMPLATE = (
+    pathlib.Path(__file__).parents[4]
+    / "etc/exordos_universal_agent/exordos_universal_agent.conf.j2"
+)
 
 # A universal agent config persisted by a pre-border core image.
 _OLD_UA_CONFIG = """\
@@ -153,6 +164,19 @@ def _run_ua(tmp_path):
     return etc_path, data_path, run
 
 
+@pytest.fixture(autouse=True)
+def use_shipped_ua_template(monkeypatch):
+    monkeypatch.setattr(bootstrap.c, "UA_CONFIG_TEMPLATE_PATH", str(_UA_TEMPLATE))
+
+
+def _agent_config(path):
+    conf = cfg.ConfigOpts()
+    conf.register_opt(cfg.ListOpt("caps_drivers"), group="universal_agent")
+    conf.register_opt(cfg.StrOpt("orch_endpoint"), group="universal_agent")
+    conf(["--config-file", str(path)])
+    return conf.universal_agent
+
+
 def _run_core_agent(tmp_path):
     etc_path = tmp_path / "core_agent.conf"
     data_path = tmp_path / "data" / "core_agent.conf"
@@ -172,7 +196,7 @@ def test_upgrades_old_persisted_config(tmp_path):
     etc_path, data_path, run = _run_ua(tmp_path)
 
     content = etc_path.read_text(encoding="utf-8")
-    assert "    LBAgentCapabilityDriver,\n    BorderAgentCapabilityDriver,\n" in content
+    assert "BorderAgentCapabilityDriver" in _agent_config(etc_path).caps_drivers
     assert "border_agent" in content
     # UserCapabilityDriver is migrated to SecretCapabilityDriver
     assert "UserCapabilityDriver" not in content
@@ -183,7 +207,7 @@ def test_upgrades_old_persisted_config(tmp_path):
     # The persisted copy is kept in sync
     assert data_path.read_text(encoding="utf-8") == content
     run.assert_called_once()
-    assert "try-restart" in run.call_args.args[0]
+    assert "restart" in run.call_args.args[0]
 
 
 def test_migrates_user_capability_driver_section(tmp_path):
@@ -195,16 +219,226 @@ def test_migrates_user_capability_driver_section(tmp_path):
     content = etc_path.read_text(encoding="utf-8")
     # caps_drivers updated
     assert "UserCapabilityDriver" not in content
-    assert "    SecretCapabilityDriver,\n" in content
+    assert "SecretCapabilityDriver" in _agent_config(etc_path).caps_drivers
     # Section renamed and IAM endpoints appended
     assert "[SecretCapabilityDriver]" in content
     assert "[UserCapabilityDriver]" not in content
     assert "em_core_iam_users = /v1/iam/users/, password" in content
     assert "em_core_iam_clients = /v1/iam/clients/, secret" in content
-    # Rendered password is preserved
-    assert "password = secret" in content
+    document = configparser.ConfigParser(interpolation=None)
+    document.read(etc_path, encoding="utf-8")
+    settings = document["SecretCapabilityDriver"]
+    assert settings["username"] == "admin"
+    assert settings["password"] == "secret"
+    assert settings["user_api_base_url"] == "http://localhost:80/api/core"
     assert data_path.read_text(encoding="utf-8") == content
     run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "username_option, clients_option",
+    [
+        ("username", "em_core_iam_clients"),
+        ("Username", "EM_CORE_IAM_CLIENTS"),
+    ],
+)
+def test_merges_coexisting_iam_driver_sections(
+    tmp_path, username_option, clients_option
+):
+    etc_path = tmp_path / "exordos_universal_agent.conf"
+    content = _PRE_SECRET_DRIVER_UA_CONFIG.replace(
+        "    UserCapabilityDriver,\n", " UserCapabilityDriver,\n"
+    ).replace("password = secret", "password = synthetic%%legacy")
+    content += (
+        "\n[SecretCapabilityDriver]\n"
+        f"{username_option} = current-admin\n"
+        f"{clients_option} = /v1/iam/clients/, secret, custom-filter\n"
+    )
+    etc_path.write_text(content, encoding="utf-8")
+
+    _, data_path, restart = _run_ua(tmp_path)
+
+    loaded = _agent_config(etc_path)
+    assert loaded.caps_drivers.count("SecretCapabilityDriver") == 1
+    assert "UserCapabilityDriver" not in loaded.caps_drivers
+    document = configparser.ConfigParser(interpolation=None)
+    document.read(etc_path, encoding="utf-8")
+    assert not document.has_section("UserCapabilityDriver")
+    settings = document["SecretCapabilityDriver"]
+    assert settings["username"] == "current-admin"
+    assert settings["password"] == "synthetic%%legacy"
+    assert settings["em_core_iam_users"] == "/v1/iam/users/, password"
+    assert settings["em_core_iam_clients"] == "/v1/iam/clients/, secret, custom-filter"
+    assert data_path.read_bytes() == etc_path.read_bytes()
+    restart.assert_called_once()
+    _, _, restart = _run_ua(tmp_path)
+    restart.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "drivers",
+    [
+        " CustomCapabilityDriver, SSHKeyCapabilityDriver",
+        "\n    CustomCapabilityDriver,\n    SSHKeyCapabilityDriver",
+        ' "CustomCapabilityDriver, SSHKeyCapabilityDriver"',
+    ],
+)
+def test_upgrades_agent_config_without_render_driver(tmp_path, drivers):
+    etc_path = tmp_path / "exordos_universal_agent.conf"
+    etc_path.write_text(
+        "[universal_agent]\n"
+        f"caps_drivers ={drivers}\n"
+        "orch_endpoint = http://core.example:11013\n"
+        "\n[SecretCapabilityDriver]\n"
+        "password = synthetic-test-value\n"
+        "em_core_iam_users = /v1/iam/users/, password\n",
+        encoding="utf-8",
+    )
+
+    old_mask = os.umask(0o022)
+    try:
+        _, persisted, restart = _run_ua(tmp_path)
+    finally:
+        os.umask(old_mask)
+
+    configured = _agent_config(etc_path)
+    stock = _agent_config(_UA_TEMPLATE).caps_drivers
+    assert configured.caps_drivers == list(
+        dict.fromkeys(["CustomCapabilityDriver", "SSHKeyCapabilityDriver", *stock])
+    )
+    assert configured.orch_endpoint == "http://core.example:11013"
+    assert persisted.read_bytes() == etc_path.read_bytes()
+    assert b"password = synthetic-test-value\n" in persisted.read_bytes()
+    assert persisted.stat().st_mode & 0o777 == 0o600
+    restart.assert_called_once()
+    assert "exordos-universal-agent" in restart.call_args.args[0]
+
+    _, _, restart = _run_ua(tmp_path)
+    restart.assert_not_called()
+    assert persisted.read_bytes() == etc_path.read_bytes()
+
+
+@pytest.fixture
+def legacy_ua_config(tmp_path, monkeypatch):
+    active = tmp_path / "exordos_universal_agent.conf"
+    saved = tmp_path / "data" / active.name
+    legacy = _OLD_UA_CONFIG.replace("    RenderAgentDriver\n", "")
+    active.write_text(legacy, encoding="utf-8")
+    saved.parent.mkdir()
+    saved.write_text(legacy, encoding="utf-8")
+    restart = mock.Mock()
+    monkeypatch.setattr(bootstrap, "UA_CONFIG_PATH", str(active))
+    monkeypatch.setattr(bootstrap, "UA_CONFIG_DATA_PATH", str(saved))
+    monkeypatch.setattr(bootstrap.subprocess, "run", restart)
+    return active, saved, restart
+
+
+def test_replaces_existing_readable_agent_config_copy(legacy_ua_config):
+    active, saved, restart = legacy_ua_config
+    saved.chmod(0o644)
+
+    bootstrap._ensure_ua_config_current()
+
+    assert b"RenderAgentDriver" in saved.read_bytes()
+    assert saved.read_bytes() == active.read_bytes()
+    assert saved.stat().st_mode & 0o777 == 0o600
+    restart.assert_called_once()
+
+
+def test_retries_agent_config_migration_after_persisted_write_error(legacy_ua_config):
+    active, saved, restart = legacy_ua_config
+    legacy = active.read_bytes()
+    saved.unlink()
+    saved.mkdir()
+
+    with pytest.raises(OSError):
+        bootstrap._ensure_ua_config_current()
+
+    assert active.read_bytes() == legacy
+    restart.assert_not_called()
+    saved.rmdir()
+    saved.write_bytes(legacy)
+
+    bootstrap._ensure_ua_config_current()
+    assert b"RenderAgentDriver" in saved.read_bytes()
+    assert saved.read_bytes() == active.read_bytes()
+    restart.assert_called_once()
+
+
+def test_retries_failed_agent_restart_after_config_migration(legacy_ua_config):
+    active, saved, restart = legacy_ua_config
+    restart.side_effect = [subprocess.CalledProcessError(1, ["systemctl"]), None]
+
+    with pytest.raises(subprocess.CalledProcessError):
+        bootstrap._ensure_ua_config_current()
+
+    assert b"RenderAgentDriver" in active.read_bytes()
+    assert saved.read_bytes() == active.read_bytes()
+
+    bootstrap._ensure_ua_config_current()
+    bootstrap._ensure_ua_config_current()
+
+    assert restart.call_count == 2
+    restart.assert_called_with(
+        [
+            "systemctl",
+            "restart",
+            "exordos-universal-agent",
+            "exordos-universal-scheduler",
+        ],
+        check=True,
+    )
+
+
+def test_bootstrap_retries_transient_agent_restart_failure(
+    legacy_ua_config, tmp_path, monkeypatch
+):
+    active, saved, restart = legacy_ua_config
+    restart.side_effect = [subprocess.CalledProcessError(1, ["systemctl"]), None]
+    monkeypatch.setattr(bootstrap, "CONF", mock.Mock(retry_on_error=True))
+    monkeypatch.setattr(bootstrap, "SPEC_PATH", str(tmp_path / "missing-spec.json"))
+    monkeypatch.setattr(bootstrap.config, "parse", mock.Mock())
+    monkeypatch.setattr(bootstrap.infra_log, "configure", mock.Mock())
+    monkeypatch.setattr(
+        bootstrap.engines.engine_factory, "configure_postgresql_factory", mock.Mock()
+    )
+    monkeypatch.setattr(bootstrap, "_migrate_installed_elements_to_repo", mock.Mock())
+    next_step = mock.Mock()
+    monkeypatch.setattr(bootstrap, "_ensure_core_agent_config_current", next_step)
+    sleep = mock.Mock()
+    monkeypatch.setattr(bootstrap.time, "sleep", sleep)
+
+    bootstrap.main()
+
+    assert restart.call_count == 2
+    assert b"RenderAgentDriver" in active.read_bytes()
+    assert active.read_bytes() == saved.read_bytes()
+    sleep.assert_called_once()
+    next_step.assert_called_once()
+
+
+@pytest.mark.parametrize("config", [0, 1], ids=["active", "persisted"])
+def test_agent_config_survives_interrupted_replacement(
+    legacy_ua_config, config, monkeypatch
+):
+    target = legacy_ua_config[config]
+    restart = legacy_ua_config[2]
+    original = target.read_bytes()
+    replace = os.replace
+
+    def fail_before_replace(source, destination):
+        if pathlib.Path(destination) == target:
+            assert target.read_bytes() == original
+            assert pathlib.Path(source).stat().st_mode & 0o777 == 0o600
+            raise InterruptedError("interrupted before config replacement")
+        replace(source, destination)
+
+    monkeypatch.setattr(bootstrap.os, "replace", fail_before_replace)
+    with pytest.raises(InterruptedError):
+        bootstrap._ensure_ua_config_current()
+
+    assert target.read_bytes() == original
+    restart.assert_not_called()
 
 
 def test_noop_on_current_config(tmp_path):
@@ -217,6 +451,34 @@ def test_noop_on_current_config(tmp_path):
 
     assert etc_path.read_text(encoding="utf-8") == content
     run.assert_not_called()
+
+
+def test_preserves_format_when_agent_config_matches_shipped_options(tmp_path):
+    active = tmp_path / "exordos_universal_agent.conf"
+    content = "# local operator comment\n" + _UA_TEMPLATE.read_text(encoding="utf-8")
+    active.write_text(content, encoding="utf-8")
+
+    _, saved, restart = _run_ua(tmp_path)
+
+    assert active.read_text(encoding="utf-8") == content
+    assert not saved.exists()
+    restart.assert_not_called()
+
+
+def test_adds_driver_list_without_existing_agent_section(tmp_path):
+    active = tmp_path / "exordos_universal_agent.conf"
+    content = _UA_TEMPLATE.read_text(encoding="utf-8")
+    start = content.index("[universal_agent]")
+    end = content.index("[universal_agent_scheduler]")
+    active.write_text(content[:start] + content[end:], encoding="utf-8")
+
+    _, saved, restart = _run_ua(tmp_path)
+
+    assert (
+        _agent_config(active).caps_drivers == _agent_config(_UA_TEMPLATE).caps_drivers
+    )
+    assert saved.read_bytes() == active.read_bytes()
+    restart.assert_called_once()
 
 
 def test_missing_ua_config_is_skipped(tmp_path):

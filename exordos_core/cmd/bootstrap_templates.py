@@ -77,10 +77,7 @@ cli_opts = [
     ),
     cfg.StrOpt(
         "ua_config_template_src",
-        default=(
-            "/opt/exordos_core/etc/exordos_universal_agent/"
-            "exordos_universal_agent.conf.j2"
-        ),
+        default=c.UA_CONFIG_TEMPLATE_PATH,
         help="Path to the universal agent source template file",
     ),
     cfg.StrOpt(
